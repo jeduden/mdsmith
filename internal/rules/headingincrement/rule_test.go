@@ -5,6 +5,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -222,4 +223,116 @@ func TestSettingMergeMode_HeadingIncrement(t *testing.T) {
 
 func TestWordlistTarget(t *testing.T) {
 	assert.Equal(t, "placeholders", (&Rule{}).WordlistTarget())
+}
+
+// TestCheck_NoStateLeakAcrossFiles pins the per-file reset contract: a
+// single rule instance reused across two files (simulating engine worker
+// reuse) must produce correct diagnostics for each file independently.
+// File A ends with heading level 3; without a reset, File B's first
+// heading (level 3) would be treated as a continuation of A's sequence
+// rather than the file's first heading, silently dropping the
+// "first heading level should be 1" diagnostic.
+func TestCheck_NoStateLeakAcrossFiles(t *testing.T) {
+	r := &Rule{}
+
+	// File A: clean sequence h1 → h2 → h3. No diagnostics. After this
+	// call, if prevLevel were stored on the struct, it would be 3.
+	fileA, err := lint.NewFile("a.md", []byte("# H1\n\n## H2\n\n### H3\n"))
+	require.NoError(t, err)
+	diagsA := r.Check(fileA)
+	assert.Empty(t, diagsA, "File A should produce no diagnostics")
+
+	// File B: first heading is h3. With a clean slate (prevLevel=0),
+	// Check must diagnose "first heading level should be 1, got 3".
+	// With leaked state (prevLevel=3), the first-heading check is
+	// skipped and no diagnostic is produced — the stale-state bug.
+	fileB, err := lint.NewFile("b.md", []byte("### Third only\n"))
+	require.NoError(t, err)
+	diagsB := r.Check(fileB)
+	require.Len(t, diagsB, 1, "File B must diagnose first-heading violation; got: %v", diagsB)
+	assert.Equal(t, "first heading level should be 1, got 3", diagsB[0].Message)
+}
+
+// TestEnteringKinds pins the kind scope CheckNode declares: headings only,
+// and the same backing array on every call so the engine's per-file table
+// build allocates nothing for it.
+func TestEnteringKinds(t *testing.T) {
+	r := &Rule{}
+	assert.Equal(t, []ast.NodeKind{ast.KindHeading}, r.EnteringKinds())
+	assert.Equal(t, &r.EnteringKinds()[0], &r.EnteringKinds()[0],
+		"EnteringKinds must return a package-level slice, not a fresh allocation")
+}
+
+// TestLinesCapable pins the routing marker. Without it checker.classifySlot
+// gives the rule no dispatch slot on a nil-AST File. LinesCapable mirrors
+// LineCapable: it is true only when no placeholders are configured, because
+// a placeholder-configured rule reads heading inline text (AST-only) and
+// LineCapable already forces the engine to parse, so no nil-AST path exists.
+func TestLinesCapable(t *testing.T) {
+	assert.True(t, (&Rule{}).LinesCapable(), "no placeholders: skip path is available")
+	assert.False(t, (&Rule{Placeholders: []string{"heading-question"}}).LinesCapable(),
+		"with placeholders: skip path is unavailable; must parse to read inline text")
+}
+
+// TestBeginFile_ResetsPrevLevel pins the reset itself, independently of a
+// walk: a stale prevLevel from a previous file must be cleared so the next
+// file's first heading is judged as a first heading.
+func TestBeginFile_ResetsPrevLevel(t *testing.T) {
+	r := &Rule{prevLevel: 4}
+	r.BeginFile(nil)
+	assert.Zero(t, r.prevLevel)
+}
+
+// TestCheckNode_IgnoresLeavingVisitsAndNonHeadings pins CheckNode's two
+// guards directly. The kind-scoped dispatch never shows it a leaving visit
+// or a non-heading node, but rule.WalkNodes' generic path and any future
+// caller might, and neither must advance prevLevel.
+func TestCheckNode_IgnoresLeavingVisitsAndNonHeadings(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("### Third\n\ntext\n"))
+	require.NoError(t, err)
+	heading := f.AST.FirstChild()
+	require.Equal(t, ast.KindHeading, heading.Kind())
+
+	r := &Rule{}
+	assert.Nil(t, r.CheckNode(heading, false, f), "leaving visits produce nothing")
+	assert.Zero(t, r.prevLevel, "a leaving visit must not advance prevLevel")
+
+	assert.Nil(t, r.CheckNode(f.AST, true, f), "a non-heading node produces nothing")
+	assert.Zero(t, r.prevLevel, "a non-heading node must not advance prevLevel")
+}
+
+// TestCheckNode_ThreadsPrevLevelAcrossHeadings pins the per-node state
+// machine: the first heading is judged against "nothing seen yet", each
+// later heading against its predecessor, and a placeholder heading updates
+// prevLevel without emitting a diagnostic.
+func TestCheckNode_ThreadsPrevLevelAcrossHeadings(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("# One\n\n### Three\n"))
+	require.NoError(t, err)
+	first := f.AST.FirstChild()
+	second := first.NextSibling()
+	require.Equal(t, ast.KindHeading, second.Kind())
+
+	r := &Rule{}
+	r.BeginFile(f)
+	assert.Nil(t, r.CheckNode(first, true, f), "a level-1 first heading is clean")
+	assert.Equal(t, 1, r.prevLevel)
+
+	diags := r.CheckNode(second, true, f)
+	require.Len(t, diags, 1)
+	assert.Equal(t, "heading level incremented from 1 to 3 (expected 2)", diags[0].Message)
+	assert.Equal(t, 3, r.prevLevel, "prevLevel advances even when the heading is flagged")
+}
+
+// TestCheckNode_PlaceholderHeadingAdvancesPrevLevelSilently pins that an
+// opaque placeholder heading suppresses its own diagnostic but still moves
+// the sequence forward, so the heading after it is judged against it.
+func TestCheckNode_PlaceholderHeadingAdvancesPrevLevelSilently(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("## ?\n\ntext\n"))
+	require.NoError(t, err)
+	heading := f.AST.FirstChild()
+
+	r := &Rule{Placeholders: []string{"heading-question"}}
+	r.BeginFile(f)
+	assert.Nil(t, r.CheckNode(heading, true, f), "a placeholder heading is opaque")
+	assert.Equal(t, 2, r.prevLevel, "a placeholder heading still advances the sequence")
 }

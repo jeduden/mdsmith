@@ -113,6 +113,59 @@ If you need a single metric to minimize complexity, choose the one that best mat
 - Choose [MDS028](../../internal/rules/MDS028-token-budget/README.md) `token-budget` when context window limits are the dominant constraint and you want a file-level guardrail.
 - Choose conciseness scoring when token budget and drift are the main risks and you accept heuristic trade-offs.
 
+## Choosing a density band (MDS060 occurrence)
+
+[MDS060](../../internal/rules/MDS060-occurrence/README.md) `occurrence` bounds
+how often a token or pattern appears in each file, section, or paragraph.
+It counts prose only: code blocks and inline code spans are skipped.
+Two starting configurations cover the common cases.
+
+**Em-dash density.** At most two em dashes per paragraph. A paragraph with
+three or more reads as machine-written.
+
+```yaml
+rules:
+  occurrence:
+    pattern: "—"
+    scope: paragraph
+    count: combined
+    max: 2
+```
+
+**Term density.** Each listed buzzword at most twice per section. The
+entries come from a word-list you declare in
+`.mdsmith/wordlists/buzzwords.yaml`; no lists ship built in (see
+[word-list files](../reference/wordlist-files.md)).
+
+```yaml
+rules:
+  occurrence:
+    scope: section
+    count: each
+    max: 2
+    lists:
+      - buzzwords
+```
+
+A project runs one `occurrence` configuration per file, and `pattern` and
+`tokens` are mutually exclusive. So pick one of the two for a set of files.
+Do not combine them through kinds or overrides: the merged config would
+carry both `pattern` and `lists:`, and the rule would report a configuration
+error on every matching file.
+
+### Choosing the `max` bound
+
+The `max: 2` above is a strict band. Before you enforce it, run the rule on
+a sample of your documents. If it flags repetition the authors meant, raise
+`max` to 3. Use `count: combined` to cap the total across all tokens, and
+`count: each` (the default) to cap each token on its own.
+
+### When to prefer MDS056 over MDS060
+
+Use [MDS056](../../internal/rules/MDS056-forbidden-text/README.md)
+`forbidden-text` when a term is banned outright. Use `occurrence` when the
+term is allowed in moderation: the author may use it, but not too often.
+
 ## Recommendation for mdsmith users
 
 Start with [MDS023](../../internal/rules/MDS023-paragraph-readability/README.md) and [MDS024](../../internal/rules/MDS024-paragraph-structure/README.md) enabled. Use [MDS022](../../internal/rules/MDS022-max-file-length/README.md) and [MDS001](../../internal/rules/MDS001-line-length/README.md) as baseline file and line controls. Add [MDS028](../../internal/rules/MDS028-token-budget/README.md) when context limits matter, then add conciseness scoring only after calibrating its thresholds and confirming it improves signal without harming necessary precision.
