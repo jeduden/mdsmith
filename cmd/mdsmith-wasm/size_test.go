@@ -22,18 +22,20 @@ const mib = 1024 * 1024
 // GUARDS set just above the measured size, so an accidental dependency
 // bloat is caught in CI.
 //
-// Measured (Go 1.25, stripped): ~13.1 MB raw / ~4.0 MB gzipped at
-// BestSpeed (the pessimistic level this test uses; DefaultCompression
-// runs smaller). Cumulative rule-engine growth on main wore the
-// previous 4 MiB gzip ceiling down to ~12 KB of headroom (4,181,920
-// measured bytes vs. a 4,194,304-byte ceiling) before this comment's
-// own change added its own few KB on top — so an unrelated small
-// change could trip it on ordinary linked-code growth, not a real
-// regression. Bumped to 4.25 MiB, ~260 KB of headroom above the
-// measurement that prompted the bump; still well under the 14 MiB raw
-// ceiling.
+// Measured (Go 1.25, stripped): ~13.1 MiB raw / ~4.0 MiB gzipped at
+// BestSpeed, the pessimistic level this test uses (DefaultCompression
+// runs smaller — see engine-api.md for that figure). Cumulative
+// rule-engine growth on main wore the previous 4 MiB gzip ceiling down
+// to ~12 KiB of headroom (4,181,920 measured bytes against a
+// 4,194,304-byte ceiling): tight enough that an unrelated small change
+// could trip it on ordinary linked-code growth, not a real regression.
+// Widened to 4.25 MiB — a real reduction in how much bloat this guard
+// catches, accepted deliberately to restore working headroom rather
+// than trim otherwise-fine code to fit an exhausted margin — leaving
+// ~260 KiB above the measurement that prompted the change. Still well
+// under the 14 MiB raw ceiling.
 const (
-	maxWASMRawBytes  = 14 * mib      // 14 MiB (< 18 MiB plan-215 budget)
+	maxWASMRawBytes  = 14 * mib      // 14 MiB (< 18 MB plan-215 budget)
 	maxWASMGzipBytes = 4*mib + mib/4 // 4.25 MiB
 )
 
