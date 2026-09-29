@@ -1,6 +1,13 @@
 package refactor
 
-import "testing"
+import (
+	"math/rand"
+	"strconv"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 // TestStableSortEdits_NoReflectSort pins the allocation cost of
 // stableSortEdits, which drove sort.SliceStable — reflect.Swapper
@@ -44,9 +51,12 @@ func TestStableSortEdits_NoReflectSort(t *testing.T) {
 // edits that share both Line and Character (two edits on the same
 // line and column, e.g. an insertion and an adjacent rewrite, must
 // keep their original relative order — callers rely on that to avoid
-// reordering same-position edits when applying them). slices.SortFunc
-// (unlike SortStableFunc) would not guarantee this, so this test would
-// have caught the wrong choice between the two.
+// reordering same-position edits when applying them). At five edits
+// the stability half is illustrative only: slices.SortFunc falls back
+// to insertion sort — itself stable — below 13 elements, so this
+// fixture passes under an unstable sort too.
+// TestStableSortEdits_TiesPreserveInputOrder below is the one that
+// fails if stableSortEdits drops SortStableFunc.
 func TestStableSortEdits_TieBreakAndStability(t *testing.T) {
 	changes := map[string][]Edit{
 		"doc.md": {
@@ -74,4 +84,52 @@ func TestStableSortEdits_TieBreakAndStability(t *testing.T) {
 				"stability among same-position edits is broken)", got, want)
 		}
 	}
+}
+
+// TestStableSortEdits_TiesPreserveInputOrder pins stableSortEdits'
+// stability at a size an unstable sort actually disturbs: 300 edits
+// shuffled across three tied start positions reorder under
+// slices.SortFunc (pdqsort partitions them), while SortStableFunc must
+// keep each position's edits in their pre-sort order. NewText carries
+// each edit's original index so the tied edits stay traceable.
+func TestStableSortEdits_TiesPreserveInputOrder(t *testing.T) {
+	positions := []Position{
+		{Line: 4, Character: 2},
+		{Line: 9, Character: 0},
+		{Line: 4, Character: 7},
+	}
+	const n = 300
+	edits := make([]Edit, n)
+	for i := range edits {
+		edits[i] = Edit{
+			Range:   Range{Start: positions[i%len(positions)]},
+			NewText: strconv.Itoa(i),
+		}
+	}
+	rand.New(rand.NewSource(1)).Shuffle(n, func(i, j int) {
+		edits[i], edits[j] = edits[j], edits[i]
+	})
+
+	// want is each tied position's edit order right before the sort —
+	// the input a stable sort must preserve.
+	want := map[Position][]string{}
+	for _, e := range edits {
+		want[e.Range.Start] = append(want[e.Range.Start], e.NewText)
+	}
+
+	changes := map[string][]Edit{"doc.md": edits}
+	stableSortEdits(changes)
+	sorted := changes["doc.md"]
+	require.Len(t, sorted, n)
+
+	got := map[Position][]string{}
+	for i, e := range sorted {
+		if i > 0 {
+			require.LessOrEqual(t,
+				ComparePositionsBottomUp(sorted[i-1].Range.Start, e.Range.Start), 0,
+				"edits not in bottom-up order at index %d", i)
+		}
+		got[e.Range.Start] = append(got[e.Range.Start], e.NewText)
+	}
+	assert.Equal(t, want, got, "tied edits lost their pre-sort relative order")
 }
