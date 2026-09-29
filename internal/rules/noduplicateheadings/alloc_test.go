@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,15 +26,76 @@ func manyHeadingsFixture(n int) string {
 	return b.String()
 }
 
-// TestCheck_SeenMapAllocBudget pins the allocation cost of Check's
-// `seen` map on a document with many unique headings. The map is sized
-// with make(map[string]int) with no capacity hint even though
-// astutil.CollectHeadingNodes already returns a slice of known length
-// on the line above it — docs/development/high-performance-go.md's
-// "Pre-size slices" pattern extends to a map's initial bucket array the
-// same way. Verified red (higher allocs/op) against an unsized map
-// before the make(map[string]int, len(headings)) fix landed.
-func TestCheck_SeenMapAllocBudget(t *testing.T) {
+// unsizedCheck reimplements Check's AST-walk path exactly, except its
+// `seen` map is deliberately left unsized — the reference baseline
+// TestCheck_SeenMapPresizedVsUnsized compares the real Check against.
+func unsizedCheck(r *Rule, f *lint.File) []lint.Diagnostic {
+	var diags []lint.Diagnostic
+	seen := make(map[string]int) //nolint:gocritic // deliberately unsized: the comparison baseline
+	for _, heading := range astutil.CollectHeadingNodes(f) {
+		text := astutil.HeadingText(heading, f.Source)
+		line := astutil.HeadingLine(heading, f)
+		if d, ok := r.verdict(f, text, line, seen); ok {
+			diags = append(diags, d)
+		}
+	}
+	return diags
+}
+
+// TestCheck_SeenMapPresizedVsUnsized proves the real Check is actually
+// pre-sizing its `seen` map by measuring it, in the same test run,
+// against unsizedCheck — an identical AST-walk with a deliberately
+// unsized map. A fixed allocs/op budget (the first version of this test
+// used one) has a thin, Go-map-implementation-dependent margin between
+// the pre-sized and unsized numbers — a toolchain bump changing map
+// bucket internals could flip it either direction. Comparing the two
+// implementations within the same run sidesteps that: whichever way a
+// future Go version shifts the absolute counts, Check must still
+// allocate strictly less than unsizedCheck on this input, since
+// astutil.CollectHeadingNodes already knows the exact heading count
+// before the map is built (docs/development/high-performance-go.md's
+// "pre-size slices" pattern extended to a map's bucket array). Both
+// sides parse a fresh *lint.File per iteration so the only variable
+// between them is the map's initial capacity — reverting Check's
+// presize fix collapses this test to Check == unsizedCheck, which
+// fails the strict-less assertion.
+func TestCheck_SeenMapPresizedVsUnsized(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	const n = 80
+	src := []byte(manyHeadingsFixture(n))
+	r := &Rule{}
+
+	const runs = 50
+	presized := testing.AllocsPerRun(runs, func() {
+		f, err := lint.NewFile("presized.md", src)
+		require.NoError(t, err)
+		_ = r.Check(f)
+	})
+	unsized := testing.AllocsPerRun(runs, func() {
+		f, err := lint.NewFile("unsized.md", src)
+		require.NoError(t, err)
+		_ = unsizedCheck(r, f)
+	})
+
+	t.Logf("Check allocs/op (%d headings): pre-sized = %.0f, unsized reference = %.0f",
+		n, presized, unsized)
+	require.Lessf(t, presized, unsized,
+		"Check allocated %.0f, not fewer than the deliberately-unsized "+
+			"reference's %.0f, on %d headings — Check's seen map may no "+
+			"longer be pre-sized with len(headings)",
+		presized, unsized, n)
+}
+
+// TestCheck_SeenMapAllocs logs Check's actual allocation count on a
+// many-headings fixture for visibility in test output; informational
+// only (not a hard gate — see TestCheck_SeenMapPresizedVsUnsized for
+// the enforced regression net on this specific fix).
+func TestCheck_SeenMapAllocs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
@@ -63,16 +125,5 @@ func TestCheck_SeenMapAllocBudget(t *testing.T) {
 	if delta < 0 {
 		delta = 0
 	}
-
-	// Measured 91 allocs/op after the fix (was 97 before); budgeted with
-	// headroom above the measured value so an unrelated 1-2 alloc drift
-	// elsewhere (a Go point release, a dependency bump) doesn't flip this
-	// gate, while a regression back to an unsized map (97) still fails it.
-	const allocBudget = 94
-	t.Logf("MDS005 Check allocs/op (delta over parse, %d headings) = %.0f (budget = %d)",
-		n, delta, allocBudget)
-	require.LessOrEqualf(t, delta, float64(allocBudget),
-		"MDS005 Check allocs/op = %.0f exceeds budget %d: the seen map "+
-			"must be pre-sized with len(headings), see rule.go's Check",
-		delta, allocBudget)
+	t.Logf("MDS005 Check allocs/op (delta over parse, %d headings) = %.0f", n, delta)
 }
