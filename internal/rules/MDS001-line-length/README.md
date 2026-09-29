@@ -82,7 +82,7 @@ Stern uses the active max for each line type, so it respects `heading-max` and
 
 By default the rule reports long lines but does not rewrite them: `mdsmith fix`
 leaves prose untouched. Set `reflow: true` to opt into the auto-fix, which
-rewraps over-long top-level prose paragraphs so every line fits within `max`.
+rewraps over-long top-level prose paragraphs to fit within `max`.
 
 Reflow is deliberately conservative. It rewraps only paragraphs that sit
 directly in the document body and contain a flagged long line. It skips
@@ -115,6 +115,51 @@ Reflow breaks before the acronym instead, keeping `U. S. A.` whole on one line:
 Historians traced the founding and the early constitutional debates of the
 U. S. A. with real care.
 ```
+
+Reflow keeps each paragraph one paragraph. A rewrapped line never starts with
+syntax that CommonMark would read as the start of a new block:
+
+- an ATX heading: one to six `#` followed by a space, a tab, or the line end
+- a thematic break, such as `***`, `- - -`, or `_ _ _`
+- a code fence of backticks or tildes, with or without an info string
+- a block quote marker `>`
+- a bullet `-`, `+`, or `*` followed by a space and more text
+- an ordered item `1.` or `1)` followed by a space and more text
+- an HTML block of types 1 to 6, such as `<div`, `<!--`, or a `<?name`
+  processing instruction
+- a setext underline: a line of only `=` or only `-`
+
+If a plain word wrap would start a line with one of these, reflow moves the
+word before it down to lead that line instead. Take this paragraph at a `max` of
+50. A plain wrap starts its third line with `> opens`, a block quote:
+
+```text
+When writing Markdown, a line that starts with #
+and a space opens a heading, one that starts with
+> opens a block quote, and a line that begins with
+1. and a space starts a list.
+```
+
+Reflow keeps `>` and `1.` inside the paragraph:
+
+```text
+When writing Markdown, a line that starts with #
+and a space opens a heading, one that starts
+with > opens a block quote, and a line that begins
+with 1. and a space starts a list.
+```
+
+Text that only looks like block syntax wraps as usual. `#48` and `#tag` are not
+headings, `2.` and `1999.` cannot start a list inside a paragraph, and `x = y`
+is not a setext underline. The list follows CommonMark exactly, so a line that
+cannot interrupt a paragraph is allowed. An empty list item such as a lone `1.`
+is one example.
+
+A line runs past `max` only when no layout within `max` avoids these starts,
+such as when the word before a marker already fills the line. That line then
+takes as few extra words as it can. A paragraph is left as written when one of
+its lines would need more than eight extra words, or when every layout starts a
+line with block syntax.
 
 ## Config
 
