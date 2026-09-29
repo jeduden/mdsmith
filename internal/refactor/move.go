@@ -385,14 +385,19 @@ func linkPathBytesResolving(row []byte, textStart int, refFile, want string) (in
 
 // destPathToken returns the byte range of the path portion of the first
 // inline-link destination at or after from on row, plus the index of
-// that destination's closing `)`. The path excludes any `#fragment` and
-// title. Angle-bracketed `<dest>` forms are unwrapped.
+// that destination's closing `)`. The path excludes any whitespace
+// before it, a `?query`, a `#fragment`, and the title. Angle-bracketed
+// `<dest>` forms are unwrapped.
 func destPathToken(row []byte, from int) (start, end, closeIdx int, ok bool) {
 	open, closeIdx, ok := destBounds(row, from)
 	if !ok {
 		return 0, 0, 0, false
 	}
 	start, end = open, closeIdx
+	// CommonMark allows spaces or tabs between `(` and the destination.
+	for start < end && (row[start] == ' ' || row[start] == '\t') {
+		start++
+	}
 	if start < end && row[start] == '<' {
 		start++
 		for j := start; j < end; j++ {
@@ -415,8 +420,10 @@ func destPathToken(row []byte, from int) (start, end, closeIdx int, ok bool) {
 			}
 		}
 	}
+	// The parsed target's Path drops the query and fragment, so the
+	// token must too, or it never resolves to that target.
 	for i := start; i < end; i++ {
-		if row[i] == '#' {
+		if row[i] == '#' || row[i] == '?' {
 			end = i
 			break
 		}

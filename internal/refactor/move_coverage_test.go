@@ -116,6 +116,21 @@ func TestDestPathToken(t *testing.T) {
 		_, _, _, ok := destPathToken([]byte("[t] no paren"), 0)
 		assert.False(t, ok)
 	})
+	t.Run("leading whitespace before the path is skipped", func(t *testing.T) {
+		row := []byte("[t](  a.md ) [u]( \t<b c.md>)")
+		s, e, c, ok := destPathToken(row, 0)
+		require.True(t, ok)
+		assert.Equal(t, "a.md", string(row[s:e]))
+		s, e, _, ok = destPathToken(row, c+1)
+		require.True(t, ok)
+		assert.Equal(t, "b c.md", string(row[s:e]))
+	})
+	t.Run("query string is cut from the path", func(t *testing.T) {
+		row := []byte("![c](img/c.svg?raw=true#f)")
+		s, e, _, ok := destPathToken(row, 0)
+		require.True(t, ok)
+		assert.Equal(t, "img/c.svg", string(row[s:e]))
+	})
 }
 
 // locateDests parses body and returns each located destination as its

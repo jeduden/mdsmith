@@ -285,6 +285,34 @@ func TestMove_OutboundRewritesOnlyRealDestinations(t *testing.T) {
 		got)
 }
 
+// TestMove_OutboundQueryAndPaddedDestinations pins that an image with a
+// query string (`?raw=true`) and a destination padded with whitespace
+// inside its parentheses are both re-spelled, keeping the query.
+func TestMove_OutboundQueryAndPaddedDestinations(t *testing.T) {
+	src := "# A\n\n![c](chart.svg?raw=true) [b]( b.md )\n"
+	ws := newMemWorkspace(map[string]string{
+		"a.md": src, "b.md": "# B\n", "chart.svg": "<svg/>",
+	})
+	plan, err := Move(ws, "a.md", "docs/a.md")
+	require.NoError(t, err)
+
+	assert.Equal(t, "# A\n\n![c](../chart.svg?raw=true) [b]( ../b.md )\n",
+		applyEditsToSource(src, plan.Edits["a.md"]))
+}
+
+// TestMove_IncomingQueryAndPaddedDestinations pins the same two forms on
+// the incoming side: a link in another file with a query string or a
+// padded destination is repointed at dst, keeping the query.
+func TestMove_IncomingQueryAndPaddedDestinations(t *testing.T) {
+	b := "See [q](a.md?plain=1#x) and [p]( a.md ).\n"
+	ws := newMemWorkspace(map[string]string{"a.md": "# A\n", "b.md": b})
+	plan, err := Move(ws, "a.md", "docs/a.md")
+	require.NoError(t, err)
+
+	assert.Equal(t, "See [q](docs/a.md?plain=1#x) and [p]( docs/a.md ).\n",
+		applyEditsToSource(b, plan.Edits["b.md"]))
+}
+
 // TestMove_OutboundSkipsReferenceStyleImages pins that a reference-style
 // `![][logo]` is left alone: its destination lives in the ref-def, which
 // the move does not rewrite. It must not take the `](path)` of a code span
