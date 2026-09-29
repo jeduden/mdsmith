@@ -112,7 +112,19 @@ func TestApplyEdits_Errors(t *testing.T) {
 			mkEdit(0, 1, 3, "y"),
 		})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "overlapping")
+		assert.Contains(t, err.Error(), "conflicting")
+	})
+	t.Run("two zero-width inserts at the same point with different text rejected", func(t *testing.T) {
+		// A zero-width edit never advances pos past its own start, so
+		// without an explicit same-range check this pair would look
+		// merely adjacent instead of conflicting, and apply in whatever
+		// order the caller happened to report them.
+		_, err := ApplyEdits([]byte("abcdef\n"), []Edit{
+			mkEdit(0, 3, 3, "X"),
+			mkEdit(0, 3, 3, "Y"),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "conflicting")
 	})
 	t.Run("error is deterministic across multiple bad lines", func(t *testing.T) {
 		// Both line 0 and line 1 have a reversed Start/End pair; the

@@ -17,9 +17,11 @@ import (
 // only ever rewrites text within one line. Two edits on the same line
 // at an identical range (same Start, End, and NewText — the same
 // change reported twice, e.g. by an index that doesn't dedup) collapse
-// into one; any other overlap returns an error rather than silently
-// corrupting the line. A trailing `\r` is preserved so CRLF files
-// round-trip.
+// into one. Two edits at the same range with different NewText — an
+// ambiguous conflict, including two zero-width inserts at the same
+// point — return an error, as does any other overlap, rather than
+// silently corrupting the line. A trailing `\r` is preserved so CRLF
+// files round-trip.
 //
 // ApplyEdits is a pure, in-memory transform; it never touches the
 // filesystem, matching this package's "the engine never touches the
@@ -42,43 +44,66 @@ func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 	}
 	sort.Ints(lines)
 	for _, line := range lines {
-		es := byLine[line]
 		if line < 0 || line >= len(segs) {
 			return nil, fmt.Errorf("edit line %d out of range", line+1)
 		}
-		seg := segs[line]
-		cr := len(seg) > 0 && seg[len(seg)-1] == '\r'
-		row := seg
-		if cr {
-			row = seg[:len(seg)-1]
-		}
-		sortEditsByCharacterAsc(es)
-		es = dedupeIdenticalEdits(es)
-		buf := make([]byte, 0, len(row))
-		pos := 0
-		for _, e := range es {
-			// UTF16ToByteOffset always returns a value in [0, len(row)],
-			// so the only reachable invalid case is s > en (a reversed
-			// Start/End pair) or an overlap with the previous edit.
-			s := mdtext.UTF16ToByteOffset(row, e.Range.Start.Character)
-			en := mdtext.UTF16ToByteOffset(row, e.Range.End.Character)
-			if s > en {
-				return nil, fmt.Errorf("edit offset [%d,%d) out of range on line %d", s, en, line+1)
-			}
-			if s < pos {
-				return nil, fmt.Errorf("overlapping edits at byte %d on line %d", s, line+1)
-			}
-			buf = append(buf, row[pos:s]...)
-			buf = append(buf, e.NewText...)
-			pos = en
-		}
-		buf = append(buf, row[pos:]...)
-		if cr {
-			buf = append(buf, '\r')
+		buf, err := applyLineEdits(segs[line], byLine[line], line)
+		if err != nil {
+			return nil, err
 		}
 		segs[line] = buf
 	}
 	return joinLF(segs), nil
+}
+
+// applyLineEdits splices es into seg (one line, with its trailing `\r`
+// if any) and returns the rewritten line. line is the 0-based source
+// line, used only to name it in an error.
+func applyLineEdits(seg []byte, es []Edit, line int) ([]byte, error) {
+	cr := len(seg) > 0 && seg[len(seg)-1] == '\r'
+	row := seg
+	if cr {
+		row = seg[:len(seg)-1]
+	}
+	sortEditsByCharacterAsc(es)
+	es = dedupeIdenticalEdits(es)
+	buf := make([]byte, 0, len(row))
+	pos := 0
+	havePrev := false
+	var prevRange Range
+	for _, e := range es {
+		// UTF16ToByteOffset always returns a value in [0, len(row)], so
+		// the only reachable invalid case is s > en (a reversed
+		// Start/End pair) or an overlap with the previous edit.
+		s := mdtext.UTF16ToByteOffset(row, e.Range.Start.Character)
+		en := mdtext.UTF16ToByteOffset(row, e.Range.End.Character)
+		if s > en {
+			return nil, fmt.Errorf("edit offset [%d,%d) out of range on line %d", s, en, line+1)
+		}
+		// dedupeIdenticalEdits already dropped every duplicate with
+		// matching NewText, so a Range this loop sees twice means two
+		// edits disagree on what to put at that exact range — an
+		// ambiguous conflict a numeric pos check alone would miss for a
+		// zero-width range (it never advances pos past its own start, so
+		// a second zero-width edit at the same point looks merely
+		// adjacent rather than overlapping).
+		if havePrev && e.Range == prevRange {
+			return nil, fmt.Errorf(
+				"conflicting edits at byte %d on line %d: same range, different text", s, line+1)
+		}
+		if s < pos {
+			return nil, fmt.Errorf("overlapping edits at byte %d on line %d", s, line+1)
+		}
+		buf = append(buf, row[pos:s]...)
+		buf = append(buf, e.NewText...)
+		pos = en
+		prevRange, havePrev = e.Range, true
+	}
+	buf = append(buf, row[pos:]...)
+	if cr {
+		buf = append(buf, '\r')
+	}
+	return buf, nil
 }
 
 // sortEditsByCharacterAsc orders es by ascending (Start.Character,
@@ -113,8 +138,8 @@ func sortEditsByCharacterAsc(es []Edit) {
 // the same rewrite twice (e.g. an anchor and a path edit resolving to
 // the same edit); treating an exact duplicate as a no-op instead of an
 // overlap error keeps ApplyEdits tolerant of that without masking a
-// genuine conflict — two edits at the same range with different
-// NewText still fail the overlap check below.
+// genuine conflict — two edits left at the same range with different
+// NewText still fail the caller's conflicting-range check.
 func dedupeIdenticalEdits(es []Edit) []Edit {
 	if len(es) < 2 {
 		return es

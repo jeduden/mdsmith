@@ -1,10 +1,11 @@
 package refactor
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -809,16 +810,18 @@ func refDefParseTarget(dest string) (refDefDestTarget, bool) {
 // a deterministic, human-reviewable order for the Plan a host receives.
 // ApplyEdits re-sorts ascending internally and does not depend on this
 // order; it exists for hosts that apply or display a Plan's edits
-// without doing their own sort first.
+// without doing their own sort first. slices.SortStableFunc compares
+// the concrete Edit values directly, unlike sort.SliceStable, which
+// drives reflect.Swapper under the hood — see
+// docs/development/high-performance-go.md's "reflect in hot paths"
+// anti-pattern.
 func stableSortEdits(changes map[string][]Edit) {
-	for key, edits := range changes {
-		sort.SliceStable(edits, func(i, j int) bool {
-			a, b := edits[i].Range.Start, edits[j].Range.Start
-			if a.Line != b.Line {
-				return a.Line > b.Line
+	for _, edits := range changes {
+		slices.SortStableFunc(edits, func(a, b Edit) int {
+			if c := cmp.Compare(b.Range.Start.Line, a.Range.Start.Line); c != 0 {
+				return c
 			}
-			return a.Character > b.Character
+			return cmp.Compare(b.Range.Start.Character, a.Range.Start.Character)
 		})
-		changes[key] = edits
 	}
 }
