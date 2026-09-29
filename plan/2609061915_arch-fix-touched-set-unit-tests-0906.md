@@ -42,7 +42,9 @@ test). All are `tax`, not `blocker`.
   `validRefDefMatches`, also in this file, is already covered
   by `TestValidRefDefMatchesNoRefDefsCheapNoParse` in
   [perf_test.go][perf-test] and is not listed here.
-- [cmd/mdsmith/move.go][cmd-move]:179 — `applyEditsToFile`.
+- [cmd/mdsmith/move.go][cmd-move]:193,209 — `resolveFileEdits`,
+  `writeRewrittenFile` (split from `applyEditsToFile` during this
+  PR's review, to resolve every file's edits before writing any).
 - [cmd/mdsmith/rename.go][cmd-rename]:215,272,300,320,337,346,356 —
   `buildWorkspace`, `detectRenameMode`, `headingPlan`,
   `linkRefPlan`, `looksLikePath`, `firstPathish`,
@@ -83,8 +85,8 @@ the comment next time this file is touched.
    `TestBodyAndFMOffsetPrivate` — `TestBodyAndFMOffset` already
    exists at `rename_test.go:130` for the exported
    `BodyAndFMOffset`, so the plain name would collide.
-4. Add `TestApplyEditsToFile` to `cmd/mdsmith`'s
-   `move_unit_test.go`.
+4. Add `TestResolveFileEdits` and `TestWriteRewrittenFile` to
+   `cmd/mdsmith`'s `move_unit_test.go`.
 5. Add `TestBuildWorkspace`, `TestDetectRenameMode`,
    `TestHeadingPlan`, `TestLinkRefPlan`, `TestLooksLikePath`,
    `TestFirstPathish`, and `TestResolveWriteMode` to

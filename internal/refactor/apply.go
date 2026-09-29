@@ -51,6 +51,20 @@ func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 	return joinLF(segs), nil
 }
 
+// resolvedEdit is an Edit with its Range mapped from UTF-16 characters
+// to byte offsets in one line, dropping the Line field (the caller
+// already grouped by line). Sorting, deduping, and conflict detection
+// all key on (s, en) rather than the raw Range so that two edits whose
+// Character values differ but clamp to the same byte offset (both
+// past end of line, say) are compared on the same footing as two
+// edits that share a Character value outright — see
+// applyLineEdits's reversed-range comment for why UTF16ToByteOffset's
+// clamp makes that distinction matter.
+type resolvedEdit struct {
+	s, en int
+	text  string
+}
+
 // applyLineEdits splices es into seg (one line, with its trailing `\r`
 // if any) and returns the rewritten line. line is the 0-based source
 // line, used only to name it in an error.
@@ -60,13 +74,8 @@ func applyLineEdits(seg []byte, es []Edit, line int) ([]byte, error) {
 	if cr {
 		row = seg[:len(seg)-1]
 	}
-	sortEditsByCharacterAsc(es)
-	es = dedupeIdenticalEdits(es)
-	buf := make([]byte, 0, len(row))
-	pos := 0
-	havePrev := false
-	var prevRange Range
-	for _, e := range es {
+	resolved := make([]resolvedEdit, len(es))
+	for i, e := range es {
 		// Reject a reversed Start/End pair on the raw character values,
 		// before UTF16ToByteOffset clamps them. UTF16ToByteOffset is
 		// monotonic (never returns a smaller byte offset for a larger
@@ -78,26 +87,37 @@ func applyLineEdits(seg []byte, es []Edit, line int) ([]byte, error) {
 			return nil, fmt.Errorf("edit range [%d,%d) is reversed on line %d",
 				e.Range.Start.Character, e.Range.End.Character, line+1)
 		}
-		s := mdtext.UTF16ToByteOffset(row, e.Range.Start.Character)
-		en := mdtext.UTF16ToByteOffset(row, e.Range.End.Character)
-		// dedupeIdenticalEdits already dropped every duplicate with
-		// matching NewText, so a Range this loop sees twice means two
-		// edits disagree on what to put at that exact range — an
-		// ambiguous conflict a numeric pos check alone would miss for a
-		// zero-width range (it never advances pos past its own start, so
-		// a second zero-width edit at the same point looks merely
-		// adjacent rather than overlapping).
-		if havePrev && e.Range == prevRange {
+		resolved[i] = resolvedEdit{
+			s:    mdtext.UTF16ToByteOffset(row, e.Range.Start.Character),
+			en:   mdtext.UTF16ToByteOffset(row, e.Range.End.Character),
+			text: e.NewText,
+		}
+	}
+	sortResolvedEditsAsc(resolved)
+	resolved = dedupeIdenticalResolvedEdits(resolved)
+	buf := make([]byte, 0, len(row))
+	pos := 0
+	havePrev := false
+	var prevS, prevEn int
+	for _, r := range resolved {
+		// dedupeIdenticalResolvedEdits already dropped every duplicate
+		// with matching text, so a (s, en) pair this loop sees twice
+		// means two edits disagree on what to put at that exact byte
+		// range — an ambiguous conflict a numeric pos check alone would
+		// miss for a zero-width range (it never advances pos past its
+		// own start, so a second zero-width edit at the same point
+		// looks merely adjacent rather than overlapping).
+		if havePrev && r.s == prevS && r.en == prevEn {
 			return nil, fmt.Errorf(
-				"conflicting edits at byte %d on line %d: same range, different text", s, line+1)
+				"conflicting edits at byte %d on line %d: same range, different text", r.s, line+1)
 		}
-		if s < pos {
-			return nil, fmt.Errorf("overlapping edits at byte %d on line %d", s, line+1)
+		if r.s < pos {
+			return nil, fmt.Errorf("overlapping edits at byte %d on line %d", r.s, line+1)
 		}
-		buf = append(buf, row[pos:s]...)
-		buf = append(buf, e.NewText...)
-		pos = en
-		prevRange, havePrev = e.Range, true
+		buf = append(buf, row[pos:r.s]...)
+		buf = append(buf, r.text...)
+		pos = r.en
+		prevS, prevEn, havePrev = r.s, r.en, true
 	}
 	buf = append(buf, row[pos:]...)
 	if cr {
@@ -106,55 +126,55 @@ func applyLineEdits(seg []byte, es []Edit, line int) ([]byte, error) {
 	return buf, nil
 }
 
-// sortEditsByCharacterAsc orders es by ascending (Start.Character,
-// End.Character) in place, so ApplyEdits can build the rewritten line
-// in a single left-to-right pass and detect an overlap by comparing
-// each edit's start against the previous edit's end. The End tie-break
-// matters when two edits share a Start: it puts the narrower edit
-// first, so a zero-width insert always sorts before a wider edit that
-// starts at the same point, regardless of which order the caller
-// reported them in — without it, that pairing could sort either way
-// and the insert could come out looking like it overlaps the wider
-// edit. slices.SortStableFunc compares the concrete Edit values
+// sortResolvedEditsAsc orders res by ascending (s, en) in place, so
+// applyLineEdits can build the rewritten line in a single left-to-right
+// pass and detect a conflict or overlap by comparing each edit's start
+// against the previous edit's end. The en tie-break matters when two
+// edits share s: it puts the narrower edit first, so a zero-width
+// insert always sorts before a wider edit that starts at the same
+// byte, regardless of which order the caller reported them in —
+// without it, that pairing could sort either way and the insert could
+// come out looking like it overlaps the wider edit.
+// slices.SortStableFunc compares the concrete resolvedEdit values
 // directly, unlike sort.SliceStable, which drives reflect.Swapper
 // under the hood — see docs/development/high-performance-go.md's
 // "reflect in hot paths" anti-pattern. Stability preserves the
-// original order among edits reported at the same (Start, End)
-// (resolved by dedupeIdenticalEdits when they also share NewText, or
-// by the overlap check otherwise).
-func sortEditsByCharacterAsc(es []Edit) {
-	slices.SortStableFunc(es, func(a, b Edit) int {
-		if c := cmp.Compare(a.Range.Start.Character, b.Range.Start.Character); c != 0 {
+// original order among edits reported at the same (s, en) (resolved by
+// dedupeIdenticalResolvedEdits when they also share text, or by the
+// conflict check otherwise).
+func sortResolvedEditsAsc(res []resolvedEdit) {
+	slices.SortStableFunc(res, func(a, b resolvedEdit) int {
+		if c := cmp.Compare(a.s, b.s); c != 0 {
 			return c
 		}
-		return cmp.Compare(a.Range.End.Character, b.Range.End.Character)
+		return cmp.Compare(a.en, b.en)
 	})
 }
 
-// dedupeIdenticalEdits drops adjacent edits that share the same Start,
-// End, and NewText, keeping the first. es must already be sorted by
-// sortEditsByCharacterAsc, which places identical-range edits next to
+// dedupeIdenticalResolvedEdits drops adjacent entries that share the
+// same (s, en, text), keeping the first. res must already be sorted by
+// sortResolvedEditsAsc, which places identical-range entries next to
 // each other. A caller-side index or graph walk occasionally reports
 // the same rewrite twice (e.g. an anchor and a path edit resolving to
 // the same edit); treating an exact duplicate as a no-op instead of an
 // overlap error keeps ApplyEdits tolerant of that without masking a
-// genuine conflict — two edits left at the same range with different
-// NewText still fail the caller's conflicting-range check. Only
-// adjacent duplicates merge, but that is enough: three edits at one
-// range with text A, B, A leave the middle B unmerged, and the
-// caller's conflicting-range check catches the mismatch against B
-// before either A ever needs comparing to the other.
-func dedupeIdenticalEdits(es []Edit) []Edit {
-	if len(es) < 2 {
-		return es
+// genuine conflict — two entries left at the same (s, en) with
+// different text still fail applyLineEdits's conflicting-range check.
+// Only adjacent duplicates merge, but that is enough: three entries at
+// one range with text A, B, A leave the middle B unmerged, and the
+// conflicting-range check catches the mismatch against B before either
+// A ever needs comparing to the other.
+func dedupeIdenticalResolvedEdits(res []resolvedEdit) []resolvedEdit {
+	if len(res) < 2 {
+		return res
 	}
-	out := es[:1]
-	for _, e := range es[1:] {
+	out := res[:1]
+	for _, r := range res[1:] {
 		last := out[len(out)-1]
-		if e.Range == last.Range && e.NewText == last.NewText {
+		if r.s == last.s && r.en == last.en && r.text == last.text {
 			continue
 		}
-		out = append(out, e)
+		out = append(out, r)
 	}
 	return out
 }

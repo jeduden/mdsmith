@@ -138,8 +138,21 @@ func TestApplyEdits_ConflictErrors(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "conflicting")
 	})
+	t.Run("different Character values clamping to the same byte still conflict", func(t *testing.T) {
+		// Character 99 and Character 100 both clamp to len(row) on a
+		// 3-byte line, so they resolve to the identical zero-width byte
+		// range even though the raw Character values differ — the same
+		// ambiguity as two edits at literally the same Character, just
+		// reached from different raw values.
+		_, err := ApplyEdits([]byte("abc\n"), []Edit{
+			mkEdit(0, 99, 99, "X"),
+			mkEdit(0, 100, 100, "Y"),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "conflicting")
+	})
 	t.Run("non-adjacent duplicate at the same range still rejected", func(t *testing.T) {
-		// A, B, A at one range: dedupeIdenticalEdits only merges adjacent
+		// A, B, A at one range: dedupeIdenticalResolvedEdits only merges adjacent
 		// duplicates, so the two "A" edits are never compared to each
 		// other directly — but the unmerged "B" in between still
 		// conflicts with both, so this must still error.

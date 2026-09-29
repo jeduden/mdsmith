@@ -121,12 +121,17 @@ type fileMoveReport struct {
 	To   string `json:"to"`
 }
 
-// applyPlan is the shared apply layer for refactor plans. It writes
-// every keyed file's edits, then runs any FileOp (a git mv or plain
-// rename) — text edits before the move, so the relocated file carries
-// its rewritten body. With dryRun set it changes nothing and only
-// reports what it would do. Returns 0 on success, 2 on a write or move
-// failure.
+// applyPlan is the shared apply layer for refactor plans. It resolves
+// every keyed file's rewritten bytes in memory first — running
+// refactor.ApplyEdits, but writing nothing — so a conflict or overlap
+// ApplyEdits catches in a later file aborts the whole operation before
+// an earlier file is ever touched on disk. Only once every file
+// resolves cleanly does it write them and then run any FileOp (a git
+// mv or plain rename), text edits before the move so the relocated
+// file carries its rewritten body. dryRun still runs the resolve phase
+// — so a dry run reports the same conflict a real run would hit — but
+// skips the write phase and reports what it would do. Returns 0 on
+// success, 2 on a resolve, write, or move failure.
 func applyPlan(w io.Writer, ws cliRenameWorkspace, plan refactor.Plan, format string, dryRun bool) int {
 	rels := make([]string, 0, len(plan.Edits))
 	for rel, edits := range plan.Edits {
@@ -154,39 +159,54 @@ func applyPlan(w io.Writer, ws cliRenameWorkspace, plan refactor.Plan, format st
 		}
 	}
 
+	rewritten := make(map[string][]byte, len(rels))
 	summaries := make([]renameSummary, 0, len(rels))
 	for _, rel := range rels {
 		edits := plan.Edits[rel]
-		if !dryRun {
-			if code := applyEditsToFile(ws, rel, edits); code != 0 {
+		out, code := resolveFileEdits(ws, rel, edits)
+		if code != 0 {
+			return code
+		}
+		rewritten[rel] = out
+		summaries = append(summaries, renameSummary{File: rel, Edits: len(edits)})
+	}
+
+	if !dryRun {
+		for _, rel := range rels {
+			if code := writeRewrittenFile(ws, rel, rewritten[rel]); code != 0 {
 				return code
 			}
 		}
-		summaries = append(summaries, renameSummary{File: rel, Edits: len(edits)})
-	}
-	if !dryRun && plan.FileOp != nil {
-		if err := plan.FileOp.Execute(ws.rootDir); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-			return 2
+		if plan.FileOp != nil {
+			if err := plan.FileOp.Execute(ws.rootDir); err != nil {
+				fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+				return 2
+			}
 		}
 	}
 	return emitPlanReport(w, summaries, plan.FileOp, format, dryRun)
 }
 
-// applyEditsToFile splices one file's edits and writes the result back,
-// preserving the file's mode. Returns 0 on success, 2 on a read, apply,
-// or write failure.
-func applyEditsToFile(ws cliRenameWorkspace, rel string, edits []refactor.Edit) int {
+// resolveFileEdits reads rel and splices its edits in memory, without
+// writing anything back. Returns 0 on success, 2 on a read or apply
+// failure.
+func resolveFileEdits(ws cliRenameWorkspace, rel string, edits []refactor.Edit) ([]byte, int) {
 	_, src, ok := ws.Resolve(rel)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "mdsmith: cannot read %q to apply edits\n", rel)
-		return 2
+		return nil, 2
 	}
 	out, err := refactor.ApplyEdits(src, edits)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %s: %v\n", rel, err)
-		return 2
+		return nil, 2
 	}
+	return out, 0
+}
+
+// writeRewrittenFile writes out to rel's file, preserving its existing
+// mode. Returns 0 on success, 2 on a write failure.
+func writeRewrittenFile(ws cliRenameWorkspace, rel string, out []byte) int {
 	abs, ok := ws.relToAbs[rel]
 	if !ok {
 		abs = filepath.Join(ws.rootDir, filepath.FromSlash(rel))

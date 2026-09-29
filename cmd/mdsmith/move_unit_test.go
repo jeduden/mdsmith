@@ -147,3 +147,54 @@ func TestApplyPlan_PreflightAbortsBeforeWritingEdits(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, before, after, "no reference edit is written when the pre-flight aborts")
 }
+
+// TestApplyPlan_ConflictInOneFileAbortsBeforeWritingAny locks a
+// review-driven data-safety fix on PR #839: applyPlan resolves every
+// file's edits through refactor.ApplyEdits in memory before writing
+// any of them, so a conflict ApplyEdits catches in one file (b.md,
+// here) does not leave an earlier file (a.md, sorted first) rewritten
+// on disk with the move never run.
+func TestApplyPlan_ConflictInOneFileAbortsBeforeWritingAny(t *testing.T) {
+	dir := renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	beforeA, err := os.ReadFile(filepath.Join(dir, "a.md"))
+	require.NoError(t, err)
+
+	plan := refactor.Plan{Edits: map[string][]refactor.Edit{
+		"a.md": {{
+			Range: refactor.Range{
+				Start: refactor.Position{Line: 0, Character: 0},
+				End:   refactor.Position{Line: 0, Character: 1},
+			},
+			NewText: "X",
+		}},
+		// Out-of-range line: ApplyEdits rejects this during resolve.
+		"b.md": {{
+			Range:   refactor.Range{Start: refactor.Position{Line: 99}, End: refactor.Position{Line: 99}},
+			NewText: "x",
+		}},
+	}}
+	assert.Equal(t, 2, applyPlan(io.Discard, ws, plan, "text", false))
+
+	afterA, err := os.ReadFile(filepath.Join(dir, "a.md"))
+	require.NoError(t, err)
+	assert.Equal(t, beforeA, afterA, "a.md must stay untouched when b.md's edit fails to resolve")
+}
+
+// TestApplyPlan_DryRunStillCatchesApplyEditsFailure locks the other
+// half of the same fix: --dry-run runs the resolve phase too, so it
+// reports the same conflict a real run would hit instead of reporting
+// success for a plan ApplyEdits would reject.
+func TestApplyPlan_DryRunStillCatchesApplyEditsFailure(t *testing.T) {
+	renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	plan := refactor.Plan{Edits: map[string][]refactor.Edit{
+		"a.md": {{
+			Range:   refactor.Range{Start: refactor.Position{Line: 99}, End: refactor.Position{Line: 99}},
+			NewText: "x",
+		}},
+	}}
+	assert.Equal(t, 2, applyPlan(io.Discard, ws, plan, "text", true))
+}
