@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,8 +37,36 @@ func TestReportCheckResultTo_TextStatsFollowDiagnostics(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &out, &errOut)
 	assert.Equal(t, 1, code)
-	assert.Contains(t, out.String(), "stats: checked=1")
+	assert.Regexp(t, `(?s)^f\.md:1:1 MDS001 line too long\n.*\nstats: checked=1 fixed=0 failures=1 unfixed=1\n$`,
+		out.String())
 	assert.Empty(t, errOut.String())
+}
+
+// On a shared terminal (or `>file 2>&1`) the runtime errors print
+// before the diagnostics: the error buffer is flushed first.
+func TestReportCheckResultTo_StdoutErrorsPrintFirst(t *testing.T) {
+	opts := checkCLIOpts{format: "text", noColor: true, stdout: true}
+	result := &engine.Result{
+		FilesChecked: 1,
+		Diagnostics:  manyDiagnostics(1),
+		Errors:       []error{errors.New("boom")},
+	}
+	var shared bytes.Buffer
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &shared, &shared)
+	assert.Equal(t, 1, code)
+	assert.Regexp(t, `(?s)^mdsmith: boom\nf\.md:1:1 MDS001 line too long\n.*\nstats: checked=1 `, shared.String())
+}
+
+// Under --stdout the diagnostics are batched through their own buffer,
+// so a diagnostic-heavy run does not pay one write per formatted line.
+func TestReportCheckResultTo_BuffersStdoutWrites(t *testing.T) {
+	opts := checkCLIOpts{format: "text", noColor: true, stdout: true}
+	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
+	w := &countingWriter{}
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, w, io.Discard)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, w.buf.String(), "line too long")
+	assert.LessOrEqual(t, w.calls, 4)
 }
 
 func TestReportCheckResultTo_DefaultKeepsStderr(t *testing.T) {
@@ -60,9 +89,10 @@ func TestParseCheckFlags_Stdout(t *testing.T) {
 	assert.False(t, opts.stdout)
 }
 
-// A closed or broken stderr must not keep diagnostics off stdout, and
-// the exit code must still report the lint result (1), not a write
-// error (2).
+// A stderr that fails writes (a full disk, say) must not keep
+// diagnostics off stdout, and the exit code must still report the lint
+// result (1), not a write error (2). A broken stderr pipe is different:
+// the Go runtime ends the process on SIGPIPE, as it does for stdout.
 func TestReportCheckResultTo_BrokenStderrStillWritesStdout(t *testing.T) {
 	opts := checkCLIOpts{format: "json", stdout: true}
 	result := &engine.Result{
@@ -131,10 +161,10 @@ func TestWriteCheckReport(t *testing.T) {
 // default stderr route keeps its existing empty-json behavior.
 func TestReportCheckResultTo_CleanRunOutput(t *testing.T) {
 	tests := []struct {
-		name            string
-		opts            checkCLIOpts
-		wantOut, errOut string
-		sarifOn         string
+		name    string
+		opts    checkCLIOpts
+		wantOut string
+		sarifOn string
 	}{
 		{name: "stdout json", opts: checkCLIOpts{format: "json", stdout: true}, wantOut: "[]\n"},
 		{name: "stdout sarif", opts: checkCLIOpts{format: "sarif", stdout: true}, sarifOn: "stdout"},
@@ -163,7 +193,7 @@ func TestReportCheckResultTo_CleanRunOutput(t *testing.T) {
 				assert.Empty(t, out.String())
 			default:
 				assert.Equal(t, tt.wantOut, out.String())
-				assert.Equal(t, tt.errOut, errOut.String())
+				assert.Empty(t, errOut.String())
 			}
 		})
 	}
