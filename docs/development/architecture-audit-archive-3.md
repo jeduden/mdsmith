@@ -10,9 +10,11 @@ summary: >-
 # Architecture audit log archive (3)
 
 [The second audit log archive](architecture-audit-archive-2.md)
-links here for entries it no longer has room for.
-Entries below are moved, not summarized — nothing
-was reworded.
+links here for entries it no longer has room for. It
+overflowed a second time on 2026-09-27, into [the fourth
+archive](architecture-audit-archive-4.md) — a sibling of
+this shard, not a continuation of it. Entries below are
+moved, not summarized — nothing was reworded.
 
 ## Audit 2026-08-02 (range: 6680ff5..2ab4b29)
 

@@ -88,21 +88,16 @@ func isValidRefDefLine(source []byte, line int) bool {
 // markers excluded; setext headings cover the full text line. The
 // underline of a setext heading is left alone — CommonMark does not
 // require its width to match the text, so the rename never touches
-// it.
+// it. The range comes from refactor.HeadingTextRange, the same
+// function textDocument/rename uses to build its edit, so the popup
+// never highlights a range the rename itself would not replace.
 func headingPrepareRange(source []byte, line int, name string) (prepareRenameResult, bool) {
 	lines := splitLines(source)
 	if line-1 >= len(lines) {
 		return prepareRenameResult{}, false
 	}
 	row := lines[line-1]
-	startCol, endCol, ok := refactor.AtxHeadingTextByteRange(row)
-	if !ok {
-		// Not an ATX heading — must be the text line of a setext
-		// heading. Cover the full text line, excluding leading and
-		// trailing whitespace so the rename doesn't pad the new
-		// text against indented setext underlines.
-		startCol, endCol = refactor.TrimmedRange(row)
-	}
+	startCol, endCol := refactor.HeadingTextRange(row)
 	startCh := mdtext.UTF16FromByteOffset(row, startCol)
 	endCh := mdtext.UTF16FromByteOffset(row, endCol)
 	return prepareRenameResult{

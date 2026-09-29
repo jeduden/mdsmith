@@ -27,7 +27,8 @@ on to
 [the second archive](architecture-audit-archive-2.md)
 too. It hit the budget again on 2026-09-27; entries
 from 2026-06-23 through 2026-06-24 (the
-`1599c9f..09f22d3` range) moved on to
+`e701b94..1599c9f` and `1599c9f..09f22d3` ranges)
+moved on to
 [the second archive](architecture-audit-archive-2.md)
 as well.
 

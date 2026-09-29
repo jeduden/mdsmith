@@ -311,10 +311,7 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 		return Edit{}, false
 	}
 	row := lines[line-1]
-	startByte, endByte, ok := AtxHeadingTextByteRange(row)
-	if !ok {
-		startByte, endByte = TrimmedRange(row)
-	}
+	startByte, endByte := HeadingTextRange(row)
 	startCh := mdtext.UTF16FromByteOffset(row, startByte)
 	endCh := mdtext.UTF16FromByteOffset(row, endByte)
 	return Edit{
@@ -326,7 +323,27 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 	}, true
 }
 
-// AtxHeadingTextByteRange returns the byte offsets of the heading text
+// HeadingTextRange returns the byte offsets of the heading text on an
+// ATX or setext heading line — what a rename replaces. For an ATX
+// line it's the run between the opening `#`s and any trailing closing
+// `#` run; for anything else (a setext heading's text line) it falls
+// back to the line trimmed of leading and trailing horizontal
+// whitespace.
+//
+// Shared by the CLI/engine rename path (headingTextEdit, above) and
+// the LSP's prepareRename range (internal/lsp/rename.go) so both
+// surfaces agree on the same boundary, fallback included — a change
+// to either the ATX rule or the setext fallback here reaches both
+// callers automatically.
+func HeadingTextRange(row []byte) (int, int) {
+	start, end, ok := atxHeadingTextByteRange(row)
+	if !ok {
+		start, end = trimmedRange(row)
+	}
+	return start, end
+}
+
+// atxHeadingTextByteRange returns the byte offsets of the heading text
 // inside an ATX heading line — the run between the opening `#`s (and
 // required following space) and any trailing closing `#` run. Returns
 // false when row is not an ATX heading line.
@@ -336,24 +353,20 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 // line with no text (`### `) returns a zero-width range where text
 // would begin so the editor inserts there rather than rejecting the
 // rename.
-//
-// Shared by the CLI/engine rename path here and by the LSP's
-// prepareRename range (internal/lsp/rename.go) so both surfaces agree
-// on the ATX text boundary.
-func AtxHeadingTextByteRange(row []byte) (int, int, bool) {
-	textStart, ok := AtxHeadingTextStart(row)
+func atxHeadingTextByteRange(row []byte) (int, int, bool) {
+	textStart, ok := atxHeadingTextStart(row)
 	if !ok {
 		return 0, 0, false
 	}
-	end := TrimRightSpace(row, textStart, len(row))
-	end = TrimTrailingHashRun(row, textStart, end)
+	end := trimRightSpace(row, textStart, len(row))
+	end = trimTrailingHashRun(row, textStart, end)
 	return textStart, end, true
 }
 
-// AtxHeadingTextStart returns the byte offset where a heading's text
+// atxHeadingTextStart returns the byte offset where a heading's text
 // run begins, or false when row is not an ATX heading line.
-func AtxHeadingTextStart(row []byte) (int, bool) {
-	i := SkipLeadingSpaces(row, 3)
+func atxHeadingTextStart(row []byte) (int, bool) {
+	i := skipLeadingSpaces(row, 3)
 	if i >= len(row) || row[i] != '#' {
 		return 0, false
 	}
@@ -376,10 +389,10 @@ func AtxHeadingTextStart(row []byte) (int, bool) {
 	return i, true
 }
 
-// TrimTrailingHashRun strips a trailing `#` run preceded by whitespace
+// trimTrailingHashRun strips a trailing `#` run preceded by whitespace
 // — the optional ATX closing markers. A `#` run with no preceding
 // whitespace is part of the heading text (e.g. `# foo#bar`).
-func TrimTrailingHashRun(row []byte, start, end int) int {
+func trimTrailingHashRun(row []byte, start, end int) int {
 	if end <= start || row[end-1] != '#' {
 		return end
 	}
@@ -390,11 +403,11 @@ func TrimTrailingHashRun(row []byte, start, end int) int {
 	if k <= start || (row[k-1] != ' ' && row[k-1] != '\t') {
 		return end
 	}
-	return TrimRightSpace(row, start, k-1)
+	return trimRightSpace(row, start, k-1)
 }
 
-// SkipLeadingSpaces advances past up to max leading space bytes.
-func SkipLeadingSpaces(row []byte, max int) int {
+// skipLeadingSpaces advances past up to max leading space bytes.
+func skipLeadingSpaces(row []byte, max int) int {
 	i := 0
 	for i < len(row) && i < max && row[i] == ' ' {
 		i++
@@ -402,18 +415,18 @@ func SkipLeadingSpaces(row []byte, max int) int {
 	return i
 }
 
-// TrimRightSpace returns end shrunk past trailing space/tab bytes in
+// trimRightSpace returns end shrunk past trailing space/tab bytes in
 // row[start:end].
-func TrimRightSpace(row []byte, start, end int) int {
+func trimRightSpace(row []byte, start, end int) int {
 	for end > start && (row[end-1] == ' ' || row[end-1] == '\t') {
 		end--
 	}
 	return end
 }
 
-// TrimmedRange returns the byte offsets of row stripped of leading and
+// trimmedRange returns the byte offsets of row stripped of leading and
 // trailing horizontal whitespace.
-func TrimmedRange(row []byte) (int, int) {
+func trimmedRange(row []byte) (int, int) {
 	start, end := 0, len(row)
 	for start < end && (row[start] == ' ' || row[start] == '\t') {
 		start++

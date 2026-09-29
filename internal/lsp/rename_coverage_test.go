@@ -280,9 +280,8 @@ func TestServerRenameSameNormalizedNameStillEmits(t *testing.T) {
 }
 
 // TestPrepareRenameSetextHeading exercises headingPrepareRange's
-// setext branch. The text line lacks `#` markers so
-// atxHeadingTextByteRange returns false and the helper falls back
-// to trimmedRange.
+// setext branch. The text line lacks `#` markers, so
+// refactor.HeadingTextRange falls back to the trimmed full line.
 func TestPrepareRenameSetextHeading(t *testing.T) {
 	t.Parallel()
 	src := "Top\n===\n\nSetup\n-----\n\nbody\n"
