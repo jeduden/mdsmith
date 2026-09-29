@@ -299,6 +299,59 @@ func TestApplyEdits(t *testing.T) {
 	})
 }
 
+// TestApplyEdits_SameOffsetAndOverlapCharacterization pins what
+// applyEdits does today with edits that share a start offset or
+// overlap. It adds no checks: every edit is spliced in turn, rightmost
+// start first (ties keep input order), each against the row the
+// previous splice left behind. These cases document that contract so a
+// refactor cannot change it silently — e.g. two identical zero-width
+// inserts both land (`abcxxdef`), they are not merged into one.
+func TestApplyEdits_SameOffsetAndOverlapCharacterization(t *testing.T) {
+	tests := []struct {
+		name    string
+		edits   []refactor.Edit
+		want    string
+		wantErr string
+	}{
+		{
+			name:  "identical zero-width inserts both apply",
+			edits: []refactor.Edit{mkEdit(0, 3, 3, "x"), mkEdit(0, 3, 3, "x")},
+			want:  "abcxxdef\n",
+		},
+		{
+			name:  "distinct zero-width inserts at one offset: later edit lands leftmost",
+			edits: []refactor.Edit{mkEdit(0, 3, 3, "x"), mkEdit(0, 3, 3, "y")},
+			want:  "abcyxdef\n",
+		},
+		{
+			name:  "identical same-range replacements both apply",
+			edits: []refactor.Edit{mkEdit(0, 1, 3, "X"), mkEdit(0, 1, 3, "X")},
+			want:  "aXef\n",
+		},
+		{
+			name:  "partial overlap splices sequentially",
+			edits: []refactor.Edit{mkEdit(0, 1, 4, "X"), mkEdit(0, 2, 5, "Y")},
+			want:  "aX\n",
+		},
+		{
+			name:    "overlap whose left edit ends past the shrunk row errors",
+			edits:   []refactor.Edit{mkEdit(0, 1, 6, "X"), mkEdit(0, 2, 3, "")},
+			wantErr: "edit offset [1,6) out of range on line 1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := applyEdits([]byte("abcdef\n"), tt.edits)
+			if tt.wantErr != "" {
+				require.EqualError(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, string(out))
+		})
+	}
+}
+
 func TestSplitKeepCRAndJoinLF(t *testing.T) {
 	src := []byte("a\r\nb\nc")
 	segs := splitKeepCR(src)
