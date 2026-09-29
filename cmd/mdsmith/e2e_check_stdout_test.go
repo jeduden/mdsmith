@@ -42,7 +42,7 @@ func jsonRules(t *testing.T, out string) []string {
 
 // TestCheckStdout_E2E runs the real binary with --stdout through each
 // check entry point (file args, stdin, config discovery) and pins
-// which stream each kind of output reaches.
+// that the JSON document reaches stdout and nothing reaches stderr.
 func TestCheckStdout_E2E(t *testing.T) {
 	t.Run("file args json on stdout", func(t *testing.T) {
 		stdout, stderr, code := runBinaryInDir(t, stdoutWorkspace(t), "",
@@ -73,6 +73,12 @@ func TestCheckStdout_E2E(t *testing.T) {
 		assert.Empty(t, stderr)
 		assert.Equal(t, []string{"MDS001"}, jsonRules(t, stdout))
 	})
+}
+
+// TestCheckStdout_E2EStreams pins which stream each kind of output
+// reaches under --stdout: runtime errors, the text stats line, the
+// non-Markdown skip warning, and --quiet; plus the default route.
+func TestCheckStdout_E2EStreams(t *testing.T) {
 	t.Run("runtime error stays on stderr", func(t *testing.T) {
 		stdout, stderr, code := runBinaryInDir(t, stdoutWorkspace(t), "",
 			"check", "--stdout", "-f", "json", "--max-input-size", "10", "ok.md", "long.md")
