@@ -123,12 +123,13 @@ None.
 
 - The absolute-path predicate had three copies: in `cmd/mdsmith`,
   in `internal/linkgraph`, and in `internal/backlinks`, inside a
-  full copy of `linkgraph.ResolveRelTarget` ([go.md][go]). Fixed
-  directly: all three now use `internal/pathutil`, which reads `\`
-  as a separator on every host, and `cmd/mdsmith` checks and uses
-  one normalized target. Left alone: `internal/lsp`'s `isAbsPath`
-  (raw OS paths, for URIs) and the drive-letter-only checks in
-  `internal/schema`, `internal/rules/build`, and `internal/lsp`.
+  full copy of `linkgraph.ResolveRelTarget` ([go.md][go]). Fixed directly:
+  `cmd/mdsmith` and `internal/linkgraph` call `internal/pathutil` (`\` is a
+  separator on every host); `internal/backlinks` calls `ResolveRelTarget`.
+  Left separate: `internal/refactor`'s `workspaceRelative` (`path.IsAbs`
+  only, so `Session.Move` and the LSP accept a `C:/x.md` destination the
+  CLI rejects), `internal/lsp`'s `isAbsPath`, and the drive-letter checks
+  in `internal/schema`, `internal/rules/build`, and `internal/lsp`.
 - `cliRenameWorkspace` and `sessionRefactorWorkspace` share
   four matching `Workspace` pass-throughs (`Resolve`
   differs by design) — [plan/2609131911][2609131911].
@@ -218,8 +219,7 @@ None.
   `go build ./...`, `go test ./...`, and
   `go tool golangci-lint run` are green; behavior is
   unchanged (existing unit and e2e tests moved/kept
-  untouched). Superseded 2026-09-13: both copies now
-  use `internal/pathutil`.
+  untouched). Superseded by the 2026-09-13 audit.
 - `internal/mdtext/wordfreq.go`'s `WordFrequencyInto` and
   three helpers in `internal/directivefiles/directivefiles.go`
   (`openingFence`, `isClosingFence`, `isIndentedCodeBlock`)
