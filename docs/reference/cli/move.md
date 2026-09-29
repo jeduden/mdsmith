@@ -27,9 +27,9 @@ code 2.
   its spelling — an explicit `./x` keeps the prefix.
 - **Ref-def destinations.** A `[label]: src` definition line is
   repointed the same way.
-- **Outbound inline links inside the moved file.** Each inline
-  `[x](path)` in `src` is recomputed so it still resolves from
-  `dst`'s directory. Moving `docs/a.md` to `guide/a.md` fixes
+- **Outbound inline links and images inside the moved file.** Each
+  inline `[x](path)` or `![x](path)` in `src` is recomputed so it
+  still resolves from `dst`'s directory. Moving `docs/a.md` to `guide/a.md` fixes
   its own `[x](./b.md)` as well as the links pointing at it.
 - **Wikilinks.** `[[old-stem]]` becomes `[[new-stem]]` only when
   the basename stem changes. A move that keeps the basename

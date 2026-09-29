@@ -57,7 +57,7 @@ func (e SourceNotFoundError) Error() string {
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
 //     asymmetry with path links);
-//   - outbound inline links inside src — every `[t](path)` recomputed
+//   - outbound inline links and images inside src — every `[t](path)` or `![a](path)` recomputed
 //     so it still resolves from dst's directory.
 //
 // Spelling is preserved: an explicit `./x` keeps its prefix. Absolute
@@ -214,7 +214,7 @@ func appendIncomingPathEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	}
 }
 
-// appendOutboundEdits recomputes every relative link inside the moved
+// appendOutboundEdits recomputes every relative link and inline image inside the moved
 // file so it still resolves from dst's directory. Edits key under the
 // moved file's own key: the host applies them before the file relocates.
 func appendOutboundEdits(changes map[string][]Edit, srcKey, src, dst string, source []byte) {
@@ -228,24 +228,41 @@ func appendOutboundEdits(changes map[string][]Edit, srcKey, src, dst string, sou
 		LineOffset: fmOffset,
 	}
 	fileLines := splitLines(source)
-	for _, l := range linkgraph.ExtractLinks(lf) {
+	// claimed records destination starts already rewritten, so an
+	// image nested in a link that targets the same file gets its own
+	// edit and the outer link's destination is still found. Images go
+	// first: the image inside [![a](x.png)](x.png) sits before the
+	// link's own destination on the row.
+	type spot struct{ line, start int }
+	claimed := map[spot]bool{}
+	emit := func(l linkgraph.Link) {
 		if l.Target.LocalAnchor {
-			continue
+			return
 		}
 		tgt := linkgraph.ResolveRelTarget(src, l.Target.Path)
 		if tgt == "" {
 			// External, absolute, or out-of-workspace — leave untouched.
-			continue
+			return
 		}
 		// fileLine is always in range: l.Line is a body line and
 		// fileLines covers the body plus its fmOffset prefix, so unlike
 		// the index-fed incoming pass there is no stale coordinate here.
 		fileLine := l.Line + fmOffset
 		row := fileLines[fileLine-1]
-		ps, pe, ok := linkPathBytesResolving(row, l.Column-1, src, tgt)
-		if !ok {
-			continue
+		from := l.Column - 1
+		var ps, pe int
+		for {
+			var ok bool
+			ps, pe, ok = linkPathBytesResolving(row, from, src, tgt)
+			if !ok {
+				return
+			}
+			if !claimed[spot{fileLine, ps}] {
+				break
+			}
+			from = pe
 		}
+		claimed[spot{fileLine, ps}] = true
 		// A path link inside src that points at src itself must keep
 		// pointing at the file after it relocates, so recompute against
 		// dst — otherwise the token would be rewritten to address the
@@ -259,6 +276,12 @@ func appendOutboundEdits(changes map[string][]Edit, srcKey, src, dst string, sou
 		if edit, ok := pathEdit(row, fileLine-1, ps, pe, dst, recomputeTarget); ok {
 			changes[srcKey] = append(changes[srcKey], edit)
 		}
+	}
+	for _, l := range linkgraph.ExtractImages(lf) {
+		emit(l)
+	}
+	for _, l := range linkgraph.ExtractLinks(lf) {
+		emit(l)
 	}
 }
 
