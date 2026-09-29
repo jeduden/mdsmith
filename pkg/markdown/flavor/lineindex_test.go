@@ -61,3 +61,33 @@ func TestNewLazyLineCol_NeverBuildsIndexWithoutACall(t *testing.T) {
 		t.Fatalf("newLazyLineCol allocs/op = %.1f, want <= 1 (must not build the index eagerly)", allocs)
 	}
 }
+
+// --- newlineSearch ---
+
+// TestNewlineSearch pins the binary-search helper that backs lineIndex.lineCol:
+// it returns the count of newline offsets in nl that are strictly less than offset.
+func TestNewlineSearch(t *testing.T) {
+	nl := []int{5, 10, 15}
+	tests := []struct {
+		offset int
+		want   int
+	}{
+		{0, 0},   // before all newlines
+		{5, 0},   // exactly at first newline — not strictly less
+		{6, 1},   // after first newline
+		{10, 1},  // exactly at second newline
+		{11, 2},  // after second newline
+		{15, 2},  // exactly at third newline
+		{16, 3},  // after all newlines
+		{100, 3}, // well past all newlines
+	}
+	for _, tc := range tests {
+		got := newlineSearch(nl, tc.offset)
+		assert.Equalf(t, tc.want, got, "newlineSearch(%v, %d)", nl, tc.offset)
+	}
+}
+
+func TestNewlineSearch_Empty(t *testing.T) {
+	assert.Equal(t, 0, newlineSearch(nil, 0))
+	assert.Equal(t, 0, newlineSearch(nil, 100))
+}

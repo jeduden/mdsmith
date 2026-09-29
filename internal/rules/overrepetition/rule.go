@@ -4,6 +4,7 @@ package overrepetition
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -75,14 +76,12 @@ func (r *Rule) checkFile(f *lint.File) []lint.Diagnostic {
 }
 
 // checkSections checks word frequency per heading-bounded section.
-// Prose before the first heading is treated as an implicit preamble section
-// anchored at line 1. A single freq map is reused across sections (cleared
-// between them) to keep the active-path alloc count within the ≤10 budget.
+// Prose before the first heading, and a headingless file as a whole, are
+// treated as an implicit preamble section anchored at line 1. A single
+// freq map is reused across sections (cleared between them) to keep the
+// active-path alloc count within the ≤10 budget.
 func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	headings := astutil.CollectSectionHeadings(f)
-	if len(headings) == 0 {
-		return nil
-	}
 	paragraphs := astutil.CollectSectionParagraphsWithText(f)
 	totalLines := len(f.Lines)
 	if totalLines > 0 && len(f.Lines[totalLines-1]) == 0 {
@@ -115,8 +114,12 @@ func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
 	// Check preamble paragraphs (before the first heading) as one implicit section.
 	// Skip the allocation when no preamble paragraphs exist (the common case).
 	// Preamble paragraphs precede every heading, so unlike the per-heading
-	// window below, lo can safely advance past them for good.
-	firstHeadingLine := headings[0].Line
+	// window below, lo can safely advance past them for good. With no
+	// headings every paragraph is preamble: the whole file is one section.
+	firstHeadingLine := math.MaxInt
+	if len(headings) > 0 {
+		firstHeadingLine = headings[0].Line
+	}
 	for lo < len(paragraphs) && paragraphs[lo].Line < firstHeadingLine {
 		r.accum(freq, paragraphs[lo].ExtractText(f.Source))
 		lo++
@@ -240,6 +243,9 @@ func (r *Rule) applyMax(v any) error {
 	n, ok := settings.ToInt(v)
 	if !ok {
 		return fmt.Errorf("over-repetition: max must be an integer, got %T", v)
+	}
+	if n == 0 || n < -1 {
+		return fmt.Errorf("over-repetition: max must be a positive integer (≥1) or -1 to disable; got %d", n)
 	}
 	r.Max = n
 	return nil

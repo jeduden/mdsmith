@@ -11,12 +11,13 @@ use of LLMs as linters.
 
 ### mdsmith
 
-Go binary with zero runtime deps. It ships 69 rules,
-[MDS001][mds001] through [MDS070][mds070] (MDS060 is
-unused). They cover structure, readability, cross-file
+Go binary with zero runtime deps. It ships 74 rules,
+[MDS001][mds001] through [MDS075][mds075] (MDS074 is a
+config diagnostic for unbalanced foreign regions, not a
+rule). They cover structure, readability, cross-file
 links, and generated content.
 
-26 of the 69 rules are opt-in (off by default), among them
+31 of the 74 rules are opt-in (off by default), among them
 conciseness-scoring ([MDS029][mds029]); the rest run by
 default.
 
@@ -1035,7 +1036,7 @@ if you need a stable rule set across upgrades.
 [mds025]: ../../internal/rules/MDS025-table-format/README.md
 [mds027]: ../../internal/rules/MDS027-cross-file-reference-integrity/README.md
 [mds067]: ../../internal/rules/MDS067-callout-type/README.md
-[mds070]: ../../internal/rules/MDS070-same-file-anchor/README.md
+[mds075]: ../../internal/rules/MDS075-over-repetition/README.md
 [mds028]: ../../internal/rules/MDS028-token-budget/README.md
 [mds029]: ../../internal/rules/MDS029-conciseness-scoring/README.md
 [mds035]: ../../internal/rules/MDS035-toc-directive/README.md

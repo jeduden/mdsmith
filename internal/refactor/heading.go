@@ -312,10 +312,7 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 		return Edit{}, false
 	}
 	row := lines[line-1]
-	startByte, endByte, ok := atxHeadingTextByteRange(row)
-	if !ok {
-		startByte, endByte = trimmedRange(row)
-	}
+	startByte, endByte := HeadingTextRange(row)
 	startCh := mdtext.UTF16FromByteOffset(row, startByte)
 	endCh := mdtext.UTF16FromByteOffset(row, endByte)
 	return Edit{
@@ -325,6 +322,26 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 		},
 		NewText: newName,
 	}, true
+}
+
+// HeadingTextRange returns the byte offsets of the heading text on an
+// ATX or setext heading line — what a rename replaces. For an ATX
+// line it's the run between the opening `#`s and any trailing closing
+// `#` run; for anything else (a setext heading's text line) it falls
+// back to the line trimmed of leading and trailing horizontal
+// whitespace.
+//
+// Shared by the CLI/engine rename path (headingTextEdit, above) and
+// the LSP's prepareRename range (internal/lsp/rename.go) so both
+// surfaces agree on the same boundary, fallback included — a change
+// to either the ATX rule or the setext fallback here reaches both
+// callers automatically.
+func HeadingTextRange(row []byte) (int, int) {
+	start, end, ok := atxHeadingTextByteRange(row)
+	if !ok {
+		start, end = trimmedRange(row)
+	}
+	return start, end
 }
 
 // atxHeadingTextByteRange returns the byte offsets of the heading text

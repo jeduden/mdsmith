@@ -20,6 +20,7 @@ row: "- [{title}]({filename})"
 - [Architecture audit log archive](architecture-audit-archive.md)
 - [Architecture audit log archive (2)](architecture-audit-archive-2.md)
 - [Architecture audit log archive (3)](architecture-audit-archive-3.md)
+- [Architecture audit log archive (4)](architecture-audit-archive-4.md)
 - [Architecture principles](architecture/index.md)
 - [Coverage Gate](coverage.md)
 - [Design system](design-system.md)
