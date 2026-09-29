@@ -126,6 +126,19 @@ func TestApplyEdits_Errors(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "conflicting")
 	})
+	t.Run("non-adjacent duplicate at the same range still rejected", func(t *testing.T) {
+		// A, B, A at one range: dedupeIdenticalEdits only merges adjacent
+		// duplicates, so the two "A" edits are never compared to each
+		// other directly — but the unmerged "B" in between still
+		// conflicts with both, so this must still error.
+		_, err := ApplyEdits([]byte("abcdef\n"), []Edit{
+			mkEdit(0, 1, 3, "A"),
+			mkEdit(0, 1, 3, "B"),
+			mkEdit(0, 1, 3, "A"),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "conflicting")
+	})
 	t.Run("error is deterministic across multiple bad lines", func(t *testing.T) {
 		// Both line 0 and line 1 have a reversed Start/End pair; the
 		// reported error must always name the earliest bad line, not

@@ -139,7 +139,11 @@ func sortEditsByCharacterAsc(es []Edit) {
 // the same edit); treating an exact duplicate as a no-op instead of an
 // overlap error keeps ApplyEdits tolerant of that without masking a
 // genuine conflict — two edits left at the same range with different
-// NewText still fail the caller's conflicting-range check.
+// NewText still fail the caller's conflicting-range check. Only
+// adjacent duplicates merge, but that is enough: three edits at one
+// range with text A, B, A leave the middle B unmerged, and the
+// caller's conflicting-range check catches the mismatch against B
+// before either A ever needs comparing to the other.
 func dedupeIdenticalEdits(es []Edit) []Edit {
 	if len(es) < 2 {
 		return es
