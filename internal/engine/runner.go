@@ -7,6 +7,7 @@ import (
 	"math"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -28,10 +29,13 @@ import (
 // on a `mdsmith check` run (~10% of alloc_space on the repo corpus).
 // lintFile draws one *[]byte here, reads the file into it via
 // bytelimit.ReadFileLimitedInto, and returns it from the same release()
-// closure that recycles the parse arena: the File, its Lines, and any
-// output aliasing Source are all dead by then. Buffers are resliced to
-// zero length before going back so a single large file does not pin
-// megabytes; their (possibly grown) capacity is reused on the next draw.
+// closure that recycles the parse arena, once the File and its Lines
+// are dead. The one output that can still alias Source is a
+// diagnostic's SourceLines (zero-copy views, see
+// checker.PopulateSourceContext); release copies those out first
+// (detachSourceLines). Buffers are resliced to zero length before going
+// back so a single large file does not pin megabytes; their (possibly
+// grown) capacity is reused on the next draw.
 //
 // Only lintFile uses this. RunSource (LSP ParseCache), RunCache target
 // loads, and mdsmith export keep the plain allocating read because
@@ -421,11 +425,11 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	flog.Printf("file: %s", path)
 
 	// Draw a pooled source buffer and read the file into it. The buffer
-	// rides the same lifetime boundary as the parse arena: it is returned
-	// from the release() closure below, after Check has copied every
-	// diagnostic out and the File (its Source/Lines aliasing this buffer)
-	// is dead. On the read-error path nothing aliases the buffer yet, so
-	// return it immediately.
+	// rides the same lifetime boundary as the parse arena: the deferred
+	// release below returns it once the File (its Source/Lines aliasing
+	// this buffer) is dead and the diagnostics' SourceLines have been
+	// copied out of it. On the read-error path nothing aliases the buffer
+	// yet, so return it immediately.
 	bufp := sourceBufPool.Get().(*[]byte)
 	source, err := bytelimit.ReadFileLimitedInto(path, bufp, r.MaxInputBytes)
 	if err != nil {
@@ -456,7 +460,7 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// The pooled parse recycles AST slab memory across files. lintFile
 	// is the documented lifetime boundary: the File and everything
 	// aliasing its arena die before the deferred release — diagnostics
-	// only carry copied strings and ints, and the RunCache stores
+	// hold no arena memory, and the RunCache stores
 	// Files parsed through its own unpooled path. RunSource (LSP,
 	// stdin) deliberately stays on the unpooled constructor because
 	// its Files outlive the call via the ParseCache.
@@ -465,9 +469,11 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// and the file has no directives), the goldmark parse is skipped: the
 	// File is built lines-only and there is no arena to release.
 	//
-	// release() recycles both the arena slabs and the source buffer:
-	// the buffer is resliced to zero length so a single large file does
-	// not pin its grown capacity in the pool forever.
+	// release recycles both the arena slabs and the source buffer. It
+	// first copies the diagnostics' SourceLines out of the buffer: they
+	// are zero-copy views and would otherwise show the next file's
+	// bytes. The buffer is resliced to zero length so a single large
+	// file does not pin its grown capacity in the pool forever.
 	var f *lint.File
 	releaseArena := func() {}
 	if r.layer0SkipEligible(source, rr.mdRules, effective) {
@@ -481,12 +487,12 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	} else {
 		f, releaseArena = r.pooledFileConstructor(source)(path, source, r.StripFrontMatter)
 	}
-	release := func() {
+	defer func() {
 		releaseArena()
+		detachSourceLines(out.diags)
 		*bufp = (*bufp)[:0]
 		sourceBufPool.Put(bufp)
-	}
-	defer release()
+	}()
 	r.configureFile(f, path, cache)
 
 	// Generated-section ranges come from a PI walk over the AST. A
@@ -507,6 +513,41 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, r
 	// across files that hit the same cache entry is safe. It is nil on
 	// every well-formed config (the common path).
 	return fileOutcome{diags: diags, errs: cfgErrs}
+}
+
+// detachSourceLines replaces each diagnostic's SourceLines, zero-copy
+// views of the file's pooled source buffer, with owned copies so
+// lintFile can recycle the buffer. Only the context windows are copied,
+// never the whole file.
+func detachSourceLines(diags []lint.Diagnostic) {
+	for i := range diags {
+		if len(diags[i].SourceLines) > 0 {
+			diags[i].SourceLines = cloneLines(diags[i].SourceLines)
+		}
+	}
+}
+
+// cloneLines returns owned copies of lines in two allocations: the text
+// is joined into one string, and each returned element is a substring
+// of it. The result shares no memory with the input.
+func cloneLines(lines []string) []string {
+	n := 0
+	for _, l := range lines {
+		n += len(l)
+	}
+	var b strings.Builder
+	b.Grow(n)
+	for _, l := range lines {
+		b.WriteString(l)
+	}
+	joined := b.String()
+	out := make([]string, len(lines))
+	off := 0
+	for k, l := range lines {
+		out[k] = joined[off : off+len(l)]
+		off += len(l)
+	}
+	return out
 }
 
 // checkWithForeignRegions extends f.GeneratedRanges with the foreign-
