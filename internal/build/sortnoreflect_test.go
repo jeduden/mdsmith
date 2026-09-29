@@ -63,17 +63,47 @@ func TestSortEntriesByOutputKey_AllocBudget(t *testing.T) {
 	base := manyOutputEntries(n)
 
 	const runs = 30
-	allocs := testing.AllocsPerRun(runs, func() {
+	copyOnly := testing.AllocsPerRun(runs, func() {
+		_ = append([]CacheEntry(nil), base...)
+	})
+	full := testing.AllocsPerRun(runs, func() {
 		entries := append([]CacheEntry(nil), base...)
 		sortEntriesByOutputKey(entries)
 	})
+	delta := full - copyOnly
+	if delta < 0 {
+		delta = 0
+	}
 
 	const allocBudget = 260
-	t.Logf("sortEntriesByOutputKey allocs/op (%d entries) = %.0f (budget = %d)",
-		n, allocs, allocBudget)
-	require.LessOrEqualf(t, allocs, float64(allocBudget),
+	t.Logf("sortEntriesByOutputKey allocs/op (%d entries, delta over the test's own "+
+		"input copy) = %.0f (budget = %d)", n, delta, allocBudget)
+	require.LessOrEqualf(t, delta, float64(allocBudget),
 		"sortEntriesByOutputKey allocs/op = %.0f exceeds budget %d: "+
 			"outputSetKey must be computed once per entry, not twice "+
 			"per comparison, and the sort must not use reflect",
-		allocs, allocBudget)
+		delta, allocBudget)
+}
+
+// TestSortEntriesByOutputKey_SingleOrEmptyAllocatesNothing pins the
+// early return for fewer than 2 entries — a cache with 0 or 1 build
+// targets is already sorted, and Save calls this on every persisted
+// cache regardless of size.
+func TestSortEntriesByOutputKey_SingleOrEmptyAllocatesNothing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	for _, entries := range [][]CacheEntry{nil, manyOutputEntries(1)} {
+		allocs := testing.AllocsPerRun(200, func() {
+			sortEntriesByOutputKey(entries)
+		})
+		t.Logf("sortEntriesByOutputKey allocs/op (%d entries) = %.0f", len(entries), allocs)
+		if allocs > 0 {
+			t.Fatalf("sortEntriesByOutputKey allocs/op = %.0f for %d entr(y/ies), want 0",
+				allocs, len(entries))
+		}
+	}
 }

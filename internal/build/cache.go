@@ -105,7 +105,16 @@ func outputSetKey(paths []string) string {
 // The sort itself moves only a (key, index) pair per swap rather than a
 // full CacheEntry (whose Outputs/Inputs slice headers still cost a copy
 // per swap) — entries are reordered in a single final pass instead.
+//
+// A cache of fewer than 2 entries is already sorted, and the early
+// return skips every outputSetKey call entirely, not just the sort's
+// own bookkeeping — outputPaths and outputSetKey each allocate (a path
+// slice, a sorted copy, and the joined key string), so computing a key
+// nothing will ever compare against is real, measurable waste.
 func sortEntriesByOutputKey(entries []CacheEntry) {
+	if len(entries) < 2 {
+		return
+	}
 	type keyedIndex struct {
 		key string
 		idx int
