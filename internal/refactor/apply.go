@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sort"
 
 	"github.com/jeduden/mdsmith/internal/mdtext"
 )
@@ -13,10 +14,12 @@ import (
 // ApplyEdits splices every edit into src and returns the rewritten
 // bytes. Each edit must be single-line (heading text, label, or
 // fragment) — Plan never produces multi-line edits, since a rename
-// only ever rewrites text within one line. Edits on the same line
-// must not overlap (including two edits at an identical range); an
-// overlap returns an error rather than silently corrupting the line.
-// A trailing `\r` is preserved so CRLF files round-trip.
+// only ever rewrites text within one line. Two edits on the same line
+// at an identical range (same Start, End, and NewText — the same
+// change reported twice, e.g. by an index that doesn't dedup) collapse
+// into one; any other overlap returns an error rather than silently
+// corrupting the line. A trailing `\r` is preserved so CRLF files
+// round-trip.
 //
 // ApplyEdits is a pure, in-memory transform; it never touches the
 // filesystem, matching this package's "the engine never touches the
@@ -31,7 +34,15 @@ func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 		}
 		byLine[e.Range.Start.Line] = append(byLine[e.Range.Start.Line], e)
 	}
-	for line, es := range byLine {
+	// Iterate in line order so the returned error is deterministic when
+	// more than one line is bad.
+	lines := make([]int, 0, len(byLine))
+	for line := range byLine {
+		lines = append(lines, line)
+	}
+	sort.Ints(lines)
+	for _, line := range lines {
+		es := byLine[line]
 		if line < 0 || line >= len(segs) {
 			return nil, fmt.Errorf("edit line %d out of range", line+1)
 		}
@@ -42,6 +53,7 @@ func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 			row = seg[:len(seg)-1]
 		}
 		sortEditsByCharacterAsc(es)
+		es = dedupeIdenticalEdits(es)
 		buf := make([]byte, 0, len(row))
 		pos := 0
 		for _, e := range es {
@@ -69,19 +81,54 @@ func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 	return joinLF(segs), nil
 }
 
-// sortEditsByCharacterAsc orders es by ascending Start.Character in
-// place, so ApplyEdits can build the rewritten line in a single
-// left-to-right pass and detect an overlap by comparing each edit's
-// start against the previous edit's end. slices.SortStableFunc
-// compares the concrete Edit values directly, unlike sort.SliceStable,
-// which drives reflect.Swapper under the hood — see
+// sortEditsByCharacterAsc orders es by ascending (Start.Character,
+// End.Character) in place, so ApplyEdits can build the rewritten line
+// in a single left-to-right pass and detect an overlap by comparing
+// each edit's start against the previous edit's end. The End tie-break
+// matters when two edits share a Start: without it, a stable sort
+// would leave them in whatever order the caller happened to report
+// them, and a wider edit processed before a zero-width insert at the
+// same start would make the insert look like it overlaps (its start
+// equals the wider edit's end only when the insert sorts second, by
+// construction) — sorting the narrower End first removes that
+// ordering dependency. slices.SortStableFunc compares the concrete
+// Edit values directly, unlike sort.SliceStable, which drives
+// reflect.Swapper under the hood — see
 // docs/development/high-performance-go.md's "reflect in hot paths"
 // anti-pattern. Stability preserves the original order among edits
-// reported at the same offset (which then fails the overlap check).
+// reported at the same (Start, End) (resolved by dedupeIdenticalEdits
+// when they also share NewText, or by the overlap check otherwise).
 func sortEditsByCharacterAsc(es []Edit) {
 	slices.SortStableFunc(es, func(a, b Edit) int {
-		return cmp.Compare(a.Range.Start.Character, b.Range.Start.Character)
+		if c := cmp.Compare(a.Range.Start.Character, b.Range.Start.Character); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Range.End.Character, b.Range.End.Character)
 	})
+}
+
+// dedupeIdenticalEdits drops adjacent edits that share the same Start,
+// End, and NewText, keeping the first. es must already be sorted by
+// sortEditsByCharacterAsc, which places identical-range edits next to
+// each other. A caller-side index or graph walk occasionally reports
+// the same rewrite twice (e.g. an anchor and a path edit resolving to
+// the same edit); treating an exact duplicate as a no-op instead of an
+// overlap error keeps ApplyEdits tolerant of that without masking a
+// genuine conflict — two edits at the same range with different
+// NewText still fail the overlap check below.
+func dedupeIdenticalEdits(es []Edit) []Edit {
+	if len(es) < 2 {
+		return es
+	}
+	out := es[:1]
+	for _, e := range es[1:] {
+		last := out[len(out)-1]
+		if e.Range == last.Range && e.NewText == last.NewText {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // splitKeepCR splits src on `\n`, keeping any trailing `\r` on each

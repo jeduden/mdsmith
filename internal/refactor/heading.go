@@ -804,11 +804,12 @@ func refDefParseTarget(dest string) (refDefDestTarget, bool) {
 	return refDefDestTarget{path: u.Path, fragment: u.Fragment}, true
 }
 
-// stableSortEdits sorts each key's Edit slice in reverse document
-// order so a consumer applying edits sequentially ends up with the
-// right buffer state: earlier (later-positioned) edits don't shift
-// the offsets the next edit relies on, particularly when two edits
-// share a line.
+// stableSortEdits sorts each key's Edit slice into reverse document
+// order (bottom of the file to top, right to left on a shared line) —
+// a deterministic, human-reviewable order for the Plan a host receives.
+// ApplyEdits re-sorts ascending internally and does not depend on this
+// order; it exists for hosts that apply or display a Plan's edits
+// without doing their own sort first.
 func stableSortEdits(changes map[string][]Edit) {
 	for key, edits := range changes {
 		sort.SliceStable(edits, func(i, j int) bool {
