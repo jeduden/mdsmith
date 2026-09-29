@@ -5,8 +5,8 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
-	"sort"
 
 	"github.com/jeduden/mdsmith/internal/mdtext"
 )
@@ -38,12 +38,7 @@ func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 	}
 	// Iterate in line order so the returned error is deterministic when
 	// more than one line is bad.
-	lines := make([]int, 0, len(byLine))
-	for line := range byLine {
-		lines = append(lines, line)
-	}
-	sort.Ints(lines)
-	for _, line := range lines {
+	for _, line := range slices.Sorted(maps.Keys(byLine)) {
 		if line < 0 || line >= len(segs) {
 			return nil, fmt.Errorf("edit line %d out of range", line+1)
 		}
@@ -72,14 +67,19 @@ func applyLineEdits(seg []byte, es []Edit, line int) ([]byte, error) {
 	havePrev := false
 	var prevRange Range
 	for _, e := range es {
-		// UTF16ToByteOffset always returns a value in [0, len(row)], so
-		// the only reachable invalid case is s > en (a reversed
-		// Start/End pair) or an overlap with the previous edit.
+		// Reject a reversed Start/End pair on the raw character values,
+		// before UTF16ToByteOffset clamps them. UTF16ToByteOffset is
+		// monotonic (never returns a smaller byte offset for a larger
+		// character offset) and clamps to len(row), so checking the
+		// post-clamp s > en instead would miss a reversed pair that both
+		// land past end of line — clamping collapses both to len(row),
+		// making them look like a valid zero-width edit there.
+		if e.Range.Start.Character > e.Range.End.Character {
+			return nil, fmt.Errorf("edit range [%d,%d) is reversed on line %d",
+				e.Range.Start.Character, e.Range.End.Character, line+1)
+		}
 		s := mdtext.UTF16ToByteOffset(row, e.Range.Start.Character)
 		en := mdtext.UTF16ToByteOffset(row, e.Range.End.Character)
-		if s > en {
-			return nil, fmt.Errorf("edit offset [%d,%d) out of range on line %d", s, en, line+1)
-		}
 		// dedupeIdenticalEdits already dropped every duplicate with
 		// matching NewText, so a Range this loop sees twice means two
 		// edits disagree on what to put at that exact range — an

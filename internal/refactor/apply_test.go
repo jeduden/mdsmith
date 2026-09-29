@@ -93,11 +93,23 @@ func TestApplyEdits_Errors(t *testing.T) {
 		_, err := ApplyEdits([]byte("a\n"), []Edit{mkEdit(9, 0, 0, "")})
 		require.Error(t, err)
 	})
-	t.Run("offset out of range", func(t *testing.T) {
-		// Start past End after mapping → the s>en guard fires.
+	t.Run("reversed range rejected", func(t *testing.T) {
 		_, err := ApplyEdits([]byte("abcd\n"), []Edit{mkEdit(0, 3, 1, "x")})
 		require.Error(t, err)
+		assert.Contains(t, err.Error(), "reversed")
 	})
+	t.Run("reversed range entirely past end of line still rejected", func(t *testing.T) {
+		// Both Start and End land past len(row); UTF16ToByteOffset clamps
+		// each to len(row), which would make them look like a valid
+		// zero-width edit there if the reversed check ran on the
+		// post-clamp byte offsets instead of the raw character values.
+		_, err := ApplyEdits([]byte("abc\n"), []Edit{mkEdit(0, 99, 50, "x")})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "reversed")
+	})
+}
+
+func TestApplyEdits_ConflictErrors(t *testing.T) {
 	t.Run("overlapping edits rejected", func(t *testing.T) {
 		_, err := ApplyEdits([]byte("abcdef\n"), []Edit{
 			mkEdit(0, 0, 4, "x"),
