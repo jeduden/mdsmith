@@ -121,3 +121,47 @@ func TestCheckStdout_E2EStreams(t *testing.T) {
 		assert.Equal(t, []string{"MDS001"}, jsonRules(t, stderr))
 	})
 }
+
+// TestCheckStdout_E2ENoFiles pins the clean runs that resolve no
+// Markdown file at all: a named non-Markdown file, a directory with no
+// Markdown in it, and config discovery that finds nothing. They exit 0
+// before any file is linted, and a redirected json or sarif file must
+// still hold a valid document, not 0 bytes.
+func TestCheckStdout_E2ENoFiles(t *testing.T) {
+	noMarkdown := func(t *testing.T) string {
+		t.Helper()
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "empty"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x\n"), 0o644))
+		return dir
+	}
+	t.Run("named non-Markdown file json", func(t *testing.T) {
+		stdout, stderr, code := runBinaryInDir(t, noMarkdown(t), "",
+			"check", "--stdout", "-f", "json", "notes.txt")
+		assert.Equal(t, 0, code)
+		assert.Equal(t, "[]\n", stdout)
+		assert.Contains(t, stderr, `mdsmith: skipping "notes.txt": not a Markdown file`)
+	})
+	t.Run("directory without Markdown json", func(t *testing.T) {
+		stdout, stderr, code := runBinaryInDir(t, noMarkdown(t), "",
+			"check", "--stdout", "-f", "json", "empty")
+		assert.Equal(t, 0, code)
+		assert.Equal(t, "[]\n", stdout)
+		assert.Empty(t, stderr)
+	})
+	t.Run("discovery without Markdown sarif", func(t *testing.T) {
+		stdout, stderr, code := runBinaryInDir(t, noMarkdown(t), "",
+			"check", "--stdout", "-f", "sarif")
+		assert.Equal(t, 0, code)
+		assert.Contains(t, stdout, `"version": "2.1.0"`)
+		assert.Empty(t, stderr)
+	})
+	t.Run("text writes nothing, as without the flag", func(t *testing.T) {
+		stdout, stderr, code := runBinaryInDir(t, noMarkdown(t), "",
+			"check", "--stdout", "empty")
+		assert.Equal(t, 0, code)
+		assert.Empty(t, stdout)
+		assert.Empty(t, stderr)
+	})
+}

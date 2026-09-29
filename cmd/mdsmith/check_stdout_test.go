@@ -189,3 +189,44 @@ func TestCheckCLIOpts_StderrFormat(t *testing.T) {
 		assert.Equal(t, "text", checkCLIOpts{format: format, stdout: true}.stderrFormat(), format)
 	}
 }
+
+// A run that resolved no Markdown file is clean. Under --stdout a
+// json or sarif run still writes its empty document; everything else
+// writes nothing, as the default route always has.
+func TestReportNoFilesTo(t *testing.T) {
+	tests := []struct {
+		name    string
+		opts    checkCLIOpts
+		wantOut string
+		sarif   bool
+	}{
+		{name: "stdout json", opts: checkCLIOpts{format: "json", stdout: true}, wantOut: "[]\n"},
+		{name: "stdout sarif", opts: checkCLIOpts{format: "sarif", stdout: true}, sarif: true},
+		{name: "stdout text", opts: checkCLIOpts{format: "text", stdout: true}},
+		{name: "stdout json quiet", opts: checkCLIOpts{format: "json", stdout: true, quiet: true}},
+		{name: "stderr json", opts: checkCLIOpts{format: "json"}},
+		{name: "stderr sarif", opts: checkCLIOpts{format: "sarif"}},
+		{name: "stderr text", opts: checkCLIOpts{format: "text"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			assert.Equal(t, 0, reportNoFilesTo(tt.opts, &out, &errOut))
+			if tt.sarif {
+				assertEmptySARIF(t, out.Bytes())
+			} else {
+				assert.Equal(t, tt.wantOut, out.String())
+			}
+			assert.Empty(t, errOut.String())
+		})
+	}
+}
+
+// The empty document is still a stdout write, so its failure is a
+// runtime error reported on stderr with exit 2.
+func TestReportNoFilesTo_WriteErrorGoesToStderr(t *testing.T) {
+	var errOut bytes.Buffer
+	code := reportNoFilesTo(checkCLIOpts{format: "json", stdout: true}, &alwaysErrorWriter{}, &errOut)
+	assert.Equal(t, 2, code)
+	assert.Equal(t, "mdsmith: error writing output: write failed\n", errOut.String())
+}

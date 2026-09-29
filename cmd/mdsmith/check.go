@@ -132,7 +132,10 @@ func checkFiles(fileArgs []string, opts checkCLIOpts) int {
 		fileArgs, opts.configPath, opts.verbose, opts.walk, opts.maxInputSize,
 		nonMarkdownSkipWarner(os.Stderr, opts.stderrFormat(), opts.quiet),
 	)
-	if code >= 0 {
+	if code == 0 {
+		return reportNoFiles(opts)
+	}
+	if code > 0 {
 		return code
 	}
 
@@ -202,7 +205,10 @@ func checkStdin(opts checkCLIOpts) int {
 // and lints them. Returns the appropriate exit code.
 func checkDiscovered(opts checkCLIOpts) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(opts.configPath, opts.verbose, opts.walk)
-	if code >= 0 {
+	if code == 0 {
+		return reportNoFiles(opts)
+	}
+	if code > 0 {
 		return code
 	}
 
@@ -292,6 +298,24 @@ func writeCheckReport(out *bufio.Writer, result *engine.Result, opts checkCLIOpt
 		Unfixed:  len(result.Diagnostics),
 	})
 	return out.Flush()
+}
+
+// reportNoFiles ends a check run that resolved no Markdown file:
+// loadAndResolve and discoverFiles return exit code 0 for it, before
+// any file is linted.
+func reportNoFiles(opts checkCLIOpts) int {
+	return reportNoFilesTo(opts, os.Stdout, os.Stderr)
+}
+
+// reportNoFilesTo is the injectable form of reportNoFiles. The run is
+// clean, so it exits 0 and, as without --stdout, writes no stats line.
+// Under --stdout a json or sarif run still writes its empty document,
+// so a redirected file is valid on every clean run.
+func reportNoFilesTo(opts checkCLIOpts, stdoutW, stderrW io.Writer) int {
+	if !opts.stdout || (opts.format != "json" && opts.format != "sarif") {
+		return 0
+	}
+	return reportCheckResultTo(&engine.Result{}, opts, &vlog.Logger{}, stdoutW, stderrW)
 }
 
 // readStdinLimited reads stdin with an optional size limit.

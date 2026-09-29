@@ -253,8 +253,8 @@ func printRunStatsTo(w io.Writer, format string, quiet bool, stats runStats) {
 }
 
 // loadAndResolve loads config, resolves file paths, and parses the max
-// input size. Returns exit code >= 0 on error (caller should return it)
-// or -1 on success.
+// input size. Returns exit code 2 on error (caller should return it), 0
+// when no Markdown file resolved, or -1 on success.
 func loadAndResolve(
 	fileArgs []string, configPath string,
 	verbose bool, walk walkCLI,
@@ -336,9 +336,9 @@ func splitStdinArg(args []string) (hasStdin bool, fileArgs []string) {
 
 // discoverFiles loads config, discovers files from config patterns, and
 // returns the config, config path, logger, and discovered file list. On
-// error or empty results it prints a message and returns a non-negative
-// exit code; the caller should return it directly. A negative code means
-// "continue with the returned values".
+// error it prints a message and returns 2; when no file is found it
+// returns 0 silently. A negative code means "continue with the returned
+// values".
 func discoverFiles(
 	configPath string, verbose bool, walk walkCLI,
 ) (*config.Config, string, *vlog.Logger, []string, int) {
