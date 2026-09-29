@@ -8,15 +8,14 @@ import (
 )
 
 // globMetaChars are the bytes a resolved `fmvar(...)` value must not
-// contribute to the surrounding glob. Escaping them makes the
-// frontmatter value match literally — the glob analogue of the
-// `regex:` matcher's regexp.QuoteMeta.
+// contribute to the surrounding doublestar glob (kind
+// `path-pattern:`). Escaping them makes the frontmatter value match
+// literally — the glob analogue of the `regex:` matcher's
+// regexp.QuoteMeta.
 //
-// The set covers both matchers the resolved pattern feeds:
-// doublestar (kind `path-pattern:`) and filepath.Match (schema
-// `filename:`). `{` and `,` are doublestar-only — filepath.Match
-// knows no brace alternatives — but escaping them is harmless there
-// because `\{` and `\,` still match the literal byte. `,` has to be
+// The set is doublestar-only. The `filename:` surface feeds
+// filepath.Match, which ignores `\` escapes on Windows, and uses
+// escapeFilenameMeta instead. `,` has to be
 // escaped even though it is inert outside braces: the SURROUNDING
 // pattern may wrap the reference in an alternative
 // (`docs/{\#(fmvar(name)),other}.md`), and an unescaped `,` in the
@@ -36,8 +35,6 @@ import (
 //
 // doublestar always uses `/` as its separator and honours `\`
 // escapes on every platform, so this set is platform-independent.
-// The `filename:` surface, which feeds filepath.Match instead, needs
-// a different escape; see escapeFilenameMeta.
 const globMetaChars = `\*?[{},`
 
 // escapeFilenameMeta makes s match itself literally inside a
@@ -95,10 +92,12 @@ func PatternHasInterp(pattern string) bool {
 }
 
 // ResolveGlobPattern substitutes every `\#(fmvar(name))` reference in
-// a glob pattern with the named front-matter value, escaped so its
-// glob metacharacters match literally. The result is a plain glob the
-// caller feeds to doublestar (`path-pattern:`) or filepath.Match
-// (`filename:`).
+// a doublestar glob (kind `path-pattern:`) with the named front-matter
+// value, backslash-escaped so its glob metacharacters match literally.
+// The result is a plain glob for doublestar only: filepath.Match
+// ignores `\` escapes on Windows, so the `filename:` surface resolves
+// through resolveFilenamePatterns, which escapes with
+// escapeFilenameMeta instead.
 //
 // `fmvar(name)` is the only helper in scope. `digits`, which the
 // `regex:` matcher accepts, has no meaning for a glob — there is no
@@ -130,7 +129,7 @@ func resolveGlobPattern(
 		return pattern, nil
 	}
 	return rewriteInterps(pattern, func(expr string) (string, error) {
-		name, ok := parseFmvarCall(strings.TrimSpace(expr))
+		name, ok := parseFmvarCall(expr)
 		if !ok {
 			return "", unknownGlobHelperErr(expr)
 		}
@@ -163,7 +162,7 @@ func ValidateGlobInterps(pattern string) error {
 		return nil
 	}
 	return scanInterps(pattern, func(expr string, _, _ int) error {
-		name, ok := parseFmvarCall(strings.TrimSpace(expr))
+		name, ok := parseFmvarCall(expr)
 		if !ok {
 			return unknownGlobHelperErr(expr)
 		}

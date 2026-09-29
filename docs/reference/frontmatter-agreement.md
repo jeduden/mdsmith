@@ -177,10 +177,12 @@ sibling glob may still accept the basename. The
 unresolved message shows only when no entry
 matched.
 
-A malformed reference is caught earlier, at config
-load. A non-identifier key must be quoted —
-`fmvar("my-key")`, not `fmvar(my-key)` — and the
-error names the kind and its pattern.
+A malformed reference is a configuration error,
+not a per-document diagnostic: mdsmith exits with
+status 2. A non-identifier key must be quoted —
+`fmvar("my-key")`, not `fmvar(my-key)`. The error
+quotes the offending pattern; for a `path-pattern:`
+it also names the kind.
 
 ## See also
 

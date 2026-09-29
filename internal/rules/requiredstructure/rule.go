@@ -2537,6 +2537,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 	// path-pattern is a plain glob, and this runs for every file of
 	// every kind on the check hot path.
 	var docFM map[string]any
+	var fmParseErr string
 	fmRead := false
 	for _, pp := range r.PathPatterns {
 		// filepath.ToSlash normalizes a pattern written with the
@@ -2555,16 +2556,25 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 		if !fmRead {
-			// Front-matter parse errors are reported by the
-			// front-matter path in Check; here an unparseable block
-			// simply leaves every `fmvar` reference unresolved,
-			// which surfaces below as the missing-value hint.
-			docFM, _ = readDocFrontMatterRaw(f)
+			// An unparseable block leaves every `fmvar` reference
+			// unresolved. Keep the parse failure so the hint names
+			// it rather than claiming the field is missing: a kind
+			// that declares only `path-pattern:` has no schema path
+			// in Check that would report the parse error itself.
+			var fmDiags []lint.Diagnostic
+			docFM, fmDiags = readDocFrontMatterRaw(f)
+			if len(fmDiags) > 0 {
+				fmParseErr = fmDiags[0].Message
+			}
 			fmRead = true
 		}
 		resolved, err := schema.ResolveGlobPattern(pp.Pattern, docFM)
 		if err != nil {
-			diags = append(diags, pathPatternDiag(f, rel, pp, err.Error()))
+			hint := err.Error()
+			if fmParseErr != "" {
+				hint = fmParseErr
+			}
+			diags = append(diags, pathPatternDiag(f, rel, pp, hint))
 			continue
 		}
 		// A resolved pattern is no longer the string ValidatePattern

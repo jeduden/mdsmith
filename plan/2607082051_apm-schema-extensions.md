@@ -54,9 +54,10 @@ adding one.
 - New rules. Both features extend the existing
   [MDS020](../internal/rules/MDS020-required-structure/README.md)
   required-structure host rule.
-- Changing the default. `frontmatter-closed` defaults
-  to false; every existing schema keeps its current
-  behavior.
+- Changing the default. An absent
+  `frontmatter-closed` keeps the historical closed
+  behavior, so every existing schema behaves as
+  before; see the Notes.
 - The APM kind pack itself. That is
   [plan 2607082050](2607082050_apm-coexist-guide-and-kind-pack.md),
   which consumes these features once they land.

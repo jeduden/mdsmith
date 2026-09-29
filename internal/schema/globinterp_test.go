@@ -2,6 +2,7 @@ package schema
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -110,16 +111,37 @@ func TestResolveGlobPattern_RejectsPathSeparatorInValue(t *testing.T) {
 	assert.Contains(t, err.Error(), "path separator")
 }
 
-func TestResolveGlobPattern_EscapedValueWorksWithFilepathMatch(t *testing.T) {
-	got, err := ResolveGlobPattern(
-		`\#(fmvar(id)).md`, map[string]any{"id": "a?b"})
-	require.NoError(t, err)
-	ok, err := filepath.Match(got, "a?b.md")
+// The `filename:` surface resolves through resolveFilenamePatterns,
+// not ResolveGlobPattern: the latter backslash-escapes for doublestar,
+// and filepath.Match reads `\?` as a literal backslash plus a
+// wildcard on Windows.
+func TestResolveFilenamePatterns_EscapedQuestionMarkMatchesLiterally(t *testing.T) {
+	resolved, _, unresolved := resolveFilenamePatterns(
+		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a?b"})
+	require.NoError(t, unresolved)
+	require.Len(t, resolved, 1)
+	ok, err := filepath.Match(resolved[0], "a?b.md")
 	require.NoError(t, err)
 	assert.True(t, ok)
-	ok, err = filepath.Match(got, "axb.md")
+	ok, err = filepath.Match(resolved[0], "axb.md")
 	require.NoError(t, err)
 	assert.False(t, ok)
+}
+
+// A `\` in the value keeps a backslash escape on the `filename:`
+// surface: on POSIX it is filepath.Match's escape character, so the
+// doubled form matches one literal backslash.
+func TestResolveFilenamePatterns_EscapesBackslash(t *testing.T) {
+	resolved, _, unresolved := resolveFilenamePatterns(
+		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": `a\b`})
+	require.NoError(t, unresolved)
+	assert.Equal(t, []string{`a\\b.md`}, resolved)
+	if runtime.GOOS == "windows" {
+		return // `\` never appears in a Windows basename
+	}
+	ok, err := filepath.Match(resolved[0], `a\b.md`)
+	require.NoError(t, err)
+	assert.True(t, ok)
 }
 
 func TestResolveGlobPattern_LeavesPlainPatternUntouched(t *testing.T) {

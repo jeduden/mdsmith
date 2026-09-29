@@ -58,6 +58,24 @@ func TestCheck_PathPatternFmvar_MissingFieldReportsClearly(t *testing.T) {
 		"the unresolved pattern still names the constraint")
 }
 
+// A kind that declares only `path-pattern:` has no schema path in
+// Check to report a front-matter parse failure, so the path-pattern
+// diagnostic itself must name it. Reporting "frontmatter value
+// missing" for a `name:` that is present but unparseable sends the
+// author looking for a field they already wrote.
+func TestCheck_PathPatternFmvar_UnparseableFrontMatterNamesParseError(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, ".apm/skills/code-review/SKILL.md",
+		"---\nname: [code-review\n---\n# Code review\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "apm-skill", Pattern: apmSkillPattern},
+	}}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "front matter: invalid YAML")
+	assert.NotContains(t, diags[0].Message, "frontmatter value missing")
+}
+
 // A frontmatter value carrying a glob metacharacter must match
 // literally, not act as a wildcard.
 func TestCheck_PathPatternFmvar_EscapesValueMetacharacters(t *testing.T) {
