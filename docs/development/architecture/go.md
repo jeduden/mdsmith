@@ -44,6 +44,10 @@ question. The current production set:
 - `internal/index` — the workspace symbol / edge graph (headings, link-ref
   defs, directives, front-matter keys, reverse edges); queried by the LSP,
   schema, and the rename / deps surfaces.
+- `internal/backlinks` — the `mdsmith list backlinks` matcher: which
+  workspace files link to a target path or anchor.
+- `internal/refactor` — the move / rename planner and its edit splicer
+  (`ApplyEdits`), shared by CLI, LSP, and `pkg/mdsmith`; no file I/O.
 - `internal/lsp` — speak the Language Server Protocol; consumes the engine.
 - `pkg/markdown` — the one goldmark parse/produce surface (CommonMark+PI);
   `pkg/markdown/flavor` adds extensions. Public; see
@@ -485,24 +489,15 @@ checklist can pattern-match.
 
 ## Refactor moves we have used
 
-- Push a leaky abstraction down. Several
-  types defined in `internal/engine` have
-  moved to `internal/rule` once we
-  noticed only rules consumed them.
-- Lift a shared dependency up to an
-  interface. The `Configurable` and
-  `ListMerger` interfaces in
-  `internal/rule` started as duplicated
-  helper code and were lifted once two
-  rules needed the same shape.
-- Split a package by question. If the
-  package doc comment requires "and" to
-  describe ("loads config and applies
-  overrides and validates schemas"), the
-  package wants to be two.
-- Replace a `switch` on rule ID with
-  method dispatch. A function in
-  `internal/engine` that switches on
-  rule name belongs as a method on
-  `rule.Rule` or as a new capability
-  interface in `internal/rule`.
+- Push a leaky abstraction down. Several types defined in
+  `internal/engine` have moved to `internal/rule` once we noticed only
+  rules consumed them.
+- Lift a shared dependency up to an interface. The `Configurable` and
+  `ListMerger` interfaces in `internal/rule` started as duplicated
+  helper code and were lifted once two rules needed the same shape.
+- Split a package by question. If the package doc comment requires
+  "and" to describe ("loads config and applies overrides and
+  validates schemas"), the package wants to be two.
+- Replace a `switch` on rule ID with method dispatch. A function in
+  `internal/engine` that switches on rule name belongs as a method on
+  `rule.Rule` or as a new capability interface in `internal/rule`.
