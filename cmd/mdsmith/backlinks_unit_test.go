@@ -38,6 +38,15 @@ func TestIsWorkspaceRelativeTarget(t *testing.T) {
 	assert.False(t, isWorkspaceRelativeTarget(`..\escape.md`))
 	assert.False(t, isWorkspaceRelativeTarget(`sub\..\..\escape.md`))
 	assert.False(t, isWorkspaceRelativeTarget(`\notes.md`))
+	// Normalizing can create a drive anchor (`./C:/x.md` becomes
+	// `C:/x.md`) or remove one (`C:\..\x.md` becomes `x.md`), so both
+	// the typed form and the normalized form are checked.
+	assert.False(t, isWorkspaceRelativeTarget("./C:/x.md"))
+	assert.False(t, isWorkspaceRelativeTarget(`.\C:\x.md`))
+	assert.False(t, isWorkspaceRelativeTarget(`C:\..\docs\api.md`))
+	// `.\\server\share` is not UNC: the leading `.` makes it the
+	// relative path server/share, as it is on Windows.
+	assert.True(t, isWorkspaceRelativeTarget(`.\\server\share`))
 }
 
 func TestEmitBacklinks_Text(t *testing.T) {

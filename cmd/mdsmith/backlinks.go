@@ -185,11 +185,12 @@ func validateIncludePatterns(patterns []string) error {
 
 // normalizeWorkspacePath returns the cleaned, forward-slash form of
 // target: `\` becomes `/` on every host (filepath.ToSlash is a no-op
-// for backslashes on Linux and macOS), then path.Clean drops `./`
-// segments. The workspace index (index.NormalizePath) and link
-// resolution (linkgraph.ResolveRelTarget) read backslashes the same
-// way, so `docs\api.md` names the same file everywhere.
-// isWorkspaceRelativeTarget checks this same form, so a target is
+// for backslashes on Linux and macOS), then path.Clean resolves `.`
+// and `..` segments and repeated slashes. index.NormalizePath and
+// linkgraph.ResolveRelTarget also treat `\` as a separator, so
+// `docs\api.md` names the same file in all three; index.NormalizePath
+// only strips a leading `./` and does not clean the path.
+// isWorkspaceRelativeTarget checks this form too, so a target is
 // never validated as one path and then looked up as another.
 func normalizeWorkspacePath(target string) string {
 	return path.Clean(strings.ReplaceAll(target, `\`, "/"))
@@ -223,14 +224,17 @@ func workspaceRelativePath(p, rootDir string) string {
 // with either separator) and parent-traversal entries are rejected
 // so the caller can fail loudly instead of silently producing an
 // empty result set — or, for rename and move, reading or writing a
-// file outside the workspace. The traversal check runs on
-// normalizeWorkspacePath's form, the one the commands then use, so
-// `sub\..\..\x.md` is caught on every host.
+// file outside the workspace.
+//
+// The absolute check runs on target and on its normalizeWorkspacePath
+// form, the one the commands look up: normalizing can turn
+// `./C:/x.md` into the drive path `C:/x.md`. The traversal check runs
+// on the normalized form, so `sub\..\..\x.md` is caught on every host.
 func isWorkspaceRelativeTarget(target string) bool {
-	if pathutil.IsAbsOrDriveOrUNC(target) {
+	cleaned := normalizeWorkspacePath(target)
+	if pathutil.IsAbsOrDriveOrUNC(target) || pathutil.IsAbsOrDriveOrUNC(cleaned) {
 		return false
 	}
-	cleaned := normalizeWorkspacePath(target)
 	return cleaned != ".." && !strings.HasPrefix(cleaned, "../")
 }
 

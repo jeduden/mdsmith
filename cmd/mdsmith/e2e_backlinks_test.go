@@ -238,10 +238,11 @@ func TestE2E_Backlinks_BackslashTarget_MatchesForwardSlash(t *testing.T) {
 
 // TestE2E_Backlinks_BackslashEscapeTarget_ExitsTwo pins that a
 // traversal or UNC target written with backslashes is rejected like
-// its forward-slash form.
+// its forward-slash form, and that a drive path hidden behind `./`
+// is rejected in the normalized form the lookup would use.
 func TestE2E_Backlinks_BackslashEscapeTarget_ExitsTwo(t *testing.T) {
 	dir := setupBacklinksWorkspace(t)
-	for _, target := range []string{`..\foo.md`, `\\server\share\foo.md`} {
+	for _, target := range []string{`..\foo.md`, `\\server\share\foo.md`, "./C:/x.md"} {
 		t.Run(target, func(t *testing.T) {
 			_, stderr, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", target)
 			require.Equal(t, 2, exitCode)
