@@ -18,6 +18,74 @@ This archive itself hit the budget on 2026-09-20;
 the 2026-07-12 entry moved on to
 [the fourth archive](architecture-audit-archive-4.md).
 
+## Audit 2026-05-13 (range: 6af677fb..7464d273)
+
+1 107 files; 425 Go/TS sources outside fixtures.
+
+Resolved:
+
+- Rule-to-rule imports —
+  [plan/154](../../plan/154_arch-fix-rule-helper-extraction.md).
+- Config-to-rule import —
+  [plan/155](../../plan/155_arch-fix-convention-config-ownership.md).
+- `internal/testutil` anti-pattern name —
+  [plan/201](../../plan/201_arch-fix-testutil-rename.md).
+- `hover.go` DIP — [plan/200][200].
+- `main.go` > 1 000 lines — [plan/202][202].
+
+Tax:
+
+- `extension.ts` SRP — [plan/205][205].
+- `internal/fix`→`internal/engine` DIP —
+  [plan/204][204].
+- `internal/lint` SRP — [plan/224][224].
+
+## Audit 2026-05-17 (range: 7464d273..b5a6d72)
+
+Covered `internal/rename`, `internal/index`,
+`mdsmith deps`, `mdsmith export`. Tax:
+`nonNegativeUTF16RuneLen` copied privately in
+three packages; export from `internal/mdtext` —
+[plan/186](../../plan/186_arch-fix-utf16-centralize.md).
+
+## Decision 2026-05-17 (plan/174)
+
+### plan/153 non-goal superseded
+
+Plan 174 moved the workspace symbol index
+from `internal/lsp/index` to `internal/index`.
+Pure `git mv`; no logic changed.
+`internal/schema` already imported it from
+outside `internal/lsp`. `mdsmith rename` and
+`mdsmith deps` need it. The layering map
+forbids `cmd/mdsmith` → `internal/lsp`.
+`internal/index` must never import `internal/lsp`.
+
+## Audit 2026-05-19 (range: 7464d273..41e61a5)
+
+131 Go files. Plans 154, 155, 174 green.
+
+### tax (2026-05-19)
+
+- `server.go` (1 536) and `symbols.go` (1 385)
+  exceed 1 000 lines — [plan/203][203].
+- Five items from 2026-05-13 now scheduled:
+  [hover][200], [testutil][201], [main.go][202],
+  [fix→engine][204], [extension.ts][205].
+
+[200]: ../../plan/200_arch-fix-hover-embed.md
+[201]: ../../plan/201_arch-fix-testutil-rename.md
+[202]: ../../plan/202_arch-fix-main-split.md
+[203]: ../../plan/203_arch-fix-lsp-server-split.md
+[204]: ../../plan/204_arch-fix-fix-engine-inversion.md
+[205]: ../../plan/205_arch-fix-extension-ts-srp.md
+[206]: ../../plan/206_arch-fix-cue-types-docs.md
+[224]: ../../plan/224_arch-fix-lint-srp.md
+
+### nice-to-have (2026-05-19)
+
+`cue/types` not in layering map — [plan/206][206].
+
 ## Audit 2026-08-02 (range: 6680ff5..2ab4b29)
 
 148 touched files. Notable new surfaces: MDS073
@@ -120,71 +188,3 @@ is now exported and `requiredstructure` calls it directly.
 [2608021916]: ../../plan/2608021916_arch-fix-githooks-package-split.md
 [go]: architecture/go.md
 [tests]: architecture/tests.md
-
-## Audit 2026-05-13 (range: 6af677fb..7464d273)
-
-1 107 files; 425 Go/TS sources outside fixtures.
-
-Resolved:
-
-- Rule-to-rule imports —
-  [plan/154](../../plan/154_arch-fix-rule-helper-extraction.md).
-- Config-to-rule import —
-  [plan/155](../../plan/155_arch-fix-convention-config-ownership.md).
-- `internal/testutil` anti-pattern name —
-  [plan/201](../../plan/201_arch-fix-testutil-rename.md).
-- `hover.go` DIP — [plan/200][200].
-- `main.go` > 1 000 lines — [plan/202][202].
-
-Tax:
-
-- `extension.ts` SRP — [plan/205][205].
-- `internal/fix`→`internal/engine` DIP —
-  [plan/204][204].
-- `internal/lint` SRP — [plan/224][224].
-
-## Audit 2026-05-17 (range: 7464d273..b5a6d72)
-
-Covered `internal/rename`, `internal/index`,
-`mdsmith deps`, `mdsmith export`. Tax:
-`nonNegativeUTF16RuneLen` copied privately in
-three packages; export from `internal/mdtext` —
-[plan/186](../../plan/186_arch-fix-utf16-centralize.md).
-
-## Decision 2026-05-17 (plan/174)
-
-### plan/153 non-goal superseded
-
-Plan 174 moved the workspace symbol index
-from `internal/lsp/index` to `internal/index`.
-Pure `git mv`; no logic changed.
-`internal/schema` already imported it from
-outside `internal/lsp`. `mdsmith rename` and
-`mdsmith deps` need it. The layering map
-forbids `cmd/mdsmith` → `internal/lsp`.
-`internal/index` must never import `internal/lsp`.
-
-## Audit 2026-05-19 (range: 7464d273..41e61a5)
-
-131 Go files. Plans 154, 155, 174 green.
-
-### tax (2026-05-19)
-
-- `server.go` (1 536) and `symbols.go` (1 385)
-  exceed 1 000 lines — [plan/203][203].
-- Five items from 2026-05-13 now scheduled:
-  [hover][200], [testutil][201], [main.go][202],
-  [fix→engine][204], [extension.ts][205].
-
-[200]: ../../plan/200_arch-fix-hover-embed.md
-[201]: ../../plan/201_arch-fix-testutil-rename.md
-[202]: ../../plan/202_arch-fix-main-split.md
-[203]: ../../plan/203_arch-fix-lsp-server-split.md
-[204]: ../../plan/204_arch-fix-fix-engine-inversion.md
-[205]: ../../plan/205_arch-fix-extension-ts-srp.md
-[206]: ../../plan/206_arch-fix-cue-types-docs.md
-[224]: ../../plan/224_arch-fix-lint-srp.md
-
-### nice-to-have (2026-05-19)
-
-`cue/types` not in layering map — [plan/206][206].
