@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -75,4 +76,50 @@ func TestReportCheckResultStreams_BrokenStderrStillWritesStdout(t *testing.T) {
 	var diags []map[string]any
 	require.NoError(t, json.Unmarshal(out.Bytes(), &diags), "stdout=%q", out.String())
 	assert.Len(t, diags, 1)
+}
+
+// A failed write to stdout is a runtime error, so its message goes to
+// stderr and never into the redirected diagnostics file. 2000
+// diagnostics overflow the 64 KiB buffer, so the formatter itself
+// sees the failure.
+func TestReportCheckResultStreams_FormatterErrorGoesToStderr(t *testing.T) {
+	opts := checkCLIOpts{format: "text", noColor: true, stdout: true}
+	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
+	var errOut bytes.Buffer
+	code := reportCheckResultStreams(result, opts, &vlog.Logger{}, &alwaysErrorWriter{}, &errOut)
+	assert.Equal(t, 2, code)
+	assert.Equal(t, "mdsmith: error writing output: write failed\n", errOut.String())
+}
+
+// The final flush is the first stdout write when the output fits the
+// buffer; its failure is reported on stderr too.
+func TestReportCheckResultStreams_StdoutFlushErrorGoesToStderr(t *testing.T) {
+	opts := checkCLIOpts{format: "text", stdout: true}
+	var errOut bytes.Buffer
+	code := reportCheckResultStreams(&engine.Result{FilesChecked: 1}, opts,
+		&vlog.Logger{}, &failAfterWriter{n: 0}, &errOut)
+	assert.Equal(t, 2, code)
+	assert.Equal(t, "mdsmith: error writing output: write failed\n", errOut.String())
+}
+
+func TestWriteCheckReport(t *testing.T) {
+	t.Run("diagnostics then stats, flushed", func(t *testing.T) {
+		var buf bytes.Buffer
+		out := bufio.NewWriter(&buf)
+		result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
+		require.NoError(t, writeCheckReport(out, result, checkCLIOpts{format: "text", noColor: true}))
+		assert.Equal(t, 0, out.Buffered())
+		assert.Regexp(t, `(?s)line too long.*stats: checked=1 fixed=0 failures=1 unfixed=1\n$`, buf.String())
+	})
+	t.Run("returns formatter error", func(t *testing.T) {
+		out := bufio.NewWriterSize(&alwaysErrorWriter{}, 16)
+		result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
+		assert.EqualError(t, writeCheckReport(out, result, checkCLIOpts{format: "text"}), "write failed")
+	})
+	t.Run("returns flush error", func(t *testing.T) {
+		out := bufio.NewWriter(&alwaysErrorWriter{})
+		assert.EqualError(t,
+			writeCheckReport(out, &engine.Result{FilesChecked: 1}, checkCLIOpts{format: "text"}),
+			"write failed")
+	})
 }

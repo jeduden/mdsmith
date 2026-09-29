@@ -250,21 +250,11 @@ func reportCheckResultStreams(result *engine.Result, opts checkCLIOpts, logger *
 		bw = bufio.NewWriterSize(stdoutW, stderrBufSize)
 	}
 
-	// SARIF must be emitted even with zero diagnostics so the file is valid
-	// SARIF 2.1.0 (not an empty byte stream) when uploaded to Code Scanning.
-	if !opts.quiet && (len(result.Diagnostics) > 0 || opts.format == "sarif") {
-		if code := formatDiagnosticsTo(bw, result.Diagnostics, opts.format, opts.noColor); code != 0 {
-			_ = bw.Flush()
-			return code
-		}
-	}
-	printRunStatsTo(bw, opts.format, opts.quiet, runStats{
-		Checked:  result.FilesChecked,
-		Fixed:    0,
-		Failures: len(result.Diagnostics),
-		Unfixed:  len(result.Diagnostics),
-	})
-	if err := bw.Flush(); err != nil {
+	if err := writeCheckReport(bw, result, opts); err != nil {
+		// A write error is a runtime error, so it goes to stderr and
+		// never into the redirected diagnostics.
+		printWriteErrorTo(ew, err)
+		_ = ew.Flush()
 		return 2
 	}
 	logger.Printf("checked %d files, %d issues found", result.FilesChecked, len(result.Diagnostics))
@@ -276,6 +266,25 @@ func reportCheckResultStreams(result *engine.Result, opts checkCLIOpts, logger *
 		return 1
 	}
 	return 0
+}
+
+// writeCheckReport writes the diagnostics and the run-stats line to
+// out, flushes it, and returns the first write error.
+func writeCheckReport(out *bufio.Writer, result *engine.Result, opts checkCLIOpts) error {
+	// SARIF must be emitted even with zero diagnostics so the file is valid
+	// SARIF 2.1.0 (not an empty byte stream) when uploaded to Code Scanning.
+	if !opts.quiet && (len(result.Diagnostics) > 0 || opts.format == "sarif") {
+		if err := writeDiagnostics(out, result.Diagnostics, opts.format, opts.noColor); err != nil {
+			return err
+		}
+	}
+	printRunStatsTo(out, opts.format, opts.quiet, runStats{
+		Checked:  result.FilesChecked,
+		Fixed:    0,
+		Failures: len(result.Diagnostics),
+		Unfixed:  len(result.Diagnostics),
+	})
+	return out.Flush()
 }
 
 // readStdinLimited reads stdin with an optional size limit.

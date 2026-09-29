@@ -154,8 +154,20 @@ const stderrBufSize = 64 << 10
 // write-error message is best-effort routed to the same w so callers
 // that pass an alternate writer (production: os.Stderr; tests: a
 // fault-injecting writer or a buffer) keep all formatter output
-// confined to one destination.
+// confined to one destination. A caller whose w is not stderr uses
+// writeDiagnostics and reports the error on stderr itself.
 func formatDiagnosticsTo(w io.Writer, diags []lint.Diagnostic, format string, noColor bool) int {
+	if err := writeDiagnostics(w, diags, format, noColor); err != nil {
+		printWriteErrorTo(w, err)
+		return 2
+	}
+	return 0
+}
+
+// writeDiagnostics writes diagnostics to w in format ("json",
+// "sarif", or text for any other value) and returns the formatter's
+// error without reporting it.
+func writeDiagnostics(w io.Writer, diags []lint.Diagnostic, format string, noColor bool) error {
 	var formatter output.Formatter
 	switch format {
 	case "json":
@@ -165,11 +177,13 @@ func formatDiagnosticsTo(w io.Writer, diags []lint.Diagnostic, format string, no
 	default:
 		formatter = &output.TextFormatter{Color: !noColor}
 	}
-	if err := formatter.Format(w, diags); err != nil {
-		_, _ = fmt.Fprintf(w, "mdsmith: error writing output: %v\n", err)
-		return 2
-	}
-	return 0
+	return formatter.Format(w, diags)
+}
+
+// printWriteErrorTo reports a failed output write on w. Its own
+// write error is swallowed: see printErrorsTo.
+func printWriteErrorTo(w io.Writer, err error) {
+	_, _ = fmt.Fprintf(w, "mdsmith: error writing output: %v\n", err)
 }
 
 // formatDiagnostics writes diagnostics to stderr using the specified format.

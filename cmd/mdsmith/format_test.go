@@ -55,3 +55,32 @@ func TestFormatDiagnosticsTo_Empty(t *testing.T) {
 	code := formatDiagnosticsTo(io.Discard, nil, "text", true)
 	assert.Equal(t, 0, code)
 }
+
+func TestWriteDiagnostics(t *testing.T) {
+	diags := []lint.Diagnostic{{
+		File: "w.md", Line: 1, Column: 1,
+		RuleID: "MDS001", RuleName: "test-rule",
+		Severity: lint.Warning, Message: "write me",
+	}}
+	t.Run("formats", func(t *testing.T) {
+		for format, want := range map[string]string{
+			"text":  "w.md:1:1 MDS001 write me",
+			"json":  `"message": "write me"`,
+			"sarif": `"version": "2.1.0"`,
+		} {
+			var buf strings.Builder
+			assert.NoError(t, writeDiagnostics(&buf, diags, format, true), format)
+			assert.Contains(t, buf.String(), want, format)
+		}
+	})
+	t.Run("returns write error unreported", func(t *testing.T) {
+		w := &errWriter{err: errors.New("disk full")}
+		assert.EqualError(t, writeDiagnostics(w, diags, "text", true), "disk full")
+	})
+}
+
+func TestPrintWriteErrorTo(t *testing.T) {
+	var buf strings.Builder
+	printWriteErrorTo(&buf, errors.New("disk full"))
+	assert.Equal(t, "mdsmith: error writing output: disk full\n", buf.String())
+}
