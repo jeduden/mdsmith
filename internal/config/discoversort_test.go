@@ -47,10 +47,13 @@ func TestDiscoverKinds_CollisionNamesSortedPair(t *testing.T) {
 	require.ErrorContains(t, err, "audit-log.yaml and audit-log.yml")
 }
 
-// TestDiscoverSchemas_ResultOrderIndependentOfCreationOrder covers the
-// same removed-sort guarantee for discoverSchemas: many schema files
-// created in reverse filename order still all load correctly.
-func TestDiscoverSchemas_ResultOrderIndependentOfCreationOrder(t *testing.T) {
+// TestDiscoverSchemas_ManyFilesReverseCreationOrderAllLoad is a basic
+// coverage check that many schema files created in reverse filename
+// order all still load — map membership never depends on iteration
+// order, so this alone does not exercise the removed sort; see
+// TestDiscoverSchemas_CollisionNamesSortedPair for the actual
+// order-sensitive regression net.
+func TestDiscoverSchemas_ManyFilesReverseCreationOrderAllLoad(t *testing.T) {
 	dir := t.TempDir()
 	schemasDir := filepath.Join(dir, ".mdsmith", "schemas")
 	require.NoError(t, os.MkdirAll(schemasDir, 0o755))
@@ -62,6 +65,22 @@ func TestDiscoverSchemas_ResultOrderIndependentOfCreationOrder(t *testing.T) {
 	for _, name := range names {
 		require.Contains(t, got, name)
 	}
+}
+
+// TestDiscoverSchemas_CollisionNamesSortedPair mirrors
+// TestDiscoverKinds_CollisionNamesSortedPair for discoverSchemas: this
+// is the test that actually depends on os.ReadDir's sorted-by-filename
+// order, since the collision error names whichever file was processed
+// first as "prior".
+func TestDiscoverSchemas_CollisionNamesSortedPair(t *testing.T) {
+	dir := t.TempDir()
+	schemasDir := filepath.Join(dir, ".mdsmith", "schemas")
+	require.NoError(t, os.MkdirAll(schemasDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(schemasDir, "rfc.yml"), []byte("closed: false\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(schemasDir, "rfc.yaml"), []byte("closed: false\n"), 0o644))
+
+	_, err := discoverSchemas(dir)
+	require.ErrorContains(t, err, "rfc.yaml and rfc.yml")
 }
 
 // TestDiscoverConventions_CollisionNamesSortedPair mirrors
@@ -77,10 +96,10 @@ func TestDiscoverConventions_CollisionNamesSortedPair(t *testing.T) {
 	require.ErrorContains(t, err, "house.yaml and house.yml")
 }
 
-// TestDiscoverWordlists_ResultOrderIndependentOfCreationOrder mirrors
-// TestDiscoverSchemas_ResultOrderIndependentOfCreationOrder for
+// TestDiscoverWordlists_ManyFilesReverseCreationOrderAllLoad mirrors
+// TestDiscoverSchemas_ManyFilesReverseCreationOrderAllLoad for
 // discoverWordlists.
-func TestDiscoverWordlists_ResultOrderIndependentOfCreationOrder(t *testing.T) {
+func TestDiscoverWordlists_ManyFilesReverseCreationOrderAllLoad(t *testing.T) {
 	dir := t.TempDir()
 	wordlistsDir := filepath.Join(dir, ".mdsmith", "wordlists")
 	require.NoError(t, os.MkdirAll(wordlistsDir, 0o755))
@@ -92,6 +111,19 @@ func TestDiscoverWordlists_ResultOrderIndependentOfCreationOrder(t *testing.T) {
 	for _, name := range names {
 		require.Contains(t, got, name)
 	}
+}
+
+// TestDiscoverWordlists_CollisionNamesSortedPair mirrors
+// TestDiscoverSchemas_CollisionNamesSortedPair for discoverWordlists.
+func TestDiscoverWordlists_CollisionNamesSortedPair(t *testing.T) {
+	dir := t.TempDir()
+	wordlistsDir := filepath.Join(dir, ".mdsmith", "wordlists")
+	require.NoError(t, os.MkdirAll(wordlistsDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wordlistsDir, "banned.yml"), []byte("entries:\n  - foo\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(wordlistsDir, "banned.yaml"), []byte("entries:\n  - foo\n"), 0o644))
+
+	_, err := discoverWordlists(dir)
+	require.ErrorContains(t, err, "banned.yaml and banned.yml")
 }
 
 // BenchmarkDiscoverKinds is a manual regression-detection tool for the
