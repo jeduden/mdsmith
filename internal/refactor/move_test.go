@@ -240,6 +240,68 @@ func TestMove_OutboundEmptyAltImagesRecomputed(t *testing.T) {
 		got)
 }
 
+// TestMove_OutboundEmptyAltImageAfterSameTargetLink pins that a text-less
+// image after a link to the same file gets its own edit. Neither node may
+// take the other's destination, or the image path is left stale.
+func TestMove_OutboundEmptyAltImageAfterSameTargetLink(t *testing.T) {
+	src := "# Guide\n\n[see chart](../assets/chart.svg)\n\n![](../assets/chart.svg)\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/guide.md":    src,
+		"assets/chart.svg": "<svg/>",
+	})
+	plan, err := Move(ws, "docs/guide.md", "reference/manual/guide.md")
+	require.NoError(t, err)
+
+	got := applyEditsToSource(src, plan.Edits["docs/guide.md"])
+	assert.Equal(t,
+		"# Guide\n\n[see chart](../../assets/chart.svg)\n\n![](../../assets/chart.svg)\n",
+		got)
+}
+
+// TestMove_OutboundRewritesOnlyRealDestinations pins that `](path)` bytes
+// which are not a link or image destination stay as written: a code span,
+// an inline or block HTML comment, and a code span, raw HTML or autolink
+// inside a node's own label. The real destination is rewritten instead.
+func TestMove_OutboundRewritesOnlyRealDestinations(t *testing.T) {
+	src := "# A\n\n" +
+		"See `[x](./b.md)` and <!-- [y](./b.md) --> here.\n\n" +
+		"<!-- [z](./b.md) -->\n\n" +
+		"[](./b.md)\n\n" +
+		"[`](./b.md)` code](./b.md)\n\n" +
+		"[<span title=\"](./b.md)\">s</span>](./b.md)\n\n" +
+		"![<http://h](./b.md)>](./b.md)\n"
+	ws := newMemWorkspace(map[string]string{"a.md": src, "b.md": "# B\n"})
+	plan, err := Move(ws, "a.md", "docs/a.md")
+	require.NoError(t, err)
+
+	got := applyEditsToSource(src, plan.Edits["a.md"])
+	assert.Equal(t, "# A\n\n"+
+		"See `[x](./b.md)` and <!-- [y](./b.md) --> here.\n\n"+
+		"<!-- [z](./b.md) -->\n\n"+
+		"[](../b.md)\n\n"+
+		"[`](./b.md)` code](../b.md)\n\n"+
+		"[<span title=\"](./b.md)\">s</span>](../b.md)\n\n"+
+		"![<http://h](./b.md)>](../b.md)\n",
+		got)
+}
+
+// TestMove_OutboundSkipsReferenceStyleImages pins that a reference-style
+// `![][logo]` is left alone: its destination lives in the ref-def, which
+// the move does not rewrite. It must not take the `](path)` of a code span
+// or of a later image.
+func TestMove_OutboundSkipsReferenceStyleImages(t *testing.T) {
+	src := "# A\n\n`![](./logo.png)`\n\n![][logo] ![](./logo.png)\n\n[logo]: ./logo.png\n"
+	ws := newMemWorkspace(map[string]string{"a.md": src, "logo.png": "png"})
+	plan, err := Move(ws, "a.md", "docs/a.md")
+	require.NoError(t, err)
+
+	edits := plan.Edits["a.md"]
+	require.Len(t, edits, 1)
+	assert.Equal(t,
+		"# A\n\n`![](./logo.png)`\n\n![][logo] ![](../logo.png)\n\n[logo]: ./logo.png\n",
+		applyEditsToSource(src, edits))
+}
+
 func TestMove_LeavesNonWorkspaceLinksUntouched(t *testing.T) {
 	// A root-anchored `/a.md` is treated as absolute — it never resolves
 	// to a workspace file (no site-root), so a move has nothing to

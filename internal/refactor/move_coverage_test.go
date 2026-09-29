@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -85,6 +87,133 @@ func TestLinkPathBytesResolving(t *testing.T) {
 		s, e, ok := linkPathBytesResolving(row, 1, "b.md", "a.md")
 		require.True(t, ok)
 		assert.Equal(t, "a.md", string(row[s:e]))
+	})
+}
+
+func TestDestPathToken(t *testing.T) {
+	t.Run("title and fragment are cut from a bare path", func(t *testing.T) {
+		row := []byte(`x [t](a.md#f "title") y`)
+		s, e, c, ok := destPathToken(row, 0)
+		require.True(t, ok)
+		assert.Equal(t, "a.md", string(row[s:e]))
+		assert.Equal(t, byte(')'), row[c])
+		assert.Equal(t, " y", string(row[c+1:]))
+	})
+	t.Run("angle-bracketed path is unwrapped", func(t *testing.T) {
+		row := []byte("[t](<a b.md>)")
+		s, e, c, ok := destPathToken(row, 0)
+		require.True(t, ok)
+		assert.Equal(t, "a b.md", string(row[s:e]))
+		assert.Equal(t, len(row)-1, c)
+	})
+	t.Run("search starts at from", func(t *testing.T) {
+		row := []byte("[a](a.md) [b](b.md)")
+		s, e, _, ok := destPathToken(row, 9)
+		require.True(t, ok)
+		assert.Equal(t, "b.md", string(row[s:e]))
+	})
+	t.Run("no destination returns false", func(t *testing.T) {
+		_, _, _, ok := destPathToken([]byte("[t] no paren"), 0)
+		assert.False(t, ok)
+	})
+}
+
+// locateDests parses body and returns each located destination as its
+// path token, in walk order.
+func locateDests(t *testing.T, body string) []string {
+	t.Helper()
+	lf, err := lint.NewFile("a.md", []byte(body))
+	require.NoError(t, err)
+	loc := destLocator{lf: lf, fileLines: splitLines(lf.Source)}
+	_ = ast.Walk(lf.AST, loc.visit)
+	toks := make([]string, 0, len(loc.dests))
+	for _, d := range loc.dests {
+		toks = append(toks, string(d.row[d.ps:d.pe]))
+	}
+	return toks
+}
+
+func TestDestLocator(t *testing.T) {
+	t.Run("text-less nodes and nested images keep their own destinations", func(t *testing.T) {
+		assert.Equal(t, []string{"a.png", "b.md", "c.png", "c.png"},
+			locateDests(t, "[![](a.png)](b.md) [![x](c.png)](c.png)\n"))
+	})
+	t.Run("label content never supplies the destination", func(t *testing.T) {
+		assert.Equal(t, []string{"code.md", "html.md", "auto.md"},
+			locateDests(t, "[`](x.md)` c](code.md)\n\n"+
+				"[<i title=\"](x.md)\">i</i>](html.md)\n\n"+
+				"![<http://h](x.md)>](auto.md)\n"))
+	})
+	t.Run("reference-style nodes are not located", func(t *testing.T) {
+		assert.Equal(t, []string{"b.png"},
+			locateDests(t, "![][r] ![](b.png) [t][r]\n\n[r]: a.png\n"))
+	})
+	t.Run("destination on the row after the label is skipped", func(t *testing.T) {
+		assert.Equal(t, []string{"c.md"},
+			locateDests(t, "[a\n](b.md) [c](c.md)\n"))
+	})
+	t.Run("rows are file rows after front matter", func(t *testing.T) {
+		source := []byte("---\nk: v\n---\n[a](b.md)\n")
+		body, fmOffset := bodyAndFMOffset(source)
+		lf, err := lint.NewFile("a.md", body)
+		require.NoError(t, err)
+		loc := destLocator{lf: lf, fileLines: splitLines(source), fmOffset: fmOffset}
+		_ = ast.Walk(lf.AST, loc.visit)
+		require.Len(t, loc.dests, 1)
+		d := loc.dests[0]
+		assert.Equal(t, 3, d.line)
+		assert.Equal(t, "b.md", string(d.row[d.ps:d.pe]))
+		assert.Equal(t, "b.md", string(d.dest))
+	})
+}
+
+func TestDestLocator_Advance(t *testing.T) {
+	d := destLocator{cursor: 3}
+	d.advance(false, 9)
+	assert.Equal(t, 3, d.cursor, "leaving a node keeps the cursor")
+	d.advance(true, 9)
+	assert.Equal(t, 9, d.cursor)
+}
+
+func TestDestLocator_LinkNode(t *testing.T) {
+	d := destLocator{cursor: 7}
+	d.linkNode(true, 2, nil, true)
+	assert.Equal(t, 2, d.cursor, "entering resets the cursor to the opening byte")
+	d.linkNode(false, 2, []byte("r.md"), false)
+	assert.Empty(t, d.dests, "a reference-style node is not located")
+	assert.Equal(t, 2, d.cursor)
+}
+
+func TestOutboundEdit(t *testing.T) {
+	// located builds the inlineDest for the single destination on row.
+	located := func(row, dest string) inlineDest {
+		ps, pe, _, ok := destPathToken([]byte(row), 0)
+		require.True(t, ok)
+		return inlineDest{dest: []byte(dest), row: []byte(row), line: 4, ps: ps, pe: pe}
+	}
+	t.Run("relative path is re-spelled from dst", func(t *testing.T) {
+		e, ok := outboundEdit(located("![](./b.png)", "./b.png"), "docs/a.md", "guide/x/a.md")
+		require.True(t, ok)
+		assert.Equal(t, "../../docs/b.png", e.NewText)
+		assert.Equal(t, 4, e.Range.Start.Line)
+		assert.Equal(t, 4, e.Range.Start.Character)
+		assert.Equal(t, 11, e.Range.End.Character)
+	})
+	for name, tc := range map[string]struct{ row, dest string }{
+		"external":                    {"[t](https://x.io/a.md)", "https://x.io/a.md"},
+		"same-file anchor":            {"[t](#intro)", "#intro"},
+		"root-anchored":               {"[t](/a.md)", "/a.md"},
+		"escape the token cannot say": {"[t](b%20c.md)", "b%20c.md"},
+	} {
+		t.Run(name+" is left alone", func(t *testing.T) {
+			_, ok := outboundEdit(located(tc.row, tc.dest), "docs/a.md", "guide/a.md")
+			assert.False(t, ok)
+		})
+	}
+	t.Run("self link follows the file", func(t *testing.T) {
+		e, ok := outboundEdit(located("[t](a.md)", "a.md"), "docs/a.md", "guide/b.md")
+		require.True(t, ok)
+		assert.Equal(t, "b.md", e.NewText)
 	})
 }
 
@@ -202,11 +331,10 @@ func TestAppendOutboundEdits_SkipsAnchorAndNonWorkspace(t *testing.T) {
 	assert.Equal(t, "../docs/b.md", changes["docs/a.md"][0].NewText)
 }
 
-func TestAppendOutboundEdits_EmptyTextLinkLocatedByScan(t *testing.T) {
+func TestAppendOutboundEdits_EmptyTextLinkLocated(t *testing.T) {
 	changes := map[string][]Edit{}
-	// An empty-text link `[](./b.md)` has no text node, so its reported
-	// position collapses to the (1,1) sentinel; the fallback scan of
-	// non-code rows still locates and rewrites it.
+	// An empty-text link `[](./b.md)` has no text node to anchor on; the
+	// locator starts from its opening `[` and still rewrites it.
 	src := []byte("# A\n\n[](./b.md)\n")
 	appendOutboundEdits(changes, "a.md", "a.md", "docs/a.md", src)
 	require.Len(t, changes["a.md"], 1)
