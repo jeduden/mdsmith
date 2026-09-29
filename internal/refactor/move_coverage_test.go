@@ -202,14 +202,16 @@ func TestAppendOutboundEdits_SkipsAnchorAndNonWorkspace(t *testing.T) {
 	assert.Equal(t, "../docs/b.md", changes["docs/a.md"][0].NewText)
 }
 
-func TestAppendOutboundEdits_UnlocatableLinkSkipped(t *testing.T) {
+func TestAppendOutboundEdits_EmptyTextLinkLocatedByScan(t *testing.T) {
 	changes := map[string][]Edit{}
 	// An empty-text link `[](./b.md)` has no text node, so its reported
-	// position collapses to (1,1); on any line but the first the byte
-	// scan can't find it, and it is skipped rather than mis-edited.
+	// position collapses to the (1,1) sentinel; the fallback scan of
+	// non-code rows still locates and rewrites it.
 	src := []byte("# A\n\n[](./b.md)\n")
 	appendOutboundEdits(changes, "a.md", "a.md", "docs/a.md", src)
-	assert.Empty(t, changes["a.md"])
+	require.Len(t, changes["a.md"], 1)
+	assert.Equal(t, "../b.md", changes["a.md"][0].NewText)
+	assert.Equal(t, 2, changes["a.md"][0].Range.Start.Line)
 }
 
 func TestAppendOutboundEdits_SameDirIsNoOp(t *testing.T) {

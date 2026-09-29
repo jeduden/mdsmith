@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
@@ -57,8 +58,8 @@ func (e SourceNotFoundError) Error() string {
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
 //     asymmetry with path links);
-//   - outbound inline links and images inside src — every `[t](path)` or `![a](path)` recomputed
-//     so it still resolves from dst's directory.
+//   - outbound inline links and images inside src — every `[t](path)`
+//     or `![a](path)` recomputed so it still resolves from dst's directory.
 //
 // Spelling is preserved: an explicit `./x` keeps its prefix. Absolute
 // URLs, mailto, root-anchored `/x`, and any other out-of-workspace
@@ -214,8 +215,8 @@ func appendIncomingPathEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	}
 }
 
-// appendOutboundEdits recomputes every relative link and inline image inside the moved
-// file so it still resolves from dst's directory. Edits key under the
+// appendOutboundEdits recomputes every relative link and inline image
+// inside the moved file so it still resolves from dst's directory. Edits key under the
 // moved file's own key: the host applies them before the file relocates.
 func appendOutboundEdits(changes map[string][]Edit, srcKey, src, dst string, source []byte) {
 	body, fmOffset := bodyAndFMOffset(source)
@@ -235,6 +236,47 @@ func appendOutboundEdits(changes map[string][]Edit, srcKey, src, dst string, sou
 	// link's own destination on the row.
 	type spot struct{ line, start int }
 	claimed := map[spot]bool{}
+	// findFrom returns the first unclaimed destination on row at or
+	// after from that resolves to tgt.
+	findFrom := func(fileLine int, row []byte, from int, tgt string) (int, int, bool) {
+		for {
+			ps, pe, ok := linkPathBytesResolving(row, from, src, tgt)
+			if !ok || !claimed[spot{fileLine, ps}] {
+				return ps, pe, ok
+			}
+			from = pe
+		}
+	}
+	// locateDest finds the destination token of l. linkgraph reports a
+	// link or image with no text (`![](x.png)`, `[![](a.png)](b.md)`)
+	// at the sentinel position 1:1 because it anchors on the first text
+	// node. For those, scan every body row outside code blocks for the
+	// first unclaimed destination that resolves to tgt.
+	var codeRows map[int]bool
+	locateDest := func(l linkgraph.Link, tgt string) (int, []byte, int, int, bool) {
+		// fileLine is always in range: l.Line is a body line and
+		// fileLines covers the body plus its fmOffset prefix, so unlike
+		// the index-fed incoming pass there is no stale coordinate here.
+		if l.Line != 1 || l.Column != 1 {
+			fileLine := l.Line + fmOffset
+			row := fileLines[fileLine-1]
+			ps, pe, ok := findFrom(fileLine, row, l.Column-1, tgt)
+			return fileLine, row, ps, pe, ok
+		}
+		if codeRows == nil {
+			codeRows = codeBlockRows(lf, fmOffset)
+		}
+		for fileLine := fmOffset + 1; fileLine <= len(fileLines); fileLine++ {
+			if codeRows[fileLine] {
+				continue
+			}
+			row := fileLines[fileLine-1]
+			if ps, pe, ok := findFrom(fileLine, row, 0, tgt); ok {
+				return fileLine, row, ps, pe, true
+			}
+		}
+		return 0, nil, 0, 0, false
+	}
 	emit := func(l linkgraph.Link) {
 		if l.Target.LocalAnchor {
 			return
@@ -244,23 +286,9 @@ func appendOutboundEdits(changes map[string][]Edit, srcKey, src, dst string, sou
 			// External, absolute, or out-of-workspace — leave untouched.
 			return
 		}
-		// fileLine is always in range: l.Line is a body line and
-		// fileLines covers the body plus its fmOffset prefix, so unlike
-		// the index-fed incoming pass there is no stale coordinate here.
-		fileLine := l.Line + fmOffset
-		row := fileLines[fileLine-1]
-		from := l.Column - 1
-		var ps, pe int
-		for {
-			var ok bool
-			ps, pe, ok = linkPathBytesResolving(row, from, src, tgt)
-			if !ok {
-				return
-			}
-			if !claimed[spot{fileLine, ps}] {
-				break
-			}
-			from = pe
+		fileLine, row, ps, pe, ok := locateDest(l, tgt)
+		if !ok {
+			return
 		}
 		claimed[spot{fileLine, ps}] = true
 		// A path link inside src that points at src itself must keep
@@ -283,6 +311,27 @@ func appendOutboundEdits(changes map[string][]Edit, srcKey, src, dst string, sou
 	for _, l := range linkgraph.ExtractLinks(lf) {
 		emit(l)
 	}
+}
+
+// codeBlockRows returns the file-relative 1-based rows covered by fenced
+// or indented code blocks in lf, so a `[x](p)` sample inside code is
+// never rewritten as a link.
+func codeBlockRows(lf *lint.File, fmOffset int) map[int]bool {
+	rows := map[int]bool{}
+	_ = ast.Walk(lf.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		switch n.(type) {
+		case *ast.FencedCodeBlock, *ast.CodeBlock:
+			lines := n.Lines()
+			for i := 0; i < lines.Len(); i++ {
+				rows[lf.LineOfOffset(lines.At(i).Start)+fmOffset] = true
+			}
+		}
+		return ast.WalkContinue, nil
+	})
+	return rows
 }
 
 // pathEdit builds the Edit that replaces row[ps:pe] (a path token) with

@@ -221,6 +221,25 @@ func TestMove_OutboundImageDestinationsRecomputed(t *testing.T) {
 		got)
 }
 
+func TestMove_OutboundEmptyAltImagesRecomputed(t *testing.T) {
+	src := "# Guide\n\n![](../assets/chart.svg)\n\n" +
+		"[![](../assets/chart.svg)](../assets/chart.svg)\n\n" +
+		"```\n![](../assets/chart.svg)\n```\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/guide.md":    src,
+		"assets/chart.svg": "<svg/>",
+	})
+	plan, err := Move(ws, "docs/guide.md", "reference/manual/guide.md")
+	require.NoError(t, err)
+
+	got := applyEditsToSource(src, plan.Edits["docs/guide.md"])
+	assert.Equal(t,
+		"# Guide\n\n![](../../assets/chart.svg)\n\n"+
+			"[![](../../assets/chart.svg)](../../assets/chart.svg)\n\n"+
+			"```\n![](../assets/chart.svg)\n```\n",
+		got)
+}
+
 func TestMove_LeavesNonWorkspaceLinksUntouched(t *testing.T) {
 	// A root-anchored `/a.md` is treated as absolute — it never resolves
 	// to a workspace file (no site-root), so a move has nothing to
