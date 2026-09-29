@@ -2619,11 +2619,20 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 		// accepted at config-parse time, so use the validating
 		// matcher rather than MatchUnvalidated. This branch is off
 		// the hot path — only kinds that interpolate reach it.
-		if ok, mErr := doublestar.Match(resolved, rel); mErr == nil && ok {
+		ok, mErr := doublestar.Match(resolved, rel)
+		if mErr == nil && ok {
 			continue
 		}
-		diags = append(diags, pathPatternDiag(f, rel, pp,
-			schema.GlobMismatchHint(nil, []string{pp.Pattern}, resolved)))
+		hint := schema.GlobMismatchHint(nil, []string{pp.Pattern}, resolved)
+		if mErr != nil {
+			// The escaped value keeps the glob valid everywhere but
+			// inside a character class, where a reference is not
+			// supported: `[\#(fmvar(tag))]` with `tag: "!"` leaves
+			// `[!]`. Name the syntax error, as the `filename:`
+			// surface does, instead of a plain mismatch.
+			hint += "; not a valid glob: " + mErr.Error()
+		}
+		diags = append(diags, pathPatternDiag(f, rel, pp, hint))
 	}
 	return diags
 }

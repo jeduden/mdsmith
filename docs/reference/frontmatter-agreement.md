@@ -144,6 +144,11 @@ reference stands for a single path segment, so a
 value containing `/` is reported rather than
 silently spanning two directories.
 
+Do not put a reference inside a character class
+(`[...]`). A class matches one byte, not a value.
+A value such as `!` also leaves an invalid class
+(`[!]`); the diagnostic then names the syntax error.
+
 ### Example: an APM skill
 
 APM's `.apm/skills/<name>/SKILL.md` requires the

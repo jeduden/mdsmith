@@ -105,6 +105,24 @@ func TestCheck_PathPatternFmvar_ValueWithSeparatorDoesNotSpanDirs(t *testing.T) 
 	assert.Contains(t, diags[0].Message, "path separator")
 }
 
+// A reference inside a character class is unsupported: a value of `!`
+// leaves `[!]`, which doublestar rejects as a syntax error. The
+// diagnostic must say the resolved glob is invalid, as the
+// `filename:` surface does, rather than report a plain mismatch.
+func TestCheck_PathPatternFmvar_InvalidResolvedGlobIsNamed(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, "docs/x/a.md",
+		"---\ntag: \"!\"\n---\n# A\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "doc", Pattern: `docs/[\#(fmvar(tag))]/a.md`},
+	}}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	assert.Contains(t, diags[0].Message,
+		"with front matter applied: docs/[!]/a.md; "+
+			"not a valid glob: syntax error in pattern")
+}
+
 func TestCheck_PathPatternFmvar_NestedFieldPath(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "docs/install.md",
