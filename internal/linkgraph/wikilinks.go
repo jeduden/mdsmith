@@ -300,13 +300,32 @@ func skipHeavyDirs(p string) error {
 // This runs once per basename bucket on every WikilinkIndex (re)build,
 // so real workspaces with colliding basenames (README.md, index.md)
 // pay it N times per rebuild, not once.
+//
+// Each path's depth is computed once up front rather than inside the
+// comparator: a comparator re-running strings.Count on both operands
+// redoes that work on every one of the O(n log n) comparisons instead
+// of once per path (docs/development/high-performance-go.md, "memoize
+// per-input computations") — the same decorate-sort-undecorate pattern
+// internal/build/cache.go's sortEntriesByOutputKey uses for its own
+// comparator.
 func sortByDepthThenName(paths []string) {
-	slices.SortFunc(paths, func(a, b string) int {
+	type keyedPath struct {
+		depth int
+		path  string
+	}
+	decorated := make([]keyedPath, len(paths))
+	for i, p := range paths {
+		decorated[i] = keyedPath{depth: strings.Count(p, "/"), path: p}
+	}
+	slices.SortFunc(decorated, func(a, b keyedPath) int {
 		return cmp.Or(
-			cmp.Compare(strings.Count(a, "/"), strings.Count(b, "/")),
-			cmp.Compare(a, b),
+			cmp.Compare(a.depth, b.depth),
+			cmp.Compare(a.path, b.path),
 		)
 	})
+	for i, d := range decorated {
+		paths[i] = d.path
+	}
 }
 
 // ResolveWikiLink resolves an Obsidian-style wikilink target against
