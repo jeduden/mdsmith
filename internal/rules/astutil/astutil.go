@@ -163,9 +163,8 @@ func CollectSectionParagraphs(f *lint.File) []SectionParagraph {
 // capturing `f`), avoiding the per-call closure allocation a
 // `func() any { … }` literal would force.
 func buildSectionParagraphs(f *lint.File) any {
-	// Same shape as buildHeadingNodes: sized on the first paragraph so
-	// a document with none stays nil at zero allocations, with the
-	// root's child count as the capacity hint.
+	// Sized on the first paragraph so a document with none stays nil at
+	// zero allocations, with the root's child count as the capacity hint.
 	var out []SectionParagraph
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
