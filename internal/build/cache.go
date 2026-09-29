@@ -101,21 +101,27 @@ func outputSetKey(paths []string) string {
 // rebuilds (docs/development/high-performance-go.md, "memoize per-
 // input computations"). slices.SortStableFunc also drops the
 // sort.SliceStable reflect.Swapper cost ("reflect in hot paths").
+//
+// The sort itself moves only a (key, index) pair per swap rather than a
+// full CacheEntry (whose Outputs/Inputs slice headers still cost a copy
+// per swap) — entries are reordered in a single final pass instead.
 func sortEntriesByOutputKey(entries []CacheEntry) {
-	type keyedEntry struct {
-		key   string
-		entry CacheEntry
+	type keyedIndex struct {
+		key string
+		idx int
 	}
-	decorated := make([]keyedEntry, len(entries))
+	keyed := make([]keyedIndex, len(entries))
 	for i, e := range entries {
-		decorated[i] = keyedEntry{key: outputSetKey(e.outputPaths()), entry: e}
+		keyed[i] = keyedIndex{key: outputSetKey(e.outputPaths()), idx: i}
 	}
-	slices.SortStableFunc(decorated, func(a, b keyedEntry) int {
+	slices.SortStableFunc(keyed, func(a, b keyedIndex) int {
 		return cmp.Compare(a.key, b.key)
 	})
-	for i, d := range decorated {
-		entries[i] = d.entry
+	sorted := make([]CacheEntry, len(entries))
+	for i, k := range keyed {
+		sorted[i] = entries[k.idx]
 	}
+	copy(entries, sorted)
 }
 
 // Lookup returns the entry whose output-path set equals the given set
