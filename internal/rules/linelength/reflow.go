@@ -108,7 +108,7 @@ func wrapTokens(tokens []string, indent string, width int, glue func(prev string
 	curW := indentW + utf8.RuneCountInString(units[0])
 	for _, u := range units[1:] {
 		uW := utf8.RuneCountInString(u)
-		if curW+1+uW <= width {
+		if curW+1+uW <= width || startsWithBlockMarker(u) {
 			b.WriteByte(' ')
 			b.WriteString(u)
 			curW += 1 + uW
@@ -121,6 +121,46 @@ func wrapTokens(tokens []string, indent string, width int, glue func(prev string
 		}
 	}
 	return append(lines, b.String())
+}
+
+// startsWithBlockMarker reports whether a line beginning with s would
+// parse as block syntax instead of paragraph text: an ATX heading
+// ("#"), block quote (">"), bullet or ordered list marker, code fence,
+// setext underline, or thematic break. Reflow keeps such a unit on the
+// previous line (overflowing width) rather than starting a
+// continuation line with it, because that would change what the
+// paragraph renders to (issue #844). Only the first space-delimited
+// token of s is inspected.
+func startsWithBlockMarker(s string) bool {
+	tok := s
+	if i := strings.IndexByte(s, ' '); i >= 0 {
+		tok = s[:i]
+	}
+	if tok == "" {
+		return false
+	}
+	switch c := tok[0]; c {
+	case '#', '>':
+		return true
+	case '-', '+', '*', '_', '=', '`', '~':
+		if strings.Trim(tok, string(c)) != "" {
+			return false
+		}
+		switch c {
+		case '-', '=':
+			return true // bullet, setext underline, or thematic break
+		case '+':
+			return len(tok) == 1
+		case '*':
+			return len(tok) == 1 || len(tok) >= 3
+		}
+		return len(tok) >= 3 // "___", "```", "~~~"
+	}
+	i := 0
+	for i < len(tok) && tok[i] >= '0' && tok[i] <= '9' {
+		i++
+	}
+	return i > 0 && i <= 9 && i == len(tok)-1 && (tok[i] == '.' || tok[i] == ')')
 }
 
 // buildWrapUnits coalesces tokens into space-joined units. A new token

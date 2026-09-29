@@ -246,6 +246,38 @@ func TestWrapTokens_Empty(t *testing.T) {
 	}
 }
 
+// TestWrapTokens_NeverStartsLineWithBlockMarker pins issue #844: a wrap
+// point must not put a token that is block syntax at line start (ATX
+// heading, quote, list marker, fence, thematic break) on a continuation
+// line, since that changes what the paragraph renders to.
+func TestWrapTokens_NeverStartsLineWithBlockMarker(t *testing.T) {
+	noGlue := func(string) bool { return false }
+	for _, marker := range []string{
+		"#", "#48](<https://example.com/x>),", "##", ">", "-", "+", "*",
+		"1.", "12)", "---", "===", "***", "```", "~~~",
+	} {
+		tokens := []string{"aaaa", "bbbb", "[Issue", marker, "tail"}
+		got := wrapTokens(tokens, "", 10, noGlue)
+		if len(got) < 2 {
+			t.Errorf("marker %q: expected wrapping, got %q", marker, got)
+		}
+		for i, line := range got {
+			if i > 0 && startsWithBlockMarker(line) {
+				t.Errorf("marker %q: continuation line %q starts a block: %q",
+					marker, line, got)
+			}
+		}
+	}
+}
+
+func TestStartsWithBlockMarker_Plain(t *testing.T) {
+	for _, s := range []string{"word", "a#b", "-x", "1.5", "2024", "**bold**", "``", "**", "++"} {
+		if startsWithBlockMarker(s) {
+			t.Errorf("startsWithBlockMarker(%q) = true, want false", s)
+		}
+	}
+}
+
 func TestHasHardLineBreak(t *testing.T) {
 	cases := []struct {
 		line string
