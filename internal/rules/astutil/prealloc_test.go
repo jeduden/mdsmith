@@ -9,11 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
 // growthDoc builds a document with n headings, each followed by a
-// paragraph, so both memoized collectors see n elements.
+// paragraph, so the memoized paragraph collector sees n elements.
 func growthDoc(n int) string {
 	var b strings.Builder
 	b.WriteString("# Title\n\n")
@@ -36,8 +35,8 @@ func newDocFile(t *testing.T, source string) *lint.File {
 // to ~1024 then grows ~25%, copying each step."
 // (docs/development/high-performance-go.md#allocations).
 //
-// Both collectors are memoized once per *lint.File, so every growth
-// step is one avoidable allocation on every file in a workspace.
+// The collector is memoized once per *lint.File, so every growth step
+// is one avoidable allocation on every file in a workspace.
 //
 // The assertion is on growth steps rather than a raw total: a
 // collector that starts from a nil slice needs O(log n) allocations to
@@ -46,14 +45,13 @@ func newDocFile(t *testing.T, source string) *lint.File {
 // once regardless of size.
 //
 // The capacity hint is the root's child count, which is an estimate
-// rather than a bound — see TestCollectors_NestedHeadingsStillCorrect
-// for the shape that exceeds it.
+// rather than a bound: the walk descends into blockquotes and list
+// items, so a nested document can still push past it and regrow.
 func TestCollectors_PreSizedNotRegrown(t *testing.T) {
 	cases := []struct {
 		name  string
 		build func(f *lint.File) any
 	}{
-		{"headings", buildHeadingNodes},
 		{"section paragraphs", buildSectionParagraphs},
 	}
 
@@ -88,31 +86,6 @@ func TestCollectors_ResultsUnchangedWhenPreSized(t *testing.T) {
 		assert.Greaterf(t, paras[i].Line, paras[i-1].Line,
 			"paragraphs must stay in document order at index %d", i)
 	}
-
-	nodes := CollectHeadingNodes(f)
-	require.Len(t, nodes, 13, "title plus one heading per section")
-	for i := 1; i < len(nodes); i++ {
-		assert.NotSame(t, nodes[i-1], nodes[i])
-	}
-}
-
-// TestCollectors_NestedHeadingsStillCorrect covers the shape the
-// capacity hint does not bound: the walk descends into blockquotes and
-// list items, so a document can hold more headings than the root has
-// children. The hint is only a hint — the result must stay complete
-// and ordered when the slice regrows past it.
-func TestCollectors_NestedHeadingsStillCorrect(t *testing.T) {
-	f := newDocFile(t, "# Top\n\n"+
-		"> ## Quoted A\n>\n> ## Quoted B\n>\n> ## Quoted C\n>\n> ## Quoted D\n")
-
-	require.Less(t, f.AST.ChildCount(), 5,
-		"this document must have fewer root children than headings")
-
-	nodes := CollectHeadingNodes(f)
-	require.Len(t, nodes, 5, "the top heading plus the four quoted ones")
-	for i := 1; i < len(nodes); i++ {
-		assert.NotSame(t, nodes[i-1], nodes[i])
-	}
 }
 
 // TestCollectors_NilWhenNothingFound pins the project convention the
@@ -123,17 +96,6 @@ func TestCollectors_NestedHeadingsStillCorrect(t *testing.T) {
 // distinguishable in tests, JSON and reflect — and pay two allocations
 // where it used to pay none.
 func TestCollectors_NilWhenNothingFound(t *testing.T) {
-	t.Run("no headings", func(t *testing.T) {
-		f := newDocFile(t, strings.Repeat("Some prose paragraph.\n\n", 40))
-
-		got, ok := buildHeadingNodes(f).([]*ast.Heading)
-		require.True(t, ok)
-		assert.Nil(t, got, "no headings must yield nil, not an empty slice")
-
-		allocs := testing.AllocsPerRun(20, func() { _ = buildHeadingNodes(f) })
-		assert.Zero(t, allocs, "a heading-free document must not allocate")
-	})
-
 	t.Run("no paragraphs", func(t *testing.T) {
 		var b strings.Builder
 		for i := 0; i < 40; i++ {

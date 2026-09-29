@@ -3,7 +3,7 @@ id: 2608161914
 title: >-
   Add dedicated unit tests for the 2026-08-16 touched-set
   tax findings
-status: "🔲"
+status: "✅"
 model: haiku
 summary: >-
   Six new functions across cmd/mdsmith, pkg/mdsmith,
@@ -48,10 +48,13 @@ exercised only indirectly through a caller's scenario test:
   `FileTooLargeError`, an exported cross-package helper.
   Covered only transitively through `TestReadFileLimited_OverLimit`
   and callers' own error-message assertions.
-- [internal/rules/astutil/astutil.go][astutil]:114-133 —
-  `buildHeadingNodes` and `sortSectionHeadings`. Covered only
-  via `TestCollectHeadingNodes_*` in
-  [astutil_test.go][astutil-test]:708-739.
+- [internal/rules/astutil/astutil.go][astutil] —
+  `sortSectionHeadings`. Covered only via
+  `TestCollectSectionHeadings_*` in
+  [astutil_test.go][astutil-test]. (`buildHeadingNodes`, the
+  other finding here, was removed with the
+  `CollectHeadingNodes` memo when MDS003 and MDS005 became
+  kind-scoped node checkers.)
 - [pkg/markdown/flavor/detect.go][detect]:461-467 —
   `newlineSearch`, the binary-search helper backing the new
   `lineIndex`. Covered only via `TestLineIndex_MatchesLineCol`
@@ -73,8 +76,8 @@ methods already have tests).
    [pkg/mdsmith/workspace_test.go][workspace-test].
 4. Add `TestFileTooLargeError` to a `bytelimit_test.go` file
    next to [bytelimit.go][bytelimit].
-5. Add `TestBuildHeadingNodes` and `TestSortSectionHeadings`
-   to [astutil/astutil_test.go][astutil-test].
+5. Add `TestSortSectionHeadings` to
+   [astutil/astutil_test.go][astutil-test].
 6. Add `TestNewlineSearch` to
    [pkg/markdown/flavor/lineindex_test.go][lineindex-test]
    (or a sibling `detect_test.go`, matching the existing
@@ -88,16 +91,31 @@ methods already have tests).
    ./internal/rules/astutil/... ./pkg/markdown/flavor/...`
    passes.
 
+## Review follow-ups
+
+PR review on this branch also changed behavior outside
+the six tax findings. Each change landed test-first:
+
+- MDS075 under `section` scope checks a headingless
+  file as one preamble section, and `max:` rejects `0`
+  and values below `-1`.
+- Schema composition compares `filename:` lists as
+  sets, so order and repeated globs do not conflict.
+- `DecodeFilenameField` rejects an empty entry in a
+  `[]string` list, the same as a YAML list.
+- MDS056's matcher cache key sorts and de-duplicates
+  needles, so equal lists share one automaton.
+
 ## Acceptance Criteria
 
-- [ ] Every function named in the Background section has a
+- [x] Every function named in the Background section has a
       test carrying its own name (or a named subtest under
       one parent test, per tests.md's "sub-behaviours"
       allowance).
-- [ ] `go test ./...` is green.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go test ./...` is green.
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [tests]: ../docs/development/architecture/tests.md
