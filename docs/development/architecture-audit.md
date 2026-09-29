@@ -121,18 +121,26 @@ None.
 
 ### tax (2026-09-13)
 
-- `isAbsOrDriveOrUNC` was duplicated in `cmd/mdsmith` and
-  `internal/backlinks` ([go.md][go]). Fixed directly: both
-  call a new `internal/pathutil` package, and `cmd/mdsmith`
-  now also rejects a raw `\\host\share` UNC path on Linux
-  and macOS. `internal/lsp`'s `isAbsPath` checks raw RPC
-  paths and stays separate.
+- The absolute-path predicate had three copies: in `cmd/mdsmith`,
+  in `internal/linkgraph`, and in `internal/backlinks`, inside a
+  full copy of `linkgraph.ResolveRelTarget` ([go.md][go]). Fixed
+  directly: all three now use `internal/pathutil`, which reads `\`
+  as a separator on every host, and `cmd/mdsmith` checks and uses
+  one normalized target. Left alone: `internal/lsp`'s `isAbsPath`
+  (raw OS paths, for URIs) and the drive-letter-only checks in
+  `internal/schema`, `internal/rules/build`, and `internal/lsp`.
 - `cliRenameWorkspace` and `sessionRefactorWorkspace` share
-  four identical `Workspace` pass-throughs (`Resolve`
+  four matching `Workspace` pass-throughs (`Resolve`
   differs by design) — [plan/2609131911][2609131911].
 - `internal/refactor/move.go`'s `recomputeToken`,
   `encodePathToken`, `pathEdit`, `countFilesWithStem`
   lack tests by name ([tests.md][tests]) —
+  [plan/2609131913][2609131913].
+
+### nice-to-have (2026-09-13)
+
+- Four `cmd/mdsmith` move/rename helpers lack test
+  symbols but are covered indirectly; optional —
   [plan/2609131913][2609131913].
 
 [2609131911]: ../../plan/2609131911_arch-fix-refactor-workspace-duplication.md
@@ -210,8 +218,8 @@ None.
   `go build ./...`, `go test ./...`, and
   `go tool golangci-lint run` are green; behavior is
   unchanged (existing unit and e2e tests moved/kept
-  untouched). The two predicate copies were merged on
-  2026-09-13; see that entry.
+  untouched). Superseded 2026-09-13: both copies now
+  use `internal/pathutil`.
 - `internal/mdtext/wordfreq.go`'s `WordFrequencyInto` and
   three helpers in `internal/directivefiles/directivefiles.go`
   (`openingFence`, `isClosingFence`, `isIndentedCodeBlock`)

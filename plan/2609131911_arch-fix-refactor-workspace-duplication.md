@@ -9,10 +9,10 @@ summary: >-
   pkg/mdsmith/refactor.go's sessionRefactorWorkspace both
   implement internal/refactor.Workspace over a transient
   internal/index.Index; their Incoming*Edges/Files
-  pass-throughs are identical, though Resolve is not. Flagged
-  by the 2026-09-13 audit as tax.
+  pass-throughs have the same bodies, though Resolve does
+  not. Flagged by the 2026-09-13 audit as tax.
 ---
-# Share the identical Workspace pass-through methods
+# Share the matching Workspace pass-through methods
 
 ## Goal
 
@@ -34,9 +34,11 @@ The 2026-09-13 audit (see [the audit log][audit-log]) found:
   [internal/index.Index][index] to implement
   `internal/refactor.Workspace`.
 - Their `IncomingAnchorEdges`, `IncomingPathEdges`,
-  `IncomingWikilinkEdges`, and `Files` methods are
-  byte-for-byte identical: each just forwards to the
-  matching `Index` method.
+  `IncomingWikilinkEdges`, and `Files` methods have the same
+  bodies: each just forwards to the matching `Index` method.
+  They are not byte-identical: `cliRenameWorkspace` uses value
+  receivers and `sessionRefactorWorkspace` pointer receivers,
+  and only the CLI copy carries doc comments.
 - Their `Resolve` methods are not duplicates — they read from
   genuinely different sources. `cliRenameWorkspace.Resolve`
   reads from disk via `bytelimit.ReadFileLimited`, keyed by a
@@ -54,18 +56,25 @@ The 2026-09-13 audit (see [the audit log][audit-log]) found:
   types importing it is not itself a layering violation; the
   finding is the duplicated pass-through code, not the shared
   import.
+- The saving is small, about a dozen lines the code
+  deliberately leaves untested. The payoff is that a future
+  `Workspace` method backed by the index is added once, not
+  twice.
 
 ## Tasks
 
 1. Read [cliRenameWorkspace][cli-rename] and
    `sessionRefactorWorkspace` in [pkg/mdsmith/refactor.go][pkg-refactor]
-   side by side to confirm the four pass-through methods stay
-   byte-identical and `Resolve` stays the only divergent one.
-2. Add a small embeddable helper — e.g. a type in
-   `internal/index` that wraps an `*index.Index` and provides
-   `IncomingAnchorEdges`, `IncomingPathEdges`,
-   `IncomingWikilinkEdges`, and `Files` — that both
-   `cliRenameWorkspace` and `sessionRefactorWorkspace` embed.
+   side by side to confirm the four pass-through bodies still
+   match and `Resolve` stays the only divergent one.
+2. Add a small embeddable type in `internal/refactor`, next to
+   the `Workspace` interface it helps implement, that wraps an
+   `*index.Index` and provides `IncomingAnchorEdges`,
+   `IncomingPathEdges`, `IncomingWikilinkEdges`, and `Files`.
+   Give it value receivers: `cliRenameWorkspace` is used by
+   value, so a pointer-receiver helper embedded in it would not
+   satisfy `refactor.Workspace`. `internal/refactor` already
+   imports `internal/index`, so no new edge appears.
 3. Update both types to embed the helper instead of
    hand-writing the four pass-throughs; keep each type's own
    `Resolve` method unchanged.
