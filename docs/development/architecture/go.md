@@ -47,8 +47,8 @@ question. The current production set:
 - `internal/backlinks` — the `mdsmith list backlinks` matcher: which
   workspace files link to a target path or anchor.
 - `internal/refactor` — plan a move / rename as neutral per-file edits
-  for the CLI, LSP, and `pkg/mdsmith`. `ApplyEdits` splices a plan in
-  memory for the CLI; only the non-wasm `FileOp.Execute` touches disk.
+  for the CLI, LSP, and `pkg/mdsmith`. `ApplyEdits` splices a file's edits
+  in memory for the CLI; only the non-wasm `FileOp.Execute` touches disk.
 - `internal/lsp` — speak the Language Server Protocol; consumes the engine.
 - `pkg/markdown` — the one goldmark parse/produce surface (CommonMark+PI);
   `pkg/markdown/flavor` adds extensions. Public; see

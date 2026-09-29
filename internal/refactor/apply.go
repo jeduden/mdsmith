@@ -13,9 +13,13 @@ import (
 // bytes. Each edit is single-line (heading text, label, or fragment).
 // Edits on the same line are applied right-to-left so a left edit's
 // byte offsets — computed against the original row — stay valid while
-// the bytes to its right are rewritten. A trailing `\r` is preserved
-// so CRLF files round-trip. It is a pure in-memory transform: the host
-// reads src and writes the result.
+// the bytes to its right are rewritten. That holds only while a line's
+// edits do not overlap: ApplyEdits does not check, and splicing
+// overlapping edits in turn can drop text, split a multi-byte rune, or
+// fail with an out-of-range error. A Character past either end of its
+// row clamps to that end. A trailing `\r` is preserved so CRLF files
+// round-trip. It is a pure in-memory transform: the host reads src and
+// writes the result.
 func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 	segs := splitKeepCR(src)
 	byLine := map[int][]Edit{}
