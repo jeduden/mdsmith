@@ -293,7 +293,10 @@ func TestComposeFrontmatterClosed(t *testing.T) {
 		{"an unset declaring source votes closed",
 			[]*Schema{{Frontmatter: fm, FrontmatterClosed: &open}, {Frontmatter: fm}}, true},
 		{"an explicit true wins",
-			[]*Schema{{Frontmatter: fm, FrontmatterClosed: &closed}, {Frontmatter: fm, FrontmatterClosed: &open}}, true},
+			[]*Schema{
+				{Frontmatter: fm, FrontmatterClosed: &closed},
+				{Frontmatter: fm, FrontmatterClosed: &open},
+			}, true},
 	}
 	for _, tc := range cases {
 		out := &Schema{}
