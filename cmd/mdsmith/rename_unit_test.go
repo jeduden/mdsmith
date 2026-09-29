@@ -52,6 +52,7 @@ func TestRunRename_FlagAndArgValidation(t *testing.T) {
 	assert.Equal(t, 2, runRename([]string{"--as", "heading", "a.md", "Old"}))
 	// Not workspace-relative.
 	assert.Equal(t, 2, runRename([]string{"--as", "heading", "/abs/a.md", "Old", "New"}))
+	assert.Equal(t, 2, runRename([]string{"--as", "heading", `sub\..\..\a.md`, "Old", "New"}))
 }
 
 func TestRunRename_HeadingSuccess(t *testing.T) {

@@ -183,16 +183,16 @@ func validateIncludePatterns(patterns []string) error {
 	return nil
 }
 
-// normalizeWorkspacePath returns the cleaned workspace-relative form
-// of target. validateBacklinksArgs already rejects absolute paths
-// and `..` traversals and routes the input through
-// linkgraph.ParseTarget (which percent-decodes), so this helper only
-// has to handle a relative, decoded path: strip a leading `./`,
-// normalize separators, and clean the result.
+// normalizeWorkspacePath returns the cleaned, forward-slash form of
+// target: `\` becomes `/` on every host (filepath.ToSlash is a no-op
+// for backslashes on Linux and macOS), then path.Clean drops `./`
+// segments. The workspace index (index.NormalizePath) and link
+// resolution (linkgraph.ResolveRelTarget) read backslashes the same
+// way, so `docs\api.md` names the same file everywhere.
+// isWorkspaceRelativeTarget checks this same form, so a target is
+// never validated as one path and then looked up as another.
 func normalizeWorkspacePath(target string) string {
-	t := filepath.ToSlash(target)
-	t = strings.TrimPrefix(t, "./")
-	return path.Clean(t)
+	return path.Clean(strings.ReplaceAll(target, `\`, "/"))
 }
 
 // workspaceRelativePath returns p relative to rootDir using forward
@@ -219,21 +219,18 @@ func workspaceRelativePath(p, rootDir string) string {
 }
 
 // isWorkspaceRelativeTarget reports whether target is a usable
-// workspace-relative path. Absolute paths (POSIX / Windows / UNC)
-// and parent-traversal entries are rejected so the caller can fail
-// loudly instead of silently producing an empty result set.
-//
-// target is explicitly de-backslashed rather than only passed through
-// filepath.ToSlash: that call is a no-op for backslashes on a
-// non-Windows host, which would otherwise let a raw `\\host\share`
-// UNC path slip past pathutil.IsAbsOrDriveOrUNC's forward-slash-only
-// UNC check when mdsmith runs on Linux or macOS.
+// workspace-relative path. Absolute paths (POSIX / Windows / UNC,
+// with either separator) and parent-traversal entries are rejected
+// so the caller can fail loudly instead of silently producing an
+// empty result set — or, for rename and move, reading or writing a
+// file outside the workspace. The traversal check runs on
+// normalizeWorkspacePath's form, the one the commands then use, so
+// `sub\..\..\x.md` is caught on every host.
 func isWorkspaceRelativeTarget(target string) bool {
-	t := strings.ReplaceAll(filepath.ToSlash(target), `\`, "/")
-	if pathutil.IsAbsOrDriveOrUNC(t) {
+	if pathutil.IsAbsOrDriveOrUNC(target) {
 		return false
 	}
-	cleaned := path.Clean(t)
+	cleaned := normalizeWorkspacePath(target)
 	return cleaned != ".." && !strings.HasPrefix(cleaned, "../")
 }
 

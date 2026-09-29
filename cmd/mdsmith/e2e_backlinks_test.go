@@ -223,6 +223,33 @@ func TestE2E_Backlinks_DiscoveryEmpty_ExitsOne(t *testing.T) {
 	require.Equal(t, 1, exitCode)
 }
 
+// TestE2E_Backlinks_BackslashTarget_MatchesForwardSlash pins that a
+// Windows-style `docs\api.md` target finds the same backlinks as
+// `docs/api.md` on every host. The validator and the lookup must see
+// the same normalized string; otherwise the target passes validation
+// and then silently matches nothing.
+func TestE2E_Backlinks_BackslashTarget_MatchesForwardSlash(t *testing.T) {
+	dir := setupBacklinksWorkspace(t)
+	stdout, _, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", `docs\api.md`)
+	require.Equal(t, 0, exitCode, "expected exit 0 when matches found")
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	require.Len(t, lines, 3, "expected 3 backlink rows, got: %q", stdout)
+}
+
+// TestE2E_Backlinks_BackslashEscapeTarget_ExitsTwo pins that a
+// traversal or UNC target written with backslashes is rejected like
+// its forward-slash form.
+func TestE2E_Backlinks_BackslashEscapeTarget_ExitsTwo(t *testing.T) {
+	dir := setupBacklinksWorkspace(t)
+	for _, target := range []string{`..\foo.md`, `\\server\share\foo.md`} {
+		t.Run(target, func(t *testing.T) {
+			_, stderr, exitCode := runBinaryInDir(t, dir, "", "list", "backlinks", target)
+			require.Equal(t, 2, exitCode)
+			assert.Contains(t, stderr, "must be workspace-relative")
+		})
+	}
+}
+
 func TestE2E_Backlinks_AbsoluteTarget_ExitsTwo(t *testing.T) {
 	// `<target>` is documented as workspace-relative. An absolute path
 	// would otherwise normalize to a path outside the workspace and

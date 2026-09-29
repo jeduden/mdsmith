@@ -16,6 +16,11 @@ import (
 func TestNormalizeWorkspacePath(t *testing.T) {
 	assert.Equal(t, "docs/api.md", normalizeWorkspacePath("docs/api.md"))
 	assert.Equal(t, "docs/api.md", normalizeWorkspacePath("./docs/api.md"))
+	// Backslashes are separators on every host, as in index.NormalizePath
+	// and linkgraph.ResolveRelTarget, so the string the validator checks
+	// and the string the command then looks up are the same.
+	assert.Equal(t, "docs/api.md", normalizeWorkspacePath(`docs\api.md`))
+	assert.Equal(t, "docs/api.md", normalizeWorkspacePath(`.\docs\sub\..\api.md`))
 }
 
 func TestIsWorkspaceRelativeTarget(t *testing.T) {
@@ -26,6 +31,13 @@ func TestIsWorkspaceRelativeTarget(t *testing.T) {
 	assert.False(t, isWorkspaceRelativeTarget("//server/share/file.md"))
 	assert.False(t, isWorkspaceRelativeTarget(`\\server\share\file.md`))
 	assert.False(t, isWorkspaceRelativeTarget("../escape.md"))
+	// Backslash forms: separators on every host, so a traversal or a
+	// leading separator written with `\` is caught the same way.
+	assert.True(t, isWorkspaceRelativeTarget(`a\b.md`))
+	assert.True(t, isWorkspaceRelativeTarget(`docs\..\api.md`))
+	assert.False(t, isWorkspaceRelativeTarget(`..\escape.md`))
+	assert.False(t, isWorkspaceRelativeTarget(`sub\..\..\escape.md`))
+	assert.False(t, isWorkspaceRelativeTarget(`\notes.md`))
 }
 
 func TestEmitBacklinks_Text(t *testing.T) {
