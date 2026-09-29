@@ -68,20 +68,23 @@ func (s *documentStore) openURIs() []string {
 	return out
 }
 
-// findByPath returns a copy of the open document whose path satisfies
-// match, or (nil, false) if none does. It snapshots (uri, path) pairs
-// — cheap, since a string copy shares the underlying bytes — under a
-// single read lock, then evaluates match against that snapshot after
-// releasing the lock, so a caller-supplied match callback never holds
-// the store's lock (and so can never block a concurrent set()/delete()
-// for its own duration, however long it runs). This still avoids the
-// openURIs()+get() pattern's O(open-docs) full-document copies on a
-// miss: at most one extra locked lookup, for each matching URI.
+// findByPath returns (uri, doc, true) for the first open document
+// whose path satisfies match, or ("", nil, false) if none does. It
+// snapshots (uri, path) pairs — cheap, since a string copy shares the
+// underlying bytes — under a single read lock, then evaluates match
+// against that snapshot after releasing the lock, so a caller-supplied
+// match callback never holds the store's lock (and so can never block
+// a concurrent set()/delete() for its own duration, however long it
+// runs). This still avoids the openURIs()+get() pattern's O(open-docs)
+// full-document copies on a miss: get() runs once per candidate whose
+// path matches, not once per open document.
 //
-// A document can close in the gap between the snapshot and the
-// follow-up get(), turning a real match into a miss for that one
-// candidate; the loop continues to the next one instead of reporting
-// an overall miss, matching the old openURIs()+get() loop's behavior.
+// A document can close in the gap between the snapshot and its
+// candidate's get() call, turning a real match into a miss for that
+// one candidate; the loop tries the next matching candidate instead
+// of reporting an overall miss, matching the old openURIs()+get()
+// loop's behavior. Only if every matching candidate closes this way
+// does findByPath itself report a miss.
 func (s *documentStore) findByPath(match func(path string) bool) (string, *document, bool) {
 	s.mu.RLock()
 	type candidate struct{ uri, path string }

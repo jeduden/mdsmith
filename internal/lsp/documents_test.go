@@ -70,11 +70,13 @@ func TestFindByPathContinuesAfterMatchedCandidateCloses(t *testing.T) {
 	s.set("file:///a.md", &document{uri: "file:///a.md", path: "/a.md", text: []byte("a")})
 	s.set("file:///b.md", &document{uri: "file:///b.md", path: "/b.md", text: []byte("b")})
 
+	var deletedURI string
 	first := true
 	uri, doc, ok := s.findByPath(func(path string) bool {
 		if first {
 			first = false
-			s.delete("file://" + path)
+			deletedURI = "file://" + path
+			s.delete(deletedURI)
 		}
 		return true
 	})
@@ -83,5 +85,9 @@ func TestFindByPathContinuesAfterMatchedCandidateCloses(t *testing.T) {
 	}
 	if uri == "" || doc == nil {
 		t.Fatalf("findByPath returned ok=true with an empty result: uri=%q doc=%v", uri, doc)
+	}
+	if uri == deletedURI {
+		t.Fatalf("findByPath returned the deleted candidate %q instead of falling through "+
+			"to the one still open", uri)
 	}
 }

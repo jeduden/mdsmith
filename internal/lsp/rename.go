@@ -558,6 +558,8 @@ func toTextEdits(edits []refactor.Edit) []textEdit {
 // conversion to refactor.Position is a zero-cost reinterpretation:
 // both types have identical fields (Go ignores struct tags for
 // convertibility), so this isn't a copy of anything but the two ints.
+// If the two Position types ever diverge, this conversion stops
+// compiling — a build failure here, not a silent runtime mismatch.
 func sortTextEditsBottomUp(edits []textEdit) {
 	slices.SortStableFunc(edits, func(a, b textEdit) int {
 		return refactor.ComparePositionsBottomUp(
