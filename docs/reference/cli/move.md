@@ -4,6 +4,12 @@ summary: Move a Markdown file and rewrite every reference to it — incoming lin
 ---
 # `mdsmith move`
 
+> **Unreleased.** `move` landed after v0.55.1, so the npm, PyPI,
+> and GitHub release binaries at that version answer
+> `unknown command "move"`. It ships with the next release; until
+> then, build from `main` with `go install ./cmd/mdsmith`.
+> Delete this note when a release includes the command.
+
 Relocate a Markdown file and rewrite every reference in one
 step, so no link breaks in either direction. `move` and
 [`rename`](rename.md) are two verbs over one refactor engine:
