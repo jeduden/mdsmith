@@ -143,11 +143,12 @@ func printVersion() {
 	fmt.Printf("mdsmith %s\n", v)
 }
 
-// stderrBufSize is the buffer the report paths put in front of stderr.
-// The text formatter emits a handful of small writes per diagnostic;
-// batching them into 64 KiB chunks keeps a diagnostic-heavy run from
-// paying one write syscall per formatted line.
-const stderrBufSize = 64 << 10
+// reportBufSize is the buffer the report paths put in front of each
+// output stream: stderr, and stdout under `check --stdout`. The text
+// formatter emits a handful of small writes per diagnostic; batching
+// them into 64 KiB chunks keeps a diagnostic-heavy run from paying one
+// write syscall per formatted line.
+const reportBufSize = 64 << 10
 
 // formatDiagnosticsTo writes diagnostics to w using the specified format.
 // Returns a non-zero exit code on write error, or 0 on success. The

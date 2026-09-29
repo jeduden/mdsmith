@@ -358,7 +358,7 @@ func reportFixResult(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Log
 // one syscall each on diagnostic-heavy runs. The buffer is flushed
 // before the verbose logger line to preserve ordering on a shared fd.
 func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger, stderrW io.Writer) int {
-	bw := bufio.NewWriterSize(stderrW, stderrBufSize)
+	bw := bufio.NewWriterSize(stderrW, reportBufSize)
 	printErrorsTo(bw, fixResult.Errors)
 
 	if opts.dryRun && opts.format == "json" && !opts.quiet {

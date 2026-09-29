@@ -67,15 +67,24 @@ to stdout instead of stderr, so a plain redirect captures
 them. Text output keeps its ANSI colors in the file; add
 `--no-color` for plain text. A clean run still writes a
 valid document: `[]` for `json` and an empty log for
-`sarif`. `--quiet` writes nothing.
+`sarif`, even when it finds no Markdown file. `--quiet`
+writes nothing.
 
 Runtime errors stay on stderr, so they never land in the
-redirected file. That includes a failed write to stdout,
-which exits `2`. A closed pipe, as in `| head`, is not
-such a failure: the process ends on `SIGPIPE` instead.
-The verbose log and the non-Markdown skip warning stay on
-stderr too. Without the flag, all output goes to stderr
-as before, and a clean `json` run writes nothing.
+redirected file. After one, stdout still holds the report
+for the files that were linted, or nothing if the run
+stopped first, as on a bad config. The verbose log and
+the non-Markdown skip warning stay on stderr too.
+
+A failed write to stdout is reported on stderr and exits
+`2`. If a write to stderr fails, the error messages are
+lost, but the diagnostics still reach stdout and the exit
+code does not change. On Unix, a write to a closed pipe,
+as in `| head`, is not such a failure on either stream:
+the process ends on `SIGPIPE` instead.
+
+Without the flag, all output goes to stderr as before,
+and a clean `json` run writes nothing.
 [`mdsmith fix`](fix.md) has no `--stdout`.
 
 ## Examples

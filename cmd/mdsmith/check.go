@@ -238,7 +238,8 @@ func reportCheckResult(result *engine.Result, opts checkCLIOpts, logger *vlog.Lo
 // Runtime errors always go to stderrW. Diagnostics and the stats line
 // go to stdoutW under --stdout and to stderrW otherwise. A failed
 // write of those is itself a runtime error: its message goes to
-// stderrW and the exit code is 2.
+// stderrW and the exit code is 2. Without --stdout stderrW is the
+// stream that failed, so only the exit code reports it.
 //
 // Each stream gets one buffered writer: the text formatter emits
 // several small writes per diagnostic, and issuing each as its own
@@ -250,14 +251,16 @@ func reportCheckResult(result *engine.Result, opts checkCLIOpts, logger *vlog.Lo
 func reportCheckResultTo(
 	result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, stdoutW, stderrW io.Writer,
 ) int {
-	ew := bufio.NewWriterSize(stderrW, stderrBufSize)
+	ew := bufio.NewWriterSize(stderrW, reportBufSize)
 	printErrorsTo(ew, result.Errors)
 	out := ew
 	if opts.stdout {
 		// A failed flush is ignored, as printErrorsTo ignores its
-		// writes: a closed stderr must not keep diagnostics off stdout.
+		// writes: a stderr that fails writes must not keep diagnostics
+		// off stdout. A broken stderr pipe still ends the process on
+		// SIGPIPE, which the Go runtime raises for fds 1 and 2.
 		_ = ew.Flush()
-		out = bufio.NewWriterSize(stdoutW, stderrBufSize)
+		out = bufio.NewWriterSize(stdoutW, reportBufSize)
 	}
 
 	if err := writeCheckReport(out, result, opts); err != nil {
