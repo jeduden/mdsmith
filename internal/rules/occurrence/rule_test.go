@@ -1,11 +1,12 @@
 package occurrence
 
 import (
+	"fmt"
 	"regexp"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/rules/astutil"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -404,14 +405,40 @@ func TestApplySettings_MinGreaterThanMax(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "min")
 	assert.Contains(t, err.Error(), "max")
+	// A rejected band must not linger: an instance reused after the
+	// error would otherwise flag every scope, since no count is both
+	// >= 5 and <= 2.
+	assert.Equal(t, 0, r.Min)
+	assert.Equal(t, -1, r.Max)
 }
 
 func TestApplySettings_MinOnlyNoFalsePositive(t *testing.T) {
-	// A zero-value Rule has Max=0, but since max was never explicitly set,
-	// the min>max guard must not fire when only min is configured.
+	// A zero-value Rule has Max=0, but max was never set, so a min-only
+	// config must leave the upper bound open — in ApplySettings and in
+	// Check alike.
 	r := &Rule{}
-	err := r.ApplySettings(map[string]any{"tokens": []any{"x"}, "min": 3})
+	err := r.ApplySettings(map[string]any{"tokens": []any{"x"}, "min": 1})
 	require.NoError(t, err, "setting only min on a zero-value Rule must not error")
+	diags := r.Check(mustFile(t, "# T\n\nx and x and x.\n"))
+	assert.Empty(t, diags, "three matches satisfy min 1 with no max set")
+}
+
+func TestCheck_InlineCodeSpanNotCounted(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{
+		"pattern": "—", "scope": "paragraph", "count": "combined", "max": 2,
+	})
+	f := mustFile(t, "# T\n\nUse `a—b—c` as the separator — see below.\n")
+	assert.Empty(t, r.Check(f), "em dashes inside an inline code span must not count")
+}
+
+func TestCheck_InlineCodeSpanDoesNotJoinWords(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"foobar"}, "min": 1})
+	f := mustFile(t, "# T\n\nfoo`x`bar here.\n")
+	diags := r.Check(f)
+	require.Len(t, diags, 1, "dropping a code span must not splice its neighbours into a match")
+	assert.Contains(t, diags[0].Message, "min 1")
 }
 
 func TestCheck_Paragraph_EmptyToken_NoDiagnostic(t *testing.T) {
@@ -483,48 +510,43 @@ func TestCheck_Section_NestedHeadingViolatesIndependently(t *testing.T) {
 
 // --- private helper unit tests ---
 
-func TestCountCombinedInRange(t *testing.T) {
-	r := &Rule{Tokens: []string{"foo"}, CaseSensitive: true}
-	// Ascending Line order: countCombinedInRange's pos cursor only
-	// moves forward, matching the guarantee astutil.CollectSectionParagraphs
-	// (production's source for this slice) documents.
-	paragraphs := []astutil.SectionParagraph{
-		{Text: "foo foo", Line: 2},
-		{Text: "foo", Line: 3},
-		{Text: "bar", Line: 10},
-	}
-	var pos int
-	// [2, 5) covers lines 2 and 3: 2+1 = 3 matches
-	assert.Equal(t, 3, r.countCombinedInRange(paragraphs, nil, &pos, 2, 5))
-	// [10, 11) covers line 10: no "foo". Reuses the same cursor,
-	// mirroring how checkSections threads one cursor across a
-	// sequence of ascending, non-overlapping windows.
-	assert.Equal(t, 0, r.countCombinedInRange(paragraphs, nil, &pos, 10, 11))
+func TestTally(t *testing.T) {
+	r := &Rule{Tokens: []string{"foo", "bar"}, CaseSensitive: true}
+	totals := make([]int, 2)
+	r.tally("foo bar foo", "foo bar foo", totals)
+	r.tally("foo", "foo", totals)
+	assert.Equal(t, []int{3, 1}, totals)
+
+	re := regexp.MustCompile(`\d+`)
+	rp := &Rule{Pattern: re, patternSource: `\d+`}
+	ptotals := make([]int, 1)
+	rp.tally("1 22 333", "1 22 333", ptotals)
+	assert.Equal(t, []int{3}, ptotals)
 }
 
-func TestCountPatternInRange(t *testing.T) {
-	re := regexp.MustCompile(`foo`)
-	r := &Rule{Pattern: re, patternSource: "foo"}
-	paragraphs := []astutil.SectionParagraph{
-		{Text: "foo bar foo", Line: 2},
-		{Text: "baz", Line: 10},
-	}
-	var pos int
-	assert.Equal(t, 2, r.countPatternInRange(paragraphs, nil, &pos, 2, 5))
-	assert.Equal(t, 0, r.countPatternInRange(paragraphs, nil, &pos, 5, 9))
+func TestTally_LiteralPatternIgnoresCase(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"pattern": "Foo"})
+	require.Equal(t, "Foo", r.literal, "a metacharacter-free pattern takes the literal path")
+	totals := make([]int, 1)
+	r.tally("foo FOO Foo", "foo foo foo", totals)
+	assert.Equal(t, []int{3}, totals)
 }
 
-func TestCountCombined(t *testing.T) {
-	r := &Rule{Tokens: []string{"foo"}, CaseSensitive: true}
-	assert.Equal(t, 2, r.countCombined("foo bar foo"))
-	assert.Equal(t, 0, r.countCombined("bar baz"))
+func TestApplySettings_RegexPatternIsNotLiteral(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"pattern": `a.c`})
+	assert.Empty(t, r.literal)
 }
 
-func TestSearchText(t *testing.T) {
-	r := &Rule{CaseSensitive: false}
-	assert.Equal(t, "hello world", r.searchText("Hello World"))
-	r2 := &Rule{CaseSensitive: true}
-	assert.Equal(t, "Hello World", r2.searchText("Hello World"))
+func TestCheck_NonASCIILowercaseLengthChange(t *testing.T) {
+	// "İ" (U+0130) lowercases to a longer byte sequence, so the joined
+	// offsets no longer line up and each paragraph is lowercased alone.
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"beta"}, "max": 0})
+	diags := r.Check(mustFile(t, "# T\n\nİİİ alpha.\n\nBETA here.\n"))
+	require.Len(t, diags, 1)
+	assert.Equal(t, 5, diags[0].Line)
 }
 
 func TestCountToken(t *testing.T) {
@@ -688,4 +710,59 @@ func TestCompileAndSetPattern(t *testing.T) {
 	r4 := &Rule{CaseSensitive: false}
 	require.NoError(t, r4.compileAndSetPattern("lowerpat1"))
 	assert.Equal(t, "(?i)lowerpat1", r4.Pattern.String())
+}
+
+func TestCheck_Section_EmptyBodyUnderMin(t *testing.T) {
+	// A section with no paragraphs still has a count of zero, which
+	// falls below min.
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"scope"}, "min": 1, "scope": "section"})
+	diags := r.Check(mustFile(t, "# Only a heading\n"))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, "min 1")
+}
+
+func TestCheck_SoftLineBreakSeparatesWords(t *testing.T) {
+	// A soft break joins two source lines with a space, so a token
+	// spanning the break still matches as written.
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"alpha beta"}, "max": 0})
+	diags := r.Check(mustFile(t, "# T\n\nalpha\nbeta here.\n"))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, `"alpha beta" appears 1 time(s)`)
+}
+
+func TestCheck_TableParagraphNotCounted(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"cell"}, "max": 0})
+	f := mustFile(t, "# T\n\n| cell | cell |\n|------|------|\n| cell | cell |\n")
+	assert.Empty(t, r.Check(f))
+}
+
+func TestAppendProse_StringNode(t *testing.T) {
+	// Typographer-style extensions emit ast.String nodes whose payload
+	// lives on the node, not in the source.
+	p := ast.NewParagraph()
+	p.AppendChild(p, ast.NewString([]byte("synergy")))
+	assert.Equal(t, "synergy", string(appendProse(nil, p, nil)))
+}
+
+func TestCheck_ManyTokensBeyondStackTotals(t *testing.T) {
+	toks := make([]any, 20)
+	for i := range toks {
+		toks[i] = fmt.Sprintf("t%02d", i)
+	}
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": toks, "max": 0})
+	diags := r.Check(mustFile(t, "# T\n\nt19 appears.\n"))
+	require.Len(t, diags, 1)
+	assert.Contains(t, diags[0].Message, `"t19"`)
+}
+
+func TestCheck_LiteralPatternCaseSensitive(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"pattern": "Foo", "case-sensitive": true, "max": 1})
+	assert.Empty(t, r.Check(mustFile(t, "# T\n\nFoo foo FOO.\n")), "only the exact-case match counts")
+	diags := r.Check(mustFile(t, "# T\n\nFoo Foo.\n"))
+	require.Len(t, diags, 1)
 }

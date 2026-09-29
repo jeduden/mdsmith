@@ -32,9 +32,11 @@ type Rule struct {
 	lowerTokens   []string // pre-lowercased tokens for case-insensitive matching
 	patternSource string
 	Pattern       *regexp.Regexp
+	literal       string // patternSource when it has no regex metacharacters
+	lowerLiteral  string // literal, lowercased for case-insensitive matching
 	Min           int
 	Max           int  // -1 means unbounded
-	maxSet        bool // true when max was explicitly set via ApplySettings
+	maxSet        bool // true once any ApplySettings call has set max
 	Count         string
 	CaseSensitive bool
 }
@@ -65,211 +67,114 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	if len(r.Tokens) == 0 && r.Pattern == nil {
 		return nil
 	}
+	pr := collectProse(f, r.needsLower(), r.Scope == "section")
+	paras := pr.paras
+	// totals holds one tally per token, then one for the pattern,
+	// cleared per scope unit. Typical configs fit the stack array.
+	n := len(r.Tokens)
+	if r.Pattern != nil {
+		n++
+	}
+	var small [16]int
+	var totals []int
+	if n <= len(small) {
+		totals = small[:n]
+	} else {
+		totals = make([]int, n)
+	}
 	switch r.Scope {
 	case "file":
-		return r.checkFile(f)
+		for i := range paras {
+			r.tally(paras[i].Text, paras[i].Lower, totals)
+		}
+		return r.emit(nil, totals, 1, "file", f.Path)
 	case "section":
-		return r.checkSections(f)
+		return r.checkSections(f, pr, totals)
 	default:
-		return r.checkParagraphs(f)
+		var diags []lint.Diagnostic
+		for i := range paras {
+			clear(totals)
+			r.tally(paras[i].Text, paras[i].Lower, totals)
+			diags = r.emit(diags, totals, paras[i].Line, "paragraph", f.Path)
+		}
+		return diags
 	}
 }
 
-// checkFile counts across all prose paragraphs in the file as one unit.
-func (r *Rule) checkFile(f *lint.File) []lint.Diagnostic {
-	paragraphs := astutil.CollectSectionParagraphsWithText(f)
-	if r.Count == "combined" {
-		combined := 0
-		for i := range paragraphs {
-			combined += r.countCombined(paragraphs[i].ExtractText(f.Source))
-		}
-		return r.diagCombined(combined, 1, "file", f.Path)
-	}
-	// "each" mode: iterate paragraphs in the outer loop so each paragraph's
-	// text is lowercased at most once regardless of token count. Skip the
-	// lowercasing entirely when r.Tokens is empty (Pattern-only config) —
-	// searchText's strings.ToLower would otherwise allocate once per
-	// paragraph for a loop that never runs.
-	var diags []lint.Diagnostic
-	if len(r.Tokens) > 0 {
-		totals := make([]int, len(r.Tokens))
-		for i := range paragraphs {
-			stext := r.searchText(paragraphs[i].ExtractText(f.Source))
-			for ti := range r.Tokens {
-				totals[ti] += r.countToken(stext, ti)
-			}
-		}
-		for ti, tok := range r.Tokens {
-			diags = append(diags, r.diagEach(totals[ti], 1, "file", tok, f.Path)...)
-		}
-	}
-	if r.Pattern != nil {
-		total := 0
-		for i := range paragraphs {
-			total += r.countPattern(paragraphs[i].ExtractText(f.Source))
-		}
-		diags = append(diags, r.diagEach(total, 1, "file", r.patternSource, f.Path)...)
-	}
-	return diags
-}
-
-// checkSections counts per heading-bounded section.
-func (r *Rule) checkSections(f *lint.File) []lint.Diagnostic {
-	headings := astutil.CollectSectionHeadings(f)
-	if len(headings) == 0 {
-		return nil
-	}
-	paragraphs := astutil.CollectSectionParagraphsWithText(f)
+// checkSections counts per heading-bounded section. A shallow
+// heading's window (astutil.SectionEnd) extends through its nested
+// subsections, and each subsection is still counted against its own
+// narrower window. lo is a skip-ahead-only cursor: headings ascend, so
+// a paragraph before one heading's start is before every later one's.
+// It never advances past a window's paragraphs, since a nested
+// heading's window may need them again.
+func (r *Rule) checkSections(f *lint.File, pr prose, totals []int) []lint.Diagnostic {
+	paras, headings := pr.paras, pr.headings
 	totalLines := len(f.Lines)
 	if totalLines > 0 && len(f.Lines[totalLines-1]) == 0 {
 		totalLines--
 	}
 	var diags []lint.Diagnostic
-	// combinedLo, tokensLo, and patternLo are skip-ahead-only cursors
-	// into paragraphs, each threaded across the whole heading loop.
-	// Headings are ascending, so a paragraph before headings[i].Line is
-	// also before every later heading's start — safe to skip for good,
-	// matching astutil.SectionBodies's lo cursor. None of them advance
-	// past the paragraphs a heading's own window collects: unlike
-	// maxsectionlength's flat, non-overlapping partition,
-	// astutil.SectionEnd's window for a shallow heading extends past
-	// its nested subsections, so a subsection's own iteration must
-	// still be able to collect paragraphs an ancestor heading's wider
-	// window already walked. This still turns the "skip the
-	// already-passed prefix" work into O(paragraphs) total per active
-	// mode instead of O(headings) rescans of it; the "collect this
-	// heading's window" work stays proportional to that section's own
-	// size, which is unavoidable for a hierarchical section model. See
-	// docs/development/high-performance-go.md's "Skip work you don't
-	// need". combined/tokens/pattern never advance in the same Check
-	// call (r.Count picks exactly one branch), but each keeps its own
-	// cursor since a single heading's "each" branch can drive both the
-	// tokens loop and countPatternInRange over the same window.
-	var combinedLo, tokensLo, patternLo int
+	lo := 0
 	for i, h := range headings {
 		end := astutil.SectionEnd(headings, i, totalLines)
-		if r.Count == "combined" {
-			combined := r.countCombinedInRange(paragraphs, f.Source, &combinedLo, h.Line, end)
-			diags = append(diags, r.diagCombined(combined, h.Line, "section", f.Path)...)
-		} else {
-			// "each" mode: iterate paragraphs once, pre-lowercasing text per
-			// paragraph so case-insensitive matching allocates one string per
-			// paragraph, not one per (paragraph × token). Skip entirely when
-			// r.Tokens is empty (Pattern-only config) — searchText's
-			// strings.ToLower would otherwise allocate once per paragraph
-			// for a loop that never runs.
-			if len(r.Tokens) > 0 {
-				totals := make([]int, len(r.Tokens))
-				tokensLo = astutil.AdvancePastLine(paragraphs, tokensLo, h.Line)
-				for j := tokensLo; j < len(paragraphs) && paragraphs[j].Line < end; j++ {
-					stext := r.searchText(paragraphs[j].ExtractText(f.Source))
-					for ti := range r.Tokens {
-						totals[ti] += r.countToken(stext, ti)
-					}
-				}
-				for ti, tok := range r.Tokens {
-					diags = append(diags, r.diagEach(totals[ti], h.Line, "section", tok, f.Path)...)
-				}
-			}
-			if r.Pattern != nil {
-				cnt := r.countPatternInRange(paragraphs, f.Source, &patternLo, h.Line, end)
-				diags = append(diags, r.diagEach(cnt, h.Line, "section", r.patternSource, f.Path)...)
-			}
+		for lo < len(paras) && paras[lo].Line < h.Line {
+			lo++
 		}
+		clear(totals)
+		for j := lo; j < len(paras) && paras[j].Line < end; j++ {
+			r.tally(paras[j].Text, paras[j].Lower, totals)
+		}
+		diags = r.emit(diags, totals, h.Line, "section", f.Path)
 	}
 	return diags
 }
 
-// checkParagraphs counts per paragraph.
-func (r *Rule) checkParagraphs(f *lint.File) []lint.Diagnostic {
-	paragraphs := astutil.CollectSectionParagraphsWithText(f)
-	var diags []lint.Diagnostic
-	for i := range paragraphs {
-		text := paragraphs[i].ExtractText(f.Source)
-		line := paragraphs[i].Line
-		if r.Count == "combined" {
-			combined := r.countCombined(text)
-			diags = append(diags, r.diagCombined(combined, line, "paragraph", f.Path)...)
-		} else {
-			// Skip searchText's strings.ToLower allocation when r.Tokens is
-			// empty (Pattern-only config) — the loop below never runs.
-			if len(r.Tokens) > 0 {
-				stext := r.searchText(text)
-				for ti, tok := range r.Tokens {
-					cnt := r.countToken(stext, ti)
-					diags = append(diags, r.diagEach(cnt, line, "paragraph", tok, f.Path)...)
-				}
-			}
-			if r.Pattern != nil {
-				cnt := r.countPattern(text)
-				diags = append(diags, r.diagEach(cnt, line, "paragraph", r.patternSource, f.Path)...)
-			}
-		}
-	}
-	return diags
+// needsLower reports whether any configured matcher compares against
+// lowercased text: tokens and literal patterns when matching ignores
+// case. A regex carries its own (?i) flag and reads the original text.
+func (r *Rule) needsLower() bool {
+	return !r.CaseSensitive && (len(r.Tokens) > 0 || r.literal != "")
 }
 
-// countCombinedInRange sums all match counts for paragraphs in
-// [start, end). paragraphs must be in ascending Line order; lo is a
-// skip-ahead-only cursor a caller threads across a sequence of
-// ascending-start windows over the same paragraphs slice (the windows
-// themselves may overlap, e.g. a shallow heading's window containing a
-// nested subsection's), so the "skip the already-passed prefix" work
-// runs in O(len(paragraphs)) total across the whole sequence of calls
-// instead of being repeated per call — see checkSections's cursor
-// comment. lo is deliberately NOT advanced past the paragraphs this
-// call collects: a later call in the sequence may need to collect
-// them again.
-func (r *Rule) countCombinedInRange(
-	paragraphs []astutil.SectionParagraph, source []byte, lo *int, start, end int,
-) int {
-	*lo = astutil.AdvancePastLine(paragraphs, *lo, start)
-	total := 0
-	for i := *lo; i < len(paragraphs) && paragraphs[i].Line < end; i++ {
-		total += r.countCombined(paragraphs[i].ExtractText(source))
-	}
-	return total
-}
-
-// countPatternInRange counts pattern matches for paragraphs in
-// [start, end). See countCombinedInRange for the lo cursor contract.
-func (r *Rule) countPatternInRange(
-	paragraphs []astutil.SectionParagraph, source []byte, lo *int, start, end int,
-) int {
-	*lo = astutil.AdvancePastLine(paragraphs, *lo, start)
-	total := 0
-	for i := *lo; i < len(paragraphs) && paragraphs[i].Line < end; i++ {
-		total += r.countPattern(paragraphs[i].ExtractText(source))
-	}
-	return total
-}
-
-// countCombined returns the total match count for all tokens or the pattern.
-func (r *Rule) countCombined(text string) int {
-	if r.Pattern != nil {
-		return r.countPattern(text)
-	}
-	// Pre-lowercase once for all tokens to avoid one allocation per token.
-	stext := r.searchText(text)
-	total := 0
+// tally adds one scope unit's match counts into totals: one slot per
+// token, then the pattern's slot last. text is the original paragraph
+// text; search is text lowercased when needsLower, else text itself.
+func (r *Rule) tally(text, search string, totals []int) {
 	for ti := range r.Tokens {
-		total += r.countToken(stext, ti)
+		totals[ti] += r.countToken(search, ti)
 	}
-	return total
+	if r.Pattern != nil {
+		if r.literal != "" {
+			totals[len(r.Tokens)] += r.countLiteral(text, search)
+		} else {
+			totals[len(r.Tokens)] += r.countPattern(text)
+		}
+	}
 }
 
-// searchText returns text ready for token matching: lowercased for
-// case-insensitive mode, unchanged otherwise. Callers must invoke
-// searchText once per scope unit before looping over tokens.
-func (r *Rule) searchText(text string) string {
-	if !r.CaseSensitive {
-		return strings.ToLower(text)
+// emit appends the diagnostics for one scope unit's totals: a single
+// bound check on their sum in "combined" mode, else one per token and
+// one for the pattern.
+func (r *Rule) emit(diags []lint.Diagnostic, totals []int, line int, scope, path string) []lint.Diagnostic {
+	if r.Count == "combined" {
+		sum := 0
+		for _, c := range totals {
+			sum += c
+		}
+		return append(diags, r.diagCombined(sum, line, scope, path)...)
 	}
-	return text
+	for ti, tok := range r.Tokens {
+		diags = append(diags, r.diagEach(totals[ti], line, scope, tok, path)...)
+	}
+	if r.Pattern != nil {
+		diags = append(diags, r.diagEach(totals[len(r.Tokens)], line, scope, r.patternSource, path)...)
+	}
+	return diags
 }
 
 // countToken counts non-overlapping occurrences of tokens[ti] in text.
-// text must already be case-normalized via searchText.
+// text must already be lowercased when matching ignores case.
 func (r *Rule) countToken(text string, ti int) int {
 	var tok string
 	if r.CaseSensitive {
@@ -281,6 +186,15 @@ func (r *Rule) countToken(text string, ti int) int {
 		return 0
 	}
 	return strings.Count(text, tok)
+}
+
+// countLiteral counts a pattern with no regex metacharacters without
+// running the regex engine, which allocates per match.
+func (r *Rule) countLiteral(text, search string) int {
+	if r.CaseSensitive {
+		return strings.Count(text, r.literal)
+	}
+	return strings.Count(search, r.lowerLiteral)
 }
 
 // countPattern counts regexp matches in text. Caller must ensure r.Pattern != nil.
@@ -459,10 +373,25 @@ func (r *Rule) finalizeSettings(rawPattern string) error {
 		// that supplies only tokens (no pattern) does not see stale state.
 		r.Pattern = nil
 		r.patternSource = ""
+		r.literal, r.lowerLiteral = "", ""
 		return fmt.Errorf("occurrence: tokens and pattern are mutually exclusive")
 	}
-	if r.maxSet && r.Max >= 0 && r.Min > r.Max {
-		return fmt.Errorf("occurrence: min (%d) must be <= max (%d)", r.Min, r.Max)
+	if !r.maxSet {
+		// The zero value of Max is 0, a real bound; an unset max means
+		// unbounded.
+		r.Max = -1
+	}
+	if r.Max >= 0 && r.Min > r.Max {
+		err := fmt.Errorf("occurrence: min (%d) must be <= max (%d)", r.Min, r.Max)
+		// Reset the rejected band so a reused instance does not flag
+		// every scope unit.
+		r.Min, r.Max = 0, -1
+		return err
+	}
+	r.literal, r.lowerLiteral = "", ""
+	if r.Pattern != nil && regexp.QuoteMeta(r.patternSource) == r.patternSource {
+		r.literal = r.patternSource
+		r.lowerLiteral = strings.ToLower(r.patternSource)
 	}
 	if !r.CaseSensitive && len(r.Tokens) > 0 {
 		r.lowerTokens = make([]string, len(r.Tokens))

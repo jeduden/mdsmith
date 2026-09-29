@@ -54,9 +54,19 @@ func TestWordlistFileContract_MDS060TokensViaListsFile(t *testing.T) {
 
 	diags := runCheckOnDoc(t, dir)
 
-	assert.True(t, slices.ContainsFunc(diags, func(d diagKey) bool {
-		return d.rule == "MDS060" && strings.Contains(strings.ToLower(d.message), "synergy")
-	}), "expected MDS060 diagnostic for 'synergy' sourced from wordlist; got %v", diags)
+	var got []diagKey
+	for _, d := range diags {
+		if d.rule == "MDS060" {
+			got = append(got, d)
+		}
+	}
+	// Exactly one diagnostic with the exact count: a wordlist entry
+	// unioned into tokens twice would double it or the diagnostic.
+	assert.Equal(t, []diagKey{{
+		rule:    "MDS060",
+		line:    1,
+		message: `"synergy" appears 3 time(s) in section (max 2)`,
+	}}, got)
 }
 
 // TestWordlistFileContract_ExtendsChainResolvesAndDiagnosticFires locks
