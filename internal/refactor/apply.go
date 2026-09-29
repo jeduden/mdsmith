@@ -85,19 +85,18 @@ func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 // End.Character) in place, so ApplyEdits can build the rewritten line
 // in a single left-to-right pass and detect an overlap by comparing
 // each edit's start against the previous edit's end. The End tie-break
-// matters when two edits share a Start: without it, a stable sort
-// would leave them in whatever order the caller happened to report
-// them, and a wider edit processed before a zero-width insert at the
-// same start would make the insert look like it overlaps (its start
-// equals the wider edit's end only when the insert sorts second, by
-// construction) — sorting the narrower End first removes that
-// ordering dependency. slices.SortStableFunc compares the concrete
-// Edit values directly, unlike sort.SliceStable, which drives
-// reflect.Swapper under the hood — see
-// docs/development/high-performance-go.md's "reflect in hot paths"
-// anti-pattern. Stability preserves the original order among edits
-// reported at the same (Start, End) (resolved by dedupeIdenticalEdits
-// when they also share NewText, or by the overlap check otherwise).
+// matters when two edits share a Start: it puts the narrower edit
+// first, so a zero-width insert always sorts before a wider edit that
+// starts at the same point, regardless of which order the caller
+// reported them in — without it, that pairing could sort either way
+// and the insert could come out looking like it overlaps the wider
+// edit. slices.SortStableFunc compares the concrete Edit values
+// directly, unlike sort.SliceStable, which drives reflect.Swapper
+// under the hood — see docs/development/high-performance-go.md's
+// "reflect in hot paths" anti-pattern. Stability preserves the
+// original order among edits reported at the same (Start, End)
+// (resolved by dedupeIdenticalEdits when they also share NewText, or
+// by the overlap check otherwise).
 func sortEditsByCharacterAsc(es []Edit) {
 	slices.SortStableFunc(es, func(a, b Edit) int {
 		if c := cmp.Compare(a.Range.Start.Character, b.Range.Start.Character); c != 0 {
