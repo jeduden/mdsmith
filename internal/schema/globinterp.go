@@ -7,7 +7,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 )
 
-// globMetaChars are the bytes a resolved `fmvar(...)` value must not
+// globMetaEscaper escapes the bytes a resolved `fmvar(...)` value must not
 // contribute to the surrounding doublestar glob (kind
 // `path-pattern:`). Escaping them makes the frontmatter value match
 // literally — the glob analogue of the `regex:` matcher's
@@ -35,7 +35,10 @@ import (
 //
 // doublestar always uses `/` as its separator and honours `\`
 // escapes on every platform, so this set is platform-independent.
-const globMetaChars = `\*?[{},`
+var globMetaEscaper = strings.NewReplacer(
+	`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`,
+	`{`, `\{`, `}`, `\}`, `,`, `\,`,
+)
 
 // escapeFilenameMeta makes s match itself literally inside a
 // filepath.Match pattern — the schema `filename:` surface.
@@ -52,25 +55,12 @@ const globMetaChars = `\*?[{},`
 // escape: on POSIX it is the escape character, and on Windows it can
 // never appear in a basename, so the escape is inert there.
 func escapeFilenameMeta(s string) string {
-	if !strings.ContainsAny(s, `\*?[`) {
-		return s
-	}
-	var b strings.Builder
-	b.Grow(len(s) + 8)
-	for i := 0; i < len(s); i++ {
-		switch c := s[i]; c {
-		case '*', '?', '[':
-			b.WriteByte('[')
-			b.WriteByte(c)
-			b.WriteByte(']')
-		case '\\':
-			b.WriteString(`\\`)
-		default:
-			b.WriteByte(c)
-		}
-	}
-	return b.String()
+	return filenameMetaEscaper.Replace(s)
 }
+
+var filenameMetaEscaper = strings.NewReplacer(
+	`*`, `[*]`, `?`, `[?]`, `[`, `[[]`, `\`, `\\`,
+)
 
 // globSeparator is the byte a resolved `fmvar(...)` value may not
 // contain at all. A reference occupies one path segment of the
@@ -195,21 +185,12 @@ func InterpolatedGlobHint(interpolated ...string) string {
 	return "with front matter applied: " + strings.Join(interpolated, ", ")
 }
 
-// escapeGlobMeta backslash-escapes every byte of s in globMetaChars,
-// so the string matches itself literally inside a surrounding
-// doublestar pattern. Values free of metacharacters — nearly all of
-// them — are returned unchanged with no allocation.
+// escapeGlobMeta backslash-escapes every byte of s that
+// globMetaEscaper covers, so the string matches itself literally
+// inside a surrounding doublestar pattern. A single-byte-key
+// strings.Replacer returns s itself when nothing needs escaping, so
+// values free of metacharacters — nearly all of them — cost no
+// allocation.
 func escapeGlobMeta(s string) string {
-	if !strings.ContainsAny(s, globMetaChars) {
-		return s
-	}
-	var b strings.Builder
-	b.Grow(len(s) + 4)
-	for i := 0; i < len(s); i++ {
-		if strings.IndexByte(globMetaChars, s[i]) >= 0 {
-			b.WriteByte('\\')
-		}
-		b.WriteByte(s[i])
-	}
-	return b.String()
+	return globMetaEscaper.Replace(s)
 }

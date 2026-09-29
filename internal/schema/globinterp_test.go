@@ -330,3 +330,13 @@ func TestResolveGlobPattern_EmptyValueErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "fmvar(name)")
 	assert.Contains(t, err.Error(), "empty")
 }
+
+func TestEscapeMeta_PlainValueDoesNotAllocate(t *testing.T) {
+	for name, esc := range map[string]func(string) string{
+		"glob":     escapeGlobMeta,
+		"filename": escapeFilenameMeta,
+	} {
+		allocs := testing.AllocsPerRun(100, func() { _ = esc("code-review") })
+		assert.Zero(t, allocs, name)
+	}
+}
