@@ -1,6 +1,8 @@
 package rule
 
 import (
+	"slices"
+
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
@@ -224,23 +226,11 @@ func WalkNodes(r NodeChecker, f *lint.File) []lint.Diagnostic {
 	}
 	var diags []lint.Diagnostic
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if scoped && (!entering || !nodeKindInSet(n.Kind(), kinds)) {
+		if scoped && (!entering || !slices.Contains(kinds, n.Kind())) {
 			return ast.WalkContinue, nil
 		}
 		diags = append(diags, r.CheckNode(n, entering, f)...)
 		return ast.WalkContinue, nil
 	})
 	return diags
-}
-
-// nodeKindInSet reports whether k is in kinds. The set is tiny (a
-// kind-scoped rule declares one or two kinds), so a linear scan beats a
-// map and allocates nothing — the same trade-off blockKindInSet makes.
-func nodeKindInSet(k ast.NodeKind, kinds []ast.NodeKind) bool {
-	for _, want := range kinds {
-		if k == want {
-			return true
-		}
-	}
-	return false
 }

@@ -263,21 +263,3 @@ func TestWalkBlocks_CallsBeginFileOnFileResetter(t *testing.T) {
 	assert.Equal(t, []lint.BlockKind{lint.BlockThematicBreak}, s.seenKinds,
 		"BeginFile must run before the first CheckBlock")
 }
-
-// TestNodeKindInSet pins the linear scan WalkNodes uses to apply a
-// rule's kind scope: empty set returns false, present kind returns true,
-// absent kind returns false.
-func TestNodeKindInSet(t *testing.T) {
-	t.Run("emptySet", func(t *testing.T) {
-		assert.False(t, nodeKindInSet(ast.KindHeading, nil))
-		assert.False(t, nodeKindInSet(ast.KindHeading, []ast.NodeKind{}))
-	})
-	t.Run("present", func(t *testing.T) {
-		kinds := []ast.NodeKind{ast.KindParagraph, ast.KindHeading}
-		assert.True(t, nodeKindInSet(ast.KindHeading, kinds))
-		assert.True(t, nodeKindInSet(ast.KindParagraph, kinds))
-	})
-	t.Run("absent", func(t *testing.T) {
-		assert.False(t, nodeKindInSet(ast.KindHeading, []ast.NodeKind{ast.KindParagraph}))
-	})
-}

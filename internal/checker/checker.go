@@ -76,11 +76,17 @@ func ConfigureEnabledRules(
 // configured lists — and therefore no two goroutines — ever write that
 // state through the same pointer. Stateless rules are returned unchanged,
 // so the common case allocates nothing.
+//
+// The FileResetter assertion runs first so the identity comparison only
+// ever sees a stateful rule: comparing two interface values whose dynamic
+// type is an uncomparable value-type struct (one holding a slice or map —
+// rule.CloneInstance explicitly supports value-type rules) panics at run
+// time, and every enabled rule passes through here.
 func isolateFileState(rl, cr rule.Rule) rule.Rule {
-	if cr != rl {
+	if _, ok := cr.(rule.FileResetter); !ok {
 		return cr
 	}
-	if _, ok := cr.(rule.FileResetter); !ok {
+	if cr != rl {
 		return cr
 	}
 	return rule.CloneInstance(cr)
@@ -169,9 +175,12 @@ func CheckConfiguredRules(
 	// splitting per rule would lose the cache locality the multiplex
 	// just won.
 	//
-	// On a parse-skipped File (f.AST nil), classifyRules routes every
-	// rule into blockCheckers instead, so nodeCheckers is empty and the
-	// AST walk is never entered with a nil tree.
+	// On a parse-skipped File (f.AST nil), classifySlot never produces a
+	// node-checker slot: a NodeChecker goes to blockCheckers (a
+	// BlockChecker), to its own Check slot (an InlineCapable or
+	// LinesCapable rule such as MDS005 or MDS003), or is dropped, so
+	// nodeCheckers is empty and the AST walk is never entered with a nil
+	// tree.
 	if len(nodeCheckers) > 0 {
 		runNodeCheckers(f, nodeCheckers)
 	}

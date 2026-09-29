@@ -140,7 +140,8 @@ Four implementation details required care:
    `BlockChecker`, an `InlineChecker`, or a `LinesChecker`. MDS005
    declares `InlineCapable() bool { return true }`, routing it to its
    existing `checkFromInline` path; MDS003 declares
-   `LinesCapable() bool { return true }`, routing it to `checkNilAST`.
+   `LinesCapable()` (true only with no placeholders, matching
+   `LineCapable()`), routing it to `checkNilAST`.
    MDS003 cannot be a `BlockChecker`: that contract must hold for every
    File, and a placeholder-configured MDS003 reads heading inline text
    the block spans do not carry.
@@ -155,12 +156,11 @@ Four implementation details required care:
    non-`Configurable` rule, or one with no settings, previously came
    back as the process-wide registry singleton), so each configured rule
    list owns its instances.
-3. **Fresh map, not `clear`.** `BeginFile` allocates a new
-   `seen` map rather than clearing in place, so two clones
-   shallow-copied from one already-walked instance never write through a
-   shared backing store. `CheckNode` also lazily initialises the map, so
-   a caller that skips `BeginFile` degrades instead of taking the
-   process down with a nil-map write.
+3. **Dropped map, not `clear`.** `BeginFile` sets `seen` to
+   nil rather than clearing in place, and `CheckNode` allocates a
+   fresh map on the file's first heading. Two clones shallow-copied
+   from one already-walked instance never write through a shared
+   backing store, and a heading-free file allocates nothing.
 4. **Uniform reset contract.** `BeginFile` is honoured by every dispatch
    path: `prepareNodeCheckers` (the AST walk), `runBlockCheckers` (the
    Layer 0 block spans), and both `rule.WalkNodes` and

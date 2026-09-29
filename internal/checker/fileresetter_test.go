@@ -172,7 +172,21 @@ func TestIsolateFileState(t *testing.T) {
 		rl := &htNodeRule{htPlainRule: htPlainRule{id: "TST002"}}
 		assert.Same(t, rl, isolateFileState(rl, rl))
 	})
+	t.Run("uncomparableValueRuleDoesNotPanic", func(t *testing.T) {
+		rl := htValueRule{words: []string{"a"}}
+		assert.NotPanics(t, func() { isolateFileState(rl, rl) },
+			"an identity comparison on an uncomparable value-type rule panics")
+	})
 }
+
+// htValueRule is a value-type rule holding a slice, so two interface
+// values carrying it cannot be compared with == without a run-time panic.
+type htValueRule struct{ words []string }
+
+func (htValueRule) ID() string                           { return "TST003" }
+func (htValueRule) Name() string                         { return "TST003" }
+func (htValueRule) Category() string                     { return "test" }
+func (htValueRule) Check(_ *lint.File) []lint.Diagnostic { return nil }
 
 // TestCheckRules_ConcurrentCallersDoNotShareFileState is the end-to-end
 // guard for the isolation above: two goroutines running the same rule

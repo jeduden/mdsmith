@@ -158,21 +158,41 @@ func TestEnteringKinds(t *testing.T) {
 }
 
 // TestBeginFile_ReplacesSeenMap pins two properties of the reset: the
-// previous file's heading texts are gone, and the map is a NEW allocation
-// rather than a cleared one. Clearing would let two clones shallow-copied
-// from one instance keep writing through a shared backing store — a
-// concurrent map write, which is a non-recoverable fatal, not a race the
-// detector merely reports.
+// previous file's heading texts are gone, and the old map is dropped rather
+// than cleared in place. Clearing would let two clones shallow-copied from
+// one instance keep writing through a shared backing store — a concurrent
+// map write, which is a fatal error, not a race the detector merely
+// reports. The next file's first heading allocates a fresh map.
 func TestBeginFile_ReplacesSeenMap(t *testing.T) {
-	r := &Rule{}
-	r.BeginFile(nil)
-	first := r.seen
-	first["stale"] = 1
+	f, err := lint.NewFile("t.md", []byte("# Stale\n"))
+	require.NoError(t, err)
+	heading := f.AST.FirstChild()
+	require.Equal(t, ast.KindHeading, heading.Kind())
 
-	r.BeginFile(nil)
-	require.NotNil(t, r.seen)
+	r := &Rule{}
+	r.BeginFile(f)
+	require.Nil(t, r.CheckNode(heading, true, f))
+	first := r.seen
+	require.Len(t, first, 1)
+
+	r.BeginFile(f)
 	assert.Empty(t, r.seen, "the previous file's headings must be gone")
 	assert.Len(t, first, 1, "the old map must be left untouched, not cleared in place")
+
+	require.Nil(t, r.CheckNode(heading, true, f), "the stale heading is not a duplicate in the new file")
+	require.Len(t, r.seen, 1)
+	first["other"] = 2
+	assert.Len(t, r.seen, 1, "the new file's map must not share the old backing store")
+}
+
+// TestBeginFile_HeadingFreeFileDoesNotAllocate pins that the per-file
+// reset, which the engine runs for every file, costs nothing on a file
+// with no headings.
+func TestBeginFile_HeadingFreeFileDoesNotAllocate(t *testing.T) {
+	r := &Rule{}
+	allocs := testing.AllocsPerRun(20, func() { r.BeginFile(nil) })
+	assert.Zero(t, allocs)
+	assert.Nil(t, r.seen)
 }
 
 // TestCheckNode_IgnoresLeavingVisitsAndNonHeadings pins CheckNode's two
@@ -191,10 +211,9 @@ func TestCheckNode_IgnoresLeavingVisitsAndNonHeadings(t *testing.T) {
 	assert.Empty(t, r.seen, "neither guard may record a heading")
 }
 
-// TestCheckNode_WithoutBeginFileDoesNotPanic pins the defensive lazy
-// initialisation of the seen map. verdict writes into the map, and a write
-// to a nil map is a non-recoverable panic that would kill the CLI or LSP
-// process, so a caller that skips BeginFile must degrade to "no headings
+// TestCheckNode_WithoutBeginFileDoesNotPanic pins the lazy initialisation
+// of the seen map. verdict writes into the map, and a write to a nil map
+// panics, so a caller that skips BeginFile must degrade to "no headings
 // seen yet" instead.
 func TestCheckNode_WithoutBeginFileDoesNotPanic(t *testing.T) {
 	f, err := lint.NewFile("t.md", []byte("# Same\n\ntext\n\n# Same\n"))
