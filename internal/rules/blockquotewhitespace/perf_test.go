@@ -33,9 +33,12 @@ func noBlockquoteDoc(sections int) string {
 // ns/op is too environment-sensitive for a hard b.Fatalf budget the way
 // the allocs-based gates elsewhere in this codebase are. Run it manually
 // with `-bench` and compare via benchstat before/after a change to
-// checkBlankBetween's call site. Measured locally on a 200-section
-// no-blockquote fixture: ~7500 ns/op before the gate landed, ~600 ns/op
-// after — see the commit that introduced this benchmark.
+// checkBlankBetween's call site. On this 200-section no-blockquote
+// fixture the gate cuts Check's time by about 10x: ~7,500 → ~600 ns/op
+// when it landed, ~15,000 → ~1,500 ns/op on a loaded 4-core container;
+// absolute figures vary by machine. The sentinel test
+// TestCheckBlankBetween_GateSkipsWalkWithoutMarkerLine below is what
+// fails in CI if the gate is removed.
 func BenchmarkCheckBlankBetween_NoBlockquote(b *testing.B) {
 	src := []byte(noBlockquoteDoc(200))
 	f, err := lint.NewFile("prose.md", src)
@@ -129,4 +132,26 @@ func TestCheckBlankBetween_GateSeesListNestedBlockquote(t *testing.T) {
 			assert.Equal(t, "blank line between blockquotes", diags[0].Message)
 		})
 	}
+}
+
+// TestCheckBlankBetween_GateSkipsWalkWithoutMarkerLine is the sentinel
+// that fails if the sawBlockquote gate is removed. On a consistent File
+// the gate's only effect is CPU time, which CI cannot assert on, so
+// this test builds an inconsistent one: its AST holds two sibling
+// blockquotes split by a blank line (parsed from "> a\n\n> b\n"), but
+// its Source and Lines are the same bytes with each '>' blanked out,
+// so no line carries a blockquote marker. Byte offsets still line up,
+// so the AST walk would resolve the gap and report MD028; the gate
+// must skip that walk because the MD027 scan saw no '>' line. The gate
+// sits ahead of the AST/nil-AST dispatch, so pinning it on the AST
+// path covers both.
+func TestCheckBlankBetween_GateSkipsWalkWithoutMarkerLine(t *testing.T) {
+	quoted, err := lint.NewFile("quoted.md", []byte("> a\n\n> b\n"))
+	require.NoError(t, err)
+	f, err := lint.NewFile("gate.md", []byte("  a\n\n  b\n"))
+	require.NoError(t, err)
+	f.AST = quoted.AST
+
+	assert.Empty(t, (&Rule{}).Check(f),
+		"MD028 walk ran on a file with no '>' marker line: the sawBlockquote gate is gone")
 }
