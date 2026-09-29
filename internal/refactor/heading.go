@@ -805,6 +805,20 @@ func refDefParseTarget(dest string) (refDefDestTarget, bool) {
 	return refDefDestTarget{path: u.Path, fragment: u.Fragment}, true
 }
 
+// ComparePositionsBottomUp orders two positions in reverse document
+// order — later line first, then later character first within a
+// shared line — the order a consumer applying edits sequentially must
+// walk so an earlier (later-positioned) edit's insertion never shifts
+// the offset a later edit relies on. Exported so internal/lsp's
+// sortTextEditsBottomUp, which sorts its own (structurally identical)
+// Position type, can share this comparator instead of duplicating it.
+func ComparePositionsBottomUp(a, b Position) int {
+	return cmp.Or(
+		cmp.Compare(b.Line, a.Line),
+		cmp.Compare(b.Character, a.Character),
+	)
+}
+
 // stableSortEdits sorts each key's Edit slice in reverse document
 // order so a consumer applying edits sequentially ends up with the
 // right buffer state: earlier (later-positioned) edits don't shift
@@ -813,10 +827,7 @@ func refDefParseTarget(dest string) (refDefDestTarget, bool) {
 func stableSortEdits(changes map[string][]Edit) {
 	for _, edits := range changes {
 		slices.SortStableFunc(edits, func(a, b Edit) int {
-			return cmp.Or(
-				cmp.Compare(b.Range.Start.Line, a.Range.Start.Line),
-				cmp.Compare(b.Range.Start.Character, a.Range.Start.Character),
-			)
+			return ComparePositionsBottomUp(a.Range.Start, b.Range.Start)
 		})
 	}
 }

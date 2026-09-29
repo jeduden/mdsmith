@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"cmp"
 	"encoding/json"
 	"errors"
 	"slices"
@@ -554,13 +553,15 @@ func toTextEdits(edits []refactor.Edit) []textEdit {
 // overlap; it doesn't pin application order, and naive clients walk
 // the array top-to-bottom. refactor.Heading already sorts its result
 // this way internally; link-ref edits are sorted here so both paths
-// emit the same bottom-up order.
+// emit the same bottom-up order — via the same comparator:
+// refactor.ComparePositionsBottomUp, shared instead of duplicated. The
+// conversion to refactor.Position is a zero-cost reinterpretation:
+// both types have identical fields (Go ignores struct tags for
+// convertibility), so this isn't a copy of anything but the two ints.
 func sortTextEditsBottomUp(edits []textEdit) {
 	slices.SortStableFunc(edits, func(a, b textEdit) int {
-		return cmp.Or(
-			cmp.Compare(b.Range.Start.Line, a.Range.Start.Line),
-			cmp.Compare(b.Range.Start.Character, a.Range.Start.Character),
-		)
+		return refactor.ComparePositionsBottomUp(
+			refactor.Position(a.Range.Start), refactor.Position(b.Range.Start))
 	})
 }
 
