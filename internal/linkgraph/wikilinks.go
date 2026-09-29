@@ -12,6 +12,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdpath"
+	"github.com/jeduden/mdsmith/internal/pathutil"
 )
 
 // WikiLink is one parsed Obsidian-style wikilink occurrence.
@@ -251,15 +252,12 @@ func (idx *WikilinkIndex) Resolve(target string) (string, bool) {
 		return "", false
 	}
 	target = strings.TrimSpace(target)
-	if target == "" || isDriveOrUNC(target) {
+	if target == "" || pathutil.IsAbsOrDriveOrUNC(target) {
 		return "", false
 	}
 	target = strings.ReplaceAll(target, `\`, `/`)
 	cleaned := path.Clean(target)
-	if cleaned == "." || strings.HasPrefix(cleaned, "/") {
-		return "", false
-	}
-	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "", false
 	}
 	wantName, wantStem, stemMode := wikilinkSearchKey(target)
@@ -326,12 +324,11 @@ func ResolveWikiLink(root fs.FS, _ string, target string) (string, bool) {
 // absolute target also returns ok=false.
 func WikilinkStem(target string) (string, bool) {
 	target = strings.TrimSpace(strings.ReplaceAll(target, `\`, `/`))
-	if target == "" || isDriveOrUNC(target) {
+	if target == "" || pathutil.IsAbsOrDriveOrUNC(target) {
 		return "", false
 	}
 	cleaned := path.Clean(target)
-	if cleaned == "." || cleaned == ".." ||
-		strings.HasPrefix(cleaned, "/") || strings.HasPrefix(cleaned, "../") {
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "", false
 	}
 	_, stem, stemMode := wikilinkSearchKey(target)

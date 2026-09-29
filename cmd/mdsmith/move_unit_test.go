@@ -32,6 +32,21 @@ func TestRunMove_ArgValidation(t *testing.T) {
 	// Not workspace-relative.
 	assert.Equal(t, 2, runMove([]string{"a.md", "/abs/b.md"}))
 	assert.Equal(t, 2, runMove([]string{"../evil.md", "b.md"}))
+	assert.Equal(t, 2, runMove([]string{`sub\..\..\evil.md`, "b.md"}))
+}
+
+// TestRunMove_BackslashDestination pins that a backslash destination
+// is moved to the same forward-slash path it was validated as, on
+// every host, rather than to a file literally named `docs\a.md`.
+func TestRunMove_BackslashDestination(t *testing.T) {
+	dir := renameWorkspace(t)
+	var code int
+	out := captureStdout(func() {
+		code = runMove([]string{"a.md", `docs\a.md`})
+	})
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "moved a.md -> docs/a.md")
+	assert.FileExists(t, filepath.Join(dir, "docs", "a.md"))
 }
 
 func TestRunMove_Success(t *testing.T) {

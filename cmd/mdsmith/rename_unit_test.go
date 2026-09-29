@@ -52,6 +52,25 @@ func TestRunRename_FlagAndArgValidation(t *testing.T) {
 	assert.Equal(t, 2, runRename([]string{"--as", "heading", "a.md", "Old"}))
 	// Not workspace-relative.
 	assert.Equal(t, 2, runRename([]string{"--as", "heading", "/abs/a.md", "Old", "New"}))
+	assert.Equal(t, 2, runRename([]string{"--as", "heading", `sub\..\..\a.md`, "Old", "New"}))
+}
+
+// TestRunRename_BackslashEscape_LeavesOutsideFileUntouched pins that a
+// target climbing out of the workspace with `\` separators is rejected
+// before any read or write. Resolve reads `\` as a separator, so on a
+// POSIX host a validator that did not would let `sub\..\..\a.md` edit
+// the a.md that sits next to the workspace root.
+func TestRunRename_BackslashEscape_LeavesOutsideFileUntouched(t *testing.T) {
+	dir := renameWorkspace(t)
+	outside := filepath.Join(filepath.Dir(dir), "a.md")
+	const body = "# Setup\n\nOutside the workspace.\n"
+	require.NoError(t, os.WriteFile(outside, []byte(body), 0o644))
+
+	code := runRename([]string{"--as", "heading", `sub\..\..\a.md`, "Setup", "Hacked"})
+	assert.Equal(t, 2, code)
+	got, err := os.ReadFile(outside)
+	require.NoError(t, err)
+	assert.Equal(t, body, string(got))
 }
 
 func TestRunRename_HeadingSuccess(t *testing.T) {
