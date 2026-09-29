@@ -125,13 +125,19 @@ type fileMoveReport struct {
 // every keyed file's rewritten bytes in memory first — running
 // refactor.ApplyEdits, but writing nothing — so a conflict or overlap
 // ApplyEdits catches in a later file aborts the whole operation before
-// an earlier file is ever touched on disk. Only once every file
-// resolves cleanly does it write them and then run any FileOp (a git
-// mv or plain rename), text edits before the move so the relocated
-// file carries its rewritten body. dryRun still runs the resolve phase
-// — so a dry run reports the same conflict a real run would hit — but
-// skips the write phase and reports what it would do. Returns 0 on
-// success, 2 on a resolve, write, or move failure.
+// an earlier file is ever touched on disk. That covers the case that
+// matters in practice: a bad Plan. It is not full transactional
+// rollback — once every file has resolved cleanly and the write phase
+// starts, a later file's write failing (disk full, permissions changed
+// mid-run) still leaves an earlier file's rewrite on disk with the
+// move never run, the same as before this function resolved edits
+// up front. Only once every file resolves cleanly does it write them
+// and then run any FileOp (a git mv or plain rename), text edits
+// before the move so the relocated file carries its rewritten body.
+// dryRun still runs the resolve phase — so a dry run reports the same
+// conflict a real run would hit — but skips the write phase and
+// reports what it would do. Returns 0 on success, 2 on a resolve,
+// write, or move failure.
 func applyPlan(w io.Writer, ws cliRenameWorkspace, plan refactor.Plan, format string, dryRun bool) int {
 	rels := make([]string, 0, len(plan.Edits))
 	for rel, edits := range plan.Edits {

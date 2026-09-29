@@ -153,7 +153,9 @@ func TestApplyPlan_PreflightAbortsBeforeWritingEdits(t *testing.T) {
 // file's edits through refactor.ApplyEdits in memory before writing
 // any of them, so a conflict ApplyEdits catches in one file (b.md,
 // here) does not leave an earlier file (a.md, sorted first) rewritten
-// on disk with the move never run.
+// on disk with the move never run. b.md's two edits genuinely overlap
+// (not merely an out-of-range line) so this test still fails if the
+// overlap check itself regresses, not just the line-range check.
 func TestApplyPlan_ConflictInOneFileAbortsBeforeWritingAny(t *testing.T) {
 	dir := renameWorkspace(t)
 	ws, code := buildWorkspace(renameOptions{})
@@ -169,17 +171,28 @@ func TestApplyPlan_ConflictInOneFileAbortsBeforeWritingAny(t *testing.T) {
 			},
 			NewText: "X",
 		}},
-		// Out-of-range line: ApplyEdits rejects this during resolve.
-		"b.md": {{
-			Range:   refactor.Range{Start: refactor.Position{Line: 99}, End: refactor.Position{Line: 99}},
-			NewText: "x",
-		}},
+		"b.md": {
+			{
+				Range: refactor.Range{
+					Start: refactor.Position{Line: 0, Character: 0},
+					End:   refactor.Position{Line: 0, Character: 10},
+				},
+				NewText: "x",
+			},
+			{
+				Range: refactor.Range{
+					Start: refactor.Position{Line: 0, Character: 5},
+					End:   refactor.Position{Line: 0, Character: 15},
+				},
+				NewText: "y",
+			},
+		},
 	}}
 	assert.Equal(t, 2, applyPlan(io.Discard, ws, plan, "text", false))
 
 	afterA, err := os.ReadFile(filepath.Join(dir, "a.md"))
 	require.NoError(t, err)
-	assert.Equal(t, beforeA, afterA, "a.md must stay untouched when b.md's edit fails to resolve")
+	assert.Equal(t, beforeA, afterA, "a.md must stay untouched when b.md's edits fail to resolve")
 }
 
 // TestApplyPlan_DryRunStillCatchesApplyEditsFailure locks the other
