@@ -80,6 +80,23 @@ func TestResolveGlobPattern_EscapesCommaInsideBraceAlternative(t *testing.T) {
 		"the `,` in the frontmatter value must not split the alternative")
 }
 
+// A `}` in the value must not close a surrounding brace alternative
+// early: unescaped, `docs/{a}b,other}.md` would reject the literal
+// `docs/a}b.md` (syntax error) and accept `docs/ab,other}.md`.
+func TestResolveGlobPattern_EscapesClosingBraceInsideBraceAlternative(t *testing.T) {
+	got, err := ResolveGlobPattern(
+		`docs/{\#(fmvar(name)),other}.md`,
+		map[string]any{"name": "a}b"})
+	require.NoError(t, err)
+	ok, err := doublestar.Match(got, "docs/a}b.md")
+	require.NoError(t, err)
+	assert.True(t, ok, "the literal value must still match")
+	ok, err = doublestar.Match(got, "docs/ab,other}.md")
+	require.NoError(t, err)
+	assert.False(t, ok,
+		"the `}` in the frontmatter value must not close the alternative")
+}
+
 // A `/` cannot be escaped into a literal: doublestar reads `\/` as
 // the separator all the same, so a value carrying one would silently
 // span directories and satisfy a single-segment reference. Report it
@@ -259,6 +276,25 @@ func TestResolveFilenamePatterns_EscapesFilepathMatchMetacharacters(t *testing.T
 	ok, err = filepath.Match(resolved[0], "axxb.md")
 	require.NoError(t, err)
 	assert.False(t, ok, "the `*` in the frontmatter value must not act as a wildcard")
+}
+
+// filepath.Match ignores `\` escapes on Windows, so the `filename:`
+// surface must quote `[`, `*`, and `?` with a one-byte character
+// class instead. The resolved pattern then carries no backslash and
+// means the same thing on every platform.
+func TestResolveFilenamePatterns_QuotesMetaWithoutBackslash(t *testing.T) {
+	resolved, _, unresolved := resolveFilenamePatterns(
+		[]string{`\#(fmvar(id))-*.md`}, map[string]any{"id": "[draft]*?"})
+	require.NoError(t, unresolved)
+	require.Len(t, resolved, 1)
+	assert.NotContains(t, resolved[0], `\`,
+		"a backslash escape is inert on Windows")
+	ok, err := filepath.Match(resolved[0], "[draft]*?-1.md")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	ok, err = filepath.Match(resolved[0], "d-1.md")
+	require.NoError(t, err)
+	assert.False(t, ok, "the `[` in the value must not open a class")
 }
 
 // An explicitly empty front-matter value is the degenerate

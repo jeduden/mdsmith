@@ -135,9 +135,10 @@ func resolveFilenamePatterns(
 			out = append(out, p)
 			continue
 		}
-		// filenameMetaChars, not globMetaChars: MatchFilename below
-		// runs filepath.Match, which knows no brace alternatives.
-		r, rErr := resolveGlobPattern(p, fm, filenameMetaChars)
+		// escapeFilenameMeta, not escapeGlobMeta: MatchFilename below
+		// runs filepath.Match, which knows no brace alternatives and
+		// ignores `\` escapes on Windows.
+		r, rErr := resolveGlobPattern(p, fm, escapeFilenameMeta)
 		if rErr != nil {
 			if unresolved == nil {
 				unresolved = rErr
