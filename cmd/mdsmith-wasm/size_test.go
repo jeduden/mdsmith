@@ -22,19 +22,20 @@ const mib = 1024 * 1024
 // GUARDS set just above the measured size, so an accidental dependency
 // bloat is caught in CI.
 //
-// Measured (Go 1.25, stripped): ~13.1 MiB raw / ~4.0 MiB gzipped at
-// BestSpeed, the pessimistic level this test uses (DefaultCompression
-// runs smaller — see engine-api.md for that figure). Cumulative
-// rule-engine growth on main wore the previous 4 MiB gzip ceiling down
-// to ~12 KiB of headroom (4,181,920 measured bytes against a
-// 4,194,304-byte ceiling): tight enough that an unrelated small change
-// could trip it on ordinary linked-code growth, not a real regression.
-// Widened to 4.25 MiB — a real reduction in how much bloat this guard
-// catches, accepted deliberately to restore working headroom rather
-// than trim otherwise-fine code to fit an exhausted margin — leaving
-// ~260 KiB above the measurement that prompted the change. The raw
-// ceiling has real headroom by comparison: ~13.1 MiB measured against
-// the 14 MiB limit, about 0.9 MiB to spare.
+// Measured (Go 1.25, stripped) when the gzip ceiling was last raised:
+// 13,739,127 bytes raw (~13.1 MiB) / 4,189,657 bytes (~4.0 MiB)
+// gzipped at BestSpeed, the pessimistic level this test uses
+// (DefaultCompression runs smaller — see engine-api.md for that
+// figure). Cumulative rule-engine growth on main had worn the previous
+// 4 MiB (4,194,304-byte) gzip ceiling down to under 5 KiB of headroom:
+// tight enough that an unrelated small change could trip it on
+// ordinary linked-code growth, not a real regression. Widened to
+// 4.25 MiB — a real reduction in how much bloat this guard catches,
+// accepted deliberately to restore working headroom rather than trim
+// otherwise-fine code to fit an exhausted margin — leaving ~260 KiB
+// above that measurement. The raw ceiling has real headroom by
+// comparison: ~13.1 MiB measured against the 14 MiB limit, about
+// 0.9 MiB to spare.
 const (
 	maxWASMRawBytes  = 14 * mib      // 14 MiB (< 18 MB plan-215 budget)
 	maxWASMGzipBytes = 4*mib + mib/4 // 4.25 MiB
