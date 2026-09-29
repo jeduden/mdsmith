@@ -18,6 +18,16 @@ func TestNormalizeWorkspacePath(t *testing.T) {
 	assert.Equal(t, "docs/api.md", normalizeWorkspacePath("./docs/api.md"))
 }
 
+func TestIsWorkspaceRelativeTarget(t *testing.T) {
+	assert.True(t, isWorkspaceRelativeTarget("docs/api.md"))
+	assert.False(t, isWorkspaceRelativeTarget("/etc/passwd"))
+	assert.False(t, isWorkspaceRelativeTarget("C:/Windows/system.md"))
+	assert.False(t, isWorkspaceRelativeTarget(`C:\Windows\system.md`))
+	assert.False(t, isWorkspaceRelativeTarget("//server/share/file.md"))
+	assert.False(t, isWorkspaceRelativeTarget(`\\server\share\file.md`))
+	assert.False(t, isWorkspaceRelativeTarget("../escape.md"))
+}
+
 func TestEmitBacklinks_Text(t *testing.T) {
 	var buf bytes.Buffer
 	records := []backlinks.Record{

@@ -19,8 +19,8 @@ resolved.
 
 ## Audit 2026-09-13 (range: 0ca0d2f..b48e90c)
 
-~140 files touched, centered on the move/rename engine
-and its CLI/LSP/WASM surfaces.
+72 commits, 129 files touched, centered on the
+move/rename engine and its CLI/LSP/WASM surfaces.
 
 No rule-to-rule imports. `cmd/mdsmith/main.go` (566) and
 `internal/lsp/server.go` (558) stay under the 1 000-line
@@ -36,34 +36,31 @@ None.
 
 ### tax (2026-09-13)
 
-- `isAbsOrDriveOrUNC` duplicated byte-for-byte in
-  `cmd/mdsmith/backlinks.go` and
-  `internal/backlinks/backlinks.go`
+- `isAbsOrDriveOrUNC` triplicated across
+  `cmd/mdsmith`, `internal/backlinks`, and `internal/lsp`
   ([cross-system.md][cross]). Highest-priority finding;
-  fixed directly: exported `backlinks.IsAbsOrDriveOrUNC`,
-  dropped the CLI's private copy.
-- `cliRenameWorkspace`/`sessionRefactorWorkspace`
-  duplicate the same `internal/refactor.Workspace`
-  adapter — [plan/2609131911][2609131911].
+  fixed: consolidated the `cmd/mdsmith`/`internal/backlinks`
+  copies into a new `internal/pathutil` package, closing a
+  backslash-UNC gap along the way and adding a covering
+  test; `internal/lsp`'s copy handles a different
+  precondition (raw RPC paths) and stays separate.
+  Supersedes the 2026-08-30 entry below.
+- `cliRenameWorkspace`/`sessionRefactorWorkspace` share
+  four identical `Workspace` pass-throughs (`Resolve`
+  differs by design) — [plan/2609131911][2609131911].
 - `internal/refactor/move.go`'s `recomputeToken`,
   `encodePathToken`, `pathEdit`, `countFilesWithStem`
   lack tests by name ([tests.md][tests]) —
   [plan/2609131913][2609131913].
-- `wasm-runtime.test.ts` skips the required
-  `describe(...)` wrapper ([audit-checklist.md][audit])
-  — [plan/2609131912][2609131912].
 
 ### nice-to-have (2026-09-13)
 
-- `cmd/mdsmith` move/rename helpers
-  (`applyEditsToFile`, `looksLikePath`, `firstPathish`,
-  `resolveWriteMode`) lack test symbols; folded into
-  [plan/2609131913][2609131913].
+- Four `cmd/mdsmith` move/rename helpers lack test
+  symbols but are already covered indirectly; optional,
+  not required — [plan/2609131913][2609131913].
 
-[audit]: architecture/audit-checklist.md
 [2609131911]: ../../plan/2609131911_arch-fix-refactor-workspace-duplication.md
-[2609131912]: ../../plan/2609131912_arch-fix-wasm-test-describe.md
-[2609131913]: ../../plan/2609131913_arch-fix-refactor-move-unit-tests.md
+[2609131913]: ../../plan/2609131913_arch-fix-move-helper-unit-tests.md
 
 ## Audit 2026-08-30 (range: b706d76..0ca0d2f)
 
@@ -137,7 +134,10 @@ None.
   `go build ./...`, `go test ./...`, and
   `go tool golangci-lint run` are green; behavior is
   unchanged (existing unit and e2e tests moved/kept
-  untouched).
+  untouched). Superseded 2026-09-13: `isAbsOrDriveOrUNC`
+  moved to a new `internal/pathutil` package instead of
+  staying private in each of `cmd/mdsmith` and
+  `internal/backlinks` — see that entry's tax section.
 - `internal/mdtext/wordfreq.go`'s `WordFrequencyInto` and
   three helpers in `internal/directivefiles/directivefiles.go`
   (`openingFence`, `isClosingFence`, `isIndentedCodeBlock`)

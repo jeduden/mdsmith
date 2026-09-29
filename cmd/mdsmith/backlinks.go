@@ -14,6 +14,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/backlinks"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
+	"github.com/jeduden/mdsmith/internal/pathutil"
 )
 
 // backlinksOptions bundles the parsed CLI flags for `backlinks`.
@@ -221,9 +222,15 @@ func workspaceRelativePath(p, rootDir string) string {
 // workspace-relative path. Absolute paths (POSIX / Windows / UNC)
 // and parent-traversal entries are rejected so the caller can fail
 // loudly instead of silently producing an empty result set.
+//
+// target is explicitly de-backslashed rather than only passed through
+// filepath.ToSlash: that call is a no-op for backslashes on a
+// non-Windows host, which would otherwise let a raw `\\host\share`
+// UNC path slip past pathutil.IsAbsOrDriveOrUNC's forward-slash-only
+// UNC check when mdsmith runs on Linux or macOS.
 func isWorkspaceRelativeTarget(target string) bool {
-	t := filepath.ToSlash(target)
-	if backlinks.IsAbsOrDriveOrUNC(t) {
+	t := strings.ReplaceAll(filepath.ToSlash(target), `\`, "/")
+	if pathutil.IsAbsOrDriveOrUNC(t) {
 		return false
 	}
 	cleaned := path.Clean(t)

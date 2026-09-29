@@ -6,61 +6,69 @@ status: "🔲"
 model: sonnet
 summary: >-
   cmd/mdsmith/rename.go's cliRenameWorkspace and
-  pkg/mdsmith/refactor.go's sessionRefactorWorkspace each
-  hand-write the same internal/refactor.Workspace seam over a
-  transient internal/index.Index. Flagged by the 2026-09-13
-  audit as tax.
+  pkg/mdsmith/refactor.go's sessionRefactorWorkspace both
+  implement internal/refactor.Workspace over a transient
+  internal/index.Index; their Incoming*Edges/Files
+  pass-throughs are identical, though Resolve is not. Flagged
+  by the 2026-09-13 audit as tax.
 ---
-# Share the refactor Workspace adapter between CLI and Session
+# Share the identical Workspace pass-through methods
 
 ## Goal
 
-Replace the two independent `internal/refactor.Workspace`
-implementations with one shared constructor.
+Replace the duplicated `IncomingAnchorEdges`,
+`IncomingPathEdges`, `IncomingWikilinkEdges`, and `Files`
+pass-throughs in `cliRenameWorkspace` and
+`sessionRefactorWorkspace` with one shared implementation.
 
-Both `cmd/mdsmith` and `pkg/mdsmith` call it, so the
-adapter shape changes in one place, not two.
+`Resolve` stays local to each type: they read from genuinely
+different sources.
 
 ## Background
 
 The 2026-09-13 audit (see [the audit log][audit-log]) found:
 
 - [cmd/mdsmith/rename.go][cli-rename]'s `cliRenameWorkspace`
-  builds a transient [internal/index.Index][index] over
-  discovered files, then implements `Resolve` by reading
-  through it.
-- [pkg/mdsmith/refactor.go][pkg-refactor]'s
-  `sessionRefactorWorkspace` does the same thing for the
-  `Session`-backed engine API.
+  and [pkg/mdsmith/refactor.go][pkg-refactor]'s
+  `sessionRefactorWorkspace` both wrap an
+  [internal/index.Index][index] to implement
+  `internal/refactor.Workspace`.
+- Their `IncomingAnchorEdges`, `IncomingPathEdges`,
+  `IncomingWikilinkEdges`, and `Files` methods are
+  byte-for-byte identical: each just forwards to the
+  matching `Index` method.
+- Their `Resolve` methods are not duplicates — they read from
+  genuinely different sources. `cliRenameWorkspace.Resolve`
+  reads from disk via `bytelimit.ReadFileLimited`, keyed by a
+  workspace-relative path, honoring `rootDir` and `maxBytes`.
+  `sessionRefactorWorkspace.Resolve` reads through the
+  session's overlay-aware `Workspace.ReadFile`, keyed by a
+  URI, substituting `overlaySource` for the file under edit.
+  An initial version of this plan asked to unify `Resolve`
+  too; review caught that this conflicted with the plan's own
+  "no behavior change" criterion, since the two `Resolve`
+  behaviors are not interchangeable. Scope corrected: this
+  plan covers only the four identical pass-throughs.
 - [go.md][go]'s DIP section names `internal/index` as "a peer
   support package both entry points may import" — so both
-  call sites importing it is not a layering violation. The
-  duplication is in the adapter code itself: the same
-  "build an index from a resolved file list, then satisfy
-  `Workspace.Resolve` by reading through it" logic is
-  written twice.
-- The two implementations aren't identical: the CLI variant
-  additionally needs gitignore-aware `discovery.Discover`
-  plus `git mv`/`FileOp.Execute` (see
-  [plan/2607040822][2607040822]), while the `Session`
-  variant is read-only. Any shared helper must keep that
-  difference — this is a "factor out the common core, keep
-  the divergent parts local" move, not a straight merge.
+  types importing it is not itself a layering violation; the
+  finding is the duplicated pass-through code, not the shared
+  import.
 
 ## Tasks
 
 1. Read [cliRenameWorkspace][cli-rename] and
    `sessionRefactorWorkspace` in [pkg/mdsmith/refactor.go][pkg-refactor]
-   side by side; list exactly which lines are identical
-   (index construction + `Resolve`) versus which differ
-   (discovery, write-back).
-2. Design a shared constructor — e.g.
-   `internal/index.NewWorkspace(files []string) internal/refactor.Workspace`,
-   or a small helper type in `internal/refactor` itself —
-   that owns the identical part.
-3. Update `cliRenameWorkspace` and `sessionRefactorWorkspace`
-   to build on the shared constructor, keeping their
-   divergent discovery/write-back logic local.
+   side by side to confirm the four pass-through methods stay
+   byte-identical and `Resolve` stays the only divergent one.
+2. Add a small embeddable helper — e.g. a type in
+   `internal/index` that wraps an `*index.Index` and provides
+   `IncomingAnchorEdges`, `IncomingPathEdges`,
+   `IncomingWikilinkEdges`, and `Files` — that both
+   `cliRenameWorkspace` and `sessionRefactorWorkspace` embed.
+3. Update both types to embed the helper instead of
+   hand-writing the four pass-throughs; keep each type's own
+   `Resolve` method unchanged.
 4. `go build ./...` passes.
 5. `go test ./...` passes, including
    [cmd/mdsmith/rename_unit_test.go][cli-rename-test] and
@@ -70,9 +78,12 @@ The 2026-09-13 audit (see [the audit log][audit-log]) found:
 
 ## Acceptance Criteria
 
-- [ ] Only one place constructs an `internal/index.Index`-backed
-      `internal/refactor.Workspace` from a file list; both the
-      CLI and `pkg/mdsmith.Session` call it.
+- [ ] `IncomingAnchorEdges`, `IncomingPathEdges`,
+      `IncomingWikilinkEdges`, and `Files` are implemented
+      once and shared by both `cliRenameWorkspace` and
+      `sessionRefactorWorkspace`.
+- [ ] `Resolve` stays a distinct method on each type; neither
+      is asked to read the other's source.
 - [ ] No behavior change: `mdsmith rename` and
       `Session.Rename`/`Session.Move` produce identical results
       before and after.
@@ -86,4 +97,3 @@ The 2026-09-13 audit (see [the audit log][audit-log]) found:
 [pkg-refactor]: ../pkg/mdsmith/refactor.go
 [pkg-refactor-test]: ../pkg/mdsmith/refactor_test.go
 [index]: ../internal/index/index.go
-[2607040822]: 2607040822_refactor-move-rename-redesign.md

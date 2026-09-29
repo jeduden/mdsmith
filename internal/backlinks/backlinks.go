@@ -17,6 +17,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/globpath"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/pathutil"
 )
 
 // Record is one incoming link to the queried target.
@@ -312,7 +313,7 @@ func relPath(p, rootDir string) string {
 func resolveLinkTarget(srcRel, linkPath string) string {
 	srcRel = strings.ReplaceAll(srcRel, `\`, `/`)
 	linkPath = strings.ReplaceAll(linkPath, `\`, `/`)
-	if IsAbsOrDriveOrUNC(srcRel) || IsAbsOrDriveOrUNC(linkPath) {
+	if pathutil.IsAbsOrDriveOrUNC(srcRel) || pathutil.IsAbsOrDriveOrUNC(linkPath) {
 		return ""
 	}
 	dir := path.Dir(srcRel)
@@ -321,24 +322,6 @@ func resolveLinkTarget(srcRel, linkPath string) string {
 		return ""
 	}
 	return cleaned
-}
-
-// IsAbsOrDriveOrUNC reports whether p is absolute under any of the
-// schemes mdsmith targets: POSIX-style leading `/`, Windows drive
-// letters like `C:/`, or UNC prefixes like `//host`. `path.IsAbs`
-// alone misses the Windows forms because the path package is Unix-only.
-// Exported so cmd/mdsmith can reuse it instead of keeping its own copy.
-func IsAbsOrDriveOrUNC(p string) bool {
-	if path.IsAbs(p) {
-		return true
-	}
-	if len(p) >= 2 && p[1] == ':' {
-		c := p[0]
-		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
-			return true
-		}
-	}
-	return strings.HasPrefix(p, "//")
 }
 
 // sourceMatches reports whether src should be considered, given the

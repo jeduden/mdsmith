@@ -272,6 +272,5 @@ footer: |
 | 2608301919 | 🔲     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
 | 2609032052 | 🔲     | opus   | [Resolve config from `pyproject.toml` under `[tool.mdsmith]`](plan/2609032052_pyproject-config-source.md)                                               |
 | 2609131911 | 🔲     | sonnet | [Share the refactor Workspace adapter between CLI and Session](plan/2609131911_arch-fix-refactor-workspace-duplication.md)                              |
-| 2609131912 | 🔲     | haiku  | [Wrap wasm-runtime.test.ts cases in describe blocks](plan/2609131912_arch-fix-wasm-test-describe.md)                                                    |
-| 2609131913 | 🔲     | sonnet | [Add unit tests for untested move/rename helper functions](plan/2609131913_arch-fix-refactor-move-unit-tests.md)                                        |
+| 2609131913 | 🔲     | sonnet | [Add unit tests for untested move.go helper functions](plan/2609131913_arch-fix-move-helper-unit-tests.md)                                              |
 <?/catalog?>

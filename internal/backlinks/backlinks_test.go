@@ -42,14 +42,6 @@ func TestResolveLinkTarget(t *testing.T) {
 	}
 }
 
-func TestIsAbsOrDriveOrUNC(t *testing.T) {
-	assert.True(t, IsAbsOrDriveOrUNC("/etc/passwd"))
-	assert.True(t, IsAbsOrDriveOrUNC("C:/Windows"))
-	assert.True(t, IsAbsOrDriveOrUNC("//server/share"))
-	assert.False(t, IsAbsOrDriveOrUNC("docs/api.md"))
-	assert.False(t, IsAbsOrDriveOrUNC(""))
-}
-
 func TestRelPath_EmptyRootDir(t *testing.T) {
 	// When rootDir is empty, the helper just strips a leading "./"
 	// and forwards the path through.
