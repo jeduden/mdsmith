@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -96,4 +98,60 @@ func buildBadDoc(lines int) string {
 			"runs past the configured maximum line length to trip the rule.   \n\n", i)
 	}
 	return b.String()
+}
+
+// TestRunner_PooledSourceReuseKeepsSourceLines guards the snippet text
+// the CLI prints under each diagnostic. SourceLines start as zero-copy
+// views of the file's pooled source buffer, so lintFile must copy them
+// out before it recycles the buffer. Each file's text is distinct, so a
+// view into a recycled buffer would show another file's bytes.
+//
+// The serial case pins one P and switches the GC off while it runs, so
+// sync.Pool hands the same buffer back for every file and the check does
+// not depend on the pool happening to keep an object.
+func TestRunner_PooledSourceReuseKeepsSourceLines(t *testing.T) {
+	dir := t.TempDir()
+	lines := map[string][]string{}
+	paths := make([]string, 0, 20)
+	for i := 0; i < 20; i++ {
+		var b strings.Builder
+		b.WriteString("# Document   \n\n")
+		for j := 0; j < 3+i%4; j++ {
+			fmt.Fprintf(&b, "File %02d line %d has trailing spaces and a deliberately "+
+				"long tail that runs past the maximum line length.   \n\n", i, j)
+		}
+		p := filepath.Join(dir, fmt.Sprintf("doc%02d.md", i))
+		require.NoError(t, os.WriteFile(p, []byte(b.String()), 0o644))
+		lines[p] = strings.Split(b.String(), "\n")
+		paths = append(paths, p)
+	}
+
+	for _, concurrency := range []int{1, 8} {
+		t.Run(fmt.Sprintf("concurrency=%d", concurrency), func(t *testing.T) {
+			if concurrency == 1 {
+				defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
+				defer debug.SetGCPercent(debug.SetGCPercent(-1))
+			}
+			r := &engine.Runner{
+				Config:           config.Defaults(),
+				Rules:            rule.All(),
+				StripFrontMatter: true,
+				RootDir:          dir,
+				Concurrency:      concurrency,
+			}
+			checked := 0
+			for _, d := range r.Run(paths).Diagnostics {
+				want, ok := lines[d.File]
+				if !ok || len(d.SourceLines) == 0 {
+					continue
+				}
+				for k, got := range d.SourceLines {
+					require.Equal(t, want[d.SourceStartLine-1+k], got,
+						"%s:%d: snippet line %d shows another file's bytes", d.File, d.Line, k)
+				}
+				checked++
+			}
+			require.NotZero(t, checked, "expected diagnostics with source context")
+		})
+	}
 }

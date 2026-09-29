@@ -237,7 +237,7 @@ footer: |
 | 2606270013 | ✅     | sonnet | [Add built-in Slidev convention](plan/2606270013_slidev-convention.md)                                                                                  |
 | 2606280208 | ✅     | opus   | [External URL link checking rule (MDS072)](plan/2606280208_external-link-check.md)                                                                      |
 | 2606292015 | 🔲     | opus   | [Scope the LSP workspace singleton per client so instances coexist](plan/2606292015_lsp-multi-instance-coexistence.md)                                  |
-| 2607022118 | 🔲     | sonnet | [General occurrence rule — bound how often a pattern appears per scope](plan/2607022118_occurrence-rule.md)                                             |
+| 2607022118 | ✅     | sonnet | [General occurrence rule — bound how often a pattern appears per scope](plan/2607022118_occurrence-rule.md)                                             |
 | 2607022119 | ✅     | sonnet | [Word-frequency metric and over-repetition rule](plan/2607022119_word-frequency-metric-rule.md)                                                         |
 | 2607022120 | 🔲     | opus   | [Substitution rule — deterministic word-choice swaps with auto-fix](plan/2607022120_substitution-rule.md)                                               |
 | 2607031500 | ✅     | sonnet | [Security hardening batch — 2026-07-03 post-audit diff review (low)](plan/2607031500_security-hardening-batch-2026-07-03.md)                            |
@@ -259,7 +259,7 @@ footer: |
 | 2607191918 | ✅     | haiku  | [Deduplicate isClaimed between internal/schema and requiredstructure](plan/2607191918_arch-fix-isclaimed-dedup.md)                                      |
 | 2607242010 | ✅     | sonnet | [MDS072 external-link-check: SSRF and egress hardening](plan/2607242010_mds072-ssrf-network-hardening.md)                                               |
 | 2607242011 | ✅     | haiku  | [Security hardening batch — 2026-07-24](plan/2607242011_security-hardening-batch-2026-07-24.md)                                                         |
-| 2608020650 | 🔲     | sonnet | [Convert MDS003/MDS005 to KindScopedChecker without a stale-state bug](plan/2608020650_kindscoped-heading-rules.md)                                     |
+| 2608020650 | ✅     | sonnet | [Convert MDS003/MDS005 to KindScopedChecker without a stale-state bug](plan/2608020650_kindscoped-heading-rules.md)                                     |
 | 2608021915 | ✅     | haiku  | [Move list-query subcommand logic out of cmd/mdsmith/main.go into query.go](plan/2608021915_arch-fix-query-subcommand-placement.md)                     |
 | 2608021916 | ✅     | sonnet | [Split internal/githooks by responsibility](plan/2608021916_arch-fix-githooks-package-split.md)                                                         |
 | 2608091910 | ✅     | sonnet | [Resolve the MDS073 rule-ID collision between slidevstructure and foreignregion](plan/2608091910_arch-fix-mds073-collision.md)                          |
@@ -271,4 +271,6 @@ footer: |
 | 2608301918 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-30 touched-set tax findings](plan/2608301918_arch-fix-touched-set-unit-tests-0830.md)                         |
 | 2608301919 | 🔲     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
 | 2609032052 | 🔲     | opus   | [Resolve config from `pyproject.toml` under `[tool.mdsmith]`](plan/2609032052_pyproject-config-source.md)                                               |
+| 2609271912 | 🔲     | sonnet | [Share rename-mode detection between the CLI and the engine](plan/2609271912_arch-fix-shared-rename-mode-detection.md)                                  |
+| 2609271913 | 🔲     | haiku  | [Remove dead front-matter parse helpers in internal/index](plan/2609271913_arch-fix-remove-dead-frontmatter-helpers.md)                                 |
 <?/catalog?>

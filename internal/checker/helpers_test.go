@@ -176,11 +176,12 @@ func TestClassifySlot(t *testing.T) {
 	})
 }
 
-// TestBuildKindTable pins the CSR construction: generic rules go to the
-// generic list, kind-scoped rules are indexed by kind.
-func TestBuildKindTable(t *testing.T) {
+// TestPrepareNodeCheckers pins the CSR construction: generic rules go to
+// the generic list, kind-scoped rules are indexed by kind. The BeginFile
+// half of the same pass is covered by TestPrepareNodeCheckers_ResetsFileState.
+func TestPrepareNodeCheckers(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
-		tbl := buildKindTable(nil)
+		tbl := prepareNodeCheckers(nil, nil)
 		assert.Empty(t, tbl.generic)
 		assert.Empty(t, tbl.scoped)
 		releaseKindTable(tbl)
@@ -188,7 +189,7 @@ func TestBuildKindTable(t *testing.T) {
 	t.Run("genericNodeRule", func(t *testing.T) {
 		r := &htNodeRule{htPlainRule: htPlainRule{id: "TST001"}}
 		s := &ruleSlot{nc: r}
-		tbl := buildKindTable([]*ruleSlot{s})
+		tbl := prepareNodeCheckers(nil, []*ruleSlot{s})
 		assert.Len(t, tbl.generic, 1)
 		assert.Empty(t, tbl.scoped)
 		releaseKindTable(tbl)
@@ -196,7 +197,7 @@ func TestBuildKindTable(t *testing.T) {
 	t.Run("kindScopedRule", func(t *testing.T) {
 		r := &htKindScopedRule{htPlainRule: htPlainRule{id: "TST001"}}
 		s := &ruleSlot{nc: r}
-		tbl := buildKindTable([]*ruleSlot{s})
+		tbl := prepareNodeCheckers(nil, []*ruleSlot{s})
 		assert.Empty(t, tbl.generic)
 		require.Len(t, tbl.scoped, 1)
 		k := ast.KindHeading
