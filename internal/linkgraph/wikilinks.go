@@ -308,6 +308,13 @@ func skipHeavyDirs(p string) error {
 // per-input computations") — the same decorate-sort-undecorate pattern
 // internal/build/cache.go's sortEntriesByOutputKey uses for its own
 // comparator.
+//
+// No early return for fewer than 2 paths: unlike sortEntriesByOutputKey
+// (where skipping the per-entry outputSetKey call is a real allocation
+// win), strings.Count never allocates, and escape analysis already
+// stack-allocates `decorated` at this size since it never leaves the
+// function — measured no difference in allocs/op with or without a
+// guard here.
 func sortByDepthThenName(paths []string) {
 	type keyedPath struct {
 		depth int

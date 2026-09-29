@@ -43,3 +43,30 @@ func TestSortByDepthThenName_NoReflectSort(t *testing.T) {
 			"one decorate allocation)", allocs, allocBudget)
 	}
 }
+
+// TestSortByDepthThenName_SingleOrEmptyAllocatesNothing pins that a
+// bucket of fewer than 2 paths — the common case, since most basenames
+// are unique in a real workspace — costs nothing. There's no explicit
+// early-return guard for this (measured: adding one made no difference,
+// since strings.Count never allocates and escape analysis already
+// stack-allocates the decorated slice at this size), but the property
+// still holds and is worth pinning against a future change that makes
+// the decorated slice escape.
+func TestSortByDepthThenName_SingleOrEmptyAllocatesNothing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	for _, paths := range [][]string{nil, {"a.md"}} {
+		allocs := testing.AllocsPerRun(200, func() {
+			sortByDepthThenName(paths)
+		})
+		t.Logf("sortByDepthThenName allocs/op (%d paths) = %.0f", len(paths), allocs)
+		if allocs > 0 {
+			t.Fatalf("sortByDepthThenName allocs/op = %.0f for %d path(s), want 0",
+				allocs, len(paths))
+		}
+	}
+}
