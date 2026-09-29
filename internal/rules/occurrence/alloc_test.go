@@ -62,6 +62,8 @@ func TestCheck_Configured_AllocBudget(t *testing.T) {
 	settings := map[string]map[string]any{
 		"tokens":  {"tokens": []any{"token", "paragraph"}, "max": 50},
 		"pattern": {"pattern": "—", "max": 50},
+		// A literal with letters takes the case-folding count path.
+		"folded-literal": {"pattern": "Token", "max": 50},
 	}
 	for name, base := range settings {
 		for _, scope := range []string{"file", "section", "paragraph"} {

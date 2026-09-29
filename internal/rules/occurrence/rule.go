@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -33,7 +35,7 @@ type Rule struct {
 	patternSource string
 	Pattern       *regexp.Regexp
 	literal       string // patternSource when it has no regex metacharacters
-	lowerLiteral  string // literal, lowercased for case-insensitive matching
+	literalFold   bool   // literal matches under case folding, as (?i) would
 	Min           int
 	Max           int  // -1 means unbounded
 	maxSet        bool // true once any ApplySettings call has set max
@@ -131,10 +133,11 @@ func (r *Rule) checkSections(f *lint.File, pr prose, totals []int) []lint.Diagno
 }
 
 // needsLower reports whether any configured matcher compares against
-// lowercased text: tokens and literal patterns when matching ignores
-// case. A regex carries its own (?i) flag and reads the original text.
+// lowercased text: tokens when matching ignores case. A pattern reads
+// the original text: a regex carries its own (?i) flag, and a literal
+// folds case itself (countFold).
 func (r *Rule) needsLower() bool {
-	return !r.CaseSensitive && (len(r.Tokens) > 0 || r.literal != "")
+	return !r.CaseSensitive && len(r.Tokens) > 0
 }
 
 // tally adds one scope unit's match counts into totals: one slot per
@@ -146,7 +149,7 @@ func (r *Rule) tally(text, search string, totals []int) {
 	}
 	if r.Pattern != nil {
 		if r.literal != "" {
-			totals[len(r.Tokens)] += r.countLiteral(text, search)
+			totals[len(r.Tokens)] += r.countLiteral(text)
 		} else {
 			totals[len(r.Tokens)] += r.countPattern(text)
 		}
@@ -189,12 +192,75 @@ func (r *Rule) countToken(text string, ti int) int {
 }
 
 // countLiteral counts a pattern with no regex metacharacters without
-// running the regex engine, which allocates per match.
-func (r *Rule) countLiteral(text, search string) int {
-	if r.CaseSensitive {
-		return strings.Count(text, r.literal)
+// running the regex engine, which allocates per match. The count
+// equals the compiled regex's: plain byte matching when case matters
+// or no rune of the literal has a case variant, else simple case
+// folding, which is what (?i) applies.
+func (r *Rule) countLiteral(text string) int {
+	if r.literalFold {
+		return countFold(text, r.literal)
 	}
-	return strings.Count(search, r.lowerLiteral)
+	return strings.Count(text, r.literal)
+}
+
+// countFold counts non-overlapping matches of lit in text under
+// Unicode simple case folding, scanning leftmost-first like the regex
+// engine. Unlike comparing strings.ToLower output, it matches "ς"
+// against "Σ" and "ſ" against "s", as a (?i) regex does. It does not
+// allocate.
+func countFold(text, lit string) int {
+	n := 0
+	for i := 0; i < len(text); {
+		if k := foldPrefix(text[i:], lit); k > 0 {
+			n++
+			i += k
+			continue
+		}
+		_, size := utf8.DecodeRuneInString(text[i:])
+		i += size
+	}
+	return n
+}
+
+// foldPrefix returns the byte length of the prefix of s that equals lit
+// rune by rune under simple case folding, or 0 when there is none.
+func foldPrefix(s, lit string) int {
+	j := 0
+	for _, lr := range lit {
+		if j >= len(s) {
+			return 0
+		}
+		sr, size := utf8.DecodeRuneInString(s[j:])
+		if !foldEqual(sr, lr) {
+			return 0
+		}
+		j += size
+	}
+	return j
+}
+
+// foldEqual reports whether a and b share a simple case-folding orbit.
+func foldEqual(a, b rune) bool {
+	if a == b {
+		return true
+	}
+	for f := unicode.SimpleFold(a); f != a; f = unicode.SimpleFold(f) {
+		if f == b {
+			return true
+		}
+	}
+	return false
+}
+
+// foldFree reports whether no rune of s has a case variant, so a (?i)
+// match of s is a plain byte match (the em-dash preset, for one).
+func foldFree(s string) bool {
+	for _, c := range s {
+		if unicode.SimpleFold(c) != c {
+			return false
+		}
+	}
+	return true
 }
 
 // countPattern counts regexp matches in text. Caller must ensure r.Pattern != nil.
@@ -362,24 +428,37 @@ func (r *Rule) applyCaseSensitive(v any) error {
 
 // finalizeSettings compiles the pattern (if any) and builds lowerTokens.
 // Called after all scalar settings are applied so CaseSensitive is final.
+// Derived matcher state is rebuilt before any validation error returns,
+// so a rejected call never leaves Tokens without their lowercased forms
+// (Check would index past lowerTokens) or a literal from an old pattern.
 func (r *Rule) finalizeSettings(rawPattern string) error {
+	if !r.maxSet {
+		// The zero value of Max is 0, a real bound; an unset max means
+		// unbounded.
+		r.Max = -1
+	}
+	if !r.CaseSensitive && len(r.Tokens) > 0 {
+		r.lowerTokens = make([]string, len(r.Tokens))
+		for i, t := range r.Tokens {
+			r.lowerTokens[i] = strings.ToLower(t)
+		}
+	}
 	if rawPattern != "" {
 		if err := r.compileAndSetPattern(rawPattern); err != nil {
 			return err
 		}
 	}
+	r.literal, r.literalFold = "", false
 	if len(r.Tokens) > 0 && r.Pattern != nil {
 		// Clear the compiled pattern so a subsequent ApplySettings call
 		// that supplies only tokens (no pattern) does not see stale state.
 		r.Pattern = nil
 		r.patternSource = ""
-		r.literal, r.lowerLiteral = "", ""
 		return fmt.Errorf("occurrence: tokens and pattern are mutually exclusive")
 	}
-	if !r.maxSet {
-		// The zero value of Max is 0, a real bound; an unset max means
-		// unbounded.
-		r.Max = -1
+	if r.Pattern != nil && regexp.QuoteMeta(r.patternSource) == r.patternSource {
+		r.literal = r.patternSource
+		r.literalFold = !r.CaseSensitive && !foldFree(r.patternSource)
 	}
 	if r.Max >= 0 && r.Min > r.Max {
 		err := fmt.Errorf("occurrence: min (%d) must be <= max (%d)", r.Min, r.Max)
@@ -387,17 +466,6 @@ func (r *Rule) finalizeSettings(rawPattern string) error {
 		// every scope unit.
 		r.Min, r.Max = 0, -1
 		return err
-	}
-	r.literal, r.lowerLiteral = "", ""
-	if r.Pattern != nil && regexp.QuoteMeta(r.patternSource) == r.patternSource {
-		r.literal = r.patternSource
-		r.lowerLiteral = strings.ToLower(r.patternSource)
-	}
-	if !r.CaseSensitive && len(r.Tokens) > 0 {
-		r.lowerTokens = make([]string, len(r.Tokens))
-		for i, t := range r.Tokens {
-			r.lowerTokens[i] = strings.ToLower(t)
-		}
 	}
 	return nil
 }

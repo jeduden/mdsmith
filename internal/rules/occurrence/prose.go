@@ -1,7 +1,11 @@
 package occurrence
 
 import (
+	"cmp"
+	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
@@ -10,7 +14,8 @@ import (
 
 // proseParagraph is one counted paragraph: the 1-based source line it
 // starts on, its plain text with inline code spans removed, and that
-// text lowercased when the rule matches case-insensitively (else Text).
+// text lowercased when the rule matches tokens case-insensitively (else
+// Text).
 type proseParagraph struct {
 	Line  int
 	Text  string
@@ -42,11 +47,19 @@ func collectProse(f *lint.File, lower, wantHeadings bool) prose {
 		wantHeadings: wantHeadings,
 	}
 	w.walk(f.AST)
+	// astutil.HeadingLine falls back to line 1 for a heading with no
+	// text, so document order is not always line order. Sort as
+	// astutil.CollectSectionHeadings does; checkSections's cursor
+	// relies on ascending lines.
+	slices.SortFunc(w.headings, func(a, b astutil.SectionHeading) int {
+		return cmp.Compare(a.Line, b.Line)
+	})
 	paras := w.paras
 	if len(paras) > 0 {
 		joined := string(w.buf)
 		lowered := joined
-		if lower {
+		aligned := lower && lowerKeepsOffsets(joined)
+		if aligned {
 			lowered = strings.ToLower(joined)
 		}
 		start := 0
@@ -56,17 +69,38 @@ func collectProse(f *lint.File, lower, wantHeadings bool) prose {
 			switch {
 			case !lower:
 				paras[i].Lower = paras[i].Text
-			case len(lowered) == len(joined):
+			case aligned:
 				paras[i].Lower = lowered[start:end]
 			default:
-				// Lowercasing changed a byte length (e.g. U+0130), so
-				// the joined offsets no longer apply to lowered.
+				// Lowercasing changes some rune's byte length (e.g.
+				// U+0130), so the joined offsets do not apply to the
+				// lowered text. A matching total length is no proof:
+				// one rune can grow while another shrinks.
 				paras[i].Lower = strings.ToLower(paras[i].Text)
 			}
 			start = end
 		}
 	}
 	return prose{paras: paras, headings: w.headings}
+}
+
+// lowerKeepsOffsets reports whether strings.ToLower(s) encodes every
+// rune in the same number of bytes, so a byte offset into s is the same
+// rune boundary in the lowered string. An invalid byte fails: ToLower
+// replaces it with the three-byte U+FFFD.
+func lowerKeepsOffsets(s string) bool {
+	for i := 0; i < len(s); {
+		if s[i] < utf8.RuneSelf {
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if utf8.RuneLen(unicode.ToLower(r)) != size {
+			return false
+		}
+		i += size
+	}
+	return true
 }
 
 // proseWalker accumulates collectProse's single AST pass.

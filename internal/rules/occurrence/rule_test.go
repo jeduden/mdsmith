@@ -410,6 +410,9 @@ func TestApplySettings_MinGreaterThanMax(t *testing.T) {
 	// >= 5 and <= 2.
 	assert.Equal(t, 0, r.Min)
 	assert.Equal(t, -1, r.Max)
+	// The rest of the call's state must be usable too: the tokens it
+	// set need their lowercased forms, or Check indexes past them.
+	assert.NotPanics(t, func() { _ = r.Check(mustFile(t, "# T\n\nx here.\n")) })
 }
 
 func TestApplySettings_MinOnlyNoFalsePositive(t *testing.T) {
@@ -540,13 +543,80 @@ func TestApplySettings_RegexPatternIsNotLiteral(t *testing.T) {
 }
 
 func TestCheck_NonASCIILowercaseLengthChange(t *testing.T) {
-	// "İ" (U+0130) lowercases to a longer byte sequence, so the joined
+	// "İ" (U+0130) lowercases to the one-byte "i", so the joined
 	// offsets no longer line up and each paragraph is lowercased alone.
 	r := &Rule{}
 	mustApply(t, r, map[string]any{"tokens": []any{"beta"}, "max": 0})
 	diags := r.Check(mustFile(t, "# T\n\nİİİ alpha.\n\nBETA here.\n"))
 	require.Len(t, diags, 1)
 	assert.Equal(t, 5, diags[0].Line)
+}
+
+func TestCheck_CompensatingLowercaseLengthChanges(t *testing.T) {
+	// "Ⱥ" (U+023A) lowercases one byte longer and "İ" (U+0130) one
+	// byte shorter, so the joined text keeps its total length while
+	// every offset after "Ⱥ" shifts by one. The token ending the first
+	// paragraph must still count there.
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"beta"}, "max": 0})
+	diags := r.Check(mustFile(t, "# T\n\nȺ x beta\n\nİ y.\n"))
+	require.Len(t, diags, 1)
+	assert.Equal(t, 3, diags[0].Line)
+}
+
+func TestLowerKeepsOffsets(t *testing.T) {
+	assert.True(t, lowerKeepsOffsets("Plain ASCII"))
+	assert.True(t, lowerKeepsOffsets("Ünïcode — dash"))
+	assert.False(t, lowerKeepsOffsets("İ"), "U+0130 lowercases to one byte")
+	assert.False(t, lowerKeepsOffsets("Ⱥ"), "U+023A lowercases to three bytes")
+	assert.False(t, lowerKeepsOffsets("a\xffb"), "an invalid byte lowercases to U+FFFD")
+}
+
+func TestCheck_Section_TextlessHeadingOrderedByLine(t *testing.T) {
+	// A heading with no text falls back to line 1 (astutil.HeadingLine),
+	// out of document order. Sections are still ordered by line, as
+	// astutil.CollectSectionHeadings orders them, so "## A" keeps its
+	// own window and its diagnostic stays on line 5.
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"tokens": []any{"x"}, "max": 0, "scope": "section"})
+	diags := r.Check(mustFile(t, "# Title\n\nfoo\n\n## A\n\nx here\n\n##\n\nplain\n"))
+	lines := make([]int, 0, len(diags))
+	for _, d := range diags {
+		lines = append(lines, d.Line)
+	}
+	assert.Equal(t, []int{1, 5}, lines)
+}
+
+func TestCountFold_MatchesRegexFold(t *testing.T) {
+	// A case-insensitive literal pattern must count what its (?i)
+	// regex counts: simple case folding, not strings.ToLower.
+	cases := []struct{ lit, text string }{
+		{"λόγος", "ΛΌΓΟΣ and λόγος"}, // Σ lowercases to σ; (?i) also folds ς
+		{"s", "ſ is a long s"},       // U+017F folds with s
+		{"k", "K Kelvin k"},          // U+212A folds with k
+		{"i", "İ dotted"},            // U+0130 has no fold partner
+		{"aa", "aaaa aaa"},           // non-overlapping, leftmost-first
+		{"Foo", "foo FOO\xffFoo"},    // invalid bytes never match
+	}
+	for _, tc := range cases {
+		re := regexp.MustCompile("(?i)" + tc.lit)
+		want := len(re.FindAllStringIndex(tc.text, -1))
+		assert.Equal(t, want, countFold(tc.text, tc.lit), "%q in %q", tc.lit, tc.text)
+	}
+}
+
+func TestCheck_LiteralPatternFoldsLikeRegex(t *testing.T) {
+	r := &Rule{}
+	mustApply(t, r, map[string]any{"pattern": "λόγος", "max": 0})
+	assert.Len(t, r.Check(mustFile(t, "# T\n\nΛΌΓΟΣ here.\n")), 1,
+		"an all-caps final sigma matches under (?i)")
+}
+
+func TestFoldFree(t *testing.T) {
+	assert.True(t, foldFree("—"))
+	assert.True(t, foldFree("--!"))
+	assert.False(t, foldFree("a"))
+	assert.False(t, foldFree("—σ"))
 }
 
 func TestCountToken(t *testing.T) {
