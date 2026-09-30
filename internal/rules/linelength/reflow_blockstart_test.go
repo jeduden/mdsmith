@@ -8,6 +8,9 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/markdown/flavor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,15 +35,31 @@ func greedyWrap(tokens []string, width int) []string {
 }
 
 // singleParagraph reports whether lines, joined as one Markdown block,
-// parse as exactly one paragraph that keeps every line. It asks the
-// canonical parser directly, so it does not share code with the guard.
+// parse as exactly one paragraph that keeps every line. It asks both the
+// canonical parser and the flavor parser, which adds GFM tables,
+// footnotes and definition lists, so it does not share code with the
+// guard.
 func singleParagraph(t *testing.T, lines []string) bool {
 	t.Helper()
-	f, err := lint.NewFile("t.md", []byte(strings.Join(lines, "\n")+"\n"))
+	src := []byte(strings.Join(lines, "\n") + "\n")
+	f, err := lint.NewFile("t.md", src)
 	require.NoError(t, err)
-	first := f.AST.FirstChild()
+	if !soleParagraph(f.AST, len(lines)) {
+		return false
+	}
+	var ok bool
+	flavor.WithSharedParser(func(p parser.Parser) {
+		ok = soleParagraph(p.Parse(text.NewReader(src)), len(lines))
+	})
+	return ok
+}
+
+// soleParagraph reports whether doc holds one paragraph of n lines and
+// nothing else.
+func soleParagraph(doc ast.Node, n int) bool {
+	first := doc.FirstChild()
 	return first != nil && first.NextSibling() == nil &&
-		first.Kind() == ast.KindParagraph && first.Lines().Len() == len(lines)
+		first.Kind() == ast.KindParagraph && first.Lines().Len() == n
 }
 
 var noGlue = func(string) bool { return false }
@@ -101,6 +120,17 @@ var blockStartCases = []struct {
 		[]string{"aaaa", "bbbb <![CDATA[", "c"}},
 	{"html block tag", []string{"aaaa", "bbbb", "<div", "cc"}, 10,
 		[]string{"aaaa", "bbbb <div", "cc"}},
+	// GFM table delimiter rows, which turn the line before them into a
+	// table header. "--- |" is a one-column row, so the second layout
+	// keeps "---" off the start of a line as well.
+	{"table delimiter row", []string{"aa", "|", "bb", "|-|-|", "cccccccc"}, 8,
+		[]string{"aa |", "bb |-|-|", "cccccccc"}},
+	{"spaced table delimiter row", []string{"aa", "|", "bb", "---", "|", "---", "cc"}, 9,
+		[]string{"aa |", "bb --- |", "--- cc"}},
+	{"aligned table delimiter row", []string{"aa", "|", "b", ":--|--:", "cccc"}, 9,
+		[]string{"aa |", "b :--|--:", "cccc"}},
+	{"one-column table delimiter row", []string{"aaaa", "bb", ":-", "cccccc"}, 7,
+		[]string{"aaaa", "bb :-", "cccccc"}},
 }
 
 // TestWrapTokens_BlockStartNeverLeadsALine pins issue #844 for every
@@ -371,4 +401,20 @@ func TestWrapTokens_RandomParagraphsMatchParser(t *testing.T) {
 			"tokens %q width %d: layout %q splits the paragraph", tokens, width, got)
 	}
 	assert.Greater(t, guarded, 1000, "too few cases reached the guard")
+}
+
+// TestFix_TableDelimiterRowStaysInsideParagraph is the review repro for
+// GFM tables. Greedy wrapping at max 8 puts "|-|-|" on a line of its
+// own after "aa | bb", which GFM renderers and the table rules read as
+// a table header and delimiter row. The guarded layout keeps the
+// delimiter text inside a line, so the paragraph stays one paragraph.
+func TestFix_TableDelimiterRowStaysInsideParagraph(t *testing.T) {
+	r := &Rule{Max: 8, Reflow: true}
+	text := "aa | bb |-|-| cccccccc dddddddd"
+	require.False(t, singleParagraph(t, greedyWrap(strings.Fields(text), 8)),
+		"greedy wrapping at 8 must build a table")
+	got := fixSource(t, r, "# T\n\n"+text+"\n")
+	assert.Equal(t, "# T\n\naa |\nbb |-|-|\ncccccccc\ndddddddd\n", got)
+	assert.True(t, singleParagraph(t, strings.Split(strings.TrimSuffix(strings.TrimPrefix(got, "# T\n\n"), "\n"), "\n")))
+	assert.Equal(t, got, fixSource(t, r, got), "reflow is not a fixpoint")
 }

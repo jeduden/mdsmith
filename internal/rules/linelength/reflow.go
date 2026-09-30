@@ -223,10 +223,18 @@ func (p *linePlanner) fitEnd(s int) int {
 	return e
 }
 
-// breaks reports whether the line holding units[s:e] is unsafe: placed
-// after a paragraph line, it would end the paragraph.
+// breaks reports whether the line holding units[s:e] is unsafe (see
+// unsafeLine).
 func (p *linePlanner) breaks(s, e int) bool {
-	return lint.InterruptsParagraph(p.render(s, e))
+	return unsafeLine(p.render(s, e))
+}
+
+// unsafeLine reports whether line, placed after a paragraph line, could
+// end the paragraph. That is a CommonMark block start
+// (lint.InterruptsParagraph) or, whatever flavor is configured, a block
+// start of a Markdown extension (lint.ExtensionInterruptsParagraph).
+func unsafeLine(line []byte) bool {
+	return lint.InterruptsParagraph(line) || lint.ExtensionInterruptsParagraph(line)
 }
 
 // render writes the line holding units[s:e], indent first, into the
