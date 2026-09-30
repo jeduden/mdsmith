@@ -59,7 +59,23 @@ new heading slug collides with another heading, when the label
 collides with another definition, or when the text slugifies to
 nothing or carries a newline or a stray bracket. Each failure
 exits 2 and names the conflict. No partial edit is written.
-`--dry-run` prints the edits and changes nothing.
+
+Writing is all-or-nothing too. `rename` uses the same two
+phases as [`mdsmith move`](move.md#safety), without the file
+move:
+
+1. It computes the new bytes of every file in memory. An edit
+   that does not apply exits 2 here, and nothing is written.
+   `--dry-run` runs this phase, prints the edits, and changes
+   nothing.
+2. It writes each file to a temp file beside it, then renames
+   each temp file over its original. A failed temp write
+   changes no file. A failed rename puts the original bytes
+   back into the files already replaced.
+
+The last line on stderr gives the state after a failed write:
+`no file was changed`, `restored N file(s)`, or the files that
+keep the rewritten content.
 
 ## Flags
 
