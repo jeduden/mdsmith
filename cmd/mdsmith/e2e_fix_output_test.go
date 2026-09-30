@@ -83,6 +83,16 @@ func TestFixOutput_E2ECleanAndErrors(t *testing.T) {
 		assert.Contains(t, stdout, `"version": "2.1.0"`)
 		assert.Empty(t, stderr)
 	})
+	t.Run("--build-only with no Markdown file creates no report", func(t *testing.T) {
+		dir := outputWorkspace(t)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x\n"), 0o644))
+		stdout, stderr, code := runBinaryInDir(t, dir, "",
+			"fix", "--build-only", "-o", "r.json", "-f", "json", "notes.txt")
+		assert.Equal(t, 0, code)
+		assert.Empty(t, stdout)
+		assert.Contains(t, stderr, `mdsmith: skipping "notes.txt"`)
+		assert.NoFileExists(t, filepath.Join(dir, "r.json"))
+	})
 	t.Run("unwritable report", func(t *testing.T) {
 		dir := outputWorkspace(t)
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "ws.md"), []byte("# Hi  \n"), 0o644))

@@ -230,7 +230,7 @@ func fixFiles(fileArgs []string, opts fixCLIOpts) int {
 		nonMarkdownSkipWarner(os.Stderr, opts.reportFlags),
 	)
 	if code == 0 {
-		return reportNoFiles(opts.reportFlags, processIO())
+		return reportFixNoFiles(opts, processIO())
 	}
 	if code > 0 {
 		return code
@@ -238,12 +238,22 @@ func fixFiles(fileArgs []string, opts fixCLIOpts) int {
 	return runFixThroughSession(cfg, cfgPath, opts, logger, files, maxBytes)
 }
 
+// reportFixNoFiles ends a fix run that resolved no Markdown file (see
+// reportNoFiles). --build-only has no lint report, so it writes
+// nothing and creates no -o file, as when files are found.
+func reportFixNoFiles(opts fixCLIOpts, rio reportIO) int {
+	if opts.build.buildOnly {
+		return 0
+	}
+	return reportNoFiles(opts.reportFlags, rio)
+}
+
 // fixDiscovered loads config, discovers files from config patterns,
 // and fixes them. Returns the appropriate exit code.
 func fixDiscovered(opts fixCLIOpts) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(opts.configPath, opts.verbose, opts.walk)
 	if code == 0 {
-		return reportNoFiles(opts.reportFlags, processIO())
+		return reportFixNoFiles(opts, processIO())
 	}
 	if code > 0 {
 		return code

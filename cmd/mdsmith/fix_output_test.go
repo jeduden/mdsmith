@@ -171,3 +171,23 @@ func TestWriteFixReport_Quiet(t *testing.T) {
 	require.NoError(t, writeFixReport(&buf, result, fixCLIOpts{reportFlags: reportFlags{format: "text", quiet: true}, dryRun: true}, false))
 	assert.Empty(t, buf.String())
 }
+
+// --build-only has no lint report, so a run that resolved no Markdown
+// file writes none either: no -o file is created (testIO fails the
+// test on create) and nothing reaches the streams.
+func TestReportFixNoFiles_BuildOnlyWritesNoReport(t *testing.T) {
+	var out, errOut bytes.Buffer
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "json", output: "r.json"}}
+	opts.build.buildOnly = true
+	assert.Equal(t, 0, reportFixNoFiles(opts, testIO(t, &out, &errOut)))
+	assert.Empty(t, out.String())
+	assert.Empty(t, errOut.String())
+}
+
+// Without --build-only the no-files run writes its empty document.
+func TestReportFixNoFiles_WritesEmptyDocument(t *testing.T) {
+	var out bytes.Buffer
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "json", output: "-"}}
+	assert.Equal(t, 0, reportFixNoFiles(opts, testIO(t, &out, io.Discard)))
+	assert.Equal(t, "[]\n", out.String())
+}
