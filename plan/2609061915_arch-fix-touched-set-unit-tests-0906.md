@@ -83,10 +83,9 @@ Left out, with the reason:
   `TestValidRefDefMatchesNoRefDefsCheapNoParse` in
   [perf_test.go][perf-test] already calls it directly.
 - `recomputeToken`, `encodePathToken`, `pathEdit`, and
-  `countFilesWithStem` in [move.go][move]: open PR #842 files
-  a plan that gives these four their own tests. That plan is
-  not on main yet. If #842 closes without merging, add them
-  back here.
+  `countFilesWithStem` in [move.go][move]:
+  [plan 2609131913][plan-2609131913] gives these four their
+  own tests.
 - `sortEdgesBySource` in [index.go][index]: open PR #838 adds
   `TestSortEdgesBySource_NoReflectSort` and
   `TestSortEdgesBySource_TiesPreserveInsertionOrder`. If #838
@@ -101,11 +100,11 @@ Left out, with the reason:
   into `internal/refactor` together with those tests.
 - The "no test by design" comments that the four one-line
   `sessionRefactorWorkspace` pass-throughs in
-  [refactor.go][pkg-refactor] lack: open PR #842 files a plan
-  that replaces them with one shared implementation. That plan
-  is not on main yet. If #842 closes without merging, add the
-  four comments here, matching the ones on `cliRenameWorkspace`
-  in [cmd/mdsmith/rename.go][cmd-rename].
+  [refactor.go][pkg-refactor] lack:
+  [plan 2609131911][plan-2609131911] replaces them with one
+  shared implementation. If that plan is dropped, add the four
+  comments here, matching the ones on `cliRenameWorkspace` in
+  [cmd/mdsmith/rename.go][cmd-rename].
 
 Two overlaps remain:
 
@@ -115,7 +114,7 @@ Two overlaps remain:
   does not add tests for the two host wrappers, so they stay
   here. If it lands first, test the wrappers as they are
   then.
-- Open PR #842's plan names `applyEditsToFile`,
+- [Plan 2609131913][plan-2609131913] names `applyEditsToFile`,
   `looksLikePath`, `firstPathish`, and `resolveWriteMode` as
   an optional stretch. Task 1 handles any test it adds.
 
@@ -123,7 +122,8 @@ Two overlaps remain:
 
 1. Before writing each test, search the package's test files
    for a test already named after the function, such as one
-   open PR #842 may add. If one exists, skip that function.
+   [plan 2609131913][plan-2609131913] may add. If one exists,
+   skip that function.
    Do not add a second test with the same name; Go rejects a
    package that declares a function twice.
 2. Add `TestGitTracked` and `TestGitMove` to
@@ -188,4 +188,6 @@ Two overlaps remain:
 [pkg-refactor]: ../pkg/mdsmith/refactor.go
 [pkg-refactor-test]: ../pkg/mdsmith/refactor_test.go
 [plan-0920]: 2609201914_arch-fix-missing-unit-tests-0920.md
+[plan-2609131911]: 2609131911_arch-fix-refactor-workspace-duplication.md
+[plan-2609131913]: 2609131913_arch-fix-move-helper-unit-tests.md
 [plan-2609271912]: 2609271912_arch-fix-shared-rename-mode-detection.md

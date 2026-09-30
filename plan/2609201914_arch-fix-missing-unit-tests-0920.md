@@ -57,13 +57,11 @@ trivial accessor.
 
 ## Out of scope
 
-- `isWorkspaceRelativeTarget` and `isAbsOrDriveOrUNC` in
-  [cmd/mdsmith/backlinks.go][backlinks]. On main both still
-  lack a test by name in `cmd/mdsmith`. Open PR #842 moves
-  `isAbsOrDriveOrUNC` into a new `internal/pathutil` package
-  with its own `TestIsAbsOrDriveOrUNC`, and adds
-  `TestIsWorkspaceRelativeTarget`. If #842 closes without
-  merging, add both back here.
+- `isWorkspaceRelativeTarget` in
+  [cmd/mdsmith/backlinks.go][backlinks] has
+  `TestIsWorkspaceRelativeTarget`, and `isAbsOrDriveOrUNC` now
+  lives in `internal/pathutil` with its own
+  `TestIsAbsOrDriveOrUNC` (both from PR #842).
 - The other bridge functions: `createSession` and
   `newSessionProxy` in [main.go][wasm], and `newPromise`,
   `jsError`, and `toJS` in [jsbridge.go][wasm-jsbridge]. They
