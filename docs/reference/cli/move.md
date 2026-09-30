@@ -88,7 +88,8 @@ two phases.
    `move` deletes the temp files and no file changes. Next,
    each temp file is renamed over its original. Last, `<src>`
    is moved. If a rename or the move fails, `move` writes the
-   original bytes back to every file it had replaced.
+   original bytes back to every file it had replaced. Any
+   directory it created for `<dst>` stays behind, empty.
 
 After a failure, stderr names the cause. Its last line gives
 the state of the workspace:
@@ -105,7 +106,9 @@ the state of the workspace:
 This guarantee covers the failures `move` can see. A crash or
 a power loss in the write phase can leave some files rewritten
 and others not. Each file is still whole: it holds the old
-bytes or the new bytes, never a mix of both.
+bytes or the new bytes, never a mix of both. Temp files named
+`<file>.<digits>.tmp` may be left next to the files; delete
+them.
 
 ## Flags
 
