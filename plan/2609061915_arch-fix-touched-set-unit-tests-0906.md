@@ -96,8 +96,9 @@ Left out, with the reason:
 - `applyEdits`, `sortEditsByCharacterDesc`, `splitKeepCR`, and
   `joinLF` in [cmd/mdsmith/rename.go][cmd-rename]: main already
   has `TestApplyEdits`, `TestSortEditsByCharacterDesc_NoReflectSort`,
-  and `TestSplitKeepCRAndJoinLF`. Open PR #856 moves the four
-  into `internal/refactor` together with those tests.
+  and `TestSplitKeepCRAndJoinLF`. PR #856 moved the four into
+  `internal/refactor` (as `refactor.ApplyEdits`) together with
+  those tests.
 - The "no test by design" comments that the four one-line
   `sessionRefactorWorkspace` pass-throughs in
   [refactor.go][pkg-refactor] lack:
@@ -135,9 +136,10 @@ Two overlaps remain:
    `TestRefUseEdit`, `TestLinkTextBounds`, and
    `TestBodyNewlineCount` to [rename_test.go][rename-test].
 4. Add `TestApplyEditsToFile` to
-   [move_unit_test.go][cmd-move-test]. Open PR #856 swaps its
-   `applyEdits` call for `refactor.ApplyEdits` but keeps
-   `applyEditsToFile`, so the test holds either way.
+   [move_unit_test.go][cmd-move-test] if `applyEditsToFile`
+   still exists. Open PR #859 replaces it with an
+   all-or-nothing plan applier whose functions carry their own
+   tests; if #859 has merged, skip this task.
 5. Add `TestBuildWorkspace`, `TestDetectRenameMode`,
    `TestHeadingPlan`, `TestLinkRefPlan`, `TestLooksLikePath`,
    `TestFirstPathish`, and `TestResolveWriteMode` to
