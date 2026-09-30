@@ -119,3 +119,25 @@ func TestCompareEdgesBySource_EveryFieldBreaksTies(t *testing.T) {
 		})
 	}
 }
+
+// TestCompareEdgesBySource_EqualEdgesCompareEqual pins the other half
+// of the total order: an edge compared with an identical copy returns
+// 0, so the comparator is reflexive and SortFunc treats duplicates as
+// ties rather than as strictly ordered.
+func TestCompareEdgesBySource_EqualEdgesCompareEqual(t *testing.T) {
+	for _, unresolved := range []bool{false, true} {
+		e := Edge{
+			SourceFile:   "a.md",
+			SourceLine:   3,
+			SourceCol:    5,
+			Kind:         EdgeKind(1),
+			TargetFile:   "b.md",
+			TargetAnchor: "intro",
+			TargetLabel:  "ref",
+			Unresolved:   unresolved,
+		}
+		if got := compareEdgesBySource(e, e); got != 0 {
+			t.Fatalf("compareEdgesBySource(e, e) = %d for %+v, want 0", got, e)
+		}
+	}
+}
