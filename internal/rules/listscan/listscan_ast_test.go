@@ -427,6 +427,17 @@ func interruptSnippets() map[string]string {
 		// the item stays open, and the next item joins the same list.
 		"lazy-equals-after-item-para": "- a\n===\n- b\n",
 		"lazy-dashes-after-item-para": "- a\n--\n- b\n",
+		// A setext underline in the paragraph's own container turns the
+		// paragraph into a heading and closes it, so a marker after it
+		// interrupts nothing and starts a list, even at 2.
+		"setext-dash-then-ordered":           "Some prose\n-\n2. item\n",
+		"setext-dashes-then-ordered":         "Some prose\n--\n2. item\n",
+		"setext-equals-then-ordered":         "Some prose\n===\n2. item\n",
+		"setext-dash-in-item-then-ordered":   "- a\n  -\n  2. b\n",
+		"setext-equals-in-item-then-ordered": "- a\n  ===\n  2. b\n",
+		"setext-in-item-then-paragraph":      "- a\n  ===\n  more\n",
+		// With no paragraph open, "===" starts one, which "2." continues.
+		"equals-opens-para-then-ordered": "===\n2. item\n",
 	}
 }
 

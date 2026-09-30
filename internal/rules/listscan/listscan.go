@@ -187,6 +187,7 @@ func (p *parser) scanLine(i int, line []byte) int {
 	indent := astutil.CountLeadingSpaces(line)
 	markerToken := hasMarkerToken(line, indent)
 	interrupts := interruptsParagraph(line, indent)
+	setext := p.isSetextUnderline(line, indent)
 
 	// Close any open item whose content column the line's indent does not
 	// reach, so the surviving stack top is the item this line belongs to.
@@ -226,13 +227,51 @@ func (p *parser) scanLine(i int, line []byte) int {
 		return i
 	}
 	p.handleContinuation(lineNo, indent)
-	// Track top-level paragraph state for the next line's interruption test:
-	// when this line lands at the document root, a plain-text line opens or
-	// continues a paragraph while a heading or thematic break does not.
-	if len(p.stack) == 0 {
+	switch {
+	case setext:
+		// The underline turns the open paragraph into a heading, which
+		// ends it, so a marker on the next line interrupts nothing.
+		if n := len(p.stack); n > 0 {
+			p.stack[n-1].inParagraph = false
+		} else {
+			p.topInParagraph = false
+		}
+	case len(p.stack) == 0:
+		// Track top-level paragraph state for the next line's interruption
+		// test: when this line lands at the document root, a plain-text line
+		// opens or continues a paragraph while a heading or thematic break
+		// does not.
 		p.topInParagraph = !interrupts
 	}
 	return i
+}
+
+// isSetextUnderline reports whether line, at indent, is a setext heading
+// underline: a paragraph is open in the line's own container (the
+// document root, or the innermost open item when the indent reaches its
+// content column), and the line is a run of '=' or of '-' within three
+// columns of that container, with only spaces or tabs after it. A lazy
+// line at lower indent cannot be one.
+func (p *parser) isSetextUnderline(line []byte, indent int) bool {
+	if p.blankRun > 0 {
+		return false
+	}
+	baseCol, open := 0, p.topInParagraph
+	if n := len(p.stack); n > 0 {
+		top := p.stack[n-1]
+		if indent < top.contentCol {
+			return false
+		}
+		baseCol, open = top.contentCol, top.inParagraph
+	}
+	if !open || indent-baseCol >= 4 {
+		return false
+	}
+	// scanLine sees only non-blank lines, so a non-space byte sits at
+	// indent and run is not empty.
+	run := bytes.TrimRight(line[indent:], " \t\r")
+	c := run[0]
+	return (c == '=' || c == '-') && len(bytes.Trim(run, string(c))) == 0
 }
 
 // consumeFence handles a fenced code block opening at 0-based index open.
