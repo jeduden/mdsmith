@@ -33,7 +33,7 @@ import (
 //     insert strictly inside another edit's range, and two identical
 //     replacements alike. Identical replacements are rejected rather
 //     than deduplicated: they mean a planner visited one token twice,
-//     and an LSP editor rejects the same plan as overlapping.
+//     and LSP forbids the same plan as overlapping.
 //   - Edits may touch. An insert at a replacement's start or end, and
 //     adjacent replacements, all apply.
 //   - Zero-width inserts at one offset all apply, in input order, and
