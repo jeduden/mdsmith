@@ -2,7 +2,9 @@ package fieldinterp
 
 import (
 	"testing"
+	"time"
 
+	"github.com/jeduden/mdsmith/cue/cuelite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -53,4 +55,26 @@ func TestResolvePathAndInterpolate_YAMLDate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "2026-01-02", got)
 	assert.Equal(t, "posted 2026-01-02", Interpolate("posted {date}", m))
+}
+
+// Stringify and the CUE lift render a timestamp through one formatter,
+// so a schema or query constraint checks the exact text a catalog row
+// or an fmvar glob shows.
+func TestStringify_AgreesWithCUELift(t *testing.T) {
+	for _, src := range []string{
+		"v: 2026-01-02",
+		"v: 2026-01-02T00:00:00Z",
+		"v: 2026-01-02T00:00:00+02:00",
+		"v: 2026-01-02 15:04:05",
+		"v: 2026-01-02T15:04:05.25-05:00",
+	} {
+		var m map[string]any
+		require.NoError(t, yaml.Unmarshal([]byte(src), &m))
+		require.IsType(t, time.Time{}, m["v"], src)
+		leaf, ok := cuelite.LiftMap(m).LookupPath(cuelite.MakePath("v"))
+		require.True(t, ok, src)
+		lifted, err := leaf.String()
+		require.NoError(t, err, src)
+		assert.Equal(t, Stringify(m["v"]), lifted, src)
+	}
 }
