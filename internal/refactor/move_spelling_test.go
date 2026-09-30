@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestMove_OutboundEscapedDestinationsLeftAsWritten pins that the moved
@@ -110,18 +111,34 @@ func TestMove_FootnoteDefinitionsLeftAsWritten(t *testing.T) {
 	assert.Equal(t, "T[^n] [a][r].\n\n[^n]: docs/a.md\n[r]: guide/a.md\n", got["b.md"])
 }
 
-// TestMove_NonMarkdownSourceBytesUntouched pins that a moved file
-// without a Markdown extension, such as an image or a text file, keeps
-// its bytes: link-shaped bytes in it are not destinations. The links
-// that name it are still repointed.
+// TestMove_NonMarkdownSourceBytesUntouched pins that a moved file the
+// workspace does not list and that has no Markdown extension, such as
+// an image or a text file, keeps its bytes: link-shaped bytes in it
+// are not destinations. The links that name it are still repointed.
 func TestMove_NonMarkdownSourceBytesUntouched(t *testing.T) {
+	sources := map[string][]byte{
+		"docs/n.txt": []byte("see [z](x.md)\n"),
+		"docs/x.md":  []byte("# X\n"),
+		"docs/b.md":  []byte("[n](n.txt)\n"),
+	}
+	ws := stubWorkspace{files: []string{"docs/x.md", "docs/b.md"}, sources: sources}
+	plan, err := Move(ws, "docs/n.txt", "guide/n.txt")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["docs/n.txt"])
+	assert.Equal(t, "[n](../guide/n.txt)\n", applyEditsToSource(string(sources["docs/b.md"]), plan.Edits["docs/b.md"]))
+}
+
+// TestMove_ListedNonMdSourceRecomputed pins that a moved file the
+// workspace lists, such as an `.mdx` file that `files:` matches, has
+// its own links recomputed like a `.md` file's.
+func TestMove_ListedNonMdSourceRecomputed(t *testing.T) {
 	got := moveAndApply(t, map[string]string{
-		"docs/n.txt": "see [z](x.md)\n",
-		"docs/x.md":  "# X\n",
-		"docs/b.md":  "[n](n.txt)\n",
-	}, "docs/n.txt", "guide/n.txt")
-	assert.Equal(t, "see [z](x.md)\n", got["docs/n.txt"])
-	assert.Equal(t, "[n](../guide/n.txt)\n", got["docs/b.md"])
+		"x.mdx": "# X\n\nSee [b](b.md) and [c](./c.mdx).\n",
+		"b.md":  "[x](x.mdx)\n",
+		"c.mdx": "# C\n",
+	}, "x.mdx", "sub/x.mdx")
+	assert.Equal(t, "# X\n\nSee [b](../b.md) and [c](../c.mdx).\n", got["x.mdx"])
+	assert.Equal(t, "[x](sub/x.mdx)\n", got["b.md"])
 }
 
 // TestMove_SelfRefDefFollowsRenamedFile pins that the moved file's

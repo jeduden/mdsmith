@@ -75,6 +75,14 @@ func TestDestResolver_Exists(t *testing.T) {
 	assert.False(t, r.exists("sub"), "a directory is not a listed file")
 }
 
+func TestDestResolver_Listed(t *testing.T) {
+	r := &destResolver{ws: stubWorkspace{files: []string{"b.md", "./x.mdx"}}, src: "a.md"}
+	assert.False(t, r.listed("a.md"), "src counts only when the workspace lists it")
+	assert.True(t, r.listed("b.md"))
+	assert.True(t, r.listed("x.mdx"), "listed paths are normalized")
+	assert.False(t, r.listed("n.txt"))
+}
+
 func TestDestEdit(t *testing.T) {
 	type tc struct {
 		row, tok          string

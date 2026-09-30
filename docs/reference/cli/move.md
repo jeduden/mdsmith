@@ -43,8 +43,9 @@ code 2.
   it. A destination that still resolves, such as `sub/../b.md`
   after a move within one directory, keeps its spelling. A link
   to a directory, such as `sub/`, keeps its trailing `/`. A
-  moved file without a Markdown extension, such as an image,
-  keeps its bytes.
+  moved file that mdsmith does not lint as Markdown, such as an
+  image, keeps its bytes. One with another extension that the
+  `files:` patterns match, such as `x.mdx`, is recomputed too.
 - **Wikilinks.** `[[old-stem]]` becomes `[[new-stem]]` only when
   the basename stem changes. A move that keeps the basename
   (`docs/api.md` → `ref/api.md`) leaves wikilinks alone, because

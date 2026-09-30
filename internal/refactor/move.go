@@ -61,10 +61,11 @@ func (e SourceNotFoundError) Error() string {
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
 //     asymmetry with path links);
-//   - outbound destinations inside a Markdown src — every `[t](path)`,
-//     `![a](path)` and `[label]: path` recomputed so it still resolves
-//     from dst's directory. Another file, such as an image, keeps its
-//     bytes.
+//   - outbound destinations inside src, when it has a Markdown
+//     extension or the workspace lists it (an `.mdx` file that
+//     `files:` matches) — every `[t](path)`, `![a](path)` and
+//     `[label]: path` recomputed so it still resolves from dst's
+//     directory. Another file, such as an image, keeps its bytes.
 //
 // Every destination is found in the parsed document (see destLocator),
 // so each one is rewritten exactly once, at its own bytes: an empty
@@ -109,7 +110,7 @@ func Move(ws Workspace, src, dst string) (Plan, error) {
 	r := &destResolver{ws: ws, src: src}
 	appendReferrerEdits(changes, ws, p, r, src, dst)
 	appendWikilinkStemEdits(changes, ws, src, dst)
-	if mdpath.HasMarkdownExt(path.Ext(src)) {
+	if mdpath.HasMarkdownExt(path.Ext(src)) || r.listed(src) {
 		appendOutboundEdits(changes, p, r, srcKey, src, dst, srcSource)
 	}
 	stableSortEdits(changes)
@@ -348,9 +349,12 @@ func literalTarget(refFile string, pre []byte) (lit, target string) {
 // exists reports whether p names src or another file the workspace
 // lists.
 func (r *destResolver) exists(p string) bool {
-	if p == r.src {
-		return true
-	}
+	return p == r.src || r.listed(p)
+}
+
+// listed reports whether the workspace lists p. It lists the files
+// once, on the first call.
+func (r *destResolver) listed(p string) bool {
 	if r.files == nil {
 		r.files = map[string]bool{}
 		for _, f := range r.ws.Files() {
