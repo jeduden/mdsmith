@@ -99,7 +99,8 @@ func tokenizeParagraph(src []byte, start, end int, spans []lint.Range) []string 
 //
 // No line after the first may be unsafe (unsafeLine): a line starting
 // "# " would become a heading, "> " a block quote, "1. " a list (issue
-// #844), and "|-|" under a line with a pipe a table. The first line
+// #844), and "|-|" under a line with a pipe a table. No line but the
+// last may end in "\", a hard line break. The first line
 // must keep the start of first, the paragraph's first line as written
 // (keepsStart); nil stands for plain text. Lines are as full as that
 // allows; see linePlanner. Returns nil for an empty token list, when
@@ -228,10 +229,14 @@ func (p *linePlanner) fitEnd(s int) int {
 }
 
 // breaks reports whether the line holding units[s:e] is unsafe: a
-// later line that unsafeLine rejects, or a first line that does not keep
-// the paragraph's own start (keepsStart).
+// later line that unsafeLine rejects, a first line that does not keep
+// the paragraph's own start (keepsStart), or a line other than the last
+// that ends in "\", which CommonMark reads as a hard line break.
 func (p *linePlanner) breaks(s, e int) bool {
 	line := p.render(s, e)
+	if e < len(p.units) && line[len(line)-1] == '\\' {
+		return true
+	}
 	if s == 0 {
 		return !keepsStart(p.first, line)
 	}

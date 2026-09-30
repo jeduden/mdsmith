@@ -131,7 +131,8 @@ that opens a new block in CommonMark or a common extension. This holds whatever
 - a footnote definition `[^label]:`, or a definition `:` then a space or tab
 
 CommonMark reads a list marker with nothing after it as paragraph text, but
-some renderers read it as an empty list item, so reflow avoids it too.
+some renderers read it as an empty list item, so reflow avoids it too. No line
+but the last ends in `\`, which would be a hard line break.
 
 If a plain word wrap would start a line with one of these, reflow moves the
 word before it down to lead that line instead. At fifty columns, a plain wrap of
@@ -156,10 +157,8 @@ such as when the word before a marker already fills the line. That line then
 takes as few extra words as it can. A run that reflow keeps together, such as
 `U. S. A.`, counts as one word. A paragraph is left as written when one of its
 lines would need more than eight extra words, or when every layout starts a line
-with block syntax. It is also left as written when a line after its first
-already starts with one, such as a definition under its term or the delimiter
-row of a table without outer pipes. mdsmith's parser reads that line as
-paragraph text, but other renderers read a block there.
+with block syntax. So is a paragraph with a line after its first that already
+starts one, such as a definition under its term or a table without outer pipes.
 
 ## Config
 

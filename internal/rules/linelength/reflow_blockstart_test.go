@@ -524,6 +524,10 @@ func TestLinePlanner_Breaks(t *testing.T) {
 	assert.False(t, p.breaks(0, 3))
 	assert.True(t, p.breaks(1, 3), `"# b" is a heading`)
 	assert.True(t, p.breaks(1, 2), `a lone "#" is an empty heading`)
+	backslash := planner([]string{"a", `C:\`, "b"}, "", 10)
+	assert.True(t, backslash.breaks(1, 2), `"C:\" before another line is a hard line break`)
+	assert.False(t, backslash.breaks(1, 3))
+	assert.False(t, planner([]string{"a", `C:\`}, "", 10).breaks(1, 2), "the last line may end in a backslash")
 }
 
 // TestLinePlanner_Pick walks each preference in order: a line after
@@ -698,4 +702,33 @@ func TestHasUnsafeContinuation(t *testing.T) {
 	assert.True(t, hasUnsafeContinuation(f, 1, 3), `": c" is a definition`)
 	assert.False(t, hasUnsafeContinuation(f, 3, 4))
 	assert.True(t, hasUnsafeContinuation(f, 4, 5), "a CRLF line ending is ignored")
+}
+
+// TestWrapTokens_BackslashNeverEndsALineButTheLast covers a word that
+// ends in "\", such as "C:\". At the end of any line but the last it
+// becomes a CommonMark hard line break, so the word before it moves down
+// as for a block start. On the last line it is plain text.
+func TestWrapTokens_BackslashNeverEndsALineButTheLast(t *testing.T) {
+	tokens := []string{"the", "path", `C:\`, "is", "root"}
+	require.Equal(t, []string{`the path C:\`, "is root"}, greedyWrap(tokens, 12))
+	assert.Equal(t, []string{"the path", `C:\ is root`}, wrapTokens(tokens, nil, "", 12, noGlue))
+
+	last := []string{"aaaa", "bbbb", `C:\`}
+	assert.Equal(t, greedyWrap(last, 10), wrapTokens(last, nil, "", 10, noGlue))
+}
+
+// TestFix_NoHardLineBreak runs the backslash case through Fix and checks
+// that the reflowed paragraph has no hard line break.
+func TestFix_NoHardLineBreak(t *testing.T) {
+	r := &Rule{Max: 30, Reflow: true}
+	got := fixSource(t, r, "# T\n\nWindows keeps its files in C:\\ and more files elsewhere.\n")
+	assert.Equal(t, "# T\n\nWindows keeps its files in\nC:\\ and more files elsewhere.\n", got)
+	f, err := lint.NewFile("test.md", []byte(got))
+	require.NoError(t, err)
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if txt, ok := n.(*ast.Text); ok && entering {
+			assert.False(t, txt.HardLineBreak(), "hard line break after %q", txt.Segment.Value(f.Source))
+		}
+		return ast.WalkContinue, nil
+	})
 }
