@@ -95,3 +95,15 @@ func TestFilenameDiagnostic_InvalidGlobUnderCUEHasNoAppliedHint(t *testing.T) {
 	assert.Equal(t, strconv.Quote(pat), d.Actual)
 	assert.Equal(t, "syntax error in pattern", d.Hint)
 }
+
+// A reference whose path walks into a scalar (`fmvar(a.b)` with
+// `a: x`) names that key as not a mapping instead of reporting the
+// field as missing: `a` is there, it just holds no `b`.
+func TestFmvarGlobValue_NonMapIntermediateIsNamed(t *testing.T) {
+	_, err := fmvarGlobValue(map[string]any{"a": "x"}, "a.b")
+	require.Error(t, err)
+	assert.Equal(t, "`fmvar(a.b)`: front-matter key \"a\" is not a map",
+		err.Error())
+	_, err = fmvarGlobValue(map[string]any{"a": map[string]any{}}, "a.b")
+	assert.EqualError(t, err, "`fmvar(a.b)`: frontmatter value missing")
+}

@@ -152,6 +152,10 @@ func ParseCUEPath(expr string) []string {
 // resolves to a list or map rather than a scalar.
 var ErrCompositeValue = errors.New("composite value")
 
+// ErrNotMap is wrapped by ResolvePath's error when the path walks
+// into a key whose value is not a map, so it cannot hold the rest.
+var ErrNotMap = errors.New("not a map")
+
 // ResolvePath walks data using the given path segments and returns
 // the string value at the resolved location.
 func ResolvePath(data map[string]any, path []string) (string, error) {
@@ -248,7 +252,7 @@ func resolveScalar(data map[string]any, path []string) (any, error) {
 	for i, seg := range path {
 		m, ok := current.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("front-matter key %q is not a map", strings.Join(path[:i], "."))
+			return nil, fmt.Errorf("front-matter key %q is %w", strings.Join(path[:i], "."), ErrNotMap)
 		}
 		val, exists := m[seg]
 		if !exists {

@@ -323,8 +323,10 @@ func WildcardGlobRefs(pattern string) string {
 
 // fmvarGlobValue resolves a glob reference's front-matter field.
 // Unlike fmvarLookup it keeps why a present field cannot be used: a
-// list or map is reported as not a scalar rather than as missing,
-// which would send the author looking for a field they already wrote.
+// list or map is reported as not a scalar, and a path that walks into
+// a scalar names that key as not a map, rather than either reading as
+// missing, which would send the author looking for a field they
+// already wrote.
 // name is a valid CUE path; globRefAt only yields well-formed ones.
 func fmvarGlobValue(fm map[string]any, name string) (string, error) {
 	val, err := fieldinterp.ResolvePath(fm, fieldinterp.ParseCUEPath(name))
@@ -332,6 +334,9 @@ func fmvarGlobValue(fm map[string]any, name string) (string, error) {
 		return "", fmt.Errorf(
 			"`fmvar(%s)`: frontmatter value is a list or map, "+
 				"not a scalar", name)
+	}
+	if errors.Is(err, fieldinterp.ErrNotMap) {
+		return "", fmt.Errorf("`fmvar(%s)`: %w", name, err)
 	}
 	if err != nil {
 		return "", MissingFmvarErr(name)
