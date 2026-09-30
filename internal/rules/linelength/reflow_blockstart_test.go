@@ -136,6 +136,10 @@ var blockStartCases = []struct {
 		[]string{"aaaa", "bbbb [^1]:", "cc"}},
 	{"footnote definition without a space", []string{"aaaa", "bbbb", "[^1]:c"}, 11,
 		[]string{"aaaa", "bbbb [^1]:c"}},
+	// A definition-list description needs a space after the ':', so a
+	// lone ':' may lead a line and the first line stays full.
+	{"definition list description", []string{"aaaa", "bbbb", ":", "cc"}, 10,
+		[]string{"aaaa bbbb", ":", "cc"}},
 }
 
 // TestWrapTokens_BlockStartNeverLeadsALine pins issue #844 for every

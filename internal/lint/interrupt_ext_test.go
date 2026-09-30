@@ -21,7 +21,14 @@ var extInterruptingLines = []string{
 	// Footnote definitions: "[^", a label that is not blank and has no
 	// unescaped bracket, then "]:".
 	"[^1]: x", "[^1]:x", "[^1]:", "[^a b]: x", "   [^note]: x", `[^a\]b]: x`, `[^a\[b]: x`, `[^a\b]: x`,
+	// Definition-list descriptions: ':' then a space or tab.
+	": x", ":\tx", ":  x", ": ",
 }
+
+// extSpecOnlyLines interrupt a paragraph under PHP Markdown Extra and
+// markdown-it, which allow up to three spaces before a definition's ':',
+// but not under goldmark, which wants the ':' at the line start.
+var extSpecOnlyLines = []string{" : x", "   : x"}
 
 // extOneColumnLines are one-column delimiter rows. They build a table
 // after a header line with no pipe, such as "aa".
@@ -37,6 +44,9 @@ var extContinuingLines = []string{
 	// which cannot interrupt a paragraph.
 	"[^]: x", "[^ ]: x", "[^a[b]: x", "[^1] x", "[^1]", "[^1] : x", "[1]: x",
 	"^1]: x", "    [^1]: x",
+	// Not definition-list lines: no space or tab after the ':', or four
+	// columns of indent.
+	":x", ":", "::", ":-x", "    : x",
 }
 
 // flavorKeepsParagraph reports whether the flavor parser keeps both
@@ -59,6 +69,9 @@ func TestExtensionInterruptsParagraph(t *testing.T) {
 	for _, line := range extContinuingLines {
 		assert.False(t, ExtensionInterruptsParagraph([]byte(line)), "%q must continue a paragraph", line)
 	}
+	for _, line := range extSpecOnlyLines {
+		assert.True(t, ExtensionInterruptsParagraph([]byte(line)), "%q must interrupt a paragraph", line)
+	}
 }
 
 // TestExtensionInterruptsParagraph_MatchesFlavorParser checks each table
@@ -72,6 +85,9 @@ func TestExtensionInterruptsParagraph_MatchesFlavorParser(t *testing.T) {
 	}
 	for _, line := range extContinuingLines {
 		assert.True(t, flavorKeepsParagraph("aa | bb", line), "parser ends the paragraph at %q", line)
+		assert.True(t, flavorKeepsParagraph("aa", line), "parser ends the paragraph at %q", line)
+	}
+	for _, line := range extSpecOnlyLines {
 		assert.True(t, flavorKeepsParagraph("aa", line), "parser ends the paragraph at %q", line)
 	}
 }

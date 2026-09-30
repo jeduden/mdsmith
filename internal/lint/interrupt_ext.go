@@ -15,10 +15,11 @@ import (
 //   - a GFM table delimiter row, which turns the line before it into a
 //     table header
 //   - a footnote definition, "[^label]:"
+//   - a definition-list description, ':' then a space or tab
 //
 // Up to three spaces of indent are allowed.
 func ExtensionInterruptsParagraph(line []byte) bool {
-	return isTableDelimiterRow(line) || isFootnoteDefinition(line)
+	return isTableDelimiterRow(line) || isFootnoteDefinition(line) || isDefinitionDescription(line)
 }
 
 // isTableDelimiterRow reports whether line is a GFM table delimiter
@@ -88,4 +89,14 @@ func isFootnoteDefinition(line []byte) bool {
 		}
 	}
 	return false
+}
+
+// isDefinitionDescription reports whether line opens a definition-list
+// description: ':' then a space or tab. goldmark wants the ':' at the
+// line start; PHP Markdown Extra and markdown-it allow up to three
+// spaces before it, and so does this check.
+func isDefinitionDescription(line []byte) bool {
+	indent := leadingSpaces(line)
+	return indent <= 3 && indent+1 < len(line) && line[indent] == ':' &&
+		(line[indent+1] == ' ' || line[indent+1] == '\t')
 }
