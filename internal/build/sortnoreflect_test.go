@@ -2,6 +2,7 @@ package build
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -75,11 +76,9 @@ func TestSortEntriesByOutputKey_AllocBudget(t *testing.T) {
 		delta = 0
 	}
 
-	// Measured 242; budgeted with headroom since this isn't a Go-map-
-	// growth-dependent count (unlike the noduplicateheadings case
-	// elsewhere in this codebase) — a real regression (outputSetKey
-	// computed twice per comparison again) would jump to ~5914, far
-	// past any reasonable budget here.
+	// Measured 242. The budget leaves headroom because the regression it
+	// guards against is far larger: computing outputSetKey on both sides
+	// of every comparison again measured ~5914.
 	const allocBudget = 300
 	t.Logf("sortEntriesByOutputKey allocs/op (%d entries, delta over the test's own "+
 		"input copy) = %.0f (budget = %d)", n, delta, allocBudget)
@@ -111,4 +110,76 @@ func TestSortEntriesByOutputKey_SingleOrEmptyAllocatesNothing(t *testing.T) {
 				allocs, len(entries))
 		}
 	}
+}
+
+// TestSortEntriesByOutputKey_StableForEqualKeys pins that entries with
+// the same output set keep their input order, as the sort.SliceStable
+// call this replaced did. Put replaces by output set, so Save never
+// writes duplicates itself, but a hand-edited or older cache file can
+// hold them, and Save must write those back in a fixed order. Thirty
+// entries over three output sets put the sort past the size where an
+// unstable sort still behaves stably.
+func TestSortEntriesByOutputKey_StableForEqualKeys(t *testing.T) {
+	sets := []string{"c.txt", "a.txt", "b.txt"}
+	entries := make([]CacheEntry, 30)
+	for i := range entries {
+		entries[i] = CacheEntry{
+			Outputs:  []OutputHash{{Path: sets[i%len(sets)]}},
+			ActionID: strconv.Itoa(i),
+		}
+	}
+	sortEntriesByOutputKey(entries)
+
+	prev := map[string]int{}
+	for i, e := range entries {
+		if i > 0 {
+			require.LessOrEqual(t, entries[i-1].Outputs[0].Path, e.Outputs[0].Path,
+				"not sorted by output set at index %d", i)
+		}
+		id, err := strconv.Atoi(e.ActionID)
+		require.NoError(t, err)
+		path := e.Outputs[0].Path
+		if last, ok := prev[path]; ok {
+			require.Greater(t, id, last, "entries for %s lost their input order", path)
+		}
+		prev[path] = id
+	}
+}
+
+// TestOutputSetKey_LengthFramedSortedFormat pins outputSetKey's bytes:
+// each path as "<byte length>:<path>|", in sorted order, without
+// reordering the caller's slice. The length framing keeps two output
+// sets apart even when their joined paths read the same.
+func TestOutputSetKey_LengthFramedSortedFormat(t *testing.T) {
+	paths := []string{"dist/bb.md", "a|1:x"}
+	require.Equal(t, "5:a|1:x|10:dist/bb.md|", outputSetKey(paths))
+	require.Equal(t, []string{"dist/bb.md", "a|1:x"}, paths, "input slice was reordered")
+	require.NotEqual(t, outputSetKey([]string{"a|1:b"}), outputSetKey([]string{"a", "b"}))
+	require.Empty(t, outputSetKey(nil))
+}
+
+// TestOutputSetKey_AllocsDoNotScaleWithPaths pins the strconv key
+// builder. fmt.Fprintf boxes each path into an interface, one
+// allocation per path (74 for 64 paths); strconv.Itoa and
+// strings.Builder allocate only the sorted copy and the builder's
+// growth steps (10 for 64 paths).
+func TestOutputSetKey_AllocsDoNotScaleWithPaths(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	paths := make([]string, 64)
+	for i := range paths {
+		paths[i] = fmt.Sprintf("dist/out-%03d.txt", len(paths)-i)
+	}
+	const allocBudget = 16
+	allocs := testing.AllocsPerRun(200, func() {
+		_ = outputSetKey(paths)
+	})
+	t.Logf("outputSetKey allocs/op (%d paths) = %.0f (budget = %d)", len(paths), allocs, allocBudget)
+	require.LessOrEqualf(t, allocs, float64(allocBudget),
+		"outputSetKey allocs/op = %.0f for %d paths: one allocation per path means "+
+			"it formats with fmt again", allocs, len(paths))
 }
