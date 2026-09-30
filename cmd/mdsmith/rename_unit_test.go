@@ -482,3 +482,69 @@ func TestCliRenameWorkspace_Resolve(t *testing.T) {
 	_, _, ok = ws.Resolve("missing.md")
 	assert.False(t, ok)
 }
+
+func TestStageFile(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "f.md")
+	require.NoError(t, os.WriteFile(p, []byte("old"), 0o640))
+	tmp, err := stageFile(p, []byte("new"))
+	require.NoError(t, err)
+	assert.Equal(t, dir, filepath.Dir(tmp), "the temp is a sibling of path")
+	got, err := os.ReadFile(tmp)
+	require.NoError(t, err)
+	assert.Equal(t, "new", string(got))
+	info, err := os.Stat(tmp)
+	require.NoError(t, err)
+	if runtime.GOOS != "windows" {
+		assert.Equal(t, os.FileMode(0o640), info.Mode().Perm(), "the temp carries path's mode")
+	}
+	orig, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "old", string(orig), "staging leaves path alone")
+
+	// A failed fill removes the temp it created.
+	injectWriteFileFn(t, &writeFileSyncFnMu, &writeFileSyncFn,
+		func(*os.File) error { return os.ErrPermission })
+	_, err = stageFile(p, []byte("new2"))
+	require.Error(t, err)
+	left, err := filepath.Glob(filepath.Join(dir, "f.md.*.tmp"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{tmp}, left, "only the first, successful stage remains")
+}
+
+func TestFillTemp(t *testing.T) {
+	tmp, err := os.CreateTemp(t.TempDir(), "f.*.tmp")
+	require.NoError(t, err)
+	require.NoError(t, fillTemp(tmp, 0o600, []byte("data")))
+	got, err := os.ReadFile(tmp.Name())
+	require.NoError(t, err)
+	assert.Equal(t, "data", string(got))
+	// fillTemp closed the file.
+	require.Error(t, tmp.Close())
+}
+
+func TestReplaceWithStaged(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "f.md")
+	require.NoError(t, os.WriteFile(p, []byte("old"), 0o644))
+	tmp, err := stageFile(p, []byte("new"))
+	require.NoError(t, err)
+	require.NoError(t, replaceWithStaged(tmp, p))
+	got, err := os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "new", string(got))
+	assert.NoFileExists(t, tmp)
+
+	// A failed rename wraps the error and removes the temp.
+	tmp, err = stageFile(p, []byte("newer"))
+	require.NoError(t, err)
+	injectWriteFileFn(t, &writeFileRenameFnMu, &writeFileRenameFn,
+		func(string, string) error { return os.ErrPermission })
+	err = replaceWithStaged(tmp, p)
+	require.ErrorIs(t, err, os.ErrPermission)
+	assert.Contains(t, err.Error(), "committing f.md")
+	assert.NoFileExists(t, tmp)
+	got, err = os.ReadFile(p)
+	require.NoError(t, err)
+	assert.Equal(t, "new", string(got))
+}
