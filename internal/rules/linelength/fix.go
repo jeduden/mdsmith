@@ -26,8 +26,9 @@ func (r *Rule) FixTitle() string { return "Reflow long lines" }
 // or link — is left on its own over-long line.
 //
 // No rewrapped line may start a block that would end the paragraph, such
-// as "# " (a heading) or "> " (a block quote); see unsafeLine.
-// The wrap moves an earlier word down to lead such a line instead. A line
+// as "# " (a heading) or "> " (a block quote); see unsafeLine. The first
+// line keeps the start it had, so a paragraph that opens with "[^1]:"
+// still wraps (keepsStart). The wrap moves an earlier word down to lead such a line instead. A line
 // runs past Max for this only when no layout within Max exists. A
 // paragraph is left as written when it has no safe layout, or when one
 // would need a line more than maxOverflowUnits units past Max. The output
@@ -137,7 +138,8 @@ func (r *Rule) reflowParagraph(
 	// layout keeps the paragraph whole within its overflow bound; the
 	// paragraph is then left as written.
 	tokens := tokenizeParagraph(f.Source, first.Start, last.Stop, spans)
-	out = wrapTokens(tokens, indent, width, r.isAbbrev)
+	firstLine := trimTrailingCR(f.Lines[startLine-1], true)
+	out = wrapTokens(tokens, firstLine, indent, width, r.isAbbrev)
 	if out == nil {
 		return 0, 0, nil, false
 	}

@@ -148,6 +148,8 @@ with 1. and a space starts a list.
 Text that only looks like block syntax wraps as usual, such as `#48`, `#tag`,
 `2.`, `1999.`, `x = y`, or a lone `:`. Reflow judges each line on its own, so a
 table delimiter row counts even when the line before it has another cell count.
+The first line keeps the start it had: a paragraph that opens with `[^1]:` or
+`: ` still wraps, and the marker keeps the word after it on that line.
 
 A line runs past `max` only when no layout within `max` avoids these starts,
 such as when the word before a marker already fills the line. That line then

@@ -97,18 +97,22 @@ func tokenizeParagraph(src []byte, start, end int, spans []lint.Range) []string 
 // width: "U. S. A." moves to the next line whole rather than dragging
 // the line over the limit.
 //
-// No line may be unsafe (unsafeLine): a line starting "# " would become
-// a heading, "> " a block quote, "1. " a list (issue #844), and "|-|"
-// under a line with a pipe a table. Lines are as full as that allows;
-// see linePlanner. Returns nil for an empty token
-// list, when every layout has such a line, or when every layout that
-// avoids them has a line more than maxOverflowUnits units past width.
-func wrapTokens(tokens []string, indent string, width int, glue func(prev string) bool) []string {
+// No line after the first may be unsafe (unsafeLine): a line starting
+// "# " would become a heading, "> " a block quote, "1. " a list (issue
+// #844), and "|-|" under a line with a pipe a table. The first line
+// must keep the start of first, the paragraph's first line as written
+// (keepsStart); nil stands for plain text. Lines are as full as that
+// allows; see linePlanner. Returns nil for an empty token list, when
+// every layout has a line that breaks these rules, or when every layout
+// that keeps them has a line more than maxOverflowUnits units past
+// width.
+func wrapTokens(tokens []string, first []byte, indent string, width int, glue func(prev string) bool) []string {
 	if len(tokens) == 0 {
 		return nil
 	}
 	p := linePlanner{
 		units:   buildWrapUnits(tokens, glue),
+		first:   first,
 		indent:  indent,
 		indentW: utf8.RuneCountInString(indent),
 		width:   width,
@@ -124,7 +128,7 @@ const maxOverflowUnits = 8
 
 // linePlanner lays wrap units out into lines. A line "fits" when it is
 // no wider than width or holds a single unit, and it is "safe" when
-// unsafeLine is false for it. Every line of a layout is safe.
+// breaks is false for it. Every line of a layout is safe.
 //
 // The planner works back to front, so each choice knows what the rest
 // of the paragraph allows. For each unit s it picks the line that starts
@@ -142,6 +146,7 @@ const maxOverflowUnits = 8
 // it down to lead that line instead.
 type linePlanner struct {
 	units   []string
+	first   []byte // the paragraph's first line as written; see keepsStart
 	indent  string
 	indentW int
 	width   int
@@ -222,10 +227,46 @@ func (p *linePlanner) fitEnd(s int) int {
 	return e
 }
 
-// breaks reports whether the line holding units[s:e] is unsafe (see
-// unsafeLine).
+// breaks reports whether the line holding units[s:e] is unsafe: a
+// later line that unsafeLine rejects, or a first line that does not keep
+// the paragraph's own start (keepsStart).
 func (p *linePlanner) breaks(s, e int) bool {
-	return unsafeLine(p.render(s, e))
+	line := p.render(s, e)
+	if s == 0 {
+		return !keepsStart(p.first, line)
+	}
+	return unsafeLine(line)
+}
+
+// keepsStart reports whether line may be a paragraph's first line in
+// place of first, the first line as written. Nothing precedes either
+// inside the paragraph, and both start with its first word, so the
+// question is only whether line opens a different block:
+//
+//   - line opens no CommonMark block and is no bare list marker. A lone
+//     "***" is a thematic break, though "*** text" is paragraph text.
+//   - line opens an extension block exactly when first does. The
+//     canonical parser reads "[^1]: text" or ": text" on a first line
+//     as paragraph text, so a paragraph can open with one, and every
+//     layout's first line then starts with it too.
+//   - when first opens one, line is one word exactly when first is. A
+//     marker keeps the word after it: a lone "[^1]:" is an empty
+//     footnote, and a lone ":" is no definition.
+func keepsStart(first, line []byte) bool {
+	if lint.InterruptsParagraph(line) || isBareListMarker(line) {
+		return false
+	}
+	ext := lint.ExtensionInterruptsParagraph(first)
+	if lint.ExtensionInterruptsParagraph(line) != ext {
+		return false
+	}
+	return !ext || oneWord(line) == oneWord(first)
+}
+
+// oneWord reports whether line holds a single word: no space or tab
+// between its first and last non-blank bytes.
+func oneWord(line []byte) bool {
+	return !bytes.ContainsAny(bytes.TrimSpace(line), " \t")
 }
 
 // unsafeLine reports whether line, placed after a paragraph line, could

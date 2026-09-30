@@ -156,7 +156,7 @@ func TestWrapTokens_BlockStartNeverLeadsALine(t *testing.T) {
 			require.False(t, singleParagraph(t, naive),
 				"width %d must make greedy wrapping split the paragraph: %q", tc.width, naive)
 
-			got := wrapTokens(tc.tokens, "", tc.width, noGlue)
+			got := wrapTokens(tc.tokens, nil, "", tc.width, noGlue)
 			assert.Equal(t, tc.want, got)
 			assert.True(t, singleParagraph(t, got), "layout %q splits the paragraph", got)
 			for _, line := range got {
@@ -197,7 +197,7 @@ func TestWrapTokens_PlainTextWrapsLikeGreedy(t *testing.T) {
 				"width must put %q at line start: %q", tc.tokens[2], naive)
 			require.True(t, singleParagraph(t, naive), "greedy layout %q must stay one paragraph", naive)
 
-			assert.Equal(t, naive, wrapTokens(tc.tokens, "", 10, noGlue))
+			assert.Equal(t, naive, wrapTokens(tc.tokens, nil, "", 10, noGlue))
 		})
 	}
 }
@@ -216,7 +216,7 @@ func TestWrapTokens_BareMarkerNeverStandsAlone(t *testing.T) {
 			naive := greedyWrap(tokens, 10)
 			require.Equal(t, []string{"aaaa bbbb", marker}, naive)
 			require.True(t, singleParagraph(t, naive), "greedy layout %q must stay one paragraph", naive)
-			assert.Equal(t, []string{"aaaa", "bbbb " + marker}, wrapTokens(tokens, "", 10, noGlue))
+			assert.Equal(t, []string{"aaaa", "bbbb " + marker}, wrapTokens(tokens, nil, "", 10, noGlue))
 		})
 	}
 }
@@ -254,7 +254,7 @@ func TestWrapTokens_OverflowOnlyWhenNoLayoutFits(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := wrapTokens(tc.tokens, "", 10, noGlue)
+			got := wrapTokens(tc.tokens, nil, "", 10, noGlue)
 			assert.Equal(t, tc.want, got)
 			assert.True(t, singleParagraph(t, got), "layout %q splits the paragraph", got)
 		})
@@ -265,7 +265,7 @@ func TestWrapTokens_OverflowOnlyWhenNoLayoutFits(t *testing.T) {
 // a block wherever the lines break: there is no layout to offer, so
 // wrapTokens returns nil and the caller leaves the paragraph alone.
 func TestWrapTokens_NoSafeLayout(t *testing.T) {
-	assert.Nil(t, wrapTokens([]string{"<!doctype", "html", "page"}, "", 10, noGlue))
+	assert.Nil(t, wrapTokens([]string{"<!doctype", "html", "page"}, nil, "", 10, noGlue))
 }
 
 // TestWrapTokens_OverflowWindow pins maxOverflowUnits. A "-" can never
@@ -278,8 +278,8 @@ func TestWrapTokens_OverflowWindow(t *testing.T) {
 		return append([]string{"x"}, strings.Split(strings.Repeat("-", dashes), "")...)
 	}
 	within := run(1 + maxOverflowUnits)
-	assert.Equal(t, []string{strings.Join(within, " ")}, wrapTokens(within, "", 3, noGlue))
-	assert.Nil(t, wrapTokens(run(2+maxOverflowUnits), "", 3, noGlue))
+	assert.Equal(t, []string{strings.Join(within, " ")}, wrapTokens(within, nil, "", 3, noGlue))
+	assert.Nil(t, wrapTokens(run(2+maxOverflowUnits), nil, "", 3, noGlue))
 }
 
 // TestWrapTokens_FirstLineIsGuarded covers the paragraph's first line.
@@ -308,7 +308,7 @@ func TestWrapTokens_FirstLineIsGuarded(t *testing.T) {
 				"%q must be one paragraph line", tc.tokens)
 			naive := greedyWrap(tc.tokens, 7)
 			require.Equal(t, tc.greedySplits, !singleParagraph(t, naive), "greedy layout %q", naive)
-			got := wrapTokens(tc.tokens, "", 7, noGlue)
+			got := wrapTokens(tc.tokens, nil, "", 7, noGlue)
 			assert.Equal(t, tc.want, got)
 			assert.True(t, singleParagraph(t, got), "layout %q splits the paragraph", got)
 		})
@@ -318,7 +318,7 @@ func TestWrapTokens_FirstLineIsGuarded(t *testing.T) {
 // TestWrapTokens_GuardKeepsIndent checks that the indent prefix counts
 // toward the width and still leads every line of a guarded layout.
 func TestWrapTokens_GuardKeepsIndent(t *testing.T) {
-	got := wrapTokens([]string{"aaaa", "bbbb", "#", "cc"}, "  ", 12, noGlue)
+	got := wrapTokens([]string{"aaaa", "bbbb", "#", "cc"}, nil, "  ", 12, noGlue)
 	assert.Equal(t, []string{"  aaaa", "  bbbb # cc"}, got)
 }
 
@@ -456,7 +456,7 @@ func TestWrapTokens_RandomParagraphsMatchParser(t *testing.T) {
 			tokens = append(tokens, pool[rng.IntN(len(pool))])
 		}
 		width := 4 + rng.IntN(24)
-		got := wrapTokens(tokens, "", width, noGlue)
+		got := wrapTokens(tokens, nil, "", width, noGlue)
 		if naive := greedyWrap(tokens, width); safeLayout(t, naive) {
 			require.Equal(t, naive, got, "tokens %q width %d", tokens, width)
 			continue
@@ -547,4 +547,110 @@ func TestLinePlanner_Layout(t *testing.T) {
 	p := planner([]string{"aaaa", "bbbb", "#", "cc"}, "", 10)
 	assert.Equal(t, []string{"aaaa", "bbbb # cc"}, p.layout())
 	assert.Nil(t, planner([]string{"<!doctype", "html"}, "", 10).layout())
+}
+
+// flavorBlocks lists the kinds of the block nodes the flavor parser
+// builds for src, in document order. The flavor parser adds footnotes,
+// definition lists and GFM tables, which the canonical parser leaves
+// out, so the list shows whether a fix changed any of those blocks.
+func flavorBlocks(t *testing.T, src string) []string {
+	t.Helper()
+	var kinds []string
+	flavor.WithSharedParser(func(p parser.Parser) {
+		doc := p.Parse(text.NewReader([]byte(src)))
+		_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if entering && n.Type() == ast.TypeBlock {
+				kinds = append(kinds, n.Kind().String())
+			}
+			return ast.WalkContinue, nil
+		})
+	})
+	return kinds
+}
+
+// TestFix_FirstLineKeepsItsStart covers a paragraph that opens with a
+// footnote definition or a definition line. The canonical parser reads
+// both as paragraph text, and every layout's first line starts with the
+// same marker, so the guard must not reject that start on line 1. The
+// paragraph wraps, the marker keeps the word after it, every line fits,
+// and the flavor parser sees the same blocks as before.
+func TestFix_FirstLineKeepsItsStart(t *testing.T) {
+	cases := []struct{ name, text, want string }{
+		{
+			"footnote definition",
+			"[^1]: A footnote whose text is quite long and goes on past thirty.",
+			"[^1]: A footnote whose text is\nquite long and goes on past\nthirty.",
+		},
+		{
+			"definition line",
+			": a description that is quite long and goes on past thirty",
+			": a description that is quite\nlong and goes on past thirty",
+		},
+	}
+	r := &Rule{Max: 30, Reflow: true}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			src := "# T\n\n" + tc.text + "\n"
+			got := fixSource(t, r, src)
+			assert.Equal(t, "# T\n\n"+tc.want+"\n", got)
+			f, err := lint.NewFile("test.md", []byte(got))
+			require.NoError(t, err)
+			assert.Empty(t, r.Check(f), "got:\n%s", got)
+			assert.Equal(t, flavorBlocks(t, src), flavorBlocks(t, got))
+			assert.Equal(t, got, fixSource(t, r, got), "reflow is not a fixpoint")
+		})
+	}
+}
+
+// TestWrapTokens_FirstLineKeepsItsStart drives keepsStart through the
+// planner. first is the paragraph's first line as written. Line 1 may
+// open the extension block that first opens, and its marker keeps the
+// word after it, past width when a later line needs that. A marker that
+// stood alone on first stays alone. Without the check, the definition
+// case would put a lone ":" on line 1 and the footnote cases would have
+// no layout at all.
+func TestWrapTokens_FirstLineKeepsItsStart(t *testing.T) {
+	cases := []struct {
+		name   string
+		first  string
+		tokens []string
+		width  int
+		want   []string
+	}{
+		{"definition marker keeps its word", ": a # b",
+			[]string{":", "a", "#", "b"}, 4, []string{": a #", "b"}},
+		{"footnote marker keeps its word", "[^1]: a # b",
+			[]string{"[^1]:", "a", "#", "b"}, 7, []string{"[^1]: a #", "b"}},
+		{"lone footnote marker stays alone", "[^1]:",
+			[]string{"[^1]:", "aaaa", "bbbb"}, 10, []string{"[^1]:", "aaaa bbbb"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, wrapTokens(tc.tokens, []byte(tc.first), "", tc.width, noGlue))
+		})
+	}
+}
+
+func TestKeepsStart(t *testing.T) {
+	cases := []struct {
+		first, line string
+		want        bool
+	}{
+		{"", "text", true},
+		{"text more", "text", true},
+		{"*** text", "***", false},
+		{"* text", "*", false},
+		{"<!doctype html page", "<!doctype html", false},
+		{"--- | --- text", "--- | ---", false},
+		{"[^1]: a b", "[^1]: a", true},
+		{"[^1]: a b", "[^1]:", false},
+		{"[^1]:", "[^1]:", true},
+		{"[^1]:", "[^1]: a", false},
+		{": a b", ": a", true},
+		{": a b", ":", false},
+		{"  : a b", "  : a", true},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, keepsStart([]byte(tc.first), []byte(tc.line)), "first %q, line %q", tc.first, tc.line)
+	}
 }
