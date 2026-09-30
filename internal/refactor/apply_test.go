@@ -164,3 +164,23 @@ func TestSplitKeepCRAndJoinLF(t *testing.T) {
 	// Trailing newline yields a trailing empty segment that round-trips.
 	assert.Equal(t, []byte("x\n"), joinLF(splitKeepCR([]byte("x\n"))))
 }
+
+// TestApplyEdits_ReportsFirstBadLineDeterministically pins that a plan
+// with several bad lines always names the same one — the first in
+// document order — rather than whichever line map iteration reached
+// first. Lines 2, 4, 6 and 8 each carry an invalid edit, given out of
+// order; every run must report line 2.
+func TestApplyEdits_ReportsFirstBadLineDeterministically(t *testing.T) {
+	src := []byte("l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\n")
+	for i := range 100 {
+		edits := []Edit{
+			mkEdit(7, 2, 1, "x"),
+			mkEdit(1, 2, 1, "x"),
+			mkEdit(5, 2, 1, "x"),
+			mkEdit(3, 2, 1, "x"),
+		}
+		_, err := ApplyEdits(src, edits)
+		require.Error(t, err)
+		require.Containsf(t, err.Error(), "line 2", "run %d: %v", i, err)
+	}
+}

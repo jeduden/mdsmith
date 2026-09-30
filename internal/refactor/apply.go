@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/jeduden/mdsmith/internal/mdtext"
@@ -29,7 +30,10 @@ func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 		}
 		byLine[e.Range.Start.Line] = append(byLine[e.Range.Start.Line], e)
 	}
-	for line, es := range byLine {
+	// Visit lines in document order, not map order, so a plan with
+	// several bad lines always reports the same (first) one.
+	for _, line := range slices.Sorted(maps.Keys(byLine)) {
+		es := byLine[line]
 		if line < 0 || line >= len(segs) {
 			return nil, fmt.Errorf("edit line %d out of range", line+1)
 		}
