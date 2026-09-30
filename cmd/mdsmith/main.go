@@ -322,6 +322,18 @@ func splitStdinArg(args []string) (hasStdin bool, fileArgs []string) {
 	return hasStdin, fileArgs
 }
 
+// refuseStdinWithFiles rejects `-` next to file arguments with a usage
+// error and returns 2: reading stdin would silently drop the files, and
+// an -o naming one of them would overwrite it. It returns -1 when `-`
+// stands alone or is absent.
+func refuseStdinWithFiles(cmd string, hasStdin bool, fileArgs []string) int {
+	if !hasStdin || len(fileArgs) == 0 {
+		return -1
+	}
+	fmt.Fprintf(os.Stderr, "mdsmith: %s: - (stdin) cannot be combined with file arguments\n", cmd)
+	return 2
+}
+
 // discoverFiles loads config, discovers files from config patterns, and
 // returns the config, config path, logger, and discovered file list. On
 // error it prints a message and returns 2; when no file is found it

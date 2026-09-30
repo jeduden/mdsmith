@@ -990,12 +990,17 @@ func TestParseCheckFlags_Defaults(t *testing.T) {
 	assert.False(t, opts.walk.noGitignore)
 }
 
+// `-` next to file arguments is a usage error rather than stdin
+// silently winning over the files (see
+// TestParseCheckFlags_StdinWithFilesIsUsageError).
 func TestParseCheckFlags_FilesAndStdin(t *testing.T) {
-	opts, files, hasStdin, code := parseCheckFlags([]string{"a.md", "-", "b.md"})
-	assert.Equal(t, -1, code)
-	assert.True(t, hasStdin)
-	assert.Equal(t, []string{"a.md", "b.md"}, files)
-	assert.Empty(t, opts.configPath)
+	stderr := captureStderr(func() {
+		_, files, hasStdin, code := parseCheckFlags([]string{"a.md", "-", "b.md"})
+		assert.Equal(t, 2, code)
+		assert.False(t, hasStdin)
+		assert.Nil(t, files)
+	})
+	assert.Contains(t, stderr, "cannot be combined with file arguments")
 }
 
 func TestParseCheckFlags_QuietSuppressesVerbose(t *testing.T) {

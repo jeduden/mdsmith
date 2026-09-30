@@ -14,9 +14,10 @@ mdsmith check [flags] [files...]
 ```
 
 Files can be paths, directories (walked recursively for
-`*.md` and `*.markdown`), or glob patterns. Pass `-` to
-read from stdin. With no file arguments, files are
-discovered from `.mdsmith.yml` `files:` patterns
+`*.md` and `*.markdown`), or glob patterns. Pass `-`
+alone to read from stdin: `-` next to file arguments is
+a usage error (exit `2`). With no file arguments, files
+are discovered from `.mdsmith.yml` `files:` patterns
 (default: `**/*.md`, `**/*.markdown`).
 
 Only Markdown files are linted. A non-Markdown path

@@ -45,7 +45,7 @@ row: "| [`{command}`]({filename}) | {summary} |"
 The `check`, `fix`, and `query` commands accept file
 paths, directories, and glob patterns as positional
 arguments. `check` and `query` also accept `-` to read
-from stdin.
+from stdin; `check` refuses `-` next to file arguments.
 
 With no file arguments:
 

@@ -46,6 +46,21 @@ func runCheck(args []string) int {
 	return checkDiscovered(opts)
 }
 
+// setCheckUsage wires the usage message for the check subcommand onto fs.
+func setCheckUsage(fs *flag.FlagSet) {
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith check [flags] [files...]\n\n"+
+			"Lint Markdown files for style issues.\n\n"+
+			"Files can be paths, directories (walked recursively for *.md), or glob patterns.\n"+
+			"Pass - alone to read from stdin; it cannot be combined with file arguments.\n"+
+			"With no file arguments, discovers files using the files patterns from config\n"+
+			"(default: **/*.md, **/*.markdown).\n\n"+
+			reportRoutingHelp+
+			"Flags:\n")
+		fs.PrintDefaults()
+	}
+}
+
 // parseCheckFlags configures the `check` flag set, parses args, and
 // returns the resolved opts plus positional arguments. The bool
 // `hasStdin` is true when the caller passed `-` as a positional
@@ -73,17 +88,7 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	fs.BoolVar(&explain, "explain", false, "Attach per-leaf rule provenance to each diagnostic")
 
 	registerOutputFlag(fs, &output)
-
-	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: mdsmith check [flags] [files...]\n\n"+
-			"Lint Markdown files for style issues.\n\n"+
-			"Files can be paths, directories (walked recursively for *.md), or glob patterns.\n"+
-			"Pass - to read from stdin. With no file arguments, discovers files using the\n"+
-			"files patterns from config (default: **/*.md, **/*.markdown).\n\n"+
-			reportRoutingHelp+
-			"Flags:\n")
-		fs.PrintDefaults()
-	}
+	setCheckUsage(fs)
 
 	if err := fs.Parse(args); err != nil {
 		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: check"); code >= 0 {
@@ -100,6 +105,9 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	}
 
 	hasStdin, fileArgs := splitStdinArg(fs.Args())
+	if code := refuseStdinWithFiles("check", hasStdin, fileArgs); code >= 0 {
+		return checkCLIOpts{}, nil, false, code
+	}
 
 	return checkCLIOpts{
 		reportFlags: reportFlags{format: format, output: output, color: color, quiet: quiet},

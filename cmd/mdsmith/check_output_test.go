@@ -327,6 +327,23 @@ func TestParseCheckFlags_HelpListsColorFlags(t *testing.T) {
 	assert.Contains(t, stderr, "FORCE_COLOR")
 	assert.Contains(t, stderr, "except in an -o file, which only --color=always colors.")
 	assert.Contains(t, stderr, "and so is a directory or a\npath in a missing directory.")
+	assert.Contains(t, stderr, "Pass - alone to read from stdin; it cannot be combined with file arguments.")
+}
+
+// `-` next to file arguments is a usage error: the run would read stdin
+// and silently drop the files. `-` alone, even twice, reads stdin.
+func TestParseCheckFlags_StdinWithFilesIsUsageError(t *testing.T) {
+	for _, args := range [][]string{{"-", "a.md"}, {"a.md", "-"}, {"-o", "a.md", "-", "a.md"}} {
+		stderr := captureStderr(func() {
+			_, _, _, code := parseCheckFlags(args)
+			assert.Equal(t, 2, code, "%v", args)
+		})
+		assert.Equal(t, "mdsmith: check: - (stdin) cannot be combined with file arguments\n", stderr, "%v", args)
+	}
+	_, fileArgs, hasStdin, code := parseCheckFlags([]string{"-", "-"})
+	assert.Equal(t, -1, code)
+	assert.True(t, hasStdin)
+	assert.Empty(t, fileArgs)
 }
 
 // --stdout was never released; -o - replaces it.
