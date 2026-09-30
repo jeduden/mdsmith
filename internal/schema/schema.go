@@ -72,11 +72,18 @@ type Schema struct {
 	// struct so undeclared keys pass while the declared keys keep
 	// their constraints.
 	//
-	// The pointer (rather than a plain bool) preserves the
-	// set/unset distinction that Extend needs: a child kind's
-	// explicit value overrides its parent's, while an absent one
-	// inherits. Read the effective value through
+	// The pointer (rather than a plain bool) keeps an absent key
+	// apart from an explicit one: composition counts only the
+	// sources that declare front matter, and an absent key there
+	// votes closed. Read the effective value through
 	// FrontmatterIsClosed.
+	//
+	// Only the inline parser sets it (inline kind schemas and named
+	// schema files). A kind's `extends:` is layered on the raw map
+	// before parsing (config.MergeRawMap), so a child's explicit
+	// value wins and an absent one inherits. A proto.md cannot set
+	// it: every front-matter key there is a document field
+	// (RejectProtoFrontmatterClosed).
 	//
 	// Only meaningful on a schema that declares a non-empty
 	// `frontmatter:` map — FrontmatterCUE emits nothing without

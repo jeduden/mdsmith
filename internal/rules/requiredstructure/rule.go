@@ -1293,6 +1293,9 @@ func deriveFrontMatterCUE(yamlBytes []byte) (string, map[string]string, map[stri
 	// CUE expression is built so the legacy body-sync path does not
 	// require documents to carry the literal `extends:` value.
 	delete(raw, "extends")
+	if err := schema.RejectProtoFrontmatterClosed(raw); err != nil {
+		return "", nil, nil, err
+	}
 	if len(raw) == 0 {
 		return "", nil, nil, nil
 	}

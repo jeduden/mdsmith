@@ -159,11 +159,10 @@ func composeFrontmatter(out *Schema, schemas []*Schema) {
 // default for it would let such a kind cancel another kind's explicit
 // `frontmatter-closed: false` the moment both claim one file.
 //
-// The result is always an explicit pointer: composition has resolved
-// the question for every input, and leaving it nil would re-open it
-// for a later Extend. With no declaring source the value is the
-// historical closed default, which is inert because the composed
-// schema then emits no front-matter constraint at all.
+// The result is always an explicit pointer, because composition has
+// resolved the question for every input. With no declaring source the
+// value is the historical closed default, which is inert because the
+// composed schema then emits no front-matter constraint at all.
 func composeFrontmatterClosed(out *Schema, schemas []*Schema) {
 	closed := false
 	declared := false

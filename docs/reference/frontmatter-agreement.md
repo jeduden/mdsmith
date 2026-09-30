@@ -52,6 +52,12 @@ all, so the setting would be dead; that pairing
 parse-errors. This mirrors the `closed:` /
 `sections:` guard in the section schema.
 
+Set the key on an inline kind schema or on a named
+schema file. A `proto.md` cannot carry it: each
+front-matter key of a `proto.md` names a document
+field, so mdsmith reports `frontmatter-closed:`
+there as an invalid schema.
+
 ### Example: an APM prompt
 
 APM's `.apm/prompts/*.prompt.md` preserves exactly

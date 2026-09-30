@@ -191,42 +191,6 @@ func TestCompose_FrontmatterOpenWhenEverySourceOpens(t *testing.T) {
 	assert.False(t, out.FrontmatterIsClosed())
 }
 
-// ---- inheritance ----
-
-func TestExtend_FrontmatterClosedChildWins(t *testing.T) {
-	open := false
-	parent := &Schema{
-		Frontmatter: map[string]string{"description": "string"},
-		Source:      "kind parent",
-	}
-	child := &Schema{
-		Frontmatter:       map[string]string{"model": "string"},
-		FrontmatterClosed: &open,
-		Source:            "kind child",
-	}
-	out, err := Extend(parent, child)
-	require.NoError(t, err)
-	assert.False(t, out.FrontmatterIsClosed(),
-		"the child's explicit `frontmatter-closed:` overrides the parent's default")
-}
-
-func TestExtend_FrontmatterClosedInheritsParent(t *testing.T) {
-	open := false
-	parent := &Schema{
-		Frontmatter:       map[string]string{"description": "string"},
-		FrontmatterClosed: &open,
-		Source:            "kind parent",
-	}
-	child := &Schema{
-		Frontmatter: map[string]string{"model": "string"},
-		Source:      "kind child",
-	}
-	out, err := Extend(parent, child)
-	require.NoError(t, err)
-	assert.False(t, out.FrontmatterIsClosed(),
-		"a child that says nothing inherits the parent's open front matter")
-}
-
 // A source that declares no `frontmatter:` map at all — a
 // filename-only or sections-only kind — has no opinion on
 // closedness. Counting FrontmatterIsClosed's default for it would
@@ -306,26 +270,6 @@ func TestComposeFrontmatterClosed(t *testing.T) {
 	}
 }
 
-func TestExtendFrontmatterClosed(t *testing.T) {
-	open, closed := false, true
-
-	out := &Schema{}
-	extendFrontmatterClosed(out, &Schema{}, &Schema{})
-	assert.Nil(t, out.FrontmatterClosed, "two unset values stay unset")
-
-	out = &Schema{}
-	parent := &Schema{FrontmatterClosed: &open}
-	extendFrontmatterClosed(out, parent, &Schema{})
-	require.NotNil(t, out.FrontmatterClosed)
-	assert.False(t, *out.FrontmatterClosed)
-	assert.NotSame(t, parent.FrontmatterClosed, out.FrontmatterClosed,
-		"the inherited value is copied, not aliased")
-
-	out = &Schema{}
-	extendFrontmatterClosed(out, parent, &Schema{FrontmatterClosed: &closed})
-	assert.True(t, *out.FrontmatterClosed, "the child's explicit value wins")
-}
-
 func TestParseInlineFrontmatterClosed(t *testing.T) {
 	sch := &Schema{}
 	require.NoError(t, parseInlineFrontmatterClosed(map[string]any{}, sch))
@@ -342,4 +286,37 @@ func TestParseInlineFrontmatterClosed(t *testing.T) {
 	assert.ErrorContains(t, parseInlineFrontmatterClosed(
 		map[string]any{"frontmatter-closed": true}, &Schema{}),
 		"non-empty `frontmatter:` map")
+}
+
+// ---- proto.md ----
+
+// A proto.md's front-matter keys are document fields, so a
+// `frontmatter-closed:` there would silently become a field
+// constraint and leave the front matter closed. ParseFile — the
+// proto.md parser behind composition and `extends:` — rejects it and
+// says where the setting lives instead.
+func TestParseFile_RejectsFrontmatterClosed(t *testing.T) {
+	dir := t.TempDir()
+	p := writeFile(t, dir, "proto.md",
+		"---\ntitle: string\nfrontmatter-closed: false\n---\n# ?\n")
+	_, err := ParseFile(&FileReader{}, p)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "`frontmatter-closed:` is not supported in a proto.md schema")
+	assert.ErrorContains(t, err, "proto.md")
+}
+
+func TestParseFile_RejectsFrontmatterClosedInExtendsChild(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "base.md", "---\ntitle: string\n---\n# ?\n")
+	p := writeFile(t, dir, "proto.md",
+		"---\nextends: base.md\nfrontmatter-closed: false\n---\n# ?\n")
+	_, err := ParseFile(&FileReader{}, p)
+	assert.ErrorContains(t, err, "`frontmatter-closed:` is not supported in a proto.md schema")
+}
+
+func TestRejectProtoFrontmatterClosed(t *testing.T) {
+	assert.NoError(t, RejectProtoFrontmatterClosed(map[string]any{"title": "string"}))
+	assert.NoError(t, RejectProtoFrontmatterClosed(nil))
+	assert.Error(t, RejectProtoFrontmatterClosed(
+		map[string]any{"frontmatter-closed": true}))
 }

@@ -2,6 +2,7 @@ package schema
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -221,6 +222,9 @@ func parseFileFrontmatter(prefix []byte, sch *Schema) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if err := RejectProtoFrontmatterClosed(raw); err != nil {
+		return "", err
+	}
 	if len(raw) > 0 {
 		sch.Frontmatter = make(map[string]string, len(raw))
 		for k, v := range raw {
@@ -255,6 +259,25 @@ func parseFileFrontmatter(prefix []byte, sch *Schema) (string, error) {
 		sch.FrontmatterLines = lines
 	}
 	return extendsPath, nil
+}
+
+// errProtoFrontmatterClosed is RejectProtoFrontmatterClosed's report.
+var errProtoFrontmatterClosed = errors.New(
+	"`frontmatter-closed:` is not supported in a proto.md schema; " +
+		"set it on an inline kind schema or a named schema under " +
+		"`.mdsmith/schemas/`")
+
+// RejectProtoFrontmatterClosed reports a `frontmatter-closed:` key in
+// a proto.md schema's front matter. Every front-matter key of a
+// proto.md is a document field, so the key would otherwise become a
+// constraint on a field named `frontmatter-closed` and leave the
+// front matter closed with no word to the author. Both proto.md
+// parsers call it: ParseFile, and MDS020's legacy single-file path.
+func RejectProtoFrontmatterClosed(raw map[string]any) error {
+	if _, ok := raw["frontmatter-closed"]; ok {
+		return errProtoFrontmatterClosed
+	}
+	return nil
 }
 
 // extractExtendsKey pulls the reserved `extends:` value out of the
