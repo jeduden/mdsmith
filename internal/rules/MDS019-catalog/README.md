@@ -130,11 +130,11 @@ columns:
 
 ### Sort behavior
 
-Format: `[-]KEY`. A `-` prefix means descending order.
-
+Format: `[-]KEY`; a `-` prefix means descending order.
 Built-in keys: `path` (default), `filename`. Any other
 key is looked up in front matter. Missing values sort as
 empty string. Sorting ignores case; ties break by path.
+An unquoted timestamp sorts by time, not by its text.
 
 ### Filtering with `where`
 

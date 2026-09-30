@@ -1190,7 +1190,11 @@ func parseSortInt(entry fileEntry, key string) (int64, error) {
 	return strconv.ParseInt(strings.TrimSpace(sortValue(entry, key)), 10, 64)
 }
 
-// sortValue returns the sort value for a file entry given a key.
+// sortValue returns the sort value for a file entry given a key. A
+// front-matter key resolves through ResolveSortKey, not the Stringify
+// form the row renders: an unquoted YAML timestamp then orders by
+// the instant it names, whatever offset or precision it was written
+// with.
 func sortValue(entry fileEntry, key string) string {
 	switch key {
 	case "path":
@@ -1202,7 +1206,7 @@ func sortValue(entry fileEntry, key string) string {
 		if path == nil {
 			return "" // validated at directive parse time
 		}
-		val, err := fieldinterp.ResolvePath(entry.fields, path)
+		val, err := fieldinterp.ResolveSortKey(entry.fields, path)
 		if err != nil {
 			return ""
 		}

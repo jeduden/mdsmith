@@ -155,22 +155,50 @@ var ErrCompositeValue = errors.New("composite value")
 // ResolvePath walks data using the given path segments and returns
 // the string value at the resolved location.
 func ResolvePath(data map[string]any, path []string) (string, error) {
+	v, err := resolveScalar(data, path)
+	if err != nil {
+		return "", err
+	}
+	return Stringify(v), nil
+}
+
+// ResolveSortKey is ResolvePath for ordering. It returns the same
+// string and error for every value except a time.Time, which it keys
+// on the instant rather than on its rendered form (see timeSortKey).
+// Stringify keeps the form the author wrote — `2026-01-02`,
+// `...T10:00:00-05:00`, `...T12:00:00Z` — and those strings do not
+// compare chronologically, so a caller that sorts must use this.
+func ResolveSortKey(data map[string]any, path []string) (string, error) {
+	v, err := resolveScalar(data, path)
+	if err != nil {
+		return "", err
+	}
+	if t, ok := v.(time.Time); ok {
+		return timeSortKey(t), nil
+	}
+	return Stringify(v), nil
+}
+
+// resolveScalar walks data along path and returns the scalar leaf,
+// rejecting an empty path, an absent key, a non-map intermediate and
+// a composite leaf.
+func resolveScalar(data map[string]any, path []string) (any, error) {
 	if len(path) == 0 {
-		return "", fmt.Errorf("empty path")
+		return nil, fmt.Errorf("empty path")
 	}
 	if data == nil {
-		return "", fmt.Errorf("front-matter key %q not found", strings.Join(path, "."))
+		return nil, fmt.Errorf("front-matter key %q not found", strings.Join(path, "."))
 	}
 
 	current := any(data)
 	for i, seg := range path {
 		m, ok := current.(map[string]any)
 		if !ok {
-			return "", fmt.Errorf("front-matter key %q is not a map", strings.Join(path[:i], "."))
+			return nil, fmt.Errorf("front-matter key %q is not a map", strings.Join(path[:i], "."))
 		}
 		val, exists := m[seg]
 		if !exists {
-			return "", fmt.Errorf("front-matter key %q not found", strings.Join(path[:i+1], "."))
+			return nil, fmt.Errorf("front-matter key %q not found", strings.Join(path[:i+1], "."))
 		}
 		current = val
 	}
@@ -180,11 +208,11 @@ func ResolvePath(data map[string]any, path []string) (string, error) {
 	// present list or map apart from an absent key.
 	switch current.(type) {
 	case map[string]any, []any:
-		return "", fmt.Errorf("front-matter key %q is a %w",
+		return nil, fmt.Errorf("front-matter key %q is a %w",
 			strings.Join(path, "."), ErrCompositeValue)
 	}
 
-	return Stringify(current), nil
+	return current, nil
 }
 
 // Stringify converts a scalar value to a string representation.
@@ -231,6 +259,26 @@ func formatTime(t time.Time) string {
 		return t.Format(time.DateOnly)
 	}
 	return t.Format(time.RFC3339Nano)
+}
+
+// timeSortKeyLayout is RFC 3339 with a fixed-width, nine-digit
+// fraction. On a UTC time `Z07:00` prints `Z`, so every key has the
+// same length and layout, and a byte compare is a chronological one.
+const timeSortKeyLayout = "2006-01-02T15:04:05.000000000Z07:00"
+
+// timeSortKey keys t for a string sort: its UTC form, fixed width, so
+// keys compare in chronological order whatever offset or precision
+// the author wrote. An instant at exactly midnight UTC keys as the
+// bare date, the prefix of every other key on that date, so it still
+// sorts before them and ties with a quoted `"2026-01-02"` string on
+// the same text.
+func timeSortKey(t time.Time) string {
+	u := t.UTC()
+	if u.Hour() == 0 && u.Minute() == 0 && u.Second() == 0 &&
+		u.Nanosecond() == 0 {
+		return u.Format(time.DateOnly)
+	}
+	return u.Format(timeSortKeyLayout)
 }
 
 // DiagnoseYAMLQuoting checks whether a raw YAML value that was expected
