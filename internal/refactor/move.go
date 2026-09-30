@@ -1,7 +1,6 @@
 package refactor
 
 import (
-	"bytes"
 	"errors"
 	"path"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/mdtext"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
@@ -57,8 +57,9 @@ func (e SourceNotFoundError) Error() string {
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
 //     asymmetry with path links);
-//   - outbound inline links inside src — every `[t](path)` recomputed
-//     so it still resolves from dst's directory.
+//   - outbound inline links and images inside src — every `[t](path)`
+//     or `![a](path)` recomputed so it still resolves from dst's
+//     directory.
 //
 // Spelling is preserved: an explicit `./x` keeps its prefix. Absolute
 // URLs, mailto, root-anchored `/x`, and any other out-of-workspace
@@ -75,8 +76,9 @@ func (e SourceNotFoundError) Error() string {
 //
 //   - `<?include?>`, `<?build?>`, and `<?catalog?>` directive paths;
 //   - reference-definition destinations that src itself declares
-//     (`[label]: ../other.md`) — only src's inline links are recomputed,
-//     while ref-defs elsewhere that point at src are handled above.
+//     (`[label]: ../other.md`) — only src's inline links and images
+//     are recomputed, while ref-defs elsewhere that point at src are
+//     handled above.
 func Move(ws Workspace, src, dst string) (Plan, error) {
 	src = index.NormalizePath(src)
 	dst = index.NormalizePath(dst)
@@ -214,52 +216,130 @@ func appendIncomingPathEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	}
 }
 
-// appendOutboundEdits recomputes every relative link inside the moved
-// file so it still resolves from dst's directory. Edits key under the
-// moved file's own key: the host applies them before the file relocates.
+// appendOutboundEdits recomputes every relative inline link and image
+// destination inside the moved file so it still resolves from dst's
+// directory. Edits key under the moved file's own key: the host applies
+// them before the file relocates.
 func appendOutboundEdits(changes map[string][]Edit, srcKey, src, dst string, source []byte) {
 	body, fmOffset := bodyAndFMOffset(source)
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	lf := &lint.File{
-		Path:       src,
-		Source:     body,
-		Lines:      bytes.Split(body, []byte("\n")),
-		AST:        root,
-		LineOffset: fmOffset,
-	}
-	fileLines := splitLines(source)
-	for _, l := range linkgraph.ExtractLinks(lf) {
-		if l.Target.LocalAnchor {
-			continue
-		}
-		tgt := linkgraph.ResolveRelTarget(src, l.Target.Path)
-		if tgt == "" {
-			// External, absolute, or out-of-workspace — leave untouched.
-			continue
-		}
-		// fileLine is always in range: l.Line is a body line and
-		// fileLines covers the body plus its fmOffset prefix, so unlike
-		// the index-fed incoming pass there is no stale coordinate here.
-		fileLine := l.Line + fmOffset
-		row := fileLines[fileLine-1]
-		ps, pe, ok := linkPathBytesResolving(row, l.Column-1, src, tgt)
-		if !ok {
-			continue
-		}
-		// A path link inside src that points at src itself must keep
-		// pointing at the file after it relocates, so recompute against
-		// dst — otherwise the token would be rewritten to address the
-		// old (now vacated) location.
-		recomputeTarget := tgt
-		if tgt == src {
-			recomputeTarget = dst
-		}
-		// The reference lives in the moved file, so its new spelling is
-		// computed as if from dst's directory.
-		if edit, ok := pathEdit(row, fileLine-1, ps, pe, dst, recomputeTarget); ok {
+	// The locator reads only Source (for offset-to-row mapping) and the
+	// AST; file rows come from fileLines, shifted by fmOffset.
+	lf := &lint.File{Path: src, Source: body, AST: root}
+	loc := destLocator{lf: lf, fileLines: splitLines(source), fmOffset: fmOffset}
+	_ = ast.Walk(root, loc.visit)
+	for _, d := range loc.dests {
+		if edit, ok := outboundEdit(d, src, dst); ok {
 			changes[srcKey] = append(changes[srcKey], edit)
 		}
 	}
+}
+
+// outboundEdit re-spells one destination of the moved file so it still
+// resolves from dst's directory. It reports ok=false for a same-file
+// anchor, an external or out-of-workspace destination, a token that does
+// not spell the parsed target, and a recompute that changes nothing.
+func outboundEdit(d inlineDest, src, dst string) (Edit, bool) {
+	target, ok := linkgraph.ParseTargetBytes(d.dest)
+	if !ok || target.LocalAnchor {
+		return Edit{}, false
+	}
+	tgt := linkgraph.ResolveRelTarget(src, target.Path)
+	if tgt == "" || linkgraph.ResolveRelTarget(src, string(d.row[d.ps:d.pe])) != tgt {
+		// Out of the workspace, or a spelling (such as a percent-escape)
+		// the byte token cannot be re-spelled from: leave it untouched.
+		return Edit{}, false
+	}
+	// A path link inside src that points at src itself must keep
+	// pointing at the file after it relocates, so recompute against
+	// dst — otherwise the token would be rewritten to address the
+	// old (now vacated) location.
+	if tgt == src {
+		tgt = dst
+	}
+	// The reference lives in the moved file, so its new spelling is
+	// computed as if from dst's directory.
+	return pathEdit(d.row, d.line, d.ps, d.pe, dst, tgt)
+}
+
+// inlineDest is the destination of one inline link or image: the bytes
+// goldmark parsed, and where its path token sits in the file.
+type inlineDest struct {
+	dest   []byte // the node's parsed destination
+	row    []byte // the file row holding the destination
+	line   int    // 0-based file row index
+	ps, pe int    // byte range of the path token within row
+}
+
+// destLocator finds the destination bytes of every inline link and
+// image in a parsed body. goldmark records where a link or image opens
+// (its `[` or `!`) but not where its destination sits. So the locator
+// walks the AST with a cursor. Entering a link or image moves the cursor
+// to its opening byte. Each text, code-span, raw-HTML and autolink segment
+// in its label moves it forward, and so does each nested destination.
+// On leaving the node, the first `](` at or after the cursor closes that
+// node's own label. A `](` in a code span, an HTML comment, an earlier
+// row or a nested node's label is never reached.
+type destLocator struct {
+	lf        *lint.File
+	fileLines [][]byte
+	fmOffset  int
+	cursor    int
+	dests     []inlineDest
+}
+
+// visit is the ast.Walk callback that drives the cursor.
+func (d *destLocator) visit(n ast.Node, entering bool) (ast.WalkStatus, error) {
+	switch t := n.(type) {
+	case *ast.Text:
+		d.advance(entering, t.Segment.Stop)
+	case *ast.RawHTML:
+		d.advance(entering, t.Segments.At(t.Segments.Len()-1).Stop)
+	case *ast.AutoLink:
+		d.advance(entering, t.Pos()+len(t.Label(d.lf.Source)))
+	case *ast.Link:
+		d.linkNode(entering, t.Pos(), t.Destination, t.Reference == nil)
+	case *ast.Image:
+		d.linkNode(entering, t.Pos(), t.Destination, t.Reference == nil)
+	}
+	return ast.WalkContinue, nil
+}
+
+// advance moves the cursor to stop when entering a node whose bytes end
+// there. The walk visits inline nodes in source order, so stop never
+// lies before the cursor.
+func (d *destLocator) advance(entering bool, stop int) {
+	if entering {
+		d.cursor = stop
+	}
+}
+
+// linkNode handles a link or image that opens at pos. Entering it
+// resets the cursor to pos. Leaving an inline one locates its
+// destination; a reference-style `[a][ref]` has none in the text.
+func (d *destLocator) linkNode(entering bool, pos int, dest []byte, inline bool) {
+	if entering {
+		d.cursor = pos
+		return
+	}
+	if inline {
+		d.locate(dest)
+	}
+}
+
+// locate records the first destination at or after the cursor, on the
+// cursor's row, and moves the cursor past its closing `)`. A destination
+// that does not close on that row (one split across lines) is skipped.
+func (d *destLocator) locate(dest []byte) {
+	col := d.lf.ColumnOfOffset(d.cursor) - 1
+	line := d.lf.LineOfOffset(d.cursor) - 1 + d.fmOffset
+	row := d.fileLines[line]
+	ps, pe, closeIdx, ok := destPathToken(row, col)
+	if !ok {
+		return
+	}
+	d.cursor += closeIdx + 1 - col
+	d.dests = append(d.dests, inlineDest{dest: dest, row: row, line: line, ps: ps, pe: pe})
 }
 
 // pathEdit builds the Edit that replaces row[ps:pe] (a path token) with
@@ -285,51 +365,70 @@ func pathEdit(row []byte, line, ps, pe int, refFile, target string) (Edit, bool)
 // textStart on row whose path resolves to want. It advances past
 // destinations that resolve elsewhere, so an image-in-link like
 // [![alt](img.png)](want.md) rewrites the outer path, not the inner
-// image. Angle-bracketed `<dest>` forms are unwrapped.
+// image.
 func linkPathBytesResolving(row []byte, textStart int, refFile, want string) (int, int, bool) {
 	searchFrom := textStart
 	if searchFrom < 0 {
 		searchFrom = 0
 	}
 	for {
-		open, closeIdx, ok := destBounds(row, searchFrom)
+		start, end, closeIdx, ok := destPathToken(row, searchFrom)
 		if !ok {
 			return 0, 0, false
-		}
-		start, end := open, closeIdx
-		if start < end && row[start] == '<' {
-			start++
-			for j := start; j < end; j++ {
-				if row[j] == '>' {
-					end = j
-					break
-				}
-			}
-		} else {
-			// A bare CommonMark destination is terminated by the first
-			// space or tab; anything after it is an optional title, not
-			// part of the path. Without this cut, `[t](path "title")`
-			// would fold the title bytes into the path token, so it never
-			// resolves to `want` and the move silently leaves the link
-			// pointing at the vacated location.
-			for j := start; j < end; j++ {
-				if row[j] == ' ' || row[j] == '\t' {
-					end = j
-					break
-				}
-			}
-		}
-		for i := start; i < end; i++ {
-			if row[i] == '#' {
-				end = i
-				break
-			}
 		}
 		if start < end && linkgraph.ResolveRelTarget(refFile, string(row[start:end])) == want {
 			return start, end, true
 		}
 		searchFrom = closeIdx + 1
 	}
+}
+
+// destPathToken returns the byte range of the path portion of the first
+// inline-link destination at or after from on row, plus the index of
+// that destination's closing `)`. The path excludes any whitespace
+// before it, a `?query`, a `#fragment`, and the title. Angle-bracketed
+// `<dest>` forms are unwrapped.
+func destPathToken(row []byte, from int) (start, end, closeIdx int, ok bool) {
+	open, closeIdx, ok := destBounds(row, from)
+	if !ok {
+		return 0, 0, 0, false
+	}
+	start, end = open, closeIdx
+	// CommonMark allows spaces or tabs between `(` and the destination.
+	for start < end && (row[start] == ' ' || row[start] == '\t') {
+		start++
+	}
+	if start < end && row[start] == '<' {
+		start++
+		for j := start; j < end; j++ {
+			if row[j] == '>' {
+				end = j
+				break
+			}
+		}
+	} else {
+		// A bare CommonMark destination is terminated by the first
+		// space or tab; anything after it is an optional title, not
+		// part of the path. Without this cut, `[t](path "title")`
+		// would fold the title bytes into the path token, so it never
+		// resolves to the target and the move silently leaves the link
+		// pointing at the vacated location.
+		for j := start; j < end; j++ {
+			if row[j] == ' ' || row[j] == '\t' {
+				end = j
+				break
+			}
+		}
+	}
+	// The parsed target's Path drops the query and fragment, so the
+	// token must too, or it never resolves to that target.
+	for i := start; i < end; i++ {
+		if row[i] == '#' || row[i] == '?' {
+			end = i
+			break
+		}
+	}
+	return start, end, closeIdx, true
 }
 
 // appendRefDefPathEdits rewrites `[label]: src` reference-definition

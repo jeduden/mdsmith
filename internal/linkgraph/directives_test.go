@@ -253,6 +253,10 @@ func TestResolveRelTarget(t *testing.T) {
 		{"drive letter source", "C:/docs/api.md", "guide.md", ""},
 		{"UNC link", "docs/api.md", "//server/share/file.md", ""},
 		{"UNC source", "//server/share/api.md", "guide.md", ""},
+		{"backslash UNC link", "docs/api.md", `\\server\share\file.md`, ""},
+		{"backslash root-relative link", "docs/api.md", `\etc\passwd`, ""},
+		{"backslash escape", "docs/api.md", `..\..\etc\passwd`, ""},
+		{"two levels up", "plan/045.md", "../docs/api.md", "docs/api.md"},
 		{"backslash separator", "docs/a.md", `sub\x.md`, "docs/sub/x.md"},
 	}
 	for _, tc := range cases {

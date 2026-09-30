@@ -16,6 +16,37 @@ import (
 func TestNormalizeWorkspacePath(t *testing.T) {
 	assert.Equal(t, "docs/api.md", normalizeWorkspacePath("docs/api.md"))
 	assert.Equal(t, "docs/api.md", normalizeWorkspacePath("./docs/api.md"))
+	// Backslashes are separators on every host, as in index.NormalizePath
+	// and linkgraph.ResolveRelTarget, so the string the validator checks
+	// and the string the command then looks up are the same.
+	assert.Equal(t, "docs/api.md", normalizeWorkspacePath(`docs\api.md`))
+	assert.Equal(t, "docs/api.md", normalizeWorkspacePath(`.\docs\sub\..\api.md`))
+}
+
+func TestIsWorkspaceRelativeTarget(t *testing.T) {
+	assert.True(t, isWorkspaceRelativeTarget("docs/api.md"))
+	assert.False(t, isWorkspaceRelativeTarget("/etc/passwd"))
+	assert.False(t, isWorkspaceRelativeTarget("C:/Windows/system.md"))
+	assert.False(t, isWorkspaceRelativeTarget(`C:\Windows\system.md`))
+	assert.False(t, isWorkspaceRelativeTarget("//server/share/file.md"))
+	assert.False(t, isWorkspaceRelativeTarget(`\\server\share\file.md`))
+	assert.False(t, isWorkspaceRelativeTarget("../escape.md"))
+	// Backslash forms: separators on every host, so a traversal or a
+	// leading separator written with `\` is caught the same way.
+	assert.True(t, isWorkspaceRelativeTarget(`a\b.md`))
+	assert.True(t, isWorkspaceRelativeTarget(`docs\..\api.md`))
+	assert.False(t, isWorkspaceRelativeTarget(`..\escape.md`))
+	assert.False(t, isWorkspaceRelativeTarget(`sub\..\..\escape.md`))
+	assert.False(t, isWorkspaceRelativeTarget(`\notes.md`))
+	// Normalizing can create a drive anchor (`./C:/x.md` becomes
+	// `C:/x.md`) or remove one (`C:\..\x.md` becomes `x.md`), so both
+	// the typed form and the normalized form are checked.
+	assert.False(t, isWorkspaceRelativeTarget("./C:/x.md"))
+	assert.False(t, isWorkspaceRelativeTarget(`.\C:\x.md`))
+	assert.False(t, isWorkspaceRelativeTarget(`C:\..\docs\api.md`))
+	// `.\\server\share` is not UNC: the leading `.` makes it the
+	// relative path server/share, as it is on Windows.
+	assert.True(t, isWorkspaceRelativeTarget(`.\\server\share`))
 }
 
 func TestEmitBacklinks_Text(t *testing.T) {
