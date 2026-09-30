@@ -324,6 +324,7 @@ func TestParseCheckFlags_HelpListsColorFlags(t *testing.T) {
 	assert.Regexp(t, `--color when +Color text output`, stderr)
 	assert.Regexp(t, `--no-color +Same as --color=never\n`, stderr)
 	assert.Contains(t, stderr, "FORCE_COLOR")
+	assert.Contains(t, stderr, "except in an -o file, which only --color=always colors.")
 }
 
 // --stdout was never released; -o - replaces it.

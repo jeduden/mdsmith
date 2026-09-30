@@ -52,6 +52,18 @@ func TestCheckOutput_E2EColorFlagsAndEnv(t *testing.T) {
 		assert.Equal(t, 1, code)
 		assert.Contains(t, readReport(t, filepath.Join(dir, "color.txt")), "\033[")
 	})
+	t.Run("FORCE_COLOR leaves an -o file plain", func(t *testing.T) {
+		_, _, code := runBinaryInDirEnv(t, dir, "", []string{"FORCE_COLOR=1"}, "check", "-o", "plain.txt", "long.md")
+		assert.Equal(t, 1, code)
+		report := readReport(t, filepath.Join(dir, "plain.txt"))
+		assert.Contains(t, report, "MDS001")
+		assert.NotContains(t, report, "\033[")
+	})
+	t.Run("FORCE_COLOR colors -o -", func(t *testing.T) {
+		stdout, _, code := runBinaryInDirEnv(t, dir, "", []string{"FORCE_COLOR=1"}, "check", "-o", "-", "long.md")
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stdout, "\033[")
+	})
 	t.Run("bad --color value", func(t *testing.T) {
 		stdout, stderr, code := runBinaryInDir(t, dir, "", "check", "--color=sometimes", "long.md")
 		assert.Equal(t, 2, code)

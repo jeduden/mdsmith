@@ -144,7 +144,8 @@ Text output is colored only when it goes to a terminal.
 On `check` and `fix`, `--color=always` or
 `--color=never` (`--no-color`) overrides that. With no
 color flag, a non-empty `NO_COLOR` turns color off, and
-otherwise a `FORCE_COLOR` other than `0` turns it on.
+otherwise a non-empty `FORCE_COLOR` other than `0`
+turns it on, except in an `-o <path>` file.
 See [Color](cli/check.md#color) for the full order.
 Format:
 

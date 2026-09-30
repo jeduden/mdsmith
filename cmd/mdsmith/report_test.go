@@ -217,11 +217,12 @@ func TestDeliverReport_WriteErrorAfterFailedErrorFlush(t *testing.T) {
 // stream or file the report goes to, not some other stream.
 func TestDeliverReport_Color(t *testing.T) {
 	for _, tc := range []struct {
-		name, output string
-		color        colorMode
-		noColorEnv   string
-		ttyStream    string
-		want         bool
+		name, output  string
+		color         colorMode
+		noColorEnv    string
+		forceColorEnv string
+		ttyStream     string
+		want          bool
 	}{
 		{name: "stderr tty", output: "", ttyStream: "stderr", want: true},
 		{name: "stderr not tty", output: ""},
@@ -232,6 +233,10 @@ func TestDeliverReport_Color(t *testing.T) {
 		{name: "file, --color=always", output: "out.txt", color: colorAlways, want: true},
 		{name: "no-color flag", output: "", ttyStream: "stderr", color: colorNever},
 		{name: "NO_COLOR set", output: "", ttyStream: "stderr", noColorEnv: "1"},
+		{name: "stderr, FORCE_COLOR", output: "", forceColorEnv: "1", want: true},
+		{name: "stdout, FORCE_COLOR", output: "-", forceColorEnv: "1", want: true},
+		{name: "file, FORCE_COLOR", output: "out.txt", forceColorEnv: "1"},
+		{name: "file tty, FORCE_COLOR", output: "/dev/tty", ttyStream: "file", forceColorEnv: "1", want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out, errOut bytes.Buffer
@@ -241,10 +246,7 @@ func TestDeliverReport_Color(t *testing.T) {
 			rio.create = func(string) (io.WriteCloser, error) { return f, nil }
 			rio.isTerminal = func(w io.Writer) bool { return w == streams[tc.ttyStream] }
 			rio.getenv = func(key string) string {
-				if key == "NO_COLOR" {
-					return tc.noColorEnv
-				}
-				return ""
+				return map[string]string{"NO_COLOR": tc.noColorEnv, "FORCE_COLOR": tc.forceColorEnv}[key]
 			}
 			var got bool
 			require.Equal(t, 0, rio.deliverReport(tc.output, tc.color, nil, writeBody("", &got)))
@@ -257,8 +259,9 @@ func TestDeliverReport_Color(t *testing.T) {
 // spec for TestColorFor_Matrix: an explicit --color=always or never
 // decides; --color=auto asks the terminal alone; without a flag a
 // non-empty NO_COLOR turns color off, then a FORCE_COLOR that is
-// neither empty nor 0 turns it on, and the terminal decides the rest.
-func wantColor(mode colorMode, noColor, forceColor string, tty bool) bool {
+// neither empty nor 0 turns it on except in an -o <path> file, and
+// the terminal decides the rest.
+func wantColor(mode colorMode, noColor, forceColor string, tty, toFile bool) bool {
 	switch mode {
 	case colorAlways:
 		return true
@@ -270,28 +273,30 @@ func wantColor(mode colorMode, noColor, forceColor string, tty bool) bool {
 	if noColor != "" {
 		return false
 	}
-	if forceColor != "" && forceColor != "0" {
+	if forceColor != "" && forceColor != "0" && !toFile {
 		return true
 	}
 	return tty
 }
 
 // TestColorFor_Matrix runs every combination of the color flag,
-// NO_COLOR, FORCE_COLOR, and a terminal destination through the
-// injectable isTerminal/getenv seam.
+// NO_COLOR, FORCE_COLOR, a terminal destination, and an -o <path>
+// file destination through the injectable isTerminal/getenv seam.
 func TestColorFor_Matrix(t *testing.T) {
 	for _, mode := range []colorMode{colorUnset, colorAuto, colorAlways, colorNever} {
 		for _, noColor := range []string{"", "1"} {
 			for _, force := range []string{"", "0", "1", "true"} {
 				for _, tty := range []bool{false, true} {
-					dst := &bytes.Buffer{}
-					rio := testIO(t, io.Discard, io.Discard)
-					rio.isTerminal = func(w io.Writer) bool { return tty && w == dst }
-					rio.getenv = func(key string) string {
-						return map[string]string{"NO_COLOR": noColor, "FORCE_COLOR": force}[key]
+					for _, toFile := range []bool{false, true} {
+						dst := &bytes.Buffer{}
+						rio := testIO(t, io.Discard, io.Discard)
+						rio.isTerminal = func(w io.Writer) bool { return tty && w == dst }
+						rio.getenv = func(key string) string {
+							return map[string]string{"NO_COLOR": noColor, "FORCE_COLOR": force}[key]
+						}
+						assert.Equal(t, wantColor(mode, noColor, force, tty, toFile), rio.colorFor(dst, mode, toFile),
+							"--color=%q NO_COLOR=%q FORCE_COLOR=%q tty=%v file=%v", mode, noColor, force, tty, toFile)
 					}
-					assert.Equal(t, wantColor(mode, noColor, force, tty), rio.colorFor(dst, mode),
-						"--color=%q NO_COLOR=%q FORCE_COLOR=%q tty=%v", mode, noColor, force, tty)
 				}
 			}
 		}
@@ -305,11 +310,12 @@ func TestColorFor_Precedence(t *testing.T) {
 	force := map[string]string{"FORCE_COLOR": "1"}
 	forceOff := map[string]string{"FORCE_COLOR": "0"}
 	for _, tc := range []struct {
-		name string
-		mode colorMode
-		env  map[string]string
-		tty  bool
-		want bool
+		name   string
+		mode   colorMode
+		env    map[string]string
+		tty    bool
+		toFile bool
+		want   bool
 	}{
 		{name: "NO_COLOR beats FORCE_COLOR", env: map[string]string{"NO_COLOR": "1", "FORCE_COLOR": "1"}, tty: true},
 		{name: "FORCE_COLOR colors a pipe", env: force, want: true},
@@ -319,12 +325,14 @@ func TestColorFor_Precedence(t *testing.T) {
 		{name: "--color=never beats FORCE_COLOR", mode: colorNever, env: force, tty: true},
 		{name: "--color=auto ignores FORCE_COLOR", mode: colorAuto, env: force},
 		{name: "--color=auto ignores NO_COLOR", mode: colorAuto, env: noColor, tty: true, want: true},
+		{name: "FORCE_COLOR leaves an -o file plain", env: force, toFile: true},
+		{name: "--color=always colors an -o file", mode: colorAlways, toFile: true, want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rio := testIO(t, io.Discard, io.Discard)
 			rio.isTerminal = func(io.Writer) bool { return tc.tty }
 			rio.getenv = func(key string) string { return tc.env[key] }
-			assert.Equal(t, tc.want, rio.colorFor(dst, tc.mode))
+			assert.Equal(t, tc.want, rio.colorFor(dst, tc.mode, tc.toFile))
 		})
 	}
 }

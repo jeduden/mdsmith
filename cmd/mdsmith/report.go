@@ -22,7 +22,8 @@ const reportRoutingHelp = "The report (diagnostics and the stats line) goes to s
 	"Text output is colored only when the report goes to a terminal. --color=always\n" +
 	"and --color=never (or --no-color) force it on or off, and --color=auto asks the\n" +
 	"terminal alone; the last color flag given wins. With no color flag, a non-empty\n" +
-	"NO_COLOR turns color off, or else a FORCE_COLOR other than empty or 0 turns it on.\n\n"
+	"NO_COLOR turns color off, or else a FORCE_COLOR other than empty or 0 turns it on,\n" +
+	"except in an -o file, which only --color=always colors.\n\n"
 
 // colorMode is the color setting --color and --no-color write.
 // colorUnset means neither flag was given, so NO_COLOR, FORCE_COLOR,
@@ -181,8 +182,9 @@ func isTerminal(w io.Writer) bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// colorFor reports whether text written to w carries ANSI color. The
-// first rule that applies decides:
+// colorFor reports whether text written to w carries ANSI color.
+// toFile says w is the file an explicit -o <path> names, not a stream.
+// The first rule that applies decides:
 //
 //  1. --color=always is on and --color=never (or --no-color) is off.
 //     A flag beats both environment variables.
@@ -191,9 +193,12 @@ func isTerminal(w io.Writer) bool {
 //  3. With no color flag, a non-empty NO_COLOR is off
 //     (https://no-color.org).
 //  4. Then a FORCE_COLOR that is neither empty nor 0 is on
-//     (https://force-color.org).
+//     (https://force-color.org), except in an -o <path> file: a
+//     variable set for a whole CI job must not put escape codes in a
+//     report file, which only --color=always colors. stderr and stdout
+//     stay forced even when redirected, as in other tools.
 //  5. Otherwise color is on when w is a terminal.
-func (r reportIO) colorFor(w io.Writer, mode colorMode) bool {
+func (r reportIO) colorFor(w io.Writer, mode colorMode, toFile bool) bool {
 	switch mode {
 	case colorAlways:
 		return true
@@ -205,7 +210,7 @@ func (r reportIO) colorFor(w io.Writer, mode colorMode) bool {
 	if r.getenv("NO_COLOR") != "" {
 		return false
 	}
-	if v := r.getenv("FORCE_COLOR"); v != "" && v != "0" {
+	if v := r.getenv("FORCE_COLOR"); v != "" && v != "0" && !toFile {
 		return true
 	}
 	return r.isTerminal(w)
@@ -227,6 +232,7 @@ func (r reportIO) colorFor(w io.Writer, mode colorMode) bool {
 func (r reportIO) deliverReport(output string, color colorMode, errs []error, body reportBody) int {
 	dst := r.stderr
 	closeDst := func() error { return nil }
+	toFile := false
 	var bw *bufio.Writer
 	if output == "" {
 		bw = bufio.NewWriterSize(r.stderr, reportBufSize)
@@ -248,12 +254,12 @@ func (r reportIO) deliverReport(output string, color colorMode, errs []error, bo
 				printWriteErrorTo(r.stderr, err)
 				return 2
 			}
-			dst, closeDst = f, f.Close
+			dst, closeDst, toFile = f, f.Close, true
 		}
 		bw = bufio.NewWriterSize(dst, reportBufSize)
 	}
 
-	err := body(bw, r.colorFor(dst, color))
+	err := body(bw, r.colorFor(dst, color, toFile))
 	if err == nil {
 		err = bw.Flush()
 	}
@@ -276,7 +282,7 @@ func (r reportIO) deliverReport(output string, color colorMode, errs []error, bo
 // 64 KiB report buffer.
 func (r reportIO) writeStderrDiagnostics(diags []lint.Diagnostic) int {
 	bw := bufio.NewWriter(r.stderr)
-	err := writeDiagnostics(bw, diags, "text", r.colorFor(r.stderr, colorUnset))
+	err := writeDiagnostics(bw, diags, "text", r.colorFor(r.stderr, colorUnset, false))
 	if err == nil {
 		err = bw.Flush()
 	}

@@ -155,13 +155,15 @@ these rules that applies decides:
    ([no-color.org](https://no-color.org)).
 4. Next, a `FORCE_COLOR` variable that is set and is
    neither empty nor `0` turns color on
-   ([force-color.org](https://force-color.org)).
+   ([force-color.org](https://force-color.org)), except
+   in an `-o <path>` file, which only `--color=always`
+   colors.
 5. Otherwise color is on only on a terminal.
 
 So a flag beats both variables, and `NO_COLOR` beats
 `FORCE_COLOR`. `FORCE_COLOR=0` forces nothing: color
-still follows the terminal. With `--color=always`, an
-`-o` file gets the escape codes too.
+still follows the terminal. Only `--color=always` puts
+escape codes in an `-o` file.
 
 ## Examples
 
