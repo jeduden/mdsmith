@@ -192,7 +192,7 @@ func (p *linePlanner) pick(s int, plans []linePlan) linePlan {
 	fit := p.fitEnd(s)
 	longest := 0
 	for e := fit; e > s; e-- {
-		if plans[e].end == 0 || p.breaks(s, e) {
+		if plans[e].end == 0 || p.breaks(s, e, plans) {
 			continue
 		}
 		if plans[e].fits {
@@ -207,7 +207,7 @@ func (p *linePlanner) pick(s int, plans []linePlan) linePlan {
 	}
 	last := min(len(p.units), fit+maxOverflowUnits)
 	for e := fit + 1; e <= last; e++ {
-		if plans[e].end != 0 && !p.breaks(s, e) {
+		if plans[e].end != 0 && !p.breaks(s, e, plans) {
 			return linePlan{end: e}
 		}
 	}
@@ -232,18 +232,40 @@ func (p *linePlanner) fitEnd(s int) int {
 }
 
 // breaks reports whether the line holding units[s:e] is unsafe: a
-// later line that unsafeContinuation rejects, a first line that does not keep
-// the paragraph's own start (keepsStart), or a line other than the last
-// that ends in "\", which CommonMark reads as a hard line break.
-func (p *linePlanner) breaks(s, e int) bool {
+// later line that unsafeContinuation rejects, a first line that does not
+// keep the paragraph's own start (keepsStart) or that opens a link
+// reference definition (opensDefinition), or a line other than the last
+// that ends in "\", which CommonMark reads as a hard line break. plans
+// holds the lines picked for every start after s.
+func (p *linePlanner) breaks(s, e int, plans []linePlan) bool {
 	line := p.render(s, e)
 	if e < len(p.units) && line[len(line)-1] == '\\' {
 		return true
 	}
-	if s == 0 {
-		return !keepsStart(p.first, line)
+	if s > 0 {
+		return unsafeContinuation(line, p.container)
 	}
-	return unsafeContinuation(line, p.container)
+	return !keepsStart(p.first, line) || p.opensDefinition(e, plans)
+}
+
+// opensDefinition reports whether the layout whose first line holds
+// units[:e], followed by the lines plans picks from e on, opens with a
+// link reference definition to the canonical parser. It expects the
+// first line in the scratch buffer. Cut after one word, "[^1]: text" is
+// such a definition, and MDS053 deletes it when nothing uses it. A
+// definition can also run over lines, such as "[^1]:" and then a line
+// holding one word, so the check parses the whole layout. Only a first
+// line that starts with '[' can open one, so every other layout skips
+// the parse.
+func (p *linePlanner) opensDefinition(e int, plans []linePlan) bool {
+	if !startsWithBracket(p.buf) {
+		return false
+	}
+	src := append([]byte(nil), p.buf...)
+	for s := e; s < len(p.units); s = plans[s].end {
+		src = append(append(src, '\n'), p.render(s, plans[s].end)...)
+	}
+	return headIsLinkRefDefinition(src)
 }
 
 // keepsStart reports whether line may be a paragraph's first line in
@@ -253,9 +275,6 @@ func (p *linePlanner) breaks(s, e int) bool {
 //
 //   - line opens no CommonMark block and is no bare list marker. A lone
 //     "***" is a thematic break, though "*** text" is paragraph text.
-//   - line is no link reference definition (isLinkRefDefinition). Cut
-//     after one word, "[^1]: text" is one to the canonical parser, and
-//     MDS053 deletes it when nothing uses it.
 //   - line opens an extension block exactly when first does. The
 //     canonical parser reads "[^1]: text" or ": text" on a first line
 //     as paragraph text, so a paragraph can open with one, and every
@@ -264,7 +283,7 @@ func (p *linePlanner) breaks(s, e int) bool {
 //     marker keeps the word after it: a lone "[^1]:" is an empty
 //     footnote, and a lone ":" is no definition.
 func keepsStart(first, line []byte) bool {
-	if lint.InterruptsParagraph(line) || isBareListMarker(line) || isLinkRefDefinition(line) {
+	if lint.InterruptsParagraph(line) || isBareListMarker(line) {
 		return false
 	}
 	ext := lint.ExtensionInterruptsParagraph(first)
@@ -274,21 +293,23 @@ func keepsStart(first, line []byte) bool {
 	return !ext || oneWord(line) == oneWord(first)
 }
 
-// isLinkRefDefinition reports whether the canonical parser reads line,
-// on its own, as a link reference definition, such as "[foo]: /url" or
-// "[^1]: word". It asks the parser, since a destination may be in angle
-// brackets and a title in any of three quote styles. Only a line that
-// starts with '[' after at most three spaces can be one, so every other
-// line skips the parse.
-func isLinkRefDefinition(line []byte) bool {
+// startsWithBracket reports whether line starts with '[' after at most
+// three spaces, as a link reference definition must.
+func startsWithBracket(line []byte) bool {
 	i := 0
 	for i < len(line) && i < 4 && line[i] == ' ' {
 		i++
 	}
-	if i > 3 || i == len(line) || line[i] != '[' {
-		return false
-	}
-	doc := markdown.ParseContext(line, parser.NewContext())
+	return i <= 3 && i < len(line) && line[i] == '['
+}
+
+// headIsLinkRefDefinition reports whether the canonical parser reads the
+// start of src, a paragraph that is not blank, as a link reference
+// definition, such as "[foo]: /url" or "[^1]: word". It asks the parser,
+// since a destination may be in angle brackets, a title may use any of
+// three quote styles, and either may sit on a later line.
+func headIsLinkRefDefinition(src []byte) bool {
+	doc := markdown.ParseContext(src, parser.NewContext())
 	return doc.FirstChild().Kind() == ast.KindLinkReferenceDefinition
 }
 

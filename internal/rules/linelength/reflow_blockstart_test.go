@@ -536,13 +536,13 @@ func TestLinePlanner_Render(t *testing.T) {
 
 func TestLinePlanner_Breaks(t *testing.T) {
 	p := planner([]string{"aa", "#", "b"}, "", 10)
-	assert.False(t, p.breaks(0, 3))
-	assert.True(t, p.breaks(1, 3), `"# b" is a heading`)
-	assert.True(t, p.breaks(1, 2), `a lone "#" is an empty heading`)
+	assert.False(t, p.breaks(0, 3, nil))
+	assert.True(t, p.breaks(1, 3, nil), `"# b" is a heading`)
+	assert.True(t, p.breaks(1, 2, nil), `a lone "#" is an empty heading`)
 	backslash := planner([]string{"a", `C:\`, "b"}, "", 10)
-	assert.True(t, backslash.breaks(1, 2), `"C:\" before another line is a hard line break`)
-	assert.False(t, backslash.breaks(1, 3))
-	assert.False(t, planner([]string{"a", `C:\`}, "", 10).breaks(1, 2), "the last line may end in a backslash")
+	assert.True(t, backslash.breaks(1, 2, nil), `"C:\" before another line is a hard line break`)
+	assert.False(t, backslash.breaks(1, 3, nil))
+	assert.False(t, planner([]string{"a", `C:\`}, "", 10).breaks(1, 2, nil), "the last line may end in a backslash")
 }
 
 // TestLinePlanner_Pick walks each preference in order: a line after
@@ -661,9 +661,7 @@ func TestKeepsStart(t *testing.T) {
 		{"* text", "*", false},
 		{"<!doctype html page", "<!doctype html", false},
 		{"--- | --- text", "--- | ---", false},
-		{"[^1]: a b c", "[^1]: a b", true},
-		{"[^1]: a b", "[^1]: a", false}, // a link reference definition
-		{"[foo]: /url more", "[foo]: /url", false},
+		{"[^1]: a b", "[^1]: a", true}, // opensDefinition rejects it
 		{"[^1]: a b", "[^1]:", false},
 		{"[^1]:", "[^1]:", true},
 		{"[^1]:", "[^1]: a", false},
@@ -788,14 +786,42 @@ func TestFix_FirstLineIsNoLinkDefinition(t *testing.T) {
 	}
 }
 
-func TestIsLinkRefDefinition(t *testing.T) {
-	defs := []string{"[^1]: https://x", "[^1]: a", "[foo]: /url", "  [foo]: /url \"title\"", "[a b]: <x y>"}
-	for _, line := range defs {
-		assert.True(t, isLinkRefDefinition([]byte(line)), "%q", line)
+func TestHeadIsLinkRefDefinition(t *testing.T) {
+	defs := []string{
+		"[^1]: https://x", "[^1]: a", "[foo]: /url", "  [foo]: /url \"title\"", "[a b]: <x y>",
+		"[^1]:\nword", "[foo]: /url\n\"title\"", "[foo]: /url\nmore",
 	}
-	for _, line := range []string{"[^1]:", "[^1]: a b", "[foo]: /url more", "text [foo]: /url", "    [foo]: /url", ""} {
-		assert.False(t, isLinkRefDefinition([]byte(line)), "%q", line)
+	for _, src := range defs {
+		assert.True(t, headIsLinkRefDefinition([]byte(src)), "%q", src)
 	}
+	for _, src := range []string{"[^1]:", "[^1]: a b", "[foo]: /url more", "text [foo]: /url", "[^1]:\nword more"} {
+		assert.False(t, headIsLinkRefDefinition([]byte(src)), "%q", src)
+	}
+}
+
+func TestStartsWithBracket(t *testing.T) {
+	for _, line := range []string{"[", "[^1]: x", "   [foo]"} {
+		assert.True(t, startsWithBracket([]byte(line)), "%q", line)
+	}
+	for _, line := range []string{"", "   ", "    [foo]", "x [foo]", "\t[foo]"} {
+		assert.False(t, startsWithBracket([]byte(line)), "%q", line)
+	}
+}
+
+// TestWrapTokens_NoLinkDefinitionHead covers link reference definitions
+// that the first line opens, alone or with the line after it. A marker
+// written alone on the first line stays alone, so the next line may not
+// hold a lone word; with no other layout the paragraph is left as
+// written. A plain first line that opens with "[foo]: /url" keeps a word
+// after the URL.
+func TestWrapTokens_NoLinkDefinitionHead(t *testing.T) {
+	marker := []string{"[^1]:", "start", "word"}
+	assert.Nil(t, wrapTokens(marker, []byte("[^1]:"), "", 9, noGlue))
+	assert.Equal(t, []string{"[^1]:", "start word"}, wrapTokens(marker, []byte("[^1]:"), "", 10, noGlue))
+
+	plain := []string{"[foo]:", "/url", "more", "words"}
+	assert.Equal(t, []string{"[foo]: /url more", "words"},
+		wrapTokens(plain, []byte("[foo]: /url more words"), "", 6, noGlue))
 }
 
 // TestWrapTokens_ContainerKeepsListMarkersInside covers a paragraph whose
@@ -827,4 +853,62 @@ func TestFix_FootnoteKeepsYearInside(t *testing.T) {
 		"[^smith]: Smith, John. The Book. Publisher\n"+
 		"Press, 2019. Accessed in March of 2024 online.\n", got)
 	assert.Equal(t, flavorBlocks(t, src), flavorBlocks(t, got))
+}
+
+// canonicalParagraph reports whether lines, joined as one Markdown
+// block, parse under the canonical parser as exactly one paragraph that
+// keeps every line: no line split off, and no link reference definition
+// taken from its head.
+func canonicalParagraph(t *testing.T, lines []string) bool {
+	t.Helper()
+	f, err := lint.NewFile("t.md", []byte(strings.Join(lines, "\n")+"\n"))
+	require.NoError(t, err)
+	return soleParagraph(f.AST, len(lines))
+}
+
+// TestWrapTokens_RandomContainerParagraphsMatchParser is the random test
+// for a paragraph that opens with a footnote definition or a definition
+// line, the containers of the flavor parser. The paragraph is placed
+// after a footnote reference or a term, so the flavor parser keeps the
+// container. For every layout it checks that
+//
+//   - the words stay in order;
+//   - the canonical parser reads one paragraph of every line, with no
+//     link reference definition at its head; and
+//   - the flavor parser builds the same blocks as for the paragraph as
+//     written, so no line left the container.
+//
+// A quarter of the cases write the marker alone on the first line.
+func TestWrapTokens_RandomContainerParagraphsMatchParser(t *testing.T) {
+	containers := []struct{ marker, before string }{
+		{"[^x]:", "x[^x]\n\n"},
+		{":", "Term\n\n"},
+	}
+	rng := rand.New(rand.NewPCG(851, 844))
+	laidOut := 0
+	for range 3000 {
+		c := containers[rng.IntN(len(containers))]
+		tokens := randomTokens(rng, c.marker, "start")
+		written := []string{strings.Join(tokens, " ")}
+		if c.marker != ":" && rng.IntN(4) == 0 {
+			written = []string{c.marker, strings.Join(tokens[1:], " ")}
+		}
+		if !canonicalParagraph(t, written) {
+			continue // not a paragraph as written, so reflow never sees it
+		}
+		width := 4 + rng.IntN(24)
+		got := wrapTokens(tokens, []byte(written[0]), "", width, noGlue)
+		if got == nil {
+			continue
+		}
+		laidOut++
+		require.Equal(t, tokens, strings.Fields(strings.Join(got, " ")))
+		require.True(t, canonicalParagraph(t, got),
+			"written %q width %d: layout %q is not one canonical paragraph", written, width, got)
+		require.Equal(t,
+			flavorBlocks(t, c.before+strings.Join(written, "\n")+"\n"),
+			flavorBlocks(t, c.before+strings.Join(got, "\n")+"\n"),
+			"written %q width %d: layout %q changes the flavor blocks", written, width, got)
+	}
+	assert.Greater(t, laidOut, 1500, "too few cases were laid out")
 }
