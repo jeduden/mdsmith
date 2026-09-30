@@ -2473,9 +2473,20 @@ const docFrontMatterMemoKey = "MDS020.docFrontMatter"
 // both need the front matter, and without the memo a kind that has
 // both an interpolating path-pattern and a schema would pay two YAML
 // decodes per file. Every caller gets the same map and must treat it
-// as read-only.
+// as read-only; none of them writes to it.
+//
+// A file with no front matter returns before the memo, so it pays no
+// memo entry against the rule's allocation budget. The read is
+// checked: MemoFile keeps a nil value when a builder panicked, and
+// that case decodes directly rather than panicking a second time.
 func cachedDocFrontMatterRaw(f *lint.File) (map[string]any, []lint.Diagnostic) {
-	v := f.MemoFile(docFrontMatterMemoKey, buildDocFrontMatter).(*docFrontMatter)
+	if len(f.FrontMatter) == 0 {
+		return nil, nil
+	}
+	v, ok := f.MemoFile(docFrontMatterMemoKey, buildDocFrontMatter).(*docFrontMatter)
+	if !ok {
+		return readDocFrontMatterRaw(f)
+	}
 	return v.raw, v.diags
 }
 
