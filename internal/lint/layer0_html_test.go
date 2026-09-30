@@ -74,10 +74,11 @@ func TestOpenHTMLBlock(t *testing.T) {
 		{"<div>", false, htmlType6},
 		{"<DIV>", false, htmlType6},
 		{"<p>", false, htmlType6},
-		// goldmark allows spaces between "</" and the tag name, so a
-		// spaced close tag still interrupts a paragraph as type 6.
-		{"</ div", true, htmlType6},
-		{"</  p>", true, htmlType6},
+		// The spec allows no space between "</" and the tag name, and
+		// Layer 0 follows it. The goldmark fork is broader here; only
+		// InterruptsParagraph adds that case (see interrupt.go).
+		{"</ div", true, htmlNone},
+		{"</  p", true, htmlNone},
 		// Type 7: generic complete tag, only when not in paragraph
 		{"<foo/>", false, htmlType7},
 		{"<foo />", false, htmlType7},

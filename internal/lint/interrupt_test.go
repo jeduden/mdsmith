@@ -31,7 +31,9 @@ var interruptingLines = []string{
 	// HTML blocks of types 1-6, including processing instructions.
 	"<div", "<div>", "</div>", "<DIV class=x>", "<p/>", "<script",
 	"<pre>", "<!-- c", "<?pi", "<? x", "<!DOCTYPE", "<![CDATA[x",
-	"</ div",
+	// The goldmark fork also reads spaces between "</" and a block
+	// tag name as an HTML block opener.
+	"</ div", "</  p>", "</ div x",
 }
 
 // specOnlyInterrupting interrupt a paragraph under the CommonMark spec
@@ -59,6 +61,9 @@ var continuingLines = []string{
 	"``", "``x", "```go `x`",
 	// HTML type 7 and non-block tags cannot interrupt.
 	"<span>", "<span", "<a href=x>", "<divx", "<", "< div",
+	// A spaced close tag needs a block tag name, then a space, ">",
+	// "/>", or the line end.
+	"</ span", "</ divx", "</\tdiv", "</ div\tx",
 	// Four columns of indent make indented code, which cannot interrupt.
 	"    # x", "    > x", "    ```", "    - x", "\t# x", "   \t> x",
 	"plain text",
@@ -98,5 +103,16 @@ func TestInterruptsParagraph_MatchesParser(t *testing.T) {
 	}
 	for _, line := range specOnlyInterrupting {
 		check(line, false)
+	}
+}
+
+// TestForkSpacedCloseTag covers the one HTML case the fork reads more
+// broadly than the spec: spaces between "</" and a type-6 tag name.
+func TestForkSpacedCloseTag(t *testing.T) {
+	for _, line := range []string{"</ div", "</  p>", "   </ div/>", "</ DIV x"} {
+		assert.True(t, forkSpacedCloseTag([]byte(line)), "%q", line)
+	}
+	for _, line := range []string{"</div", "    </ div", "</ span", "</ divx", "</\tdiv", "</ div\tx", "plain"} {
+		assert.False(t, forkSpacedCloseTag([]byte(line)), "%q", line)
 	}
 }

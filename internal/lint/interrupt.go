@@ -1,5 +1,10 @@
 package lint
 
+import (
+	"bytes"
+	"regexp"
+)
+
 // InterruptsParagraph reports whether line, placed directly after a line
 // of an open paragraph, would stop continuing that paragraph. It is true
 // for a blank line, for a setext underline (which turns the paragraph
@@ -18,13 +23,15 @@ package lint
 // Everything else continues the paragraph, including indented code, HTML
 // type 7, an empty list item, and an ordered item that starts at another
 // number. Up to three spaces of indent are allowed, as CommonMark allows.
-// The block detectors are the Layer 0 scanner's, which mirrors the
-// goldmark fork. The answer is true when either the fork or the spec
-// reads the line as a block start. Where the fork is narrower (it wants
-// an uppercase letter after "<!", and a space rather than a tab after a
-// block tag name), the spec wins. Where it is broader (it allows spaces
-// between "</" and the tag name), the fork wins. So the answer holds for
-// both mdsmith's parser and other CommonMark renderers.
+//
+// The block detectors are the Layer 0 scanner's. For HTML they follow
+// the spec, which is broader than the goldmark fork in two places: a
+// lowercase letter after "<!" (type 4) and a tab after a block tag name
+// (type 6) open an HTML block in the spec but not in the fork. The fork
+// is broader in one place: it allows spaces between "</" and a block
+// tag name. Layer 0 stays strict there, so forkSpacedCloseTag adds that
+// case here. The answer is true when either reading sees a block start,
+// so it holds for mdsmith's parser and for other CommonMark renderers.
 func InterruptsParagraph(line []byte) bool {
 	if isBlankLine(line) || isSetextUnderline(line) || isThematicBreak(line) || isATXHeadingLine(line) {
 		return true
@@ -32,7 +39,7 @@ func InterruptsParagraph(line []byte) bool {
 	if _, ok := openingFence(line); ok {
 		return true
 	}
-	if openHTMLBlock(line, true) != htmlNone {
+	if openHTMLBlock(line, true) != htmlNone || forkSpacedCloseTag(line) {
 		return true
 	}
 	indent := leadingSpaces(line)
@@ -67,4 +74,21 @@ func interruptingOrderedMarker(line []byte, indent int) bool {
 		return false
 	}
 	return !isBlankLine(line[j+2:])
+}
+
+// spacedCloseTag matches a close tag with spaces between "</" and the
+// tag name, then a space, ">", "/>", or the line end. It is the part of
+// the fork's type-6 HTML block pattern that the spec does not have.
+var spacedCloseTag = regexp.MustCompile(`^[ ]{0,3}</[ ]+([a-zA-Z][a-zA-Z0-9-]*)(?:[ ]|>|/>|$)`)
+
+// forkSpacedCloseTag reports whether line is a close tag of a type-6
+// block tag with spaces after "</", such as "</ div>". The goldmark fork
+// opens an HTML block for it; the spec and Layer 0 do not.
+func forkSpacedCloseTag(line []byte) bool {
+	// Most lines fail this byte check, which spares them the regexp.
+	if i := leadingSpaces(line); i > 3 || !bytes.HasPrefix(line[i:], []byte("</ ")) {
+		return false
+	}
+	m := spacedCloseTag.FindSubmatch(line)
+	return m != nil && tagInAllowedSet(m[1])
 }
