@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -161,4 +162,111 @@ func TestApplyPlan_PreflightAbortsBeforeWritingEdits(t *testing.T) {
 	after, err := os.ReadFile(filepath.Join(dir, "b.md"))
 	require.NoError(t, err)
 	assert.Equal(t, before, after, "no reference edit is written when the pre-flight aborts")
+}
+
+// badSecondFilePlan edits a.md validly and b.md with two overlapping
+// edits, which refactor.ApplyEdits rejects. Keys apply in sorted order,
+// so a.md is the file a non-atomic apply would already have rewritten
+// when b.md fails.
+func badSecondFilePlan() refactor.Plan {
+	edit := func(start, end int, text string) refactor.Edit {
+		return refactor.Edit{
+			Range: refactor.Range{
+				Start: refactor.Position{Line: 0, Character: start},
+				End:   refactor.Position{Line: 0, Character: end},
+			},
+			NewText: text,
+		}
+	}
+	return refactor.Plan{Edits: map[string][]refactor.Edit{
+		"a.md": {edit(2, 7, "Install")},
+		"b.md": {edit(0, 3, "X"), edit(1, 4, "Y")},
+	}}
+}
+
+// TestApplyPlan_RejectedEditWritesNothing pins that applyPlan splices
+// every file before writing any: when ApplyEdits rejects one file's
+// edits, the command exits 2 and no file — not even one that sorts
+// before the bad one — is rewritten.
+func TestApplyPlan_RejectedEditWritesNothing(t *testing.T) {
+	dir := renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	beforeA, err := os.ReadFile(filepath.Join(dir, "a.md"))
+	require.NoError(t, err)
+	beforeB, err := os.ReadFile(filepath.Join(dir, "b.md"))
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, applyPlan(io.Discard, ws, badSecondFilePlan(), "text", false))
+
+	afterA, err := os.ReadFile(filepath.Join(dir, "a.md"))
+	require.NoError(t, err)
+	afterB, err := os.ReadFile(filepath.Join(dir, "b.md"))
+	require.NoError(t, err)
+	assert.Equal(t, beforeA, afterA, "a.md is not rewritten when b.md's edits are rejected")
+	assert.Equal(t, beforeB, afterB)
+}
+
+// TestApplyPlan_DryRunReportsRejectedEdit pins that --dry-run splices
+// the edits too, so it fails on a plan the real run would reject
+// instead of reporting edits that could never be written.
+func TestApplyPlan_DryRunReportsRejectedEdit(t *testing.T) {
+	renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	var out bytes.Buffer
+	assert.Equal(t, 2, applyPlan(&out, ws, badSecondFilePlan(), "text", true))
+	assert.Empty(t, out.String(), "no edit summary is printed for a rejected plan")
+}
+
+func TestSpliceFileEdits(t *testing.T) {
+	renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	plan := badSecondFilePlan()
+
+	t.Run("splices the edits into the file bytes", func(t *testing.T) {
+		out, code := spliceFileEdits(ws, "a.md", plan.Edits["a.md"])
+		require.Equal(t, 0, code)
+		assert.Equal(t, "# Install\n\nBody.\n", string(out))
+	})
+	t.Run("unreadable file exits 2", func(t *testing.T) {
+		out, code := spliceFileEdits(ws, "missing.md", plan.Edits["a.md"])
+		assert.Equal(t, 2, code)
+		assert.Nil(t, out)
+	})
+	t.Run("rejected edits exit 2", func(t *testing.T) {
+		out, code := spliceFileEdits(ws, "b.md", plan.Edits["b.md"])
+		assert.Equal(t, 2, code)
+		assert.Nil(t, out)
+	})
+}
+
+func TestWriteRelFile(t *testing.T) {
+	dir := t.TempDir()
+	abs := filepath.Join(dir, "mapped.md")
+	require.NoError(t, os.WriteFile(abs, []byte("old\n"), 0o640))
+	ws := cliRenameWorkspace{relToAbs: map[string]string{"a.md": abs}, rootDir: dir}
+
+	t.Run("writes through relToAbs keeping the mode", func(t *testing.T) {
+		require.Equal(t, 0, writeRelFile(ws, "a.md", []byte("new\n")))
+		got, err := os.ReadFile(abs)
+		require.NoError(t, err)
+		assert.Equal(t, "new\n", string(got))
+		info, err := os.Stat(abs)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o640), info.Mode().Perm())
+	})
+	t.Run("unmapped rel falls back to rootDir", func(t *testing.T) {
+		require.Equal(t, 0, writeRelFile(ws, "b.md", []byte("b\n")))
+		got, err := os.ReadFile(filepath.Join(dir, "b.md"))
+		require.NoError(t, err)
+		assert.Equal(t, "b\n", string(got))
+	})
+	t.Run("write failure exits 2", func(t *testing.T) {
+		// The rootDir fallback names a directory, so the rename over it
+		// fails without relying on permission bits (tests run as root).
+		require.NoError(t, os.Mkdir(filepath.Join(dir, "adir"), 0o755))
+		assert.Equal(t, 2, writeRelFile(ws, "adir", []byte("x\n")))
+	})
 }

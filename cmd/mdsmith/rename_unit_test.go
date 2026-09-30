@@ -307,7 +307,7 @@ func TestApplyPlan_WriteErrorAndFallback(t *testing.T) {
 	assert.Contains(t, string(got), "# Install")
 
 	// Resolve normalizes "./sub" → "sub" and reads the mapped file
-	// (ok), but applyEditsToFile's raw-key lookup misses and falls back
+	// (ok), but writeRelFile's raw-key lookup misses and falls back
 	// to rootDir/sub — a directory — so writeFilePreservingMode fails
 	// → exit 2. This drives the write-error arm without relying on
 	// permission bits (the test runs as root).

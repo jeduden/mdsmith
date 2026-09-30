@@ -38,10 +38,12 @@ behavior suite:
 A related, smaller finding on `cmd/mdsmith` was scoped out
 of this plan on review.
 
-`applyEditsToFile` ([cmd/mdsmith/move.go][cli-move]) and
 `looksLikePath`, `firstPathish`, `resolveWriteMode`
 ([cmd/mdsmith/rename.go][cli-rename]) also lack a test
 symbol by name.
+
+A fourth, `applyEditsToFile`, is now split in two. Both
+halves in [cmd/mdsmith/move.go][cli-move] have named tests.
 
 Each is small, low-risk, and already covered indirectly
 by `TestRunMove_Success`, `TestRunRename_MoveIntentGuard`,
@@ -64,8 +66,7 @@ required to close this plan.
 5. `go tool -modfile=tools/go.mod golangci-lint run` reports
    no issues.
 6. Optional stretch, not required to close this plan: add
-   `TestApplyEditsToFile` in `cmd/mdsmith/move_unit_test.go`
-   and `TestLooksLikePath`, `TestFirstPathish`, and
+   `TestLooksLikePath`, `TestFirstPathish`, and
    `TestResolveWriteMode` in `cmd/mdsmith/rename_unit_test.go`.
 
 ## Acceptance Criteria

@@ -59,7 +59,14 @@ new heading slug collides with another heading, when the label
 collides with another definition, or when the text slugifies to
 nothing or carries a newline or a stray bracket. Each failure
 exits 2 and names the conflict. No partial edit is written.
-`--dry-run` prints the edits and changes nothing.
+
+Every file's edits are spliced in memory before any file is
+written. Two edits that claim the same bytes of a line, or an
+edit that falls outside its line, exit 2 with the file and
+line named, and no file is written.
+
+`--dry-run` prints the edits and changes nothing. It splices
+the edits too, so it fails where the real rename would.
 
 ## Flags
 
@@ -124,11 +131,11 @@ mdsmith rename --format json docs/guide.md --as heading "Setup" "Install"
 
 ## Exit codes
 
-| Code | Meaning                                                         |
-| ---- | --------------------------------------------------------------- |
-| 0    | Rewritten                                                       |
-| 1    | No matching heading or label (with an explicit `--as`)          |
-| 2    | Conflict, invalid input, ambiguous kind, or move-shaped request |
+| Code | Meaning                                                                        |
+| ---- | ------------------------------------------------------------------------------ |
+| 0    | Rewritten                                                                      |
+| 1    | No matching heading or label (with an explicit `--as`)                         |
+| 2    | Conflict, invalid input, ambiguous kind, rejected edit, or move-shaped request |
 
 ## See also
 

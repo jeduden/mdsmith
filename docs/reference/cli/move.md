@@ -73,8 +73,17 @@ file carries its rewritten body.
 ## Safety
 
 An existing `<dst>` aborts with exit code 2 and nothing is
-moved or written. `--dry-run` prints the edits and the planned
-move and changes nothing.
+moved or written.
+
+Every file's edits are spliced in memory before any file is
+written. Two edits that claim the same bytes of a line, or an
+edit that falls outside its line, abort the move with exit
+code 2. The error names the file and line, and nothing is
+moved or written.
+
+`--dry-run` prints the edits and the planned move and changes
+nothing. It splices the edits too, so it fails where the real
+move would.
 
 ## Flags
 
@@ -132,11 +141,11 @@ mdsmith move guide.md reference/guide.md --dry-run
 
 ## Exit codes
 
-| Code | Meaning                                             |
-| ---- | --------------------------------------------------- |
-| 0    | Moved                                               |
-| 1    | Source not found                                    |
-| 2    | Existing destination, traversal, or `git mv` failed |
+| Code | Meaning                                                            |
+| ---- | ------------------------------------------------------------------ |
+| 0    | Moved                                                              |
+| 1    | Source not found                                                   |
+| 2    | Existing destination, traversal, rejected edit, or `git mv` failed |
 
 ## See also
 

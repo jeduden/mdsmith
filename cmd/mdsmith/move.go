@@ -121,12 +121,13 @@ type fileMoveReport struct {
 	To   string `json:"to"`
 }
 
-// applyPlan is the shared apply layer for refactor plans. It writes
-// every keyed file's edits, then runs any FileOp (a git mv or plain
-// rename) — text edits before the move, so the relocated file carries
-// its rewritten body. With dryRun set it changes nothing and only
-// reports what it would do. Returns 0 on success, 2 on a write or move
-// failure.
+// applyPlan is the shared apply layer for refactor plans. It splices
+// every keyed file's edits in memory first, then writes them, then runs
+// any FileOp (a git mv or plain rename) — text edits before the move,
+// so the relocated file carries its rewritten body. With dryRun set it
+// still splices, so it fails on a plan the real run would reject, but
+// changes nothing and only reports what it would do. Returns 0 on
+// success, 2 on a read, splice, write or move failure.
 func applyPlan(w io.Writer, ws cliRenameWorkspace, plan refactor.Plan, format string, dryRun bool) int {
 	rels := make([]string, 0, len(plan.Edits))
 	for rel, edits := range plan.Edits {
@@ -136,6 +137,19 @@ func applyPlan(w io.Writer, ws cliRenameWorkspace, plan refactor.Plan, format st
 		rels = append(rels, rel)
 	}
 	sort.Strings(rels)
+
+	// Splice every file before writing any. ApplyEdits rejects an
+	// overlapping or out-of-range edit; finding that in the last file
+	// after the earlier ones were written would leave the workspace
+	// half-rewritten with the move never run.
+	outs := make([][]byte, len(rels))
+	for i, rel := range rels {
+		out, code := spliceFileEdits(ws, rel, plan.Edits[rel])
+		if code != 0 {
+			return code
+		}
+		outs[i] = out
+	}
 
 	// Pre-flight the file move before writing any reference edits.
 	// Execute refuses an existing destination (git mv does; the
@@ -155,14 +169,13 @@ func applyPlan(w io.Writer, ws cliRenameWorkspace, plan refactor.Plan, format st
 	}
 
 	summaries := make([]renameSummary, 0, len(rels))
-	for _, rel := range rels {
-		edits := plan.Edits[rel]
+	for i, rel := range rels {
 		if !dryRun {
-			if code := applyEditsToFile(ws, rel, edits); code != 0 {
+			if code := writeRelFile(ws, rel, outs[i]); code != 0 {
 				return code
 			}
 		}
-		summaries = append(summaries, renameSummary{File: rel, Edits: len(edits)})
+		summaries = append(summaries, renameSummary{File: rel, Edits: len(plan.Edits[rel])})
 	}
 	if !dryRun && plan.FileOp != nil {
 		if err := plan.FileOp.Execute(ws.rootDir); err != nil {
@@ -173,20 +186,26 @@ func applyPlan(w io.Writer, ws cliRenameWorkspace, plan refactor.Plan, format st
 	return emitPlanReport(w, summaries, plan.FileOp, format, dryRun)
 }
 
-// applyEditsToFile splices one file's edits and writes the result back,
-// preserving the file's mode. Returns 0 on success, 2 on a read, apply,
-// or write failure.
-func applyEditsToFile(ws cliRenameWorkspace, rel string, edits []refactor.Edit) int {
+// spliceFileEdits reads the workspace file rel and returns its bytes
+// with edits spliced in. Returns code 0 on success, 2 when the file
+// cannot be read or refactor.ApplyEdits rejects the edits.
+func spliceFileEdits(ws cliRenameWorkspace, rel string, edits []refactor.Edit) ([]byte, int) {
 	_, src, ok := ws.Resolve(rel)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "mdsmith: cannot read %q to apply edits\n", rel)
-		return 2
+		return nil, 2
 	}
 	out, err := refactor.ApplyEdits(src, edits)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %s: %v\n", rel, err)
-		return 2
+		return nil, 2
 	}
+	return out, 0
+}
+
+// writeRelFile writes out over the workspace file rel, preserving the
+// file's mode. Returns 0 on success, 2 on a write failure.
+func writeRelFile(ws cliRenameWorkspace, rel string, out []byte) int {
 	abs, ok := ws.relToAbs[rel]
 	if !ok {
 		abs = filepath.Join(ws.rootDir, filepath.FromSlash(rel))
