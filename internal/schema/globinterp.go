@@ -138,6 +138,30 @@ func globRefAt(pattern string, start int) (name string, end int, err error) {
 	return name, j + 1, nil
 }
 
+// globOpeners calls visit, in order, for every `\#(` opener in
+// pattern with its [start, end) span and globRefAt's verdict: err is
+// nil for a well-formed reference, whose fmvar argument is name. It
+// is the one opener scan every glob helper shares, so they cannot
+// disagree on where a reference starts or how the scan moves on. The
+// scan resumes after a reference's closing `)`, but only after the
+// `\#(` of a literal opener: a reference inside a literal opener's
+// body is still visited. visit returns false to stop the scan.
+func globOpeners(
+	pattern string, visit func(start, end int, name string, err error) bool,
+) {
+	for i := nextGlobOpener(pattern, 0); i >= 0; {
+		name, end, err := globRefAt(pattern, i)
+		if !visit(i, end, name, err) {
+			return
+		}
+		next := end
+		if err != nil {
+			next = i + len(interpMarker)
+		}
+		i = nextGlobOpener(pattern, next)
+	}
+}
+
 // scanGlobRefs calls visit, in order, for every well-formed reference
 // in pattern with its fmvar argument and [start, end) byte span. A
 // literal opener is stepped over, so a reference that follows it is
@@ -154,18 +178,15 @@ func globRefAt(pattern string, start int) (name string, end int, err error) {
 func scanGlobRefs(
 	pattern string, visit func(name string, start, end int) error,
 ) error {
-	for i := nextGlobOpener(pattern, 0); i >= 0; {
-		name, end, err := globRefAt(pattern, i)
+	var vErr error
+	globOpeners(pattern, func(start, end int, name string, err error) bool {
 		if err != nil {
-			i = nextGlobOpener(pattern, i+len(interpMarker))
-			continue
+			return true // a literal opener
 		}
-		if vErr := visit(name, i, end); vErr != nil {
-			return vErr
-		}
-		i = nextGlobOpener(pattern, end)
-	}
-	return nil
+		vErr = visit(name, start, end)
+		return vErr == nil
+	})
+	return vErr
 }
 
 // rewriteGlobRefs replaces every well-formed reference in pattern with
@@ -201,13 +222,12 @@ func rewriteGlobRefs(
 // majority of patterns, which are plain globs; a pattern with no
 // `\#(` at all costs one byte scan.
 func PatternHasInterp(pattern string) bool {
-	for i := nextGlobOpener(pattern, 0); i >= 0; {
-		if _, _, err := globRefAt(pattern, i); err == nil {
-			return true
-		}
-		i = nextGlobOpener(pattern, i+len(interpMarker))
-	}
-	return false
+	found := false
+	globOpeners(pattern, func(_, _ int, _ string, err error) bool {
+		found = err == nil
+		return !found
+	})
+	return found
 }
 
 // ResolveGlobPattern substitutes every `\#(fmvar(name))` reference in
@@ -344,24 +364,24 @@ func PathPatternSyntaxForm(pattern string) string {
 // Callers attach the hint to a mismatch diagnostic, which is where
 // the typo shows up.
 func LiteralFmvarHint(pattern string) string {
-	for i := nextGlobOpener(pattern, 0); i >= 0; {
-		name, end, err := globRefAt(pattern, i)
+	var hint string
+	globOpeners(pattern, func(start, end int, name string, err error) bool {
 		if err == nil {
-			i = nextGlobOpener(pattern, end)
-			continue
+			return true // a well-formed reference
 		}
-		body := strings.TrimSpace(pattern[i+len(interpMarker):])
-		if strings.HasPrefix(body, "fmvar") {
-			reason := err
-			if err == errGlobRefBadPath {
-				reason = InvalidFmvarPathErr(name)
-			}
-			return fmt.Sprintf("`%s` is matched literally, not "+
-				"interpolated: %v", pattern[i:end], reason)
+		body := strings.TrimSpace(pattern[start+len(interpMarker):])
+		if !strings.HasPrefix(body, "fmvar") {
+			return true // a deliberate literal such as `\#(draft)`
 		}
-		i = nextGlobOpener(pattern, i+len(interpMarker))
-	}
-	return ""
+		reason := err
+		if err == errGlobRefBadPath {
+			reason = InvalidFmvarPathErr(name)
+		}
+		hint = fmt.Sprintf("`%s` is matched literally, not "+
+			"interpolated: %v", pattern[start:end], reason)
+		return false
+	})
+	return hint
 }
 
 // GlobMismatchHint builds the hint for a pattern mismatch on either
