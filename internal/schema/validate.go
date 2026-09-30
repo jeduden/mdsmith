@@ -107,7 +107,8 @@ type MakeDiag func(file string, line int, msg string) lint.Diagnostic
 // When fmIsCUE is true, the front-matter values are themselves CUE
 // expressions (the `cue-frontmatter` placeholder); the CUE check is
 // skipped because the values are not concrete data, and a
-// `\#(fmvar(...))` reference in `filename:` matches any value.
+// `\#(fmvar(...))` reference in `filename:` matches any non-empty
+// value.
 func Validate(
 	f *lint.File, sch *Schema, docFM map[string]any, fmIsCUE bool,
 	mkDiag MakeDiag,
