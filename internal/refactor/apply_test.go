@@ -51,23 +51,18 @@ func TestApplyEdits(t *testing.T) {
 	})
 }
 
-// TestApplyEdits_SameOffsetAndOverlap pins the same-line contract. No
-// byte of the original row may be claimed by two edits: a partial
-// overlap, a containment, an insert strictly inside another edit's
-// range, and two identical replacements are all errors naming the line
-// and both ranges (in document order, whatever the input order). Edits
-// may touch: an insert at a replacement's start or end and adjacent
-// replacements all apply. Zero-width inserts at one offset all apply in
-// input order — two identical inserts both land (`abcxxdef`), they are
-// not merged — and before a replacement starting at that offset. These
-// are LSP's TextEdit rules, so a Plan lands the same here as in an
-// editor.
-func TestApplyEdits_SameOffsetAndOverlap(t *testing.T) {
+// TestApplyEdits_TouchingAndSameOffsetEdits pins the edits that may
+// share a line. Edits may touch: an insert at a replacement's start or
+// end and adjacent replacements all apply. Zero-width inserts at one
+// offset all apply in input order — two identical inserts both land
+// (`abcxxdef`), they are not merged — and before a replacement
+// starting at that offset. These are LSP's TextEdit rules, so a Plan
+// lands the same here as in an editor.
+func TestApplyEdits_TouchingAndSameOffsetEdits(t *testing.T) {
 	tests := []struct {
-		name    string
-		edits   []Edit
-		want    string
-		wantErr string
+		name  string
+		edits []Edit
+		want  string
 	}{
 		{
 			name:  "identical zero-width inserts both apply",
@@ -104,38 +99,59 @@ func TestApplyEdits_SameOffsetAndOverlap(t *testing.T) {
 			edits: tiedInsertsAfterRowStart(),
 			want:  "AabcBCDEFGHIJKLMdef\n",
 		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := ApplyEdits([]byte("abcdef\n"), tt.edits)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, string(out))
+		})
+	}
+}
+
+// TestApplyEdits_RejectsOverlap pins that no byte of the original row
+// may be claimed by two edits: a partial overlap, a containment, an
+// insert strictly inside another edit's range, and two identical
+// replacements are all errors naming the line and both ranges (in
+// document order, whatever the input order), with no output.
+func TestApplyEdits_RejectsOverlap(t *testing.T) {
+	tests := []struct {
+		name    string
+		edits   []Edit
+		wantErr string
+	}{
 		{
-			name:    "identical same-range replacements are rejected",
+			name:    "identical same-range replacements",
 			edits:   []Edit{mkEdit(0, 1, 3, "X"), mkEdit(0, 1, 3, "X")},
 			wantErr: "edits [1,3) and [1,3) on line 1 overlap",
 		},
 		{
-			name:    "same-range replacements with different text are rejected",
+			name:    "same-range replacements with different text",
 			edits:   []Edit{mkEdit(0, 1, 3, "X"), mkEdit(0, 1, 3, "Y")},
 			wantErr: "edits [1,3) and [1,3) on line 1 overlap",
 		},
 		{
-			name:    "partial overlap is rejected",
+			name:    "partial overlap",
 			edits:   []Edit{mkEdit(0, 1, 4, "X"), mkEdit(0, 2, 5, "Y")},
 			wantErr: "edits [1,4) and [2,5) on line 1 overlap",
 		},
 		{
-			name:    "partial overlap names the ranges in document order",
+			name:    "partial overlap given right edit first",
 			edits:   []Edit{mkEdit(0, 2, 5, "Y"), mkEdit(0, 1, 4, "X")},
 			wantErr: "edits [1,4) and [2,5) on line 1 overlap",
 		},
 		{
-			name:    "containment is rejected",
+			name:    "containment",
 			edits:   []Edit{mkEdit(0, 1, 6, "X"), mkEdit(0, 2, 3, "")},
 			wantErr: "edits [1,6) and [2,3) on line 1 overlap",
 		},
 		{
-			name:    "insert strictly inside a replacement is rejected",
+			name:    "insert strictly inside a replacement",
 			edits:   []Edit{mkEdit(0, 2, 2, "x"), mkEdit(0, 1, 4, "Y")},
 			wantErr: "edits [1,4) and [2,2) on line 1 overlap",
 		},
 		{
-			name:    "overlap is found past a non-overlapping edit",
+			name:    "overlap past a non-overlapping edit",
 			edits:   []Edit{mkEdit(0, 0, 1, "A"), mkEdit(0, 2, 5, "B"), mkEdit(0, 4, 6, "C")},
 			wantErr: "edits [2,5) and [4,6) on line 1 overlap",
 		},
@@ -143,13 +159,8 @@ func TestApplyEdits_SameOffsetAndOverlap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			out, err := ApplyEdits([]byte("abcdef\n"), tt.edits)
-			if tt.wantErr != "" {
-				require.EqualError(t, err, tt.wantErr)
-				assert.Nil(t, out)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, string(out))
+			require.EqualError(t, err, tt.wantErr)
+			assert.Nil(t, out)
 		})
 	}
 }
