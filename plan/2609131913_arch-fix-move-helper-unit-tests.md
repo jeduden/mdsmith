@@ -38,19 +38,22 @@ behavior suite:
 A related, smaller finding on `cmd/mdsmith` was scoped out
 of this plan on review.
 
-`looksLikePath`, `firstPathish`, `resolveWriteMode`
-([cmd/mdsmith/rename.go][cli-rename]) also lack a test
+`looksLikePath`, `firstPathish`, and `resolveWriteMode`
+([cmd/mdsmith/rename.go][cli-rename]) lack a test
 symbol by name.
 
-A fourth, `applyEditsToFile`, is now split in two. Both
-halves in [cmd/mdsmith/move.go][cli-move] have named tests.
-
-Each is small, low-risk, and already covered indirectly
-by `TestRunMove_Success`, `TestRunRename_MoveIntentGuard`,
-and `TestWriteFilePreservingMode_*`.
+Each is small and low-risk. Each is also covered
+indirectly by `TestRunRename_MoveIntentGuard` and
+`TestWriteFilePreservingMode_*`.
 
 Adding named tests for them is optional cleanup, not
 required to close this plan.
+
+The finding also named `applyEditsToFile` in
+[cmd/mdsmith/move.go][cli-move]. That part is closed.
+Its code now lives in `spliceFileEdits` and
+`writeRelFile`. Each has a named test in
+`cmd/mdsmith/move_unit_test.go`.
 
 ## Tasks
 
