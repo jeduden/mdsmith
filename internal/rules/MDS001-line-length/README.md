@@ -121,7 +121,7 @@ syntax that CommonMark would read as the start of a new block:
 
 - an ATX heading: one to six `#` followed by a space, a tab, or the line end
 - a thematic break, such as `***`, `- - -`, or `_ _ _`
-- a code fence of backticks or tildes, with or without an info string
+- a code fence of 3 or more backticks or tildes, with or without an info string
 - a block quote marker `>`
 - a bullet `-`, `+`, or `*` followed by a space and more text
 - an ordered item `1.` or `1)` followed by a space and more text
@@ -130,8 +130,8 @@ syntax that CommonMark would read as the start of a new block:
 - a setext underline: a line of only `=` or only `-`
 
 If a plain word wrap would start a line with one of these, reflow moves the
-word before it down to lead that line instead. Take this paragraph at a `max` of
-50. A plain wrap starts its third line with `> opens`, a block quote:
+word before it down to lead that line instead. Take this paragraph, wrapped at
+fifty columns. A plain wrap starts its third line with `> opens`, a block quote:
 
 ```text
 When writing Markdown, a line that starts with #
@@ -152,14 +152,14 @@ with 1. and a space starts a list.
 Text that only looks like block syntax wraps as usual. `#48` and `#tag` are not
 headings, `2.` and `1999.` cannot start a list inside a paragraph, and `x = y`
 is not a setext underline. The list follows CommonMark exactly, so a line that
-cannot interrupt a paragraph is allowed. An empty list item such as a lone `1.`
-is one example.
+cannot interrupt a paragraph, such as an empty list item `1.`, is allowed.
 
 A line runs past `max` only when no layout within `max` avoids these starts,
 such as when the word before a marker already fills the line. That line then
-takes as few extra words as it can. A paragraph is left as written when one of
-its lines would need more than eight extra words, or when every layout starts a
-line with block syntax.
+takes as few extra words as it can. A run that reflow keeps together, such as
+`U. S. A.`, counts as one word. A paragraph is left as written when one of its
+lines would need more than eight extra words, or when every layout starts a line
+with block syntax.
 
 ## Config
 
