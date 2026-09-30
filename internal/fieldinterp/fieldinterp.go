@@ -199,7 +199,8 @@ func ResolveSortKey(data map[string]any, path []string) (string, error) {
 // timestamp. time.Parse accepts a fractional second after the seconds
 // field whether or not the layout shows one.
 var (
-	sortTimeLayoutsT = []string{
+	sortTimeLayoutsDate = []string{time.DateOnly} // 2026-01-02
+	sortTimeLayoutsT    = []string{
 		time.RFC3339,             // 2026-01-02T10:00:00-05:00
 		"2006-01-02T15:04:05",    // 2026-01-02T10:00:00
 		"2006-01-02T15:04Z07:00", // 2026-01-02T10:00Z
@@ -223,7 +224,7 @@ func parseSortTime(s string) (time.Time, bool) {
 	var layouts []string
 	switch {
 	case len(s) == n:
-		layouts = []string{time.DateOnly}
+		layouts = sortTimeLayoutsDate
 	case s[n] == 'T':
 		layouts = sortTimeLayoutsT
 	case s[n] == ' ':
