@@ -3,7 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"errors"
-	"sort"
+	"slices"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/mdtext"
@@ -450,14 +450,17 @@ func toTextEdits(edits []refactor.Edit) []textEdit {
 // overlap; it doesn't pin application order, and naive clients walk
 // the array top-to-bottom. refactor.Heading already sorts its result
 // this way internally; link-ref edits are sorted here so both paths
-// emit the same bottom-up order.
+// emit the same bottom-up order — via the same comparator:
+// refactor.ComparePositionsBottomUp, shared instead of duplicated. The
+// conversion to refactor.Position is a zero-cost reinterpretation:
+// both types have identical fields (Go ignores struct tags for
+// convertibility), so this isn't a copy of anything but the two ints.
+// If the two Position types ever diverge, this conversion stops
+// compiling — a build failure here, not a silent runtime mismatch.
 func sortTextEditsBottomUp(edits []textEdit) {
-	sort.SliceStable(edits, func(i, j int) bool {
-		a, b := edits[i].Range.Start, edits[j].Range.Start
-		if a.Line != b.Line {
-			return a.Line > b.Line
-		}
-		return a.Character > b.Character
+	slices.SortStableFunc(edits, func(a, b textEdit) int {
+		return refactor.ComparePositionsBottomUp(
+			refactor.Position(a.Range.Start), refactor.Position(b.Range.Start))
 	})
 }
 
@@ -475,15 +478,10 @@ func sortTextEditsBottomUp(edits []textEdit) {
 func (s *Server) resolveURIAndSource(rel string) (string, []byte, bool) {
 	rel = index.NormalizePath(rel)
 	_, _, root := s.snapshotConfig()
-	for _, openURI := range s.docs.openURIs() {
-		// Combine the lookup and the path check into one
-		// short-circuit so a concurrent didClose between
-		// openURIs() and get() can't nil-deref doc, without
-		// a separate uncoverable `if !found` branch.
-		if doc, ok := s.docs.get(openURI); ok &&
-			index.NormalizePath(workspaceRelative(root, doc.path)) == rel {
-			return openURI, doc.text, true
-		}
+	if uri, doc, ok := s.docs.findByPath(func(path string) bool {
+		return index.NormalizePath(workspaceRelative(root, path)) == rel
+	}); ok {
+		return uri, doc.text, true
 	}
 	uri := s.workspaceURI(rel)
 	if uri == "" {
