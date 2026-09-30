@@ -736,3 +736,174 @@ func TestAnchorFragmentBytes_ImageWithFragInLink(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "setup", string(row[s:e]))
 }
+
+// TestHeading_DropsAnchorEditsInsideHeadingText pins that a link on
+// the renamed heading's own line that points back at the heading gets
+// no edit of its own. The heading-text edit already replaces those
+// bytes, so a fragment edit inside them would claim the same bytes
+// twice: ApplyEdits rejects such a plan, and LSP forbids it. Links
+// outside the heading text still get their fragment edit.
+func TestHeading_DropsAnchorEditsInsideHeadingText(t *testing.T) {
+	tests := []struct {
+		name    string
+		files   map[string]string
+		line    int
+		oldName string
+		want    map[string][]Edit
+	}{
+		{
+			name:    "the whole heading text is a self-link",
+			files:   map[string]string{"a.md": "# [Setup](#setup)\n"},
+			line:    1,
+			oldName: "Setup",
+			want:    map[string][]Edit{"a.md": {mkEdit(0, 2, 17, "Install")}},
+		},
+		{
+			name:    "a self-link heading and a same-file link below it",
+			files:   map[string]string{"a.md": "# Top\n\n## [Setup](#setup)\n\nSee [s](#setup).\n"},
+			line:    3,
+			oldName: "Setup",
+			want: map[string][]Edit{"a.md": {
+				mkEdit(4, 9, 14, "install"),
+				mkEdit(2, 3, 18, "Install"),
+			}},
+		},
+		{
+			name: "a self-link inside the heading text and an incoming link",
+			files: map[string]string{
+				"a.md": "## Setup [top](#setup-top)\n",
+				"b.md": "[x](a.md#setup-top)\n",
+			},
+			line:    1,
+			oldName: "Setup top",
+			want: map[string][]Edit{
+				"a.md": {mkEdit(0, 3, 26, "Install")},
+				"b.md": {mkEdit(0, 9, 18, "install")},
+			},
+		},
+		{
+			name:    "a setext heading whose text is a self-link",
+			files:   map[string]string{"a.md": "[Setup](#setup)\n=====\n"},
+			line:    1,
+			oldName: "Setup",
+			want:    map[string][]Edit{"a.md": {mkEdit(0, 0, 15, "Install")}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := newMemWorkspace(tt.files)
+			changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], tt.line, tt.oldName, "Install")
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, changes)
+		})
+	}
+}
+
+// TestHeading_SelfLinkRenameAppliesCleanly runs a heading rename whose
+// heading links to itself end to end: plan, then splice every file
+// through ApplyEdits, pinning the bytes written. Before the planner
+// dropped the inner fragment edit, the plan's two overlapping edits
+// wrote `# Installl)`; with the overlap check they failed the rename.
+// The new text replaces the whole heading text, link markup included,
+// as it does for any inline markup (`# **Setup**` becomes `# Install`).
+func TestHeading_SelfLinkRenameAppliesCleanly(t *testing.T) {
+	tests := []struct {
+		name    string
+		files   map[string]string
+		line    int
+		oldName string
+		want    map[string]string
+	}{
+		{
+			name:    "the whole heading text is a self-link",
+			files:   map[string]string{"a.md": "# [Setup](#setup)\n"},
+			line:    1,
+			oldName: "Setup",
+			want:    map[string]string{"a.md": "# Install\n"},
+		},
+		{
+			name:    "a self-link heading and a same-file link below it",
+			files:   map[string]string{"a.md": "# Top\n\n## [Setup](#setup)\n\nSee [s](#setup).\n"},
+			line:    3,
+			oldName: "Setup",
+			want:    map[string]string{"a.md": "# Top\n\n## Install\n\nSee [s](#install).\n"},
+		},
+		{
+			name: "a self-link inside the heading text and an incoming link",
+			files: map[string]string{
+				"a.md": "## Setup [top](#setup-top)\n",
+				"b.md": "[x](a.md#setup-top)\n",
+			},
+			line:    1,
+			oldName: "Setup top",
+			want: map[string]string{
+				"a.md": "## Install\n",
+				"b.md": "[x](a.md#install)\n",
+			},
+		},
+		{
+			name:    "a self-link heading below front matter",
+			files:   map[string]string{"a.md": "---\ntitle: T\n---\n# [Setup](#setup)\n\nSee [s](#setup).\n"},
+			line:    4,
+			oldName: "Setup",
+			want:    map[string]string{"a.md": "---\ntitle: T\n---\n# Install\n\nSee [s](#install).\n"},
+		},
+		{
+			name:    "a CRLF setext heading whose text is a self-link",
+			files:   map[string]string{"a.md": "[Setup](#setup)\r\n=====\r\n\r\nSee [s](#setup).\r\n"},
+			line:    1,
+			oldName: "Setup",
+			want:    map[string]string{"a.md": "Install\r\n=====\r\n\r\nSee [s](#install).\r\n"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := newMemWorkspace(tt.files)
+			plan, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], tt.line, tt.oldName, "Install")
+			require.NoError(t, err)
+			got := make(map[string]string, len(plan.Edits))
+			for key, edits := range plan.Edits {
+				got[key] = applyEditsToSource(t, tt.files[key], edits)
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestDropEditsInside pins which edits the heading-text edit swallows:
+// those on its line that claim a byte of its range, or insert strictly
+// inside it. An edit that only touches the range — an insert at either
+// end — and an edit on another line are kept, in input order. A
+// partial overlap is kept too, so ApplyEdits still reports it.
+func TestDropEditsInside(t *testing.T) {
+	outer := mkEdit(2, 3, 18, "Install").Range
+	tests := []struct {
+		name string
+		in   []Edit
+		want []Edit
+	}{
+		{"no edits", nil, nil},
+		{"an edit inside is dropped", []Edit{mkEdit(2, 12, 17, "x")}, []Edit{}},
+		{"an edit over the same range is dropped", []Edit{mkEdit(2, 3, 18, "x")}, []Edit{}},
+		{"an insert strictly inside is dropped", []Edit{mkEdit(2, 5, 5, "x")}, []Edit{}},
+		{"an insert at the start is kept", []Edit{mkEdit(2, 3, 3, "x")}, []Edit{mkEdit(2, 3, 3, "x")}},
+		{"an insert at the end is kept", []Edit{mkEdit(2, 18, 18, "x")}, []Edit{mkEdit(2, 18, 18, "x")}},
+		{"a partial overlap is kept", []Edit{mkEdit(2, 15, 20, "x")}, []Edit{mkEdit(2, 15, 20, "x")}},
+		{"the same columns on another line are kept", []Edit{mkEdit(4, 12, 17, "x")}, []Edit{mkEdit(4, 12, 17, "x")}},
+		{
+			"kept edits stay in input order",
+			[]Edit{mkEdit(4, 9, 14, "a"), mkEdit(2, 12, 17, "b"), mkEdit(0, 1, 2, "c")},
+			[]Edit{mkEdit(4, 9, 14, "a"), mkEdit(0, 1, 2, "c")},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, dropEditsInside(tt.in, outer))
+		})
+	}
+	t.Run("an empty heading range keeps an insert at its offset", func(t *testing.T) {
+		empty := mkEdit(0, 4, 4, "Install").Range
+		in := []Edit{mkEdit(0, 4, 4, "x")}
+		assert.Equal(t, []Edit{mkEdit(0, 4, 4, "x")}, dropEditsInside(in, empty))
+	})
+}
