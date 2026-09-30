@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -105,4 +106,24 @@ func TestParse_ThematicBreakSplitsList(t *testing.T) {
 	lists, _ := Parse(split(src))
 	assert.Len(t, lists, 1, "thematic break closes the list")
 	assert.Equal(t, 2, len(lists[0].Items))
+}
+
+// TestParser_IsSetextUnderline covers each condition: a paragraph open
+// in the line's own container, no blank before it, within three columns
+// of that container, and a run of one of '=' or '-'.
+func TestParser_IsSetextUnderline(t *testing.T) {
+	root := &parser{topInParagraph: true}
+	for _, line := range []string{"=", "===", "-", "--", "   ---  "} {
+		assert.True(t, root.isSetextUnderline([]byte(line), astutil.CountLeadingSpaces([]byte(line))), "%q", line)
+	}
+	for _, line := range []string{"= =", "=-", "--x", "    ==="} {
+		assert.False(t, root.isSetextUnderline([]byte(line), astutil.CountLeadingSpaces([]byte(line))), "%q", line)
+	}
+	assert.False(t, (&parser{}).isSetextUnderline([]byte("==="), 0), "no paragraph is open")
+	assert.False(t, (&parser{topInParagraph: true, blankRun: 1}).isSetextUnderline([]byte("==="), 0))
+
+	item := &parser{stack: []frame{{contentCol: 2, inParagraph: true}}}
+	assert.True(t, item.isSetextUnderline([]byte("  --"), 2))
+	assert.False(t, item.isSetextUnderline([]byte("--"), 0), "a lazy line is no underline")
+	assert.False(t, item.isSetextUnderline([]byte("      --"), 6))
 }

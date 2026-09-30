@@ -486,3 +486,63 @@ func TestFix_TableDelimiterRowStaysInsideParagraph(t *testing.T) {
 	assert.True(t, singleParagraph(t, strings.Split(strings.TrimSuffix(strings.TrimPrefix(got, "# T\n\n"), "\n"), "\n")))
 	assert.Equal(t, got, fixSource(t, r, got), "reflow is not a fixpoint")
 }
+
+func TestUnsafeLine(t *testing.T) {
+	for _, line := range []string{"# x", "> x", "|-|-|", "[^1]: x", ": x", "*", "1."} {
+		assert.True(t, unsafeLine([]byte(line)), "%q", line)
+	}
+	for _, line := range []string{"text", "#48", "2.", ":", "-x"} {
+		assert.False(t, unsafeLine([]byte(line)), "%q", line)
+	}
+}
+
+// planner builds a linePlanner over units the way wrapTokens does.
+func planner(units []string, indent string, width int) *linePlanner {
+	return &linePlanner{units: units, indent: indent, indentW: utf8.RuneCountInString(indent), width: width}
+}
+
+func TestLinePlanner_FitEnd(t *testing.T) {
+	p := planner([]string{"aa", "bb", "ccc"}, "", 5)
+	assert.Equal(t, 2, p.fitEnd(0), `"aa bb" fills the width`)
+	assert.Equal(t, 3, p.fitEnd(2))
+	wide := planner([]string{"aaaaaaa", "b"}, "", 5)
+	assert.Equal(t, 1, wide.fitEnd(0), "a unit wider than width still fits alone")
+	indented := planner([]string{"aa", "bb"}, "  ", 5)
+	assert.Equal(t, 1, indented.fitEnd(0), "the indent counts toward the width")
+}
+
+func TestLinePlanner_Render(t *testing.T) {
+	p := planner([]string{"aa", "bb", "cc"}, "  ", 10)
+	assert.Equal(t, "  aa bb", string(p.render(0, 2)))
+	assert.Equal(t, "  cc", string(p.render(2, 3)), "the scratch buffer is reused")
+}
+
+func TestLinePlanner_Breaks(t *testing.T) {
+	p := planner([]string{"aa", "#", "b"}, "", 10)
+	assert.False(t, p.breaks(0, 3))
+	assert.True(t, p.breaks(1, 3), `"# b" is a heading`)
+	assert.True(t, p.breaks(1, 2), `a lone "#" is an empty heading`)
+}
+
+// TestLinePlanner_Pick walks each preference in order: a line after
+// which everything fits, the longest fitting line before a later
+// overflow, the shortest overflowing line, and no line at all.
+func TestLinePlanner_Pick(t *testing.T) {
+	p := planner([]string{"x", "aaaaaaaaaa", "#", "b"}, "", 10)
+	plans := make([]linePlan, 5)
+	plans[4] = linePlan{end: 4, fits: true}
+	plans[3] = p.pick(3, plans)
+	assert.Equal(t, linePlan{end: 4, fits: true}, plans[3], `"b" fits`)
+	plans[2] = p.pick(2, plans)
+	assert.Equal(t, linePlan{}, plans[2], `"#" can lead no line`)
+	plans[1] = p.pick(1, plans)
+	assert.Equal(t, linePlan{end: 3}, plans[1], `"aaaaaaaaaa #" overflows`)
+	plans[0] = p.pick(0, plans)
+	assert.Equal(t, linePlan{end: 1}, plans[0], `"x" fits, but a later line overflows`)
+}
+
+func TestLinePlanner_Layout(t *testing.T) {
+	p := planner([]string{"aaaa", "bbbb", "#", "cc"}, "", 10)
+	assert.Equal(t, []string{"aaaa", "bbbb # cc"}, p.layout())
+	assert.Nil(t, planner([]string{"<!doctype", "html"}, "", 10).layout())
+}

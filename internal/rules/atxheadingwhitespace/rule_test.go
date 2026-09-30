@@ -332,3 +332,10 @@ func TestCheck_ParagraphFirstLineStillFlagged(t *testing.T) {
 		assert.Equal(t, "missing space after # in heading", diags[0].Message)
 	}
 }
+
+func TestContinuesParagraph(t *testing.T) {
+	f, err := lint.NewFile("test.md", []byte("a\n#b\n\n#c\n"))
+	require.NoError(t, err)
+	assert.True(t, continuesParagraph(f, 2))
+	assert.False(t, continuesParagraph(f, 4), "a paragraph's first line")
+}

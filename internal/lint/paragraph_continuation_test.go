@@ -70,3 +70,31 @@ func lineSet(lines []int) map[int]struct{} {
 	}
 	return m
 }
+
+// TestBuildParagraphContinuationLines calls the memo builder directly on
+// both paths: it walks f.AST when present and parses f.Source when not.
+func TestBuildParagraphContinuationLines(t *testing.T) {
+	src := []byte("# T\n\nfirst\nsecond\n")
+	parsed, err := NewFile("t.md", src)
+	require.NoError(t, err)
+	want := lineSet([]int{4})
+	assert.Equal(t, want, buildParagraphContinuationLines(parsed))
+	assert.Equal(t, want, buildParagraphContinuationLines(NewFileLines("t.md", src)))
+}
+
+// TestCollectParagraphContinuations covers the walk itself: it records
+// lines after the first of a nested paragraph, and leaves the map nil
+// when no paragraph has a second line.
+func TestCollectParagraphContinuations(t *testing.T) {
+	f, err := NewFile("t.md", []byte("- a\n  b\n\n> c\n"))
+	require.NoError(t, err)
+	var lines map[int]struct{}
+	collectParagraphContinuations(f.AST, f, &lines)
+	assert.Equal(t, lineSet([]int{2}), lines)
+
+	single, err := NewFile("t.md", []byte("one\n\ntwo\n"))
+	require.NoError(t, err)
+	var none map[int]struct{}
+	collectParagraphContinuations(single.AST, single, &none)
+	assert.Nil(t, none)
+}

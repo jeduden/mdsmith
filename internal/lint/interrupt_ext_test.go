@@ -124,3 +124,12 @@ func TestIsFootnoteDefinition(t *testing.T) {
 		assert.False(t, isFootnoteDefinition([]byte(line)), "%q", line)
 	}
 }
+
+func TestIsDefinitionDescription(t *testing.T) {
+	for _, line := range []string{": x", ":\tx", ": ", "   : x"} {
+		assert.True(t, isDefinitionDescription([]byte(line)), "%q", line)
+	}
+	for _, line := range []string{"", ":", ":x", "::", "    : x", "x: y", "\t: x"} {
+		assert.False(t, isDefinitionDescription([]byte(line)), "%q", line)
+	}
+}

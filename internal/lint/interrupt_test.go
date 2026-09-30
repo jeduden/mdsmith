@@ -135,3 +135,14 @@ func TestForkSpacedCloseTag(t *testing.T) {
 		assert.False(t, forkSpacedCloseTag([]byte(line)), "%q", line)
 	}
 }
+
+func TestInterruptingOrderedMarker(t *testing.T) {
+	cases := map[string]bool{
+		"1. x": true, "1) x": true, "01. x": true, "1.\tx": true,
+		"1.": false, "1. ": false, "2. x": false, "10. x": false, "0. x": false, "x": false,
+	}
+	for line, want := range cases {
+		assert.Equal(t, want, interruptingOrderedMarker([]byte(line), 0), "%q", line)
+	}
+	assert.True(t, interruptingOrderedMarker([]byte("   1. x"), 3))
+}
