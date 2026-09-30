@@ -118,8 +118,8 @@ kind keyed by basename stem.
    alone (a stem still resolves) — an asymmetry `--dry-run`
    and the docs must state.
 4. **Outbound relative links in the moved file.** Recompute
-   every relative link inside `src` so it resolves from
-   `dir(dst)`. Skip this and moving `docs/a.md` to
+   every relative inline link and image inside `src` so it
+   resolves from `dir(dst)`. Skip this and moving `docs/a.md` to
    `guide/a.md` breaks its own `[x](./b.md)`. A correct move
    fixes both directions.
 5. **`FileOp{From, To}`** — described, not run.
