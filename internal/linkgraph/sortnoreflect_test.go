@@ -52,11 +52,12 @@ func TestSortByDepthThenName_NoReflectSort(t *testing.T) {
 
 // TestSortByDepthThenName_DeterministicAcrossInputOrders pins the
 // bucket order WikilinkIndex.Resolve relies on: it returns the first
-// path of a basename bucket, so the shallowest path wins and a name
-// tie at one depth goes to the lexically smaller path. The walk fills
-// buckets in fs.WalkDir order; whatever order they arrive in, the
-// sorted bucket must be the same. Twenty paths put the sort past
-// pdqsort's 12-element insertion-sort cutoff.
+// path of a basename bucket, so the shallowest path wins and a depth
+// tie goes to the lexically smaller path. The walk fills each bucket in
+// fs.WalkDir's lexical order, which puts a/x/README.md before
+// b/README.md, so the sort must reorder by depth, and must give the
+// same bucket whatever order its input arrives in. Twenty paths put the
+// sort past pdqsort's 12-element insertion-sort cutoff.
 func TestSortByDepthThenName_DeterministicAcrossInputOrders(t *testing.T) {
 	want := make([]string, 0, 20)
 	for _, dir := range []string{"", "a/", "b/", "a/x/", "b/y/z/"} {
