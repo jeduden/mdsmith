@@ -230,6 +230,7 @@ func TestRunDeps_ArgErrors(t *testing.T) {
 		"no target":     nil,
 		"too many args": {"a.md", "b.md"},
 		"absolute":      {"/etc/passwd"},
+		"backslash up":  {`sub\..\..\a.md`},
 		"bad flag":      {"--bogus"},
 		"bad max-input": {"--max-input-size", "bogus", "a.md"},
 	}
