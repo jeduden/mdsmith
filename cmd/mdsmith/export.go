@@ -58,16 +58,12 @@ func runExport(args []string) int {
 
 // refuseExportOverInput stops an export whose -o path is the file
 // being exported: the copy would replace its source, which export
-// never modifies. The two are compared by file identity, so another
-// spelling, a link, or a case-insensitive file system cannot hide the
-// match. It prints a usage error and returns 2, or returns -1.
+// never modifies. It shares outputIsInput with the check and fix
+// guard, so the two are compared by file identity: another spelling,
+// a link, or a case-insensitive file system cannot hide the match. It
+// prints a usage error and returns 2, or returns -1.
 func refuseExportOverInput(input, output string) int {
-	if output == "" || output == "-" {
-		return -1
-	}
-	oi, oerr := os.Stat(output)
-	ii, ierr := os.Stat(input)
-	if oerr != nil || ierr != nil || !os.SameFile(oi, ii) {
+	if output == "" || output == "-" || !outputIsInput(output, runInputs{files: []string{input}}) {
 		return -1
 	}
 	fmt.Fprintf(os.Stderr, "mdsmith: export: refusing --output %q: it is the file being exported\n", output)

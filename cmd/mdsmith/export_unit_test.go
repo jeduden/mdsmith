@@ -172,6 +172,16 @@ func TestRefuseExportOverInput(t *testing.T) {
 		assert.Equal(t, 2, refuseExportOverInput("doc.md", "./doc.md"))
 	})
 	assert.Equal(t, "mdsmith: export: refusing --output \"./doc.md\": it is the file being exported\n", stderr)
+
+	require.NoError(t, os.Link("doc.md", "hard.md"))
+	captureStderr(func() {
+		assert.Equal(t, 2, refuseExportOverInput("doc.md", "hard.md"), "a hard link")
+	})
+	if err := os.Symlink("doc.md", "soft.md"); err == nil {
+		captureStderr(func() {
+			assert.Equal(t, 2, refuseExportOverInput("doc.md", "soft.md"), "a symlink")
+		})
+	}
 }
 
 // minimalConfig builds a config.Config with frontMatter enabled and
