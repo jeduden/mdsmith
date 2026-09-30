@@ -311,6 +311,12 @@ func (p *parser) markerIsLazyText(indent int, mi markerInfo) bool {
 // rules' corpus exercises: ATX headings, fenced-code openers, and
 // thematic breaks. (Blank lines are handled by the caller; HTML blocks
 // and block quotes are out of scope for the list corpus.)
+//
+// It is not lint.InterruptsParagraph, which answers a different question:
+// whether a line placed in the paragraph's own container ends it. That
+// one counts setext underlines, but a lazy line cannot be one, so a
+// lower-indent "===" or "--" after an item's paragraph is paragraph text
+// and must keep the item open. List markers are decided by the caller.
 func interruptsParagraph(line []byte, indent int) bool {
 	if indent >= 4 || indent >= len(line) {
 		return false

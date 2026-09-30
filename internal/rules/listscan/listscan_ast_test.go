@@ -422,6 +422,11 @@ func interruptSnippets() map[string]string {
 		"empty-one-dot-after-item-para":       "- a\n  1.\n",
 		// After a blank line an empty item starts a list as usual.
 		"empty-one-dot-after-blank": "Some prose\n\n1.\n",
+		// A setext underline cannot be a lazy line, so a lower-indent
+		// "===" or "--" after an item's paragraph is lazy paragraph text:
+		// the item stays open, and the next item joins the same list.
+		"lazy-equals-after-item-para": "- a\n===\n- b\n",
+		"lazy-dashes-after-item-para": "- a\n--\n- b\n",
 	}
 }
 
