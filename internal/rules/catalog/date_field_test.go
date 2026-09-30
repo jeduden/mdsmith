@@ -114,3 +114,49 @@ func TestSort_QuotedClockFormsInterleaveByInstant(t *testing.T) {
 	r := &Rule{}
 	expectDiags(t, r.Check(f), 0)
 }
+
+// A `where:` filter lifts every matched file's front matter into CUE.
+// An unquoted date there lifts as its rendered text, so a file with one
+// is neither dropped from an unrelated filter nor unmatchable by a
+// filter on the date itself.
+func TestWhere_UnquotedDateFiltersOnRenderedText(t *testing.T) {
+	src := `<?catalog
+glob: "posts/*.md"
+where: 'date: =~"^2026-"'
+sort: date
+row: "- {date} [{title}]({filename})"
+?>
+- 2026-01-02 [First](posts/a.md)
+- 2026-01-03 [Second](posts/b.md)
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"posts/a.md": {Data: []byte("---\ntitle: First\ndate: 2026-01-02\n---\n# A\n")},
+		"posts/b.md": {Data: []byte("---\ntitle: Second\ndate: \"2026-01-03\"\n---\n# B\n")},
+		"posts/c.md": {Data: []byte("---\ntitle: Old\ndate: 2025-12-31\n---\n# C\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	expectDiags(t, r.Check(f), 0)
+}
+
+// A `row-expr:` row sees an unquoted date as the same text a `{date}`
+// placeholder renders.
+func TestRowExpr_UnquotedDateRendersAsWritten(t *testing.T) {
+	src := `<?catalog
+glob: "posts/*.md"
+sort: date
+row-expr: '"- \(date) \(title)"'
+?>
+- 2026-01-02 First
+- 2026-01-02T10:00:00Z Second
+<?/catalog?>
+`
+	mapFS := fstest.MapFS{
+		"posts/a.md": {Data: []byte("---\ntitle: First\ndate: 2026-01-02\n---\n# A\n")},
+		"posts/b.md": {Data: []byte("---\ntitle: Second\ndate: 2026-01-02 10:00:00\n---\n# B\n")},
+	}
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	expectDiags(t, r.Check(f), 0)
+}

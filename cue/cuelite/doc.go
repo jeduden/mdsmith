@@ -24,7 +24,8 @@
 // and [Value.String] / [Value.Decode] read a concrete leaf out.
 // [Value.CompileMap] validates a map[string]any directly against a
 // compiled schema, with no JSON marshal/parse round-trip — the
-// front-matter hot path.
+// front-matter hot path. A time.Time in the map (yaml.v3's decoding of
+// an unquoted timestamp) lifts as the string yamltime.Format renders.
 //
 // [CompileRow] and [RowTemplate.Render] are the catalog row-expression
 // surface (surface C): CompileRow parses a single CUE expression that

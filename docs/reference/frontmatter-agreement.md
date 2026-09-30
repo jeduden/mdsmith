@@ -167,11 +167,12 @@ substitutes as its date: `date: 2026-01-02` gives
 substitutes as RFC 3339, which need not be its
 source text: `2026-01-02 10:00:00` gives
 `2026-01-02T10:00:00Z`. The [dates and
-timestamps][dates] guide lists every rule. A schema
-that declares `frontmatter:` rejects an unquoted
-date as a value it cannot represent, so under such
-a schema quote the date (`date: "2026-01-02"`); the
-quoted string substitutes the same way. YAML reads
+timestamps][dates] guide lists every rule. A
+`frontmatter:` constraint checks that same text, so
+the date needs no quotes: `date: string` accepts
+`date: 2026-01-02`, and `date: =~"^2026-"` matches
+it. A quoted `date: "2026-01-02"` checks and
+substitutes the same way. YAML reads
 `0012` as the number 10 and `1.10` as 1.1, so quote
 such a value (`id: "0012"`) to keep the digits as
 written.

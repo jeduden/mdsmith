@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 var matchTests = []struct {
@@ -173,4 +174,24 @@ func TestMatch_CUEPatternFrontMatter(t *testing.T) {
 	m3, err := Compile(`missing: _`)
 	require.NoError(t, err)
 	assert.False(t, m3.Match(fm), "absent field should not match")
+}
+
+// An unquoted YAML date decodes to time.Time. Match lifts it as the text
+// mdsmith renders for it, so a file with one still matches a filter on
+// another field, and a filter on the date sees `2026-01-02`.
+func TestMatch_UnquotedDate(t *testing.T) {
+	var fm map[string]any
+	require.NoError(t, yaml.Unmarshal([]byte("status: done\ndate: 2026-01-02\n"), &fm))
+	for expr, want := range map[string]bool{
+		`status: "done"`:               true,
+		`date: string`:                 true,
+		`date: "2026-01-02"`:           true,
+		`date: =~"^2026-01-"`:          true,
+		`date: int`:                    false,
+		`date: "2026-01-02T00:00:00Z"`: false,
+	} {
+		got, err := Match(expr, fm)
+		require.NoError(t, err, expr)
+		assert.Equal(t, want, got, expr)
+	}
 }

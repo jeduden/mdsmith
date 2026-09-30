@@ -7,8 +7,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jeduden/mdsmith/cue/cuelite"
+	"github.com/jeduden/mdsmith/cue/cuelite/yamltime"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -535,6 +537,12 @@ func schemaDiagFromCUEError(
 		SchemaRef: schemaRef(sch, schemaKeyForPath(sch, path)),
 	}
 	actualVal, hasActual := lookupFM(docFM, path)
+	// An unquoted YAML timestamp decodes to time.Time, and cuelite lifts
+	// it as yamltime.Format's text. Show and hint on that text — the value
+	// the constraint checked — not JSON's RFC 3339 form of the time.
+	if tm, ok := actualVal.(time.Time); ok {
+		actualVal = yamltime.Format(tm)
+	}
 	if hasActual {
 		d.Actual = formatActual(actualVal)
 	}
