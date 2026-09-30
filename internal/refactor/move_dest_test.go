@@ -525,8 +525,10 @@ func TestEncodeLike(t *testing.T) {
 		angle        bool
 		want         string
 	}{
-		"nothing to escape":           {"docs/a.md", "a.md", false, "docs/a.md"},
-		"reserved bytes":              {"a b/c?d#e%f<g>\t\x7f.md", "x.md", false, "a%20b/c%3Fd%23e%25f%3Cg%3E%09%7F.md"},
+		"nothing to escape": {"docs/a.md", "a.md", false, "docs/a.md"},
+		"reserved bytes": {
+			"a b/c?d#e%f<g>\t\x7f.md", "x.md", false, "a%20b/c%3Fd%23e%25f%3Cg%3E%09%7F.md",
+		},
 		"entity, escape and quote":    {"a&amp;b\\c\"d.md", "x.md", true, "a%26amp;b%5Cc%22d.md"},
 		"angle keeps a space":         {"docs/my file.md", "my file.md", true, "docs/my file.md"},
 		"author escaped a byte":       {"docs/(a).md", "%28a%29.md", false, "docs/%28a%29.md"},
