@@ -80,3 +80,15 @@ func TestMove_TrailingSlashKeptOnDirectoryLinks(t *testing.T) {
 	assert.Equal(t, "[d](../sub/) [f](../sub/#x) [h](../) [g](./) [b](../b.md)\n", got["a.md"])
 	assert.Equal(t, "[x](docs/a.md)\n", got["c.md"])
 }
+
+// TestMove_OutboundAboveRootLeftAsWritten pins the limit move.md lists
+// under "What needs a manual fix": the moved file's link that climbs
+// out of the workspace names no workspace file, so it is never
+// recomputed, though from the new directory it names README.md.
+func TestMove_OutboundAboveRootLeftAsWritten(t *testing.T) {
+	got := moveAndApply(t, map[string]string{
+		"a.md":      "[p](../README.md)\n",
+		"README.md": "# R\n",
+	}, "a.md", "guide/a.md")
+	assert.Equal(t, "[p](../README.md)\n", got["a.md"])
+}

@@ -78,9 +78,10 @@ when one has no partner. A move to `a).md` writes `a%29.md`, while
 bare `a:b.md` would read as a URL with the scheme `a:`.
 
 A literal `?` is read as the start of a query unless the whole
-path names a Markdown file in the workspace and the part before
-the `?` does not. Then `[x](what?.md)` is matched as the file
-`what?.md`, and the rewrite writes it as `what%3F.md`.
+path names the moved file, of any type, or a Markdown file in the
+workspace, and the part before the `?` does not. Then
+`[x](what?.md)` is matched as the file `what?.md`, and the rewrite
+writes it as `what%3F.md`.
 
 Absolute URLs, `mailto:`, and root-anchored `/x` paths do not
 resolve to a workspace file, so a move never touches them.
@@ -96,6 +97,10 @@ cross-directory move, check them by hand.
   file.
 - **Raw HTML links.** `<a href="a.md">` and `<img src="a.png">`
   are not Markdown destinations.
+- **Links above the workspace root.** A relative link in the
+  moved file that climbs out of the workspace, such as
+  `[p](../README.md)` in `a.md`, is never recomputed. After a move
+  to `guide/a.md`, it names the workspace's own `README.md`.
 - **Backslash escapes and entities.** A path spelled with one,
   such as `a\_b.md` or `a&amp;b.md`, is left as written, in the
   moved file and in the files that point at it. A renderer reads
