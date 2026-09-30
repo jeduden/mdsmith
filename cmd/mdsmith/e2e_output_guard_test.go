@@ -136,6 +136,34 @@ func TestOutputGuard_E2EStdinAndLinks(t *testing.T) {
 	})
 }
 
+// TestOutputGuard_E2EDotDotAfterSymlink pins that a ".." after a
+// symlinked directory in the -o path is resolved through the link, as
+// the open resolves it, and not by lexical cleaning.
+func TestOutputGuard_E2EDotDotAfterSymlink(t *testing.T) {
+	dir := outputWorkspace(t)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs", "deep"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "elsewhere", "sub"), 0o755))
+	if err := os.Symlink(filepath.Join("docs", "deep"), filepath.Join(dir, "dsym")); err != nil {
+		t.Skipf("cannot create symlinks here: %v", err)
+	}
+	require.NoError(t, os.Symlink(filepath.Join(dir, "elsewhere", "sub"), filepath.Join(dir, "esym")))
+	sep := string(filepath.Separator)
+
+	t.Run("a report that lands in the linted directory is refused", func(t *testing.T) {
+		out := "dsym" + sep + ".." + sep + "new.md"
+		_, stderr, code := runBinaryInDir(t, dir, "", "check", "-o", out, "docs")
+		assert.Equal(t, 2, code)
+		assert.Equal(t, refusal("check", out), stderr)
+		assert.NoFileExists(t, filepath.Join(dir, "docs", "new.md"))
+	})
+	t.Run("a report that lands outside the glob's directory is written", func(t *testing.T) {
+		out := "esym" + sep + ".." + sep + "y.md"
+		_, stderr, code := runBinaryInDir(t, dir, "", "check", "-o", out, "*.md")
+		assert.Equal(t, 1, code, "stderr=%q", stderr)
+		assert.Contains(t, readReport(t, filepath.Join(dir, "elsewhere", "y.md")), "MDS001")
+	})
+}
+
 // TestOutputGuard_E2EFix pins that fix refuses an -o path that is, or
 // would be, one of its inputs before it fixes any file.
 func TestOutputGuard_E2EFix(t *testing.T) {

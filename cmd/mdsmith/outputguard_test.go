@@ -174,6 +174,30 @@ func TestOutputIsInput_DanglingSymlink(t *testing.T) {
 	assert.False(t, outputIsInput("loop-a.md", runInputs{args: []string{"."}}), "a link loop")
 }
 
+// rawPath joins parts with the separator and no cleaning, so a ".."
+// after a symlink survives to be resolved the way the kernel does.
+func rawPath(parts ...string) string {
+	return strings.Join(parts, string(filepath.Separator))
+}
+
+// A ".." after a symlinked directory is resolved as the kernel does:
+// through the link first, then up from its target, never lexically.
+func TestOutputIsInput_DotDotAfterSymlink(t *testing.T) {
+	guardWorkspace(t)
+	require.NoError(t, os.MkdirAll(filepath.Join("other", "sub"), 0o755))
+	symlinkOrSkip(t, filepath.Join("docs", "sub"), "dsym")
+	require.NoError(t, os.Symlink(filepath.Join("other", "sub"), "esym"))
+	docs := runInputs{args: []string{"docs"}}
+
+	assert.True(t, outputIsInput(rawPath("dsym", "..", "new.md"), docs),
+		"dsym/.. is docs, so the report lands in the directory argument")
+	assert.False(t, outputIsInput(rawPath("esym", "..", "y.md"), runInputs{args: []string{"*.md"}}),
+		"esym/.. is other, not the working directory the glob covers")
+
+	require.NoError(t, os.Symlink(rawPath("dsym", "..", "linked.md"), "rep.txt"))
+	assert.True(t, outputIsInput("rep.txt", docs), "a dangling link whose target goes through dsym/..")
+}
+
 func TestCreateTarget(t *testing.T) {
 	dir := guardWorkspace(t)
 	got, err := createTarget(filepath.Join("docs", "new.md"))
@@ -183,7 +207,12 @@ func TestCreateTarget(t *testing.T) {
 	_, err = createTarget(filepath.Join("missing", "new.md"))
 	assert.Error(t, err, "a missing directory")
 
-	symlinkOrSkip(t, "loop-b.md", "loop-a.md")
+	symlinkOrSkip(t, filepath.Join("docs", "sub"), "dsym")
+	got, err = createTarget(rawPath("dsym", "..", "new.md"))
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(dir, "docs", "new.md"), got, "dsym/.. resolves through the link")
+
+	require.NoError(t, os.Symlink("loop-b.md", "loop-a.md"))
 	require.NoError(t, os.Symlink("loop-a.md", "loop-b.md"))
 	_, err = createTarget("loop-a.md")
 	assert.ErrorIs(t, err, errTooManyLinks)
@@ -239,14 +268,13 @@ func TestOutputIsInput_Stdin(t *testing.T) {
 // outputCreatable accepts a path the report can be opened at and
 // explains why any other cannot be.
 func TestOutputCreatable(t *testing.T) {
-	dir := guardWorkspace(t)
+	guardWorkspace(t)
 	assert.NoError(t, outputCreatable("notes.md"), "an existing file")
 	assert.NoError(t, outputCreatable(filepath.Join("docs", "new.txt")), "a new file in a directory")
 	assert.NoError(t, outputCreatable(os.DevNull), "a device")
 	assert.EqualError(t, outputCreatable("docs"), "it is a directory")
 	assert.Error(t, outputCreatable(filepath.Join("missing", "r.txt")), "a missing directory")
-	assert.EqualError(t, outputCreatable(filepath.Join("data.txt", "r.txt")),
-		filepath.Join(dir, "data.txt")+" is not a directory")
+	assert.Error(t, outputCreatable(filepath.Join("data.txt", "r.txt")), "a parent that is a file")
 
 	symlinkOrSkip(t, filepath.Join("missing", "r.txt"), "dangling.txt")
 	assert.Error(t, outputCreatable("dangling.txt"), "a link into a missing directory")

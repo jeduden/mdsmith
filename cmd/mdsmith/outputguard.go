@@ -59,7 +59,9 @@ func guardOutput(cmd, output string, in runInputs) int {
 // an existing file or device, or a missing name in an existing
 // directory, a dangling symlink's target included. Otherwise it says
 // why not: output is a directory, or its directory is missing or is
-// not one. Permissions are left to the open.
+// not one (createTarget resolves the directory with a trailing
+// separator, which fails on anything but a directory). Permissions
+// are left to the open.
 func outputCreatable(output string) error {
 	if info, err := os.Stat(output); err == nil {
 		if info.IsDir() {
@@ -67,15 +69,8 @@ func outputCreatable(output string) error {
 		}
 		return nil
 	}
-	target, err := createTarget(output)
-	if err != nil {
-		return err
-	}
-	dir := filepath.Dir(target)
-	if info, err := os.Stat(dir); err == nil && info.IsDir() {
-		return nil
-	}
-	return fmt.Errorf("%s is not a directory", dir)
+	_, err := createTarget(output)
+	return err
 }
 
 // outputIsInput reports whether output names one of the run's inputs.
@@ -157,10 +152,19 @@ var errTooManyLinks = errors.New("too many levels of symbolic links")
 // creates; a relative link target is read from the link's own
 // directory. It fails when the open would fail too: on a missing
 // directory, or on more than maxLinkHops links.
+//
+// The directory part is never cleaned before EvalSymlinks resolves it:
+// the kernel follows a symlink before it applies a later "..", so
+// "dsym/../x" is x beside dsym's target, not beside dsym. filepath.Dir
+// and filepath.Join would collapse the ".." lexically first.
 func createTarget(output string) (string, error) {
 	p := output
 	for hops := 0; ; hops++ {
-		parent, err := filepath.EvalSymlinks(filepath.Dir(p))
+		dir, name := filepath.Split(p)
+		if dir == "" {
+			dir = "."
+		}
+		parent, err := filepath.EvalSymlinks(dir)
 		if err != nil {
 			return "", err
 		}
@@ -170,7 +174,8 @@ func createTarget(output string) (string, error) {
 		if abs, err := filepath.Abs(parent); err == nil {
 			parent = abs
 		}
-		p = filepath.Join(parent, filepath.Base(p))
+		// parent has no symlink left, so joining the last name is exact.
+		p = filepath.Join(parent, name)
 		dest, err := os.Readlink(p)
 		if err != nil {
 			// Not a symlink: the open creates p itself.
@@ -180,7 +185,7 @@ func createTarget(output string) (string, error) {
 			return "", errTooManyLinks
 		}
 		if !filepath.IsAbs(dest) {
-			dest = filepath.Join(parent, dest)
+			dest = parent + string(filepath.Separator) + dest
 		}
 		p = dest
 	}
