@@ -27,36 +27,74 @@ code 2.
 
 ## What it rewrites
 
-- **Incoming links.** Every `[text](src)` and
-  `[text](src#anchor)` in the workspace is repointed to `dst`;
-  the `#anchor` fragment is kept. The path token is recomputed
-  relative to each referencing file's own directory, preserving
-  its spelling — an explicit `./x` keeps the prefix.
-- **Ref-def destinations.** A `[label]: src` definition line is
-  repointed the same way.
+- **Incoming links.** Every inline `[text](src)` in the workspace
+  is repointed to `dst`. A `?query` or `#anchor` after the path
+  is kept. The path token is recomputed relative to each
+  referencing file's own directory, preserving its spelling — an
+  explicit `./x` keeps the prefix.
+- **Ref-def destinations.** A `[label]: src` definition is
+  repointed the same way, including one with a `?query`.
 - **Outbound inline links and images inside the moved file.**
   Each inline `[x](path)` or `![x](path)` in `src` is recomputed
   so it still resolves from `dst`'s directory. Moving
   `docs/a.md` to `guide/a.md` fixes its own `[x](./b.md)` as
-  well as the links pointing at it. Link-shaped text in a code
-  span, a code block, or an HTML comment is not a link, so it
-  stays as written.
+  well as the links pointing at it.
 - **Wikilinks.** `[[old-stem]]` becomes `[[new-stem]]` only when
   the basename stem changes. A move that keeps the basename
   (`docs/api.md` → `ref/api.md`) leaves wikilinks alone, because
   a stem still resolves to the file at its new path — an
   asymmetry with path links that `--dry-run` makes visible.
 
+Each destination is found in the parsed document, so each one is
+rewritten exactly once. These forms are all handled:
+
+- a link with empty text, such as `[](a.md)`;
+- a label that spans rows, or a destination on the row after
+  its `(` (or after a ref-def's `:`), in a block quote too;
+- an angle-bracketed destination, such as `<my file.md>`;
+- a titled destination, such as `[t](a.md "title")`.
+
+Link-shaped text in a code span, a code block, or an HTML
+comment is not a destination, so it stays as written, even
+inside a link's own label.
+
+A percent-escaped destination such as `my%20file.md` is decoded
+before it is compared. The new path is escaped the way the old
+one was. `my%20file.md` stays escaped, and `<my file.md>` keeps
+its literal space. A character that would break the link is
+always escaped: a space in a bare destination, and `%`, `?`,
+`#`, `<`, or `>`. So a move to `what?.md` writes `what%3F.md`. A
+bare `?` would start a query string and name the file `what`.
+
+A literal `?` is read as the start of a query unless the whole
+path names a Markdown file in the workspace and the part before
+the `?` does not. Then `[x](what?.md)` is matched as the file
+`what?.md`, and the rewrite writes it as `what%3F.md`.
+
 Absolute URLs, `mailto:`, and root-anchored `/x` paths do not
 resolve to a workspace file, so a move never touches them.
 
-Some references inside the moved file are not yet recomputed. A
-cross-directory move can leave them stale. Two kinds need a
-manual fix. One is `<?include?>`, `<?build?>`, and `<?catalog?>`
-directive paths. The other is a reference definition the file
-declares itself, such as `[label]: ../other.md`. Only inline
-links and images are recomputed; ref-defs elsewhere that point
-at the file are still repointed.
+## What needs a manual fix
+
+A move does not rewrite these references yet. After a
+cross-directory move, check them by hand.
+
+- **Directive paths.** A `file:` path in `<?include?>` or an
+  `inputs:` path in `<?build?>`, in the moved file or in a file
+  that points at it, and a `<?catalog?>` glob in the moved
+  file.
+- **The moved file's own ref-defs.** A definition such as
+  `[label]: ../other.md` inside `src` is not recomputed. Only
+  its inline links and images are. Ref-defs in other files that
+  point at `src` are repointed.
+- **Raw HTML links.** `<a href="a.md">` and `<img src="a.png">`
+  are not Markdown destinations.
+- **Ambiguous wikilinks.** When another file shares the old or
+  the new basename stem, no `[[stem]]` is rewritten, because the
+  rewrite could point it at the wrong file.
+- **Non-Markdown files.** The index tracks links between
+  Markdown files only. Moving an image or another non-Markdown
+  file may leave the links and images that name it stale.
 
 ## How the file is moved
 
