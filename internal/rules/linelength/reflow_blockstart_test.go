@@ -131,6 +131,11 @@ var blockStartCases = []struct {
 		[]string{"aa |", "b :--|--:", "cccc"}},
 	{"one-column table delimiter row", []string{"aaaa", "bb", ":-", "cccccc"}, 7,
 		[]string{"aaaa", "bb :-", "cccccc"}},
+	// A footnote definition, with or without a space after the colon.
+	{"footnote definition", []string{"aaaa", "bbbb", "[^1]:", "cc"}, 10,
+		[]string{"aaaa", "bbbb [^1]:", "cc"}},
+	{"footnote definition without a space", []string{"aaaa", "bbbb", "[^1]:c"}, 11,
+		[]string{"aaaa", "bbbb [^1]:c"}},
 }
 
 // TestWrapTokens_BlockStartNeverLeadsALine pins issue #844 for every

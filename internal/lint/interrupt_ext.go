@@ -1,6 +1,10 @@
 package lint
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
+)
 
 // ExtensionInterruptsParagraph reports whether line starts a block that
 // ends an open paragraph under a Markdown extension the canonical parser
@@ -10,10 +14,11 @@ import "bytes"
 //
 //   - a GFM table delimiter row, which turns the line before it into a
 //     table header
+//   - a footnote definition, "[^label]:"
 //
 // Up to three spaces of indent are allowed.
 func ExtensionInterruptsParagraph(line []byte) bool {
-	return isTableDelimiterRow(line)
+	return isTableDelimiterRow(line) || isFootnoteDefinition(line)
 }
 
 // isTableDelimiterRow reports whether line is a GFM table delimiter
@@ -57,4 +62,30 @@ func isDelimiterCell(cell []byte) bool {
 	cell = bytes.TrimPrefix(cell, []byte(":"))
 	cell = bytes.TrimSuffix(cell, []byte(":"))
 	return len(cell) > 0 && len(bytes.Trim(cell, "-")) == 0
+}
+
+// isFootnoteDefinition reports whether line opens a footnote definition
+// as the goldmark footnote extension reads one: "[^", a label, then "]:"
+// with anything after it. The label is not blank and has no unescaped
+// '['; it ends at the first unescaped ']'. A backslash escapes an ASCII
+// punctuation byte.
+func isFootnoteDefinition(line []byte) bool {
+	indent := leadingSpaces(line)
+	if indent > 3 || !bytes.HasPrefix(line[indent:], []byte("[^")) {
+		return false
+	}
+	start := indent + 2
+	for i := start; i < len(line); i++ {
+		switch line[i] {
+		case '\\':
+			if i+1 < len(line) && util.IsPunct(line[i+1]) {
+				i++
+			}
+		case '[':
+			return false
+		case ']':
+			return i+1 < len(line) && line[i+1] == ':' && !isBlankLine(line[start:i])
+		}
+	}
+	return false
 }

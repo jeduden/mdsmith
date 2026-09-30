@@ -18,6 +18,9 @@ var extInterruptingLines = []string{
 	// split by '|', with optional outer pipes.
 	"|-|-|", "-|-", "--- | ---", ":--|--:", "| :-: | - |", "   |-|-|",
 	"-|-|", "|-|-", " - | - ",
+	// Footnote definitions: "[^", a label that is not blank and has no
+	// unescaped bracket, then "]:".
+	"[^1]: x", "[^1]:x", "[^1]:", "[^a b]: x", "   [^note]: x", `[^a\]b]: x`, `[^a\[b]: x`, `[^a\b]: x`,
 }
 
 // extOneColumnLines are one-column delimiter rows. They build a table
@@ -29,6 +32,11 @@ var extContinuingLines = []string{
 	// Not delimiter rows: a cell without '-', text, or a bare pipe.
 	"|", "||", "|:|", "-||-", "-|x", "a|-", "|-|-|x", ":", "::", "-:-", "-- -|-",
 	"    |-|-|",
+	// Not footnote definitions: a blank label, a bracket in the label,
+	// no colon right after the label, or a link reference definition,
+	// which cannot interrupt a paragraph.
+	"[^]: x", "[^ ]: x", "[^a[b]: x", "[^1] x", "[^1]", "[^1] : x", "[1]: x",
+	"^1]: x", "    [^1]: x",
 }
 
 // flavorKeepsParagraph reports whether the flavor parser keeps both
@@ -86,5 +94,17 @@ func TestIsDelimiterCell(t *testing.T) {
 	}
 	for _, cell := range []string{"", " ", ":", "::", "-:-", ": -", "- -", "x"} {
 		assert.False(t, isDelimiterCell([]byte(cell)), "%q", cell)
+	}
+}
+
+// TestIsFootnoteDefinition pins the label scan: a backslash escapes only
+// ASCII punctuation, and a line that ends inside the label is no
+// definition.
+func TestIsFootnoteDefinition(t *testing.T) {
+	for _, line := range []string{"[^1]:", `[^a\b]: x`, `[^a\[b]: x`, "   [^x y]:z"} {
+		assert.True(t, isFootnoteDefinition([]byte(line)), "%q", line)
+	}
+	for _, line := range []string{"[^1", `[^a\`, `[^a\]`, "[^]:", "[^\t]:", "[^1]", "[^1]x", "    [^1]:", "[1]:"} {
+		assert.False(t, isFootnoteDefinition([]byte(line)), "%q", line)
 	}
 }
