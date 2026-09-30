@@ -215,6 +215,39 @@ func TestWrapTokens_OverflowWindow(t *testing.T) {
 	assert.Nil(t, wrapTokens(run(2+maxOverflowUnits), "", 3, noGlue))
 }
 
+// TestWrapTokens_FirstLineIsGuarded covers the paragraph's first line.
+// Nothing precedes it inside the paragraph, but a first line that is a
+// block start on its own still changes the document: "***" alone is a
+// thematic break and a lone "```" opens a fence. Greedy wrapping at
+// width 7 splits those paragraphs; the guarded layout keeps the marker
+// with the next word, past width. The guard is conservative for a
+// first unit that is unsafe only as a setext underline, such as "===":
+// alone on the first line it would be harmless, yet it takes the next
+// word too. It still gets a layout.
+func TestWrapTokens_FirstLineIsGuarded(t *testing.T) {
+	cases := []struct {
+		name         string
+		tokens       []string
+		greedySplits bool
+		want         []string
+	}{
+		{"thematic break", []string{"***", "aaaaaaaaaa"}, true, []string{"*** aaaaaaaaaa"}},
+		{"fence", []string{"```", "`xxxxxx`"}, true, []string{"``` `xxxxxx`"}},
+		{"setext-like first unit", []string{"===", "aaaaaaaaaa"}, false, []string{"=== aaaaaaaaaa"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.True(t, singleParagraph(t, []string{strings.Join(tc.tokens, " ")}),
+				"%q must be one paragraph line", tc.tokens)
+			naive := greedyWrap(tc.tokens, 7)
+			require.Equal(t, tc.greedySplits, !singleParagraph(t, naive), "greedy layout %q", naive)
+			got := wrapTokens(tc.tokens, "", 7, noGlue)
+			assert.Equal(t, tc.want, got)
+			assert.True(t, singleParagraph(t, got), "layout %q splits the paragraph", got)
+		})
+	}
+}
+
 // TestWrapTokens_GuardKeepsIndent checks that the indent prefix counts
 // toward the width and still leads every line of a guarded layout.
 func TestWrapTokens_GuardKeepsIndent(t *testing.T) {
