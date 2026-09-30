@@ -182,6 +182,17 @@ func TestMove_UnbalancedParenDestinationIsEscaped(t *testing.T) {
 	assert.Equal(t, "[a](docs/a(1).md) [b](<docs/a(1).md>)\n\n[r]: docs/a(1).md\n", got["b.md"])
 }
 
+// TestMove_EntityShapedDestinationIsEscaped pins that a `&` in the new
+// path is written as `%26`: a renderer decodes `&amp;` in a
+// destination, so a literal one would name another file.
+func TestMove_EntityShapedDestinationIsEscaped(t *testing.T) {
+	got := moveAndApply(t, map[string]string{
+		"a.md": "# A\n",
+		"b.md": "[x](a.md) [y](<a.md>)\n\n[r]: a.md\n",
+	}, "a.md", "d/a&amp;b.md")
+	assert.Equal(t, "[x](d/a%26amp;b.md) [y](<d/a%26amp;b.md>)\n\n[r]: d/a%26amp;b.md\n", got["b.md"])
+}
+
 // TestMove_QuestionMarkFilenameNotTruncated pins that a destination
 // naming an existing file with `?` in its name is matched whole, not
 // cut at the `?`: the literal and the escaped spelling both follow the
@@ -438,6 +449,7 @@ func TestEncodeLike(t *testing.T) {
 	}{
 		"nothing to escape":           {"docs/a.md", "a.md", false, "docs/a.md"},
 		"reserved bytes":              {"a b/c?d#e%f<g>\t\x7f.md", "x.md", false, "a%20b/c%3Fd%23e%25f%3Cg%3E%09%7F.md"},
+		"entity, escape and quote":    {"a&amp;b\\c\"d.md", "x.md", true, "a%26amp;b%5Cc%22d.md"},
 		"angle keeps a space":         {"docs/my file.md", "my file.md", true, "docs/my file.md"},
 		"author escaped a byte":       {"docs/(a).md", "%28a%29.md", false, "docs/%28a%29.md"},
 		"unbalanced parens":           {"docs/a)(.md", "a.md", false, "docs/a%29%28.md"},

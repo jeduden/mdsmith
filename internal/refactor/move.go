@@ -357,11 +357,13 @@ func (r *destResolver) exists(p string) bool {
 // oldTok it replaces. Two groups of bytes are escaped:
 //
 //   - bytes that would end the destination or change what it names:
-//     `%`, `?`, `#`, `<`, `>`, and control bytes, plus a space unless
-//     the destination is angle-bracketed (`<my file.md>`), where a
-//     space is literal. A bare destination also escapes every `(` and
-//     `)` when its literal parens would not pair up, since an
-//     unpaired one ends it early;
+//     `%`, `?`, `#`, `<`, `>`, `&` (it could start an entity a
+//     renderer decodes), `\` (it could escape the next byte), `"`,
+//     and control bytes, plus a space unless the destination is
+//     angle-bracketed (`<my file.md>`), where a space is literal. A
+//     bare destination also escapes every `(` and `)` when its
+//     literal parens would not pair up, since an unpaired one ends
+//     it early;
 //   - bytes the author escaped in oldTok, so `my%20file.md` stays
 //     escaped and `caf%C3%A9.md` keeps its escaped UTF-8. One escaped
 //     non-ASCII byte escapes them all, so no character is split
@@ -433,7 +435,7 @@ func escapeSetFor(oldTok string, angle bool) escapeSet {
 		s[c] = true
 	}
 	s[0x7f] = true
-	for _, c := range []byte("%?#<>") {
+	for _, c := range []byte("%?#<>&\\\"") {
 		s[c] = true
 	}
 	s[' '] = !angle
