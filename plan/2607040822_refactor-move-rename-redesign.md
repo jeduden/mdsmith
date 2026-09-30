@@ -138,8 +138,9 @@ and non-workspace paths are never touched.
   changes nothing.
 - Output is `text` or `json`; exit 0 done, 1 not found, 2
   error or conflict.
-- Writes are atomic and preserve mode, reusing
-  [writeFilePreservingMode](../cmd/mdsmith/rename.go).
+- Writes are atomic, preserve mode, and are all-or-nothing
+  ([planapply.go](../cmd/mdsmith/planapply.go)): all new
+  bytes exist before any write, and a failure rolls back.
 - On the CLI, text edits apply before the `git mv`; the LSP
   inverts this — the editor applies the edit, then renames.
 
