@@ -141,6 +141,21 @@ func TestOutputGuard_E2EFix(t *testing.T) {
 		assert.Equal(t, "# Hi  \n", readReport(t, ws), "refused before any fix")
 		assert.NoFileExists(t, filepath.Join(dir, out))
 	})
+	t.Run("fix --build-only ignores -o", func(t *testing.T) {
+		dir := outputWorkspace(t)
+		for _, args := range [][]string{
+			{"fix", "--build-only", "-o", "report.md"},
+			{"fix", "--build-only", "-o", "long.md", "long.md"},
+			{"fix", "--build-only", "-o", filepath.Join("missing", "r.txt"), "ok.md"},
+		} {
+			stdout, stderr, code := runBinaryInDir(t, dir, "", args...)
+			assert.Equal(t, 0, code, "%v", args)
+			assert.Empty(t, stdout, "%v", args)
+			assert.Empty(t, stderr, "%v", args)
+		}
+		assert.NoFileExists(t, filepath.Join(dir, "report.md"))
+		assert.Contains(t, readReport(t, filepath.Join(dir, "long.md")), "# Title", "long.md is untouched")
+	})
 	t.Run("fix discovery -o a Markdown file it would discover", func(t *testing.T) {
 		dir := outputWorkspace(t)
 		_, stderr, code := runBinaryInDir(t, dir, "", "fix", "-o", "report.md")

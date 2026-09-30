@@ -136,7 +136,7 @@ func setFixUsage(fs *flag.FlagSet) {
 			"Pass - to read from stdin (rejected: files must be writable).\n"+
 			"With no file arguments, discovers files using config patterns.\n\n"+
 			reportRoutingHelp+
-			"Build-pass output stays on stderr.\n\n"+
+			"Build-pass output stays on stderr. --build-only writes no report and ignores -o.\n\n"+
 			"Flags:\n")
 		fs.PrintDefaults()
 	}
@@ -234,13 +234,23 @@ func fixFiles(fileArgs []string, opts fixCLIOpts) int {
 	if code > 0 {
 		return code
 	}
-	if c := guardOutput("fix", opts.output, runInputs{files: files, args: fileArgs}); c >= 0 {
+	if c := guardFixOutput(opts, runInputs{files: files, args: fileArgs}); c >= 0 {
 		return c
 	}
 	if code == 0 {
 		return reportFixNoFiles(opts, processIO())
 	}
 	return runFixThroughSession(cfg, cfgPath, opts, logger, files, maxBytes)
+}
+
+// guardFixOutput vets a fix run's -o path with guardOutput. --build-only
+// writes no lint report and never opens -o, so its -o is ignored: the
+// path is not checked, and no file is created.
+func guardFixOutput(opts fixCLIOpts, in runInputs) int {
+	if opts.build.buildOnly {
+		return -1
+	}
+	return guardOutput("fix", opts.output, in)
 }
 
 // reportFixNoFiles ends a fix run that resolved no Markdown file (see
@@ -260,7 +270,7 @@ func fixDiscovered(opts fixCLIOpts) int {
 	if code > 0 {
 		return code
 	}
-	if c := guardOutput("fix", opts.output, runInputs{files: files, patterns: cfg.Files}); c >= 0 {
+	if c := guardFixOutput(opts, runInputs{files: files, patterns: cfg.Files}); c >= 0 {
 		return c
 	}
 	if code == 0 {

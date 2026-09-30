@@ -61,8 +61,8 @@ missing, is a usage error (exit `2`) reported before any
 file is fixed. Fixes are still written before the
 report, so a write that fails later, as on a full disk
 or a read-only file, exits `2` with the files already
-fixed. `--build-only` has no lint report, so `-o`
-creates no file.
+fixed. `--build-only` has no lint report, so it ignores
+`-o`: no file is created, and the path is not checked.
 
 As for [`check`](check.md#report-output), an `-o` path
 that is, or would be, one of the run's inputs

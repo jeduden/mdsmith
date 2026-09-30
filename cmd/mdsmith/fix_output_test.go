@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -221,4 +222,34 @@ func TestReportFixNoFiles_WritesEmptyDocument(t *testing.T) {
 	opts := fixCLIOpts{reportFlags: reportFlags{format: "json", output: "-"}}
 	assert.Equal(t, 0, reportFixNoFiles(opts, testIO(t, &out, io.Discard)))
 	assert.Equal(t, "[]\n", out.String())
+}
+
+// --build-only writes no lint report, so its -o is ignored: the path is
+// not checked, even when it names an input or a missing directory.
+// Without --build-only the usual guard applies.
+func TestGuardFixOutput_BuildOnlyIgnoresOutput(t *testing.T) {
+	guardWorkspace(t)
+	in := runInputs{files: []string{"notes.md"}, args: []string{"notes.md"}}
+	opts := fixCLIOpts{reportFlags: reportFlags{output: "notes.md"}}
+	stderr := captureStderr(func() {
+		assert.Equal(t, 2, guardFixOutput(opts, in))
+	})
+	assert.Contains(t, stderr, `mdsmith: fix: refusing --output "notes.md"`)
+
+	opts.build.buildOnly = true
+	for _, output := range []string{"notes.md", "docs", filepath.Join("missing", "r.txt")} {
+		opts.output = output
+		assert.Equal(t, -1, guardFixOutput(opts, in), "-o %q", output)
+	}
+}
+
+// fix --help says how -o routes the report and that --build-only
+// ignores it.
+func TestParseFixFlags_HelpDescribesOutput(t *testing.T) {
+	stderr := captureStderr(func() {
+		_, _, _, code := parseFixFlags([]string{"--help"})
+		assert.Equal(t, 0, code)
+	})
+	assert.Contains(t, stderr, reportRoutingHelp)
+	assert.Contains(t, stderr, "--build-only writes no report and ignores -o.")
 }
