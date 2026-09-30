@@ -147,3 +147,28 @@ func TestRefuseOutputOverInput(t *testing.T) {
 		"mdsmith: fix: refusing --output \"notes.md\": it is an input of this run, or would be once written\n",
 		stderr)
 }
+
+// `check - -o a.md < a.md` would truncate a.md, the file stdin reads,
+// with the report. The -o path is compared with stdin by file
+// identity, before stdin is read.
+func TestRefuseOutputOverStdin(t *testing.T) {
+	guardWorkspace(t)
+	stdin, err := os.Open("notes.md")
+	require.NoError(t, err)
+	defer stdin.Close() //nolint:errcheck // test cleanup
+	for _, output := range []string{"", "-", "data.txt", "missing.txt"} {
+		assert.Equal(t, -1, refuseOutputOverStdin("check", output, stdin), "-o %q", output)
+	}
+	stderr := captureStderr(func() {
+		assert.Equal(t, 2, refuseOutputOverStdin("check", "./notes.md", stdin))
+	})
+	assert.Equal(t,
+		"mdsmith: check: refusing --output \"./notes.md\": it is an input of this run, or would be once written\n",
+		stderr)
+
+	// A stdin whose Stat fails has no identity to match.
+	closed, err := os.Open("notes.md")
+	require.NoError(t, err)
+	require.NoError(t, closed.Close())
+	assert.Equal(t, -1, refuseOutputOverStdin("check", "notes.md", closed))
+}

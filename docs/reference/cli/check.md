@@ -108,6 +108,12 @@ Ignore rules are not consulted, so give a report inside
 the linted tree a non-Markdown name such as
 `report.txt`.
 
+On stdin, `-o` is compared with the file stdin reads
+from, so `check - -o a.md < a.md` is refused too. A pipe
+has no file identity, so a piped
+`cat a.md | mdsmith check - -o a.md` cannot be detected,
+and the report overwrites `a.md`.
+
 A clean run still writes a valid document on every route:
 `[]` for `json`, and a SARIF log with one run and no
 results for `sarif`. This holds even when no Markdown

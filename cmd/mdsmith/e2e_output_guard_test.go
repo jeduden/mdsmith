@@ -1,8 +1,10 @@
 package main_test
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -57,6 +59,26 @@ func TestOutputGuard_E2E(t *testing.T) {
 		_, stderr, code = runBinaryInDir(t, dir, "", "check", "-o", "report.md")
 		assert.Equal(t, 2, code, "discovery with the default files: patterns")
 		assert.Equal(t, refusal("check", "report.md"), stderr)
+	})
+	t.Run("check - -o the file stdin reads from", func(t *testing.T) {
+		dir := outputWorkspace(t)
+		src := filepath.Join(dir, "long.md")
+		before := readReport(t, src)
+		stdin, err := os.Open(src)
+		require.NoError(t, err)
+		defer stdin.Close() //nolint:errcheck // test cleanup
+		cmd := exec.Command(binaryPath, "check", "-", "-o", "long.md")
+		cmd.Dir = dir
+		cmd.Env = envWithCoverDir(coverDir)
+		cmd.Stdin = stdin
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		var exitErr *exec.ExitError
+		require.ErrorAs(t, cmd.Run(), &exitErr)
+		assert.Equal(t, 2, exitErr.ExitCode())
+		assert.Empty(t, stdout.String())
+		assert.Equal(t, refusal("check", "long.md"), stderr.String())
+		assert.Equal(t, before, readReport(t, src), "refused before stdin is read")
 	})
 	t.Run("a non-Markdown report beside the inputs is fine", func(t *testing.T) {
 		dir := outputWorkspace(t)

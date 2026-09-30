@@ -35,10 +35,35 @@ func refuseOutputOverInput(cmd, output string, in runInputs) int {
 	if output == "" || output == "-" || !outputIsInput(output, in) {
 		return -1
 	}
+	printInputRefusal(cmd, output)
+	return 2
+}
+
+// refuseOutputOverStdin stops a `check -` run whose -o path is the
+// file stdin reads from, as in `check - -o a.md < a.md`: the report
+// would replace the file just linted. The two are compared by file
+// identity before stdin is read. A pipe has no file identity, so
+// `cat a.md | mdsmith check - -o a.md` cannot be detected. It prints
+// the same usage error as refuseOutputOverInput and returns 2, or -1.
+func refuseOutputOverStdin(cmd, output string, stdin *os.File) int {
+	if output == "" || output == "-" {
+		return -1
+	}
+	oi, oerr := os.Stat(output)
+	si, serr := stdin.Stat()
+	if oerr != nil || serr != nil || !os.SameFile(oi, si) {
+		return -1
+	}
+	printInputRefusal(cmd, output)
+	return 2
+}
+
+// printInputRefusal prints the usage error for an -o path that is, or
+// would be, an input of the run.
+func printInputRefusal(cmd, output string) {
 	fmt.Fprintf(os.Stderr,
 		"mdsmith: %s: refusing --output %q: it is an input of this run, or would be once written\n",
 		cmd, output)
-	return 2
 }
 
 // outputIsInput reports whether output names one of the run's inputs.
