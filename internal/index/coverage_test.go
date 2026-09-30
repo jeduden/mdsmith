@@ -3,7 +3,6 @@ package index
 import (
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,78 +57,6 @@ func TestHeadingEndLineClamps(t *testing.T) {
 	// One heading, totalLines smaller than its start: end clamps to start.
 	end := headingEndLine(nil, []int{5}, 0, 0, 1)
 	assert.Equal(t, 5, end)
-}
-
-func TestFrontMatterSymbolsHandlesErrors(t *testing.T) {
-	t.Parallel()
-	// Invalid YAML.
-	assert.Nil(t, frontMatterSymbols("a", []byte("---\nthis: is\n  not: valid yaml\nxx: [\n---\n")))
-	// Sequence at top level (not a mapping).
-	assert.Nil(t, frontMatterSymbols("a", []byte("---\n- item\n- another\n---\n")))
-	// Empty.
-	assert.Nil(t, frontMatterSymbols("a", nil))
-}
-
-func TestFrontMatterScalarFormats(t *testing.T) {
-	t.Parallel()
-	// int: small positive integer (yaml.v3 → int on 64-bit).
-	v, ok := frontMatterScalar([]byte("---\nnum: 42\n---\n"), "num")
-	assert.True(t, ok)
-	assert.Equal(t, "42", v)
-	// float64: decimal value.
-	v, ok = frontMatterScalar([]byte("---\nratio: 3.14\n---\n"), "ratio")
-	assert.True(t, ok)
-	assert.Equal(t, "3.14", v)
-	// uint64: integer > math.MaxInt64 (yaml.v3 → uint64).
-	v, ok = frontMatterScalar([]byte("---\nbig: 18446744073709551615\n---\n"), "big")
-	assert.True(t, ok)
-	assert.Equal(t, "18446744073709551615", v)
-	// bool.
-	v, ok = frontMatterScalar([]byte("---\nflag: true\n---\n"), "flag")
-	assert.True(t, ok)
-	assert.Equal(t, "true", v)
-	// time.Time: unquoted ISO-8601 date (yaml.v3 → time.Time).
-	v, ok = frontMatterScalar([]byte("---\ndate: 2024-01-15\n---\n"), "date")
-	assert.True(t, ok)
-	expected := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
-	assert.Equal(t, expected, v)
-	// default: null/~ value → absent-like return.
-	_, ok = frontMatterScalar([]byte("---\nfield: null\n---\n"), "field")
-	assert.False(t, ok)
-	// Missing key.
-	_, ok = frontMatterScalar([]byte("---\nfoo: bar\n---\n"), "missing")
-	assert.False(t, ok)
-	// Empty body.
-	_, ok = frontMatterScalar(nil, "x")
-	assert.False(t, ok)
-	// Invalid YAML.
-	_, ok = frontMatterScalar([]byte("---\n!!invalid\n---\n"), "x")
-	assert.False(t, ok)
-	// Front matter without trailing newline — stripDelimiters hits the
-	// second TrimSuffix branch.
-	v, ok = frontMatterScalar([]byte("---\nx: hi\n---"), "x")
-	assert.True(t, ok)
-	assert.Equal(t, "hi", v)
-}
-
-func TestFrontMatterStringListBranches(t *testing.T) {
-	t.Parallel()
-	// Missing key.
-	_, ok := frontMatterStringList([]byte("---\nfoo: bar\n---\n"), "missing")
-	assert.False(t, ok)
-	// Non-list value.
-	_, ok = frontMatterStringList([]byte("---\nx: hello\n---\n"), "x")
-	assert.False(t, ok)
-	// Mixed list (non-string element gets skipped).
-	got, ok := frontMatterStringList([]byte("---\nx:\n  - a\n  - 42\n  - b\n---\n"), "x")
-	assert.True(t, ok)
-	assert.Equal(t, []string{"a", "b"}, got)
-	// Empty.
-	_, ok = frontMatterStringList(nil, "x")
-	assert.False(t, ok)
-	// Invalid YAML.
-	_, ok = frontMatterStringList([]byte("---\n!!invalid\n---\n"), "x")
-	assert.False(t, ok)
 }
 
 // parseLinkTarget / decodeAnchor / resolveRelTarget moved to linkgraph
@@ -342,17 +269,6 @@ func TestParsePIParamsInvalidYAML(t *testing.T) {
 	require.True(t, ok)
 	for _, e := range fe.Outgoing {
 		assert.NotEqual(t, EdgeInclude, e.Kind, "malformed YAML should not produce an include edge")
-	}
-}
-
-func TestFrontMatterSymbolsSkipsEmptyKeys(t *testing.T) {
-	t.Parallel()
-	// `?` produces a non-scalar key in YAML — frontMatterSymbols
-	// filters those out.
-	src := []byte("---\n\"\": value\nreal: ok\n---\n")
-	syms := frontMatterSymbols("a", src)
-	for _, s := range syms {
-		assert.NotEmpty(t, s.Name)
 	}
 }
 

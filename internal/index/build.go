@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -272,9 +271,8 @@ func lineOfOffset(source []byte, offset int) int {
 
 // frontMatterAll walks the front-matter YAML once and returns the
 // per-key outline symbols, the title scalar, and the kinds list.
-// Equivalent to calling frontMatterSymbols + frontMatterScalar(title)
-// + frontMatterStringList(kinds) but parses the YAML body only one
-// time, which removed a measurable bottleneck under parallel Build.
+// It parses the YAML body only one time, which removed a measurable
+// bottleneck under parallel Build.
 //
 // Parsing goes through yamlutil so the index never expands a YAML
 // alias on user-controlled content — the rest of mdsmith treats
@@ -351,48 +349,6 @@ func frontMatterKindsList(v *yaml.Node) []string {
 	return out
 }
 
-// frontMatterSymbols extracts top-level YAML keys from the front
-// matter prefix and returns one Symbol per key. Kept exported-ish
-// (package-private) for the targeted coverage test in
-// coverage_test.go; the symbol-index build path now uses
-// frontMatterAll for a single-pass parse.
-func frontMatterSymbols(filePath string, fm []byte) []Symbol {
-	if len(fm) == 0 {
-		return nil
-	}
-	node, err := yamlutil.UnmarshalNodeSafe(stripDelimiters(fm))
-	if err != nil || len(node.Content) == 0 {
-		return nil
-	}
-	mapping := node.Content[0]
-	if mapping.Kind != yaml.MappingNode {
-		return nil
-	}
-	out := make([]Symbol, 0, len(mapping.Content)/2)
-	// yaml.v3 line numbers are 1-based within the parsed buffer; the
-	// stripped buffer drops the leading "---" line so add 1.
-	// Non-scalar keys (mapping or sequence keys per YAML spec) and
-	// empty key values are skipped — they don't produce a sensible
-	// outline entry and an empty Symbol.Name would render as a
-	// blank row in the editor's outline.
-	for i := 0; i < len(mapping.Content); i += 2 {
-		k := mapping.Content[i]
-		if k.Kind != yaml.ScalarNode || k.Value == "" {
-			continue
-		}
-		out = append(out, Symbol{
-			File:          filePath,
-			Kind:          SymbolFrontMatter,
-			Name:          k.Value,
-			StartLine:     k.Line + 1,
-			EndLine:       k.Line + 1,
-			SelectionLine: k.Line + 1,
-			SelectionCol:  k.Column,
-		})
-	}
-	return out
-}
-
 // stripDelimiters removes the leading and trailing `---\n` lines
 // from a front-matter prefix as returned by lint.StripFrontMatter.
 // The trailing strip uses TrimSuffix with the exact `---\n`
@@ -408,82 +364,6 @@ func stripDelimiters(fm []byte) []byte {
 		return t
 	}
 	return bytes.TrimSuffix(body, []byte("---"))
-}
-
-// frontMatterScalar returns a top-level scalar key from front matter
-// as a string. Empty string + false when absent or non-scalar.
-// yamlutil.UnmarshalSafe rejects anchors/aliases so a malicious file
-// can't trigger expansion during the symbol-index build. Non-string
-// scalars (numbers, bools, timestamps) are formatted without reflection
-// so callers always get a stable string form.
-//
-// gopkg.in/yaml.v3 maps scalars to Go types as follows when decoding
-// into map[string]any: unquoted integers → int (64-bit) or uint64
-// (> math.MaxInt64); floats → float64; booleans → bool; ISO-8601
-// timestamps → time.Time; null/~ → nil.
-func frontMatterScalar(fm []byte, key string) (string, bool) {
-	if len(fm) == 0 {
-		return "", false
-	}
-	var m map[string]any
-	if err := yamlutil.UnmarshalSafe(stripDelimiters(fm), &m); err != nil {
-		return "", false
-	}
-	v, ok := m[key]
-	if !ok {
-		return "", false
-	}
-	switch n := v.(type) {
-	case string:
-		return n, true
-	case int:
-		return strconv.Itoa(n), true
-	case uint64:
-		// yaml.v3 produces uint64 for integers that exceed math.MaxInt64.
-		return strconv.FormatUint(n, 10), true
-	case float64:
-		return strconv.FormatFloat(n, 'f', -1, 64), true
-	case bool:
-		return strconv.FormatBool(n), true
-	case time.Time:
-		// yaml.v3 parses unquoted ISO-8601 scalars (e.g. "date: 2024-01-15")
-		// as time.Time; format as RFC3339 for a stable, catalog-safe string.
-		return n.Format(time.RFC3339), true
-	default:
-		// nil (YAML null/~) and any other node type are not usable as
-		// catalog fields.
-		return "", false
-	}
-}
-
-// frontMatterStringList returns a top-level YAML list of strings.
-// Parses via yamlutil so YAML aliases are rejected before any
-// expansion can happen on the user's input.
-func frontMatterStringList(fm []byte, key string) ([]string, bool) {
-	if len(fm) == 0 {
-		return nil, false
-	}
-	var m map[string]any
-	if err := yamlutil.UnmarshalSafe(stripDelimiters(fm), &m); err != nil {
-		return nil, false
-	}
-	v, ok := m[key]
-	if !ok {
-		return nil, false
-	}
-	list, ok := v.([]any)
-	if !ok {
-		return nil, false
-	}
-	out := make([]string, 0, len(list))
-	for _, item := range list {
-		s, ok := item.(string)
-		if !ok {
-			continue
-		}
-		out = append(out, s)
-	}
-	return out, true
 }
 
 // refDefRE matches a CommonMark reference definition at the start of

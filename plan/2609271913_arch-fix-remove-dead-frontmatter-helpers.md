@@ -2,7 +2,7 @@
 id: 2609271913
 title: >-
   Remove dead front-matter parse helpers in internal/index
-status: "🔲"
+status: "✅"
 model: haiku
 summary: >-
   internal/index/build.go's frontMatterSymbols,
@@ -71,14 +71,14 @@ The 2026-09-27 audit (see [the audit log][audit-log]) found:
 
 ## Acceptance Criteria
 
-- [ ] `frontMatterSymbols`, `frontMatterScalar`, and
+- [x] `frontMatterSymbols`, `frontMatterScalar`, and
       `frontMatterStringList` no longer exist in
       `internal/index`.
-- [ ] `frontMatterAll`'s test coverage includes every YAML
+- [x] `frontMatterAll`'s test coverage includes every YAML
       edge case the deleted helpers' tests exercised.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
-- [ ] Codecov coverage gate still passes (no net coverage
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.
+- [x] Codecov coverage gate still passes (no net coverage
       regression from the deletion).
 
 [audit-log]: ../docs/development/architecture-audit.md

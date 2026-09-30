@@ -276,5 +276,5 @@ footer: |
 | 2609131913 | 🔲     | sonnet | [Add unit tests for untested move.go helper functions](plan/2609131913_arch-fix-move-helper-unit-tests.md)                                              |
 | 2609201914 | 🔲     | sonnet | [Add dedicated unit tests for AdvancePastLine and the WASM bridge helpers](plan/2609201914_arch-fix-missing-unit-tests-0920.md)                         |
 | 2609271912 | 🔲     | sonnet | [Share rename-mode detection between the CLI and the engine](plan/2609271912_arch-fix-shared-rename-mode-detection.md)                                  |
-| 2609271913 | 🔲     | haiku  | [Remove dead front-matter parse helpers in internal/index](plan/2609271913_arch-fix-remove-dead-frontmatter-helpers.md)                                 |
+| 2609271913 | ✅     | haiku  | [Remove dead front-matter parse helpers in internal/index](plan/2609271913_arch-fix-remove-dead-frontmatter-helpers.md)                                 |
 <?/catalog?>

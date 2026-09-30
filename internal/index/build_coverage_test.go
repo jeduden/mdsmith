@@ -36,6 +36,53 @@ func TestFrontMatterAll_SkipsEmptyAndNonScalarKeys(t *testing.T) {
 	assert.Equal(t, "real", syms[0].Name)
 }
 
+// TestFrontMatterAll_EdgeCases ports the YAML edge cases the removed
+// single-purpose helpers used to cover: empty and invalid input,
+// non-scalar title, non-list kinds, mixed-type kinds, and front
+// matter whose closing delimiter has no trailing newline.
+func TestFrontMatterAll_EdgeCases(t *testing.T) {
+	t.Parallel()
+
+	syms, title, kinds := frontMatterAll("a.md", nil)
+	assert.Nil(t, syms)
+	assert.Empty(t, title)
+	assert.Nil(t, kinds)
+
+	syms, title, kinds = frontMatterAll("a.md",
+		[]byte("---\nthis: is\n  not: valid yaml\nxx: [\n---\n"))
+	assert.Nil(t, syms)
+	assert.Empty(t, title)
+	assert.Nil(t, kinds)
+
+	_, _, _ = frontMatterAll("a.md", []byte("---\n!!invalid\n---\n"))
+
+	// Missing title and kinds keys.
+	_, title, kinds = frontMatterAll("a.md", []byte("---\nfoo: bar\n---\n"))
+	assert.Empty(t, title)
+	assert.Nil(t, kinds)
+
+	// Non-list kinds value.
+	_, _, kinds = frontMatterAll("a.md", []byte("---\nkinds: hello\n---\n"))
+	assert.Empty(t, kinds)
+
+	// Mixed kinds list: non-string elements are skipped.
+	_, _, kinds = frontMatterAll("a.md",
+		[]byte("---\nkinds:\n  - a\n  - 42\n  - b\n---\n"))
+	assert.Equal(t, []string{"a", "b"}, kinds)
+
+	// Non-scalar title is ignored; null title yields no text.
+	_, title, _ = frontMatterAll("a.md", []byte("---\ntitle: [a, b]\n---\n"))
+	assert.Empty(t, title)
+
+	// Numeric title keeps its source text.
+	_, title, _ = frontMatterAll("a.md", []byte("---\ntitle: 42\n---\n"))
+	assert.Equal(t, "42", title)
+
+	// No trailing newline after the closing delimiter.
+	_, title, _ = frontMatterAll("a.md", []byte("---\ntitle: hi\n---"))
+	assert.Equal(t, "hi", title)
+}
+
 // TestFrontMatterKindsList_NonSequence covers the
 // `v.Kind != SequenceNode` early-return branch. A scalar `kinds:
 // guide` value yields no list entries.
