@@ -9,6 +9,8 @@ import (
 	"strconv"
 
 	flag "github.com/spf13/pflag"
+
+	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 // reportRoutingHelp is the usage paragraph check and fix print on how
@@ -260,6 +262,24 @@ func (r reportIO) deliverReport(output string, color colorMode, errs []error, bo
 	if err != nil {
 		// Straight to stderr, not through a buffer a failed flush has
 		// left with a sticky error.
+		printWriteErrorTo(r.stderr, err)
+		return 2
+	}
+	return 0
+}
+
+// writeStderrDiagnostics writes diags as text on stderr and returns 0,
+// or 2 when the write fails. Color follows colorFor with no color
+// flag, as export and extract have none. These runs print a handful of
+// diagnostics, so a default-size buffer batches them without the
+// 64 KiB report buffer.
+func (r reportIO) writeStderrDiagnostics(diags []lint.Diagnostic) int {
+	bw := bufio.NewWriter(r.stderr)
+	err := writeDiagnostics(bw, diags, "text", r.colorFor(r.stderr, colorUnset))
+	if err == nil {
+		err = bw.Flush()
+	}
+	if err != nil {
 		printWriteErrorTo(r.stderr, err)
 		return 2
 	}

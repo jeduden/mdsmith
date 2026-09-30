@@ -174,14 +174,15 @@ func printWriteErrorTo(w io.Writer, err error) {
 	_, _ = fmt.Fprintf(w, "mdsmith: error writing output: %v\n", err)
 }
 
-// formatDiagnostics writes diagnostics to stderr using the specified
-// format, for export and extract. Like the check and fix report, text
-// is colored only when stderr is a terminal (see reportIO.colorFor).
-// Returns 2 on a write error, or 0 on success.
-func formatDiagnostics(diags []lint.Diagnostic, format string, noColor bool) int {
-	return processIO().deliverReport("", colorUnset, nil, func(w io.Writer, color bool) error {
-		return writeDiagnostics(w, diags, format, color)
-	})
+// failWithDiagnostics prints diags as text on stderr, for export's
+// stale bodies and extract's conformance failures, and returns exit
+// code 1. A write that fails is exit 2 instead, so the failure is not
+// mistaken for a plain lint result.
+func failWithDiagnostics(diags []lint.Diagnostic) int {
+	if code := processIO().writeStderrDiagnostics(diags); code != 0 {
+		return code
+	}
+	return 1
 }
 
 // printErrors writes runtime errors to stderr.

@@ -113,10 +113,7 @@ func doExport(path string, flags exportFlags) int {
 
 	out, diags := export.Export(f, exportMode(flags), rules)
 	if len(diags) > 0 {
-		if code := formatDiagnostics(diags, "text", false); code != 0 {
-			return code
-		}
-		return 1
+		return failWithDiagnostics(diags)
 	}
 	if err := writeExportOutput(flags.output, out); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
