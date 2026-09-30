@@ -28,6 +28,15 @@ func TestParseFixFlags_Output(t *testing.T) {
 	}
 }
 
+func TestParseFixFlags_Color(t *testing.T) {
+	opts, _, _, code := parseFixFlags([]string{"--color=always", "a.md"})
+	require.Equal(t, -1, code)
+	assert.Equal(t, colorAlways, opts.color)
+	opts, _, _, code = parseFixFlags([]string{"--no-color", "a.md"})
+	require.Equal(t, -1, code)
+	assert.Equal(t, colorNever, opts.color)
+}
+
 func TestParseFixFlags_EmptyOutputIsUsageError(t *testing.T) {
 	stderr := captureStderr(func() {
 		_, _, _, code := parseFixFlags([]string{"--output=", "a.md"})
@@ -48,7 +57,8 @@ func TestReportFixResultTo_RoutesReport(t *testing.T) {
 	}
 	t.Run("default is stderr", func(t *testing.T) {
 		var out, errOut bytes.Buffer
-		code := reportFixResultTo(fixCLIOpts{reportFlags: reportFlags{format: "json"}}, result, &vlog.Logger{}, testIO(t, &out, &errOut))
+		opts := fixCLIOpts{reportFlags: reportFlags{format: "json"}}
+		code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, &out, &errOut))
 		assert.Equal(t, 1, code)
 		assert.Empty(t, out.String())
 		assert.Contains(t, errOut.String(), "mdsmith: boom")
@@ -100,23 +110,25 @@ func TestReportFixResultTo_DryRunPreviewIsPartOfReport(t *testing.T) {
 func TestReportFixResultTo_CleanRunOutput(t *testing.T) {
 	for _, output := range []string{"", "-"} {
 		for _, tc := range []struct {
-			name  string
-			opts  fixCLIOpts
-			want  string
-			sarif bool
+			name   string
+			flags  reportFlags
+			dryRun bool
+			want   string
+			sarif  bool
 		}{
-			{name: "json", opts: fixCLIOpts{reportFlags: reportFlags{format: "json"}}, want: "[]\n"},
-			{name: "dry-run json", opts: fixCLIOpts{reportFlags: reportFlags{format: "json"}, dryRun: true}, want: "[]\n"},
-			{name: "sarif", opts: fixCLIOpts{reportFlags: reportFlags{format: "sarif"}}, sarif: true},
-			{name: "dry-run sarif", opts: fixCLIOpts{reportFlags: reportFlags{format: "sarif"}, dryRun: true}, sarif: true},
-			{name: "text", opts: fixCLIOpts{reportFlags: reportFlags{format: "text"}}, want: "stats: checked=1 fixed=0 failures=0 unfixed=0\n"},
-			{name: "json quiet", opts: fixCLIOpts{reportFlags: reportFlags{format: "json", quiet: true}}},
-			{name: "dry-run json quiet", opts: fixCLIOpts{reportFlags: reportFlags{format: "json", quiet: true}, dryRun: true}},
+			{name: "json", flags: reportFlags{format: "json"}, want: "[]\n"},
+			{name: "dry-run json", flags: reportFlags{format: "json"}, dryRun: true, want: "[]\n"},
+			{name: "sarif", flags: reportFlags{format: "sarif"}, sarif: true},
+			{name: "dry-run sarif", flags: reportFlags{format: "sarif"}, dryRun: true, sarif: true},
+			{name: "text", flags: reportFlags{format: "text"}, want: "stats: checked=1 fixed=0 failures=0 unfixed=0\n"},
+			{name: "json quiet", flags: reportFlags{format: "json", quiet: true}},
+			{name: "dry-run json quiet", flags: reportFlags{format: "json", quiet: true}, dryRun: true},
 		} {
 			t.Run("-o "+output+" "+tc.name, func(t *testing.T) {
 				var out, errOut bytes.Buffer
-				tc.opts.output = output
-				code := reportFixResultTo(tc.opts, &fixpkg.Result{FilesChecked: 1},
+				tc.flags.output = output
+				opts := fixCLIOpts{reportFlags: tc.flags, dryRun: tc.dryRun}
+				code := reportFixResultTo(opts, &fixpkg.Result{FilesChecked: 1},
 					&vlog.Logger{}, testIO(t, &out, &errOut))
 				assert.Equal(t, 0, code)
 				report, other := &errOut, &out
@@ -140,9 +152,14 @@ func TestReportFixResultTo_Color(t *testing.T) {
 		var out bytes.Buffer
 		rio := testIO(t, &out, io.Discard)
 		rio.isTerminal = func(w io.Writer) bool { return tty && w == &out }
-		assert.Equal(t, 1, reportFixResultTo(fixCLIOpts{reportFlags: reportFlags{format: "text", output: "-"}}, result, &vlog.Logger{}, rio))
+		opts := fixCLIOpts{reportFlags: reportFlags{format: "text", output: "-"}}
+		assert.Equal(t, 1, reportFixResultTo(opts, result, &vlog.Logger{}, rio))
 		assert.Equal(t, tty, bytes.Contains(out.Bytes(), []byte("\033[")), "tty=%v report=%q", tty, out.String())
 	}
+	var out bytes.Buffer
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text", output: "-", color: colorAlways}}
+	assert.Equal(t, 1, reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, &out, io.Discard)))
+	assert.Contains(t, out.String(), "\033[", "--color=always colors a pipe")
 }
 
 // A failed write of any report part is a runtime error on stderr with

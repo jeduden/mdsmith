@@ -409,7 +409,7 @@ func manyDiagnostics(n int) []lint.Diagnostic {
 }
 
 func TestReportCheckResultTo_BuffersDiagnosticWrites(t *testing.T) {
-	opts := checkCLIOpts{reportFlags: reportFlags{format: "text", noColor: true}}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text", color: colorNever}}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
 	w := &countingWriter{}
 	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, io.Discard, w))
@@ -421,7 +421,7 @@ func TestReportCheckResultTo_BuffersDiagnosticWrites(t *testing.T) {
 }
 
 func TestReportFixResultTo_BuffersDiagnosticWrites(t *testing.T) {
-	opts := fixCLIOpts{reportFlags: reportFlags{format: "text", noColor: true}}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text", color: colorNever}}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
 	w := &countingWriter{}
 	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, w))
@@ -980,7 +980,7 @@ func TestParseCheckFlags_Defaults(t *testing.T) {
 	assert.False(t, hasStdin)
 	assert.Empty(t, files)
 	assert.Equal(t, "text", opts.format)
-	assert.False(t, opts.noColor)
+	assert.Equal(t, colorUnset, opts.color)
 	assert.False(t, opts.quiet)
 	assert.False(t, opts.verbose)
 	assert.False(t, opts.explain)
@@ -1505,8 +1505,9 @@ func (w *failAfterWriter) Write(p []byte) (int, error) {
 func TestReportCheckResultTo_FlushErrorReturns2(t *testing.T) {
 	// No diagnostics: only the run-stats line sits in the buffer, so
 	// the first underlying write happens at the final Flush.
-	code := reportCheckResultTo(&engine.Result{FilesChecked: 1},
-		checkCLIOpts{reportFlags: reportFlags{format: "text"}}, &vlog.Logger{}, testIO(t, io.Discard, &failAfterWriter{n: 0}))
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text"}}
+	code := reportCheckResultTo(&engine.Result{FilesChecked: 1}, opts,
+		&vlog.Logger{}, testIO(t, io.Discard, &failAfterWriter{n: 0}))
 	assert.Equal(t, 2, code)
 }
 
@@ -1542,14 +1543,14 @@ func TestReportCheckResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
 	// Enough diagnostics to overflow the 64 KiB stderr buffer, so the
 	// formatter itself observes the write failure mid-stream and the
 	// report path takes its early-return branch.
-	opts := checkCLIOpts{reportFlags: reportFlags{format: "text", noColor: true}}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text", color: colorNever}}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
 	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
 func TestReportFixResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
-	opts := fixCLIOpts{reportFlags: reportFlags{format: "text", noColor: true}}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text", color: colorNever}}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
 	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)

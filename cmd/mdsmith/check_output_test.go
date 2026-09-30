@@ -134,21 +134,21 @@ func TestReportCheckResultTo_CleanRunOutput(t *testing.T) {
 	for _, output := range []string{"", "-"} {
 		for _, tc := range []struct {
 			name  string
-			opts  checkCLIOpts
+			flags reportFlags
 			want  string
 			sarif bool
 		}{
-			{name: "json", opts: checkCLIOpts{reportFlags: reportFlags{format: "json"}}, want: "[]\n"},
-			{name: "sarif", opts: checkCLIOpts{reportFlags: reportFlags{format: "sarif"}}, sarif: true},
-			{name: "text", opts: checkCLIOpts{reportFlags: reportFlags{format: "text"}}, want: "stats: checked=1 fixed=0 failures=0 unfixed=0\n"},
-			{name: "json quiet", opts: checkCLIOpts{reportFlags: reportFlags{format: "json", quiet: true}}},
-			{name: "sarif quiet", opts: checkCLIOpts{reportFlags: reportFlags{format: "sarif", quiet: true}}},
-			{name: "text quiet", opts: checkCLIOpts{reportFlags: reportFlags{format: "text", quiet: true}}},
+			{name: "json", flags: reportFlags{format: "json"}, want: "[]\n"},
+			{name: "sarif", flags: reportFlags{format: "sarif"}, sarif: true},
+			{name: "text", flags: reportFlags{format: "text"}, want: "stats: checked=1 fixed=0 failures=0 unfixed=0\n"},
+			{name: "json quiet", flags: reportFlags{format: "json", quiet: true}},
+			{name: "sarif quiet", flags: reportFlags{format: "sarif", quiet: true}},
+			{name: "text quiet", flags: reportFlags{format: "text", quiet: true}},
 		} {
 			t.Run("-o "+output+" "+tc.name, func(t *testing.T) {
 				var out, errOut bytes.Buffer
-				tc.opts.output = output
-				code := reportCheckResultTo(&engine.Result{FilesChecked: 1}, tc.opts,
+				tc.flags.output = output
+				code := reportCheckResultTo(&engine.Result{FilesChecked: 1}, checkCLIOpts{reportFlags: tc.flags},
 					&vlog.Logger{}, testIO(t, &out, &errOut))
 				assert.Equal(t, 0, code)
 				report, other := &errOut, &out
@@ -180,28 +180,31 @@ func assertEmptySARIF(t *testing.T, b []byte) {
 	assert.Empty(t, log.Runs[0].Results)
 }
 
-// Text output carries ANSI color only when the report's destination
-// is a terminal and neither --no-color nor NO_COLOR turns it off.
+// Text output carries ANSI color by the rules of reportIO.colorFor:
+// the destination being a terminal, the color flags, NO_COLOR, and
+// FORCE_COLOR.
 func TestReportCheckResultTo_Color(t *testing.T) {
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
 	for _, tc := range []struct {
-		name    string
-		tty     bool
-		noColor bool
-		env     string
-		want    bool
+		name  string
+		tty   bool
+		color colorMode
+		env   map[string]string
+		want  bool
 	}{
 		{name: "terminal", tty: true, want: true},
 		{name: "not a terminal"},
-		{name: "terminal with --no-color", tty: true, noColor: true},
-		{name: "terminal with NO_COLOR", tty: true, env: "1"},
+		{name: "terminal with --no-color", tty: true, color: colorNever},
+		{name: "terminal with NO_COLOR", tty: true, env: map[string]string{"NO_COLOR": "1"}},
+		{name: "pipe with FORCE_COLOR", env: map[string]string{"FORCE_COLOR": "1"}, want: true},
+		{name: "pipe with --color=always", color: colorAlways, want: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
 			rio := testIO(t, &out, io.Discard)
 			rio.isTerminal = func(w io.Writer) bool { return tc.tty && w == &out }
-			rio.getenv = func(string) string { return tc.env }
-			opts := checkCLIOpts{reportFlags: reportFlags{format: "text", output: "-", noColor: tc.noColor}}
+			rio.getenv = func(key string) string { return tc.env[key] }
+			opts := checkCLIOpts{reportFlags: reportFlags{format: "text", output: "-", color: tc.color}}
 			assert.Equal(t, 1, reportCheckResultTo(result, opts, &vlog.Logger{}, rio))
 			assert.Equal(t, tc.want, bytes.Contains(out.Bytes(), []byte("\033[")), "report=%q", out.String())
 		})
@@ -212,7 +215,8 @@ func TestWriteCheckReport(t *testing.T) {
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
 	t.Run("diagnostics then stats", func(t *testing.T) {
 		var buf bytes.Buffer
-		require.NoError(t, writeCheckReport(&buf, result, checkCLIOpts{reportFlags: reportFlags{format: "text"}}, false))
+		opts := checkCLIOpts{reportFlags: reportFlags{format: "text"}}
+		require.NoError(t, writeCheckReport(&buf, result, opts, false))
 		assert.Regexp(t, `(?s)line too long.*stats: checked=1 fixed=0 failures=1 unfixed=1\n$`, buf.String())
 	})
 	t.Run("quiet writes nothing", func(t *testing.T) {
@@ -230,9 +234,8 @@ func TestWriteCheckReport(t *testing.T) {
 		assert.Regexp(t, `(?s)line too long.*stats: checked=1 fixed=0 failures=1 unfixed=1\n$`, buf.String())
 	})
 	t.Run("returns formatter error", func(t *testing.T) {
-		assert.EqualError(t,
-			writeCheckReport(&alwaysErrorWriter{}, result, checkCLIOpts{reportFlags: reportFlags{format: "text"}}, false),
-			"write failed")
+		opts := checkCLIOpts{reportFlags: reportFlags{format: "text"}}
+		assert.EqualError(t, writeCheckReport(&alwaysErrorWriter{}, result, opts, false), "write failed")
 	})
 }
 
@@ -261,6 +264,60 @@ func TestParseCheckFlags_EmptyOutputIsUsageError(t *testing.T) {
 		assert.Equal(t, 2, code)
 	})
 	assert.Equal(t, "mdsmith: check: --output needs a path, or - for stdout\n", stderr)
+}
+
+// --color takes auto, always, or never; --no-color is --color=never.
+// The two write one setting, so the last one given wins.
+func TestParseCheckFlags_Color(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want colorMode
+	}{
+		{args: nil, want: colorUnset},
+		{args: []string{"--color=always"}, want: colorAlways},
+		{args: []string{"--color", "never"}, want: colorNever},
+		{args: []string{"--color=auto"}, want: colorAuto},
+		{args: []string{"--no-color"}, want: colorNever},
+		{args: []string{"--no-color=false"}, want: colorUnset},
+		{args: []string{"--no-color", "--color=always"}, want: colorAlways},
+		{args: []string{"--color=always", "--no-color"}, want: colorNever},
+	} {
+		opts, _, _, code := parseCheckFlags(tc.args)
+		require.Equal(t, -1, code, "%v", tc.args)
+		assert.Equal(t, tc.want, opts.color, "%v", tc.args)
+	}
+}
+
+func TestParseCheckFlags_BadColorIsUsageError(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{
+			[]string{"--color=sometimes"},
+			`invalid argument "sometimes" for "--color" flag: must be auto, always, or never`,
+		},
+		{[]string{"--color"}, `flag needs an argument: --color`},
+		{[]string{"--no-color=maybe"}, `invalid argument "maybe" for "--no-color" flag`},
+	} {
+		stderr := captureStderr(func() {
+			_, _, _, code := parseCheckFlags(tc.args)
+			assert.Equal(t, 2, code, "%v", tc.args)
+		})
+		assert.Contains(t, stderr, tc.want, "%v", tc.args)
+	}
+}
+
+// --help lists --color with its value and --no-color as a plain
+// switch, with no "(default ...)" noise for either.
+func TestParseCheckFlags_HelpListsColorFlags(t *testing.T) {
+	stderr := captureStderr(func() {
+		_, _, _, code := parseCheckFlags([]string{"--help"})
+		assert.Equal(t, 0, code)
+	})
+	assert.Regexp(t, `--color when +Color text output`, stderr)
+	assert.Regexp(t, `--no-color +Same as --color=never\n`, stderr)
+	assert.Contains(t, stderr, "FORCE_COLOR")
 }
 
 // --stdout was never released; -o - replaces it.

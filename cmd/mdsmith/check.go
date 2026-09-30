@@ -54,13 +54,14 @@ func runCheck(args []string) int {
 func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	var (
-		configPath, format, maxInputSize, output                      string
-		noColor, quiet, verbose, noGitignore, followSymlinks, explain bool
+		configPath, format, maxInputSize, output             string
+		quiet, verbose, noGitignore, followSymlinks, explain bool
+		color                                                colorMode
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
 	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json, sarif")
-	fs.BoolVar(&noColor, "no-color", false, "Disable ANSI colors")
+	registerColorFlags(fs, &color)
 	fs.BoolVarP(&quiet, "quiet", "q", false,
 		"Suppress non-error terminal output; an -o file still gets the report")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
@@ -101,7 +102,7 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	hasStdin, fileArgs := splitStdinArg(fs.Args())
 
 	return checkCLIOpts{
-		reportFlags: reportFlags{format: format, output: output, noColor: noColor, quiet: quiet},
+		reportFlags: reportFlags{format: format, output: output, color: color, quiet: quiet},
 		configPath:  configPath,
 		verbose:     verbose,
 		walk: walkCLI{
@@ -224,7 +225,7 @@ func reportCheckResult(result *engine.Result, opts checkCLIOpts, logger *vlog.Lo
 // be written exits 2 (see reportIO.deliverReport). The verbose logger
 // line follows the flushed report, so ordering on a shared fd holds.
 func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, rio reportIO) int {
-	code := rio.deliverReport(opts.output, opts.noColor, result.Errors, func(w io.Writer, color bool) error {
+	code := rio.deliverReport(opts.output, opts.color, result.Errors, func(w io.Writer, color bool) error {
 		return writeCheckReport(w, result, opts, color)
 	})
 	if code != 0 {

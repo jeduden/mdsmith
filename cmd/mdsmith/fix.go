@@ -150,14 +150,15 @@ func setFixUsage(fs *flag.FlagSet) {
 func parseFixFlags(args []string) (fixCLIOpts, []string, bool, int) {
 	fs := flag.NewFlagSet("fix", flag.ContinueOnError)
 	var (
-		configPath, format, maxInputSize, output                              string
-		noColor, quiet, verbose, noGitignore, followSymlinks, explain, dryRun bool
+		configPath, format, maxInputSize, output                     string
+		quiet, verbose, noGitignore, followSymlinks, explain, dryRun bool
+		color                                                        colorMode
 	)
 	var bf buildFixFlags
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
 	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json, sarif")
-	fs.BoolVar(&noColor, "no-color", false, "Disable ANSI colors")
+	registerColorFlags(fs, &color)
 	fs.BoolVarP(&quiet, "quiet", "q", false,
 		"Suppress non-error terminal output; an -o file still gets the report")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
@@ -192,7 +193,7 @@ func parseFixFlags(args []string) (fixCLIOpts, []string, bool, int) {
 	hasStdin, fileArgs := splitStdinArg(fs.Args())
 
 	return fixCLIOpts{
-		reportFlags: reportFlags{format: format, output: output, noColor: noColor, quiet: quiet},
+		reportFlags: reportFlags{format: format, output: output, color: color, quiet: quiet},
 		configPath:  configPath,
 		verbose:     verbose,
 		walk: walkCLI{
@@ -371,7 +372,7 @@ func reportFixResult(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Log
 // writers, a report that cannot be written exits 2, and the verbose
 // logger line follows the flushed report.
 func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger, rio reportIO) int {
-	code := rio.deliverReport(opts.output, opts.noColor, fixResult.Errors, func(w io.Writer, color bool) error {
+	code := rio.deliverReport(opts.output, opts.color, fixResult.Errors, func(w io.Writer, color bool) error {
 		return writeFixReport(w, fixResult, opts, color)
 	})
 	if code != 0 {

@@ -69,8 +69,9 @@ func runOnTerminal(t *testing.T, dir string, extraEnv []string, args ...string) 
 }
 
 // TestCheckOutput_E2EColorOnTerminal pins the terminal side of the
-// color rule through the real binary: text on a terminal is colored,
-// and --no-color or a non-empty NO_COLOR turns that off.
+// color rule through the real binary: text on a terminal is colored;
+// --no-color, --color=never, or a non-empty NO_COLOR turns that off;
+// and an explicit --color=auto ignores NO_COLOR.
 func TestCheckOutput_E2EColorOnTerminal(t *testing.T) {
 	dir := outputWorkspace(t)
 	for _, tc := range []struct {
@@ -79,9 +80,15 @@ func TestCheckOutput_E2EColorOnTerminal(t *testing.T) {
 		args []string
 		want bool
 	}{
-		{name: "terminal", env: []string{"NO_COLOR="}, want: true},
-		{name: "--no-color", env: []string{"NO_COLOR="}, args: []string{"--no-color"}},
+		{name: "terminal", want: true},
+		{name: "--no-color", args: []string{"--no-color"}},
+		{name: "--color=never", args: []string{"--color=never"}},
 		{name: "NO_COLOR", env: []string{"NO_COLOR=1"}},
+		{name: "FORCE_COLOR=0", env: []string{"FORCE_COLOR=0"}, want: true},
+		{
+			name: "--color=auto ignores NO_COLOR", want: true,
+			env: []string{"NO_COLOR=1"}, args: []string{"--color=auto"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			args := append([]string{"check"}, tc.args...)

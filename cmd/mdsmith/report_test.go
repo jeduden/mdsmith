@@ -83,7 +83,7 @@ func TestDeliverReport_DefaultRouteSharesStderr(t *testing.T) {
 	var out bytes.Buffer
 	errOut := &countingWriter{}
 	rio := testIO(t, &out, errOut)
-	code := rio.deliverReport("", false, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
+	code := rio.deliverReport("", colorUnset, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
 	assert.Equal(t, 0, code)
 	assert.Equal(t, "mdsmith: boom\nREPORT\n", errOut.buf.String())
 	assert.Equal(t, 1, errOut.calls, "errors and report share one buffer on stderr")
@@ -93,7 +93,7 @@ func TestDeliverReport_DefaultRouteSharesStderr(t *testing.T) {
 func TestDeliverReport_DashRouteWritesStdout(t *testing.T) {
 	var out, errOut bytes.Buffer
 	rio := testIO(t, &out, &errOut)
-	code := rio.deliverReport("-", false, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
+	code := rio.deliverReport("-", colorUnset, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
 	assert.Equal(t, 0, code)
 	assert.Equal(t, "REPORT\n", out.String())
 	assert.Equal(t, "mdsmith: boom\n", errOut.String())
@@ -104,7 +104,7 @@ func TestDeliverReport_DashRouteWritesStdout(t *testing.T) {
 func TestDeliverReport_DashRouteErrorsPrintFirst(t *testing.T) {
 	var shared bytes.Buffer
 	rio := testIO(t, &shared, &shared)
-	code := rio.deliverReport("-", false, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
+	code := rio.deliverReport("-", colorUnset, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
 	assert.Equal(t, 0, code)
 	assert.Equal(t, "mdsmith: boom\nREPORT\n", shared.String())
 }
@@ -118,7 +118,7 @@ func TestDeliverReport_FileRouteWritesFile(t *testing.T) {
 		created = path
 		return f, nil
 	}
-	code := rio.deliverReport("out.json", false, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
+	code := rio.deliverReport("out.json", colorUnset, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
 	assert.Equal(t, 0, code)
 	assert.Equal(t, "out.json", created)
 	assert.Equal(t, "REPORT\n", f.String())
@@ -136,7 +136,7 @@ func TestDeliverReport_CreateErrorGoesToStderr(t *testing.T) {
 		return nil, errors.New("open out.json: permission denied")
 	}
 	called := false
-	code := rio.deliverReport("out.json", false, nil, func(io.Writer, bool) error {
+	code := rio.deliverReport("out.json", colorUnset, nil, func(io.Writer, bool) error {
 		called = true
 		return nil
 	})
@@ -151,7 +151,7 @@ func TestDeliverReport_WriteErrors(t *testing.T) {
 	t.Run("body error on stdout", func(t *testing.T) {
 		var errOut bytes.Buffer
 		rio := testIO(t, &alwaysErrorWriter{}, &errOut)
-		code := rio.deliverReport("-", false, nil, func(io.Writer, bool) error {
+		code := rio.deliverReport("-", colorUnset, nil, func(io.Writer, bool) error {
 			return errors.New("write failed")
 		})
 		assert.Equal(t, 2, code)
@@ -160,7 +160,7 @@ func TestDeliverReport_WriteErrors(t *testing.T) {
 	t.Run("flush error on stdout", func(t *testing.T) {
 		var errOut bytes.Buffer
 		rio := testIO(t, &failAfterWriter{n: 0}, &errOut)
-		code := rio.deliverReport("-", false, nil, writeBody("REPORT\n", nil))
+		code := rio.deliverReport("-", colorUnset, nil, writeBody("REPORT\n", nil))
 		assert.Equal(t, 2, code)
 		assert.Equal(t, msg, errOut.String())
 	})
@@ -169,7 +169,7 @@ func TestDeliverReport_WriteErrors(t *testing.T) {
 		rio := testIO(t, io.Discard, &errOut)
 		f := &fakeReportFile{writeErr: errors.New("write failed")}
 		rio.create = func(string) (io.WriteCloser, error) { return f, nil }
-		code := rio.deliverReport("out.json", false, nil, writeBody("REPORT\n", nil))
+		code := rio.deliverReport("out.json", colorUnset, nil, writeBody("REPORT\n", nil))
 		assert.Equal(t, 2, code)
 		assert.Equal(t, msg, errOut.String())
 		assert.True(t, f.closed, "the report file is closed even after a failed write")
@@ -179,13 +179,13 @@ func TestDeliverReport_WriteErrors(t *testing.T) {
 		rio := testIO(t, io.Discard, &errOut)
 		f := &fakeReportFile{closeErr: errors.New("write failed")}
 		rio.create = func(string) (io.WriteCloser, error) { return f, nil }
-		code := rio.deliverReport("out.json", false, nil, writeBody("REPORT\n", nil))
+		code := rio.deliverReport("out.json", colorUnset, nil, writeBody("REPORT\n", nil))
 		assert.Equal(t, 2, code)
 		assert.Equal(t, msg, errOut.String())
 	})
 	t.Run("flush error on the default route", func(t *testing.T) {
 		code := testIO(t, io.Discard, &failAfterWriter{n: 0}).
-			deliverReport("", false, nil, writeBody("REPORT\n", nil))
+			deliverReport("", colorUnset, nil, writeBody("REPORT\n", nil))
 		assert.Equal(t, 2, code)
 	})
 }
@@ -197,7 +197,7 @@ func TestDeliverReport_WriteErrors(t *testing.T) {
 func TestDeliverReport_BrokenStderrStillWritesReport(t *testing.T) {
 	var out bytes.Buffer
 	rio := testIO(t, &out, &alwaysErrorWriter{})
-	code := rio.deliverReport("-", false, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
+	code := rio.deliverReport("-", colorUnset, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
 	assert.Equal(t, 0, code)
 	assert.Equal(t, "REPORT\n", out.String())
 }
@@ -208,17 +208,17 @@ func TestDeliverReport_BrokenStderrStillWritesReport(t *testing.T) {
 func TestDeliverReport_WriteErrorAfterFailedErrorFlush(t *testing.T) {
 	errOut := &failFirstWriter{n: 1}
 	rio := testIO(t, &alwaysErrorWriter{}, errOut)
-	code := rio.deliverReport("-", false, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
+	code := rio.deliverReport("-", colorUnset, []error{errors.New("boom")}, writeBody("REPORT\n", nil))
 	assert.Equal(t, 2, code)
 	assert.Equal(t, "mdsmith: error writing output: write failed\n", errOut.buf.String())
 }
 
-// Color is on only when the report's own destination is a terminal,
-// --no-color is off, and NO_COLOR is empty.
+// deliverReport decides color for the report's own destination: the
+// stream or file the report goes to, not some other stream.
 func TestDeliverReport_Color(t *testing.T) {
 	for _, tc := range []struct {
 		name, output string
-		noColor      bool
+		color        colorMode
 		noColorEnv   string
 		ttyStream    string
 		want         bool
@@ -229,7 +229,8 @@ func TestDeliverReport_Color(t *testing.T) {
 		{name: "stdout tty", output: "-", ttyStream: "stdout", want: true},
 		{name: "file tty", output: "/dev/tty", ttyStream: "file", want: true},
 		{name: "file not tty", output: "out.txt", ttyStream: "stderr"},
-		{name: "no-color flag", output: "", ttyStream: "stderr", noColor: true},
+		{name: "file, --color=always", output: "out.txt", color: colorAlways, want: true},
+		{name: "no-color flag", output: "", ttyStream: "stderr", color: colorNever},
 		{name: "NO_COLOR set", output: "", ttyStream: "stderr", noColorEnv: "1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -246,8 +247,84 @@ func TestDeliverReport_Color(t *testing.T) {
 				return ""
 			}
 			var got bool
-			require.Equal(t, 0, rio.deliverReport(tc.output, tc.noColor, nil, writeBody("", &got)))
+			require.Equal(t, 0, rio.deliverReport(tc.output, tc.color, nil, writeBody("", &got)))
 			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// wantColor is the documented color precedence, written out as a
+// spec for TestColorFor_Matrix: an explicit --color=always or never
+// decides; --color=auto asks the terminal alone; without a flag a
+// non-empty NO_COLOR turns color off, then a FORCE_COLOR that is
+// neither empty nor 0 turns it on, and the terminal decides the rest.
+func wantColor(mode colorMode, noColor, forceColor string, tty bool) bool {
+	switch mode {
+	case colorAlways:
+		return true
+	case colorNever:
+		return false
+	case colorAuto:
+		return tty
+	}
+	if noColor != "" {
+		return false
+	}
+	if forceColor != "" && forceColor != "0" {
+		return true
+	}
+	return tty
+}
+
+// TestColorFor_Matrix runs every combination of the color flag,
+// NO_COLOR, FORCE_COLOR, and a terminal destination through the
+// injectable isTerminal/getenv seam.
+func TestColorFor_Matrix(t *testing.T) {
+	for _, mode := range []colorMode{colorUnset, colorAuto, colorAlways, colorNever} {
+		for _, noColor := range []string{"", "1"} {
+			for _, force := range []string{"", "0", "1", "true"} {
+				for _, tty := range []bool{false, true} {
+					dst := &bytes.Buffer{}
+					rio := testIO(t, io.Discard, io.Discard)
+					rio.isTerminal = func(w io.Writer) bool { return tty && w == dst }
+					rio.getenv = func(key string) string {
+						return map[string]string{"NO_COLOR": noColor, "FORCE_COLOR": force}[key]
+					}
+					assert.Equal(t, wantColor(mode, noColor, force, tty), rio.colorFor(dst, mode),
+						"--color=%q NO_COLOR=%q FORCE_COLOR=%q tty=%v", mode, noColor, force, tty)
+				}
+			}
+		}
+	}
+}
+
+// The cases the precedence exists for, spelled out.
+func TestColorFor_Precedence(t *testing.T) {
+	dst := &bytes.Buffer{}
+	noColor := map[string]string{"NO_COLOR": "1"}
+	force := map[string]string{"FORCE_COLOR": "1"}
+	forceOff := map[string]string{"FORCE_COLOR": "0"}
+	for _, tc := range []struct {
+		name string
+		mode colorMode
+		env  map[string]string
+		tty  bool
+		want bool
+	}{
+		{name: "NO_COLOR beats FORCE_COLOR", env: map[string]string{"NO_COLOR": "1", "FORCE_COLOR": "1"}, tty: true},
+		{name: "FORCE_COLOR colors a pipe", env: force, want: true},
+		{name: "FORCE_COLOR=0 forces nothing", env: forceOff},
+		{name: "FORCE_COLOR=0 keeps a terminal colored", env: forceOff, tty: true, want: true},
+		{name: "--color=always beats NO_COLOR", mode: colorAlways, env: noColor, want: true},
+		{name: "--color=never beats FORCE_COLOR", mode: colorNever, env: force, tty: true},
+		{name: "--color=auto ignores FORCE_COLOR", mode: colorAuto, env: force},
+		{name: "--color=auto ignores NO_COLOR", mode: colorAuto, env: noColor, tty: true, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rio := testIO(t, io.Discard, io.Discard)
+			rio.isTerminal = func(io.Writer) bool { return tc.tty }
+			rio.getenv = func(key string) string { return tc.env[key] }
+			assert.Equal(t, tc.want, rio.colorFor(dst, tc.mode))
 		})
 	}
 }

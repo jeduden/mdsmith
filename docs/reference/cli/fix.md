@@ -31,7 +31,8 @@ report goes to stderr.
 | `-c`, `--config`    | auto    | Override config path (auto-discovers)  |
 | `-f`, `--format`    | `text`  | `text`, `json`, or `sarif`             |
 | `--max-input-size`  | `2MB`   | Max file size (e.g. `2MB`, `0`=none)   |
-| `--no-color`        | false   | Plain output                           |
+| `--color`           | unset   | `auto`, `always`, or `never`           |
+| `--no-color`        | false   | Same as `--color=never`                |
 | `--follow-symlinks` | config  | Follow symlinks; tri-state — see below |
 | `--no-gitignore`    | false   | Skip gitignore filtering               |
 | `-q`, `--quiet`     | false   | Quiet the terminal; see below          |
@@ -48,7 +49,7 @@ report goes to stderr.
 `-o` routes the report as it does for
 [`mdsmith check`](check.md#report-output): a file for
 `-o <path>`, stdout for `-o -`, stderr by default. The
-same color rule applies. Here the report is the
+same [color rules](check.md#color) apply. Here the report is the
 remaining diagnostics, the `--dry-run` preview or JSON,
 and the stats line. A clean `json` run writes `[]`. `-q`
 silences the terminal, as for `check`: an explicit

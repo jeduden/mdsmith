@@ -36,7 +36,8 @@ the warning shows.
 | `-c`, `--config`    | auto    | Override config path (auto-discovers)  |
 | `-f`, `--format`    | `text`  | `text`, `json`, or `sarif`             |
 | `--max-input-size`  | `2MB`   | Max file size (e.g. `2MB`, `0`=none)   |
-| `--no-color`        | false   | Plain output                           |
+| `--color`           | unset   | `auto`, `always`, or `never`           |
+| `--no-color`        | false   | Same as `--color=never`                |
 | `--follow-symlinks` | config  | Follow symlinks; tri-state — see below |
 | `--no-gitignore`    | false   | Skip gitignore filtering               |
 | `-q`, `--quiet`     | false   | Quiet the terminal; see below          |
@@ -112,12 +113,30 @@ closed pipe, as in `| head`, ends the process on
 
 ### Color
 
-Text output uses ANSI color only when the report's
-destination is a terminal. A file, a pipe, or a
+By default, text output uses ANSI color only when the
+report's destination is a terminal. A file, a pipe, or a
 redirected stream gets plain text. CI logs, where stderr
-is usually a pipe, are plain as a result. `--no-color`,
-or a `NO_COLOR` environment variable that is set and not
-empty, turns color off on a terminal as well.
+is usually a pipe, are plain as a result. The first of
+these rules that applies decides:
+
+1. `--color=always` turns color on and `--color=never`
+   turns it off, wherever the report goes. `--no-color`
+   is the same as `--color=never`. When several color
+   flags are given, the last one wins.
+2. `--color=auto` colors a terminal and nothing else,
+   whatever the environment says.
+3. With no color flag, a `NO_COLOR` variable that is set
+   and not empty turns color off
+   ([no-color.org](https://no-color.org)).
+4. Next, a `FORCE_COLOR` variable that is set and is
+   neither empty nor `0` turns color on
+   ([force-color.org](https://force-color.org)).
+5. Otherwise color is on only on a terminal.
+
+So a flag beats both variables, and `NO_COLOR` beats
+`FORCE_COLOR`. `FORCE_COLOR=0` forces nothing: color
+still follows the terminal. With `--color=always`, an
+`-o` file gets the escape codes too.
 
 ## Examples
 

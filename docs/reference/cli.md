@@ -138,8 +138,12 @@ see [`mdsmith check`](cli/check.md#report-output). A clean
 `json` run prints `[]`.
 
 Text output is colored only when it goes to a terminal.
-`--no-color`, or a `NO_COLOR` environment variable that
-is set and not empty, turns color off. Format:
+On `check` and `fix`, `--color=always` or
+`--color=never` (`--no-color`) overrides that. With no
+color flag, a non-empty `NO_COLOR` turns color off, and
+otherwise a `FORCE_COLOR` other than `0` turns it on.
+See [Color](cli/check.md#color) for the full order.
+Format:
 
 **text** (default):
 

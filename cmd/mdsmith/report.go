@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 
 	flag "github.com/spf13/pflag"
 )
@@ -12,8 +14,74 @@ import (
 // reportRoutingHelp is the usage paragraph check and fix print on how
 // -o routes the report and when text output is colored.
 const reportRoutingHelp = "The report (diagnostics and the stats line) goes to stderr unless -o names\n" +
-	"a file, or - for stdout. Runtime errors always go to stderr. Text output is\n" +
-	"colored only on a terminal; --no-color or a non-empty NO_COLOR turns it off.\n\n"
+	"a file, or - for stdout. Runtime errors always go to stderr. -q silences the\n" +
+	"terminal; an -o file still gets the report.\n\n" +
+	"Text output is colored only when the report goes to a terminal. --color=always\n" +
+	"and --color=never (or --no-color) force it on or off, and --color=auto asks the\n" +
+	"terminal alone; the last color flag given wins. With no color flag, a non-empty\n" +
+	"NO_COLOR turns color off, or else a FORCE_COLOR other than empty or 0 turns it on.\n\n"
+
+// colorMode is the color setting --color and --no-color write.
+// colorUnset means neither flag was given, so NO_COLOR, FORCE_COLOR,
+// and the terminal decide (see reportIO.colorFor).
+type colorMode string
+
+const (
+	colorUnset  colorMode = ""
+	colorAuto   colorMode = "auto"
+	colorAlways colorMode = "always"
+	colorNever  colorMode = "never"
+)
+
+// colorFlag is the pflag.Value behind --color.
+type colorFlag struct{ mode *colorMode }
+
+func (c colorFlag) String() string { return string(*c.mode) }
+
+// Type names the value in --help.
+func (c colorFlag) Type() string { return "when" }
+
+// Set accepts auto, always, or never.
+func (c colorFlag) Set(s string) error {
+	switch m := colorMode(s); m {
+	case colorAuto, colorAlways, colorNever:
+		*c.mode = m
+		return nil
+	}
+	return errors.New("must be auto, always, or never")
+}
+
+// noColorFlag is the pflag.Value behind --no-color, an alias for
+// --color=never. It writes the same setting as --color, so the last
+// of the two on the command line wins. --no-color=false changes
+// nothing.
+type noColorFlag struct{ mode *colorMode }
+
+func (c noColorFlag) String() string { return "false" }
+
+// Type is "bool" so --help shows --no-color as a plain switch.
+func (c noColorFlag) Type() string { return "bool" }
+
+// Set takes a boolean; true selects --color=never.
+func (c noColorFlag) Set(s string) error {
+	on, err := strconv.ParseBool(s)
+	if err != nil {
+		return err
+	}
+	if on {
+		*c.mode = colorNever
+	}
+	return nil
+}
+
+// registerColorFlags adds --color and --no-color to the check or fix
+// flag set. Both write mode.
+func registerColorFlags(fs *flag.FlagSet, mode *colorMode) {
+	fs.Var(colorFlag{mode}, "color",
+		"Color text output: `when` is auto, always, or never "+
+			"(default: NO_COLOR, then FORCE_COLOR, then auto)")
+	fs.VarPF(noColorFlag{mode}, "no-color", "", "Same as --color=never").NoOptDefVal = "true"
+}
 
 // registerOutputFlag adds -o/--output to the check or fix flag set.
 func registerOutputFlag(fs *flag.FlagSet, output *string) {
@@ -39,9 +107,10 @@ type reportFlags struct {
 	format string
 	// output is the -o value: "" (not given) sends the report to
 	// stderr, "-" to stdout, and anything else names a file.
-	output  string
-	noColor bool
-	quiet   bool
+	output string
+	// color is the --color / --no-color setting.
+	color colorMode
+	quiet bool
 }
 
 // silenced reports whether -q drops the report. -q silences the
@@ -109,11 +178,34 @@ func isTerminal(w io.Writer) bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// colorFor reports whether text written to w carries ANSI color: only
-// when w is a terminal, --no-color is off, and the NO_COLOR
-// environment variable is empty or unset (https://no-color.org).
-func (r reportIO) colorFor(w io.Writer, noColor bool) bool {
-	return !noColor && r.getenv("NO_COLOR") == "" && r.isTerminal(w)
+// colorFor reports whether text written to w carries ANSI color. The
+// first rule that applies decides:
+//
+//  1. --color=always is on and --color=never (or --no-color) is off.
+//     A flag beats both environment variables.
+//  2. --color=auto is on when w is a terminal, whatever the
+//     environment says.
+//  3. With no color flag, a non-empty NO_COLOR is off
+//     (https://no-color.org).
+//  4. Then a FORCE_COLOR that is neither empty nor 0 is on
+//     (https://force-color.org).
+//  5. Otherwise color is on when w is a terminal.
+func (r reportIO) colorFor(w io.Writer, mode colorMode) bool {
+	switch mode {
+	case colorAlways:
+		return true
+	case colorNever:
+		return false
+	case colorAuto:
+		return r.isTerminal(w)
+	}
+	if r.getenv("NO_COLOR") != "" {
+		return false
+	}
+	if v := r.getenv("FORCE_COLOR"); v != "" && v != "0" {
+		return true
+	}
+	return r.isTerminal(w)
 }
 
 // deliverReport prints the run's runtime errors on stderr, then opens
@@ -129,7 +221,7 @@ func (r reportIO) colorFor(w io.Writer, noColor bool) bool {
 // route the errors share that buffer, which keeps their order on the
 // one stream. On the other routes they are flushed to stderr first, so
 // they still print before the report on a shared terminal.
-func (r reportIO) deliverReport(output string, noColor bool, errs []error, body reportBody) int {
+func (r reportIO) deliverReport(output string, color colorMode, errs []error, body reportBody) int {
 	dst := r.stderr
 	closeDst := func() error { return nil }
 	var bw *bufio.Writer
@@ -158,7 +250,7 @@ func (r reportIO) deliverReport(output string, noColor bool, errs []error, body 
 		bw = bufio.NewWriterSize(dst, reportBufSize)
 	}
 
-	err := body(bw, r.colorFor(dst, noColor))
+	err := body(bw, r.colorFor(dst, color))
 	if err == nil {
 		err = bw.Flush()
 	}
@@ -181,7 +273,7 @@ func (r reportIO) deliverReport(output string, noColor bool, errs []error, body 
 // no stats line here, as before. An -o file is still created. -q
 // writes nothing to the terminal (see reportFlags.silenced).
 func reportNoFiles(f reportFlags, rio reportIO) int {
-	return rio.deliverReport(f.output, f.noColor, nil, func(w io.Writer, color bool) error {
+	return rio.deliverReport(f.output, f.color, nil, func(w io.Writer, color bool) error {
 		if f.silenced() {
 			return nil
 		}

@@ -179,7 +179,7 @@ func printWriteErrorTo(w io.Writer, err error) {
 // is colored only when stderr is a terminal (see reportIO.colorFor).
 // Returns 2 on a write error, or 0 on success.
 func formatDiagnostics(diags []lint.Diagnostic, format string, noColor bool) int {
-	return processIO().deliverReport("", noColor, nil, func(w io.Writer, color bool) error {
+	return processIO().deliverReport("", colorUnset, nil, func(w io.Writer, color bool) error {
 		return writeDiagnostics(w, diags, format, color)
 	})
 }

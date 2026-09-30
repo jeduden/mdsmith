@@ -33,7 +33,9 @@ both is a usage error.
 `-o -` writes to stdout, the same as no `-o`. The dash
 means stdout for [`check`](check.md#report-output) and
 [`fix`](fix.md#report-output) too. A stale-body
-diagnostic goes to stderr, colored only on a terminal.
+diagnostic goes to stderr. It is colored on a terminal,
+and `NO_COLOR` and `FORCE_COLOR` apply as they do for
+[`check`](check.md#color); `export` has no color flag.
 
 ## Staleness modes
 
