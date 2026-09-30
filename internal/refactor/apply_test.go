@@ -285,3 +285,54 @@ func TestApplyEdits_ReportsFirstBadLineDeterministically(t *testing.T) {
 		require.Containsf(t, err.Error(), "line 2", "run %d: %v", i, err)
 	}
 }
+
+func TestSpliceLine(t *testing.T) {
+	t.Run("copies the bytes around and between edits", func(t *testing.T) {
+		out, err := spliceLine([]byte("abcdef"), []Edit{mkEdit(4, 4, 5, "E"), mkEdit(4, 1, 2, "B")}, 4)
+		require.NoError(t, err)
+		assert.Equal(t, "aBcdEf", string(out))
+	})
+	t.Run("keeps a trailing CR outside the edited row", func(t *testing.T) {
+		out, err := spliceLine([]byte("abc\r"), []Edit{mkEdit(0, 3, 3, "d")}, 0)
+		require.NoError(t, err)
+		assert.Equal(t, "abcd\r", string(out))
+	})
+	t.Run("an empty row accepts an insert", func(t *testing.T) {
+		out, err := spliceLine(nil, []Edit{mkEdit(0, 0, 0, "x")}, 0)
+		require.NoError(t, err)
+		assert.Equal(t, "x", string(out))
+	})
+	t.Run("names the one-based line in an overlap", func(t *testing.T) {
+		_, err := spliceLine([]byte("abcdef"), []Edit{mkEdit(4, 1, 3, "X"), mkEdit(4, 2, 4, "Y")}, 4)
+		require.EqualError(t, err, "edits [1,3) and [2,4) on line 5 overlap")
+	})
+	t.Run("names the one-based line in a range error", func(t *testing.T) {
+		_, err := spliceLine([]byte("ab"), []Edit{mkEdit(4, 0, 3, "X")}, 4)
+		require.EqualError(t, err, "edit [0,3) on line 5 is outside the line (length 2)")
+	})
+}
+
+func TestCheckEditRange(t *testing.T) {
+	tests := []struct {
+		name       string
+		start, end int
+		wantErr    string
+	}{
+		{"whole row", 0, 4, ""},
+		{"insert at the row start", 0, 0, ""},
+		{"insert at the row end", 4, 4, ""},
+		{"start after end", 3, 2, "edit [3,2) on line 2 ends before it starts"},
+		{"negative start", -1, 2, "edit [-1,2) on line 2 is outside the line (length 4)"},
+		{"end past the row", 2, 5, "edit [2,5) on line 2 is outside the line (length 4)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkEditRange(mkEdit(1, tt.start, tt.end, "x"), 4, 1)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.EqualError(t, err, tt.wantErr)
+		})
+	}
+}
