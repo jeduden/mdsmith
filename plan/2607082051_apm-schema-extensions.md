@@ -149,8 +149,9 @@ heading sync render dates the same way.
 
 Under the `cue-frontmatter` placeholder the
 front-matter values are CUE constraints, not data.
-A reference then matches any single path segment
-instead of substituting the constraint text.
+A reference then matches any non-empty text within
+one path segment instead of substituting the
+constraint text.
 
 ## Acceptance Criteria
 

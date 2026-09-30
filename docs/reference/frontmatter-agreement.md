@@ -119,8 +119,8 @@ text, so write its separators as `/`, not `\`.
 Under the `cue-frontmatter` placeholder, a template's
 front-matter values are CUE constraints such as
 `name: string`, not data. A reference then matches
-any single path segment, and the rest of the glob is
-still checked.
+any non-empty text within one path segment, and the
+rest of the glob is still checked.
 
 The resolved value's glob metacharacters are
 escaped, so it matches literally. A `name` of `a*b`

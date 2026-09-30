@@ -113,7 +113,7 @@ func MatchFilename(patterns []string, base string) (matched bool, badPattern str
 // which the caller detects as an empty resolved list.
 //
 // When fmIsCUE is set the front-matter values are CUE constraints,
-// not data, so every reference becomes a `*` wildcard
+// not data, so every reference becomes a non-empty `?*` wildcard
 // (WildcardGlobRefs) and nothing counts as interpolated.
 func resolveFilenamePatterns(
 	patterns []string, fm map[string]any, fmIsCUE bool,

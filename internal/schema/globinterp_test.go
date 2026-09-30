@@ -206,7 +206,7 @@ func TestPathPatternSyntaxForm(t *testing.T) {
 	require.False(t, doublestar.ValidatePattern(quoted),
 		"precondition: the raw text is not a valid glob")
 	assert.True(t, doublestar.ValidatePattern(PathPatternSyntaxForm(quoted)))
-	assert.Equal(t, ".apm/skills/*/SKILL.md",
+	assert.Equal(t, ".apm/skills/?*/SKILL.md",
 		PathPatternSyntaxForm(`.apm/skills/\#(fmvar(name))/SKILL.md`))
 
 	// A pattern with no reference is checked as it was before
@@ -510,10 +510,25 @@ func TestValidateFilename_CUEFrontmatterReferenceMatchesAnyValue(t *testing.T) {
 	assert.NotContains(t, diags[0].Message, "with front matter applied")
 }
 
+// A reference becomes `?*`: one or more bytes of a single segment on
+// both glob backends, never the empty string, which a resolved value
+// can never be either.
 func TestWildcardGlobRefs(t *testing.T) {
-	assert.Equal(t, ".apm/skills/*/SKILL.md",
+	assert.Equal(t, ".apm/skills/?*/SKILL.md",
 		WildcardGlobRefs(`.apm/skills/\#(fmvar(name))/SKILL.md`))
 	assert.Equal(t, `notes/\#(draft)*.md`, WildcardGlobRefs(`notes/\#(draft)*.md`))
+
+	w := WildcardGlobRefs(`\#(fmvar(id)).md`)
+	for base, want := range map[string]bool{
+		"a.md": true, "rfc-7.md": true, ".md": false, "a/b.md": false,
+	} {
+		got, err := filepath.Match(w, base)
+		require.NoError(t, err)
+		assert.Equal(t, want, got, "filepath.Match(%q, %q)", w, base)
+		got, err = doublestar.Match(w, base)
+		require.NoError(t, err)
+		assert.Equal(t, want, got, "doublestar.Match(%q, %q)", w, base)
+	}
 }
 
 // A list or map value is present, so "missing" would send the author

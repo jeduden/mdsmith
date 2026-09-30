@@ -253,14 +253,20 @@ func resolveGlobPattern(
 }
 
 // WildcardGlobRefs replaces every well-formed reference in pattern
-// with `*`, which matches any single path segment on both glob
-// surfaces. It stands in for resolution when the front-matter values
-// are CUE constraints (the `cue-frontmatter` placeholder) rather than
-// data: `name: string` names a type, so there is no value to
-// substitute, yet the literal rest of the glob can still be checked.
+// with `?*`, which matches one or more bytes of a single path segment
+// on both glob surfaces. It stands in for resolution when the
+// front-matter values are CUE constraints (the `cue-frontmatter`
+// placeholder) rather than data: `name: string` names a type, so
+// there is no value to substitute, yet the literal rest of the glob
+// can still be checked.
+//
+// A bare `*` would also match the empty string, so
+// `\#(fmvar(id)).md` would accept the basename `.md`. Resolution
+// rejects an empty value, so the wildcard must not stand for one
+// either.
 func WildcardGlobRefs(pattern string) string {
 	out, _ := rewriteGlobRefs(pattern, func(string) (string, error) {
-		return "*", nil
+		return "?*", nil
 	})
 	return out
 }
@@ -289,7 +295,7 @@ func fmvarGlobValue(fm map[string]any, name string) (string, error) {
 // A pattern with no reference is slash-normalized, which is also the
 // form it is matched in. A pattern with a reference keeps its raw
 // text, as matching does — filepath.ToSlash would rewrite the
-// opener's `\` on Windows — with every reference replaced by `*`:
+// opener's `\` on Windows — with every reference replaced by `?*`:
 // the reference's own bytes are not glob syntax, and a quoted CUE key
 // may hold `[` or `{`. The resolved value is escaped into a literal,
 // so a pattern whose syntax form is valid stays valid once resolved.
