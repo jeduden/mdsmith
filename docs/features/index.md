@@ -158,6 +158,6 @@ kinds, then per-glob overrides. `mdsmith check --explain` and
 `mdsmith kinds resolve` show which layer set each effective value.
 
 **[Quality you can verify](quality.md).**
-The CI, Go Report Card, and Codecov badges report live project
+The CI and Codecov badges report live project
 health. mdsmith lints its own docs with the rules it ships, and a
 coverage gate blocks any merge that drops below the line.
