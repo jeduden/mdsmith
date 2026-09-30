@@ -159,6 +159,12 @@ func TestDestLocator(t *testing.T) {
 				"[<i title=\"](x.md)\">i</i>](html.md)\n\n"+
 				"![<http://h](x.md)>](auto.md)\n"))
 	})
+	t.Run("raw HTML that ends the label moves the cursor past it", func(t *testing.T) {
+		// No text follows the tag, so only the raw-HTML segment can move
+		// the cursor past the `](` inside its attribute.
+		assert.Equal(t, []string{"html.md"},
+			locateDests(t, "[<i title=\"](x.md)\">](html.md)\n"))
+	})
 	t.Run("reference-style nodes are not located", func(t *testing.T) {
 		assert.Equal(t, []string{"b.png"},
 			locateDests(t, "![][r] ![](b.png) [t][r]\n\n[r]: a.png\n"))

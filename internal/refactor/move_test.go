@@ -269,6 +269,7 @@ func TestMove_OutboundRewritesOnlyRealDestinations(t *testing.T) {
 		"[](./b.md)\n\n" +
 		"[`](./b.md)` code](./b.md)\n\n" +
 		"[<span title=\"](./b.md)\">s</span>](./b.md)\n\n" +
+		"[<img alt=\"](./b.md)\">](./b.md)\n\n" +
 		"![<http://h](./b.md)>](./b.md)\n"
 	ws := newMemWorkspace(map[string]string{"a.md": src, "b.md": "# B\n"})
 	plan, err := Move(ws, "a.md", "docs/a.md")
@@ -281,6 +282,7 @@ func TestMove_OutboundRewritesOnlyRealDestinations(t *testing.T) {
 		"[](../b.md)\n\n"+
 		"[`](./b.md)` code](../b.md)\n\n"+
 		"[<span title=\"](./b.md)\">s</span>](../b.md)\n\n"+
+		"[<img alt=\"](./b.md)\">](../b.md)\n\n"+
 		"![<http://h](./b.md)>](../b.md)\n",
 		got)
 }
