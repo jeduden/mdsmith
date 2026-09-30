@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/mdtext"
 )
@@ -26,6 +27,10 @@ import (
 //     from the line it edits, so one outside it means the plan is
 //     wrong or stale. A CRLF line's `\r` is not addressable; it is
 //     preserved so CRLF files round-trip.
+//   - A Character between the two UTF-16 units of a surrogate pair
+//     (an emoji such as 😀) is an error too: no byte offset addresses
+//     it, and rounding it to the next rune would splice bytes the plan
+//     did not name.
 //   - No byte of the original line may be claimed by two edits. Two
 //     edits whose ranges share a byte are an error naming the line and
 //     both ranges — a partial overlap, a containment, a zero-width
@@ -41,7 +46,7 @@ import (
 //
 // The overlap and same-offset rules are LSP's TextEdit rules, so a Plan
 // lands the same here as when an editor applies it; only the position
-// check is stricter than LSP's clamp.
+// checks are stricter than LSP's clamp.
 //
 // Every error names the line it found (one-based, except a negative
 // line index, which has no one-based form). Edits are grouped by the
@@ -100,7 +105,8 @@ func checkEditLine(line, nLines int, es []Edit) error {
 // left-to-right pass: the bytes before each edit, its NewText, and the
 // bytes after the last. Because accepted edits never overlap, each
 // edit's end is at or past every earlier one's, so comparing with the
-// previous edit alone finds any overlap.
+// previous edit alone finds any overlap, and one utf16Cursor maps every
+// Character to its byte offset without rescanning the row.
 func spliceLine(seg []byte, es []Edit, line int) ([]byte, error) {
 	row := seg
 	cr := len(seg) > 0 && seg[len(seg)-1] == '\r'
@@ -110,6 +116,7 @@ func spliceLine(seg []byte, es []Edit, line int) ([]byte, error) {
 	rowLen := mdtext.UTF16FromByteOffset(row, len(row))
 	sortEditsByRange(es)
 	out := make([]byte, 0, len(seg))
+	cur := utf16Cursor{row: row}
 	copied := 0 // row bytes before copied are already in out
 	for i, e := range es {
 		if err := checkEditRange(e, rowLen, line); err != nil {
@@ -122,15 +129,62 @@ func spliceLine(seg []byte, es []Edit, line int) ([]byte, error) {
 					e.Range.Start.Character, e.Range.End.Character, line+1)
 			}
 		}
-		out = append(out, row[copied:mdtext.UTF16ToByteOffset(row, e.Range.Start.Character)]...)
+		start, end, err := cur.editBytes(e, line)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, row[copied:start]...)
 		out = append(out, e.NewText...)
-		copied = mdtext.UTF16ToByteOffset(row, e.Range.End.Character)
+		copied = end
 	}
 	out = append(out, row[copied:]...)
 	if cr {
 		out = append(out, '\r')
 	}
 	return out, nil
+}
+
+// utf16Cursor maps UTF-16 Characters on row to byte offsets in one
+// forward pass. It sits after the u UTF-16 units held in row[:b].
+// spliceLine visits a line's positions in ascending order, so one
+// cursor serves every edit on the row instead of rescanning it from
+// byte 0 per position.
+type utf16Cursor struct {
+	row  []byte
+	b, u int
+}
+
+// seek advances the cursor to Character target and returns its byte
+// offset. target must be at or past the cursor and within the row.
+// ok is false when target falls between the two units of a surrogate
+// pair: no byte offset addresses it, and the cursor stops after the
+// pair.
+func (c *utf16Cursor) seek(target int) (int, bool) {
+	for c.u < target && c.b < len(c.row) {
+		r, size := utf8.DecodeRune(c.row[c.b:])
+		c.u += mdtext.NonNegativeUTF16RuneLen(r)
+		c.b += size
+	}
+	return c.b, c.u == target
+}
+
+// editBytes seeks the cursor over e's range and returns the byte
+// offsets of its start and end. It reports an error naming the
+// one-based line when either end falls inside a surrogate pair:
+// rounding it to the next rune would splice bytes the plan did not
+// address, and could land two distinct Characters at one byte.
+func (c *utf16Cursor) editBytes(e Edit, line int) (int, int, error) {
+	start, startOK := c.seek(e.Range.Start.Character)
+	end, endOK := c.seek(e.Range.End.Character)
+	if !startOK || !endOK {
+		at := e.Range.Start.Character
+		if startOK {
+			at = e.Range.End.Character
+		}
+		return 0, 0, fmt.Errorf("edit [%d,%d) on line %d splits a surrogate pair at character %d",
+			e.Range.Start.Character, e.Range.End.Character, line+1, at)
+	}
+	return start, end, nil
 }
 
 // checkEditRange reports an error when e's Characters do not address a

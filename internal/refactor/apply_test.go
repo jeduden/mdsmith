@@ -281,6 +281,66 @@ func TestApplyEdits_RejectsOutOfRangeCharacters(t *testing.T) {
 	}
 }
 
+// TestApplyEdits_RejectsSurrogatePairSplit pins that a Character
+// between the two UTF-16 units of a surrogate pair is an error. No
+// byte offset addresses it, and rounding it to the next rune boundary
+// would let two distinct Characters splice at one byte: on `😀x`,
+// edits [0,1) and [1,2) both passed the range and overlap checks, then
+// landed at byte 4.
+func TestApplyEdits_RejectsSurrogatePairSplit(t *testing.T) {
+	tests := []struct {
+		name    string
+		src     string
+		edits   []Edit
+		wantErr string
+	}{
+		{
+			name:    "two edits meeting inside the pair",
+			src:     "😀x\n",
+			edits:   []Edit{mkEdit(0, 0, 1, "A"), mkEdit(0, 1, 2, "B")},
+			wantErr: "edit [0,1) on line 1 splits a surrogate pair at character 1",
+		},
+		{
+			name:    "an insert inside the pair",
+			src:     "a😀b\n",
+			edits:   []Edit{mkEdit(0, 2, 2, "x")},
+			wantErr: "edit [2,2) on line 1 splits a surrogate pair at character 2",
+		},
+		{
+			name:    "a start inside the pair",
+			src:     "a😀b\n",
+			edits:   []Edit{mkEdit(0, 2, 4, "x")},
+			wantErr: "edit [2,4) on line 1 splits a surrogate pair at character 2",
+		},
+		{
+			name:    "an end inside the pair",
+			src:     "a😀b\n",
+			edits:   []Edit{mkEdit(0, 0, 2, "x")},
+			wantErr: "edit [0,2) on line 1 splits a surrogate pair at character 2",
+		},
+		{
+			name:    "an end inside a pair after an earlier edit",
+			src:     "ab😀\r\n",
+			edits:   []Edit{mkEdit(0, 0, 1, "A"), mkEdit(0, 1, 3, "B")},
+			wantErr: "edit [1,3) on line 1 splits a surrogate pair at character 3",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := ApplyEdits([]byte(tt.src), tt.edits)
+			require.EqualError(t, err, tt.wantErr)
+			assert.Nil(t, out)
+		})
+	}
+	t.Run("edits at the pair's edges apply", func(t *testing.T) {
+		out, err := ApplyEdits([]byte("a😀b\n"), []Edit{
+			mkEdit(0, 1, 1, "<"), mkEdit(0, 1, 3, "X"), mkEdit(0, 3, 3, ">"),
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "a<X>b\n", string(out))
+	})
+}
+
 func TestSplitKeepCRAndJoinLF(t *testing.T) {
 	src := []byte("a\r\nb\nc")
 	segs := splitKeepCR(src)
@@ -423,6 +483,74 @@ func TestCheckEditLine(t *testing.T) {
 				return
 			}
 			assert.EqualError(t, err, tt.wantErr)
+		})
+	}
+}
+
+// TestUTF16Cursor_Seek pins that the cursor maps Characters to bytes
+// moving forward only — each seek resumes where the last one stopped —
+// and reports a Character inside a surrogate pair as unaddressable.
+func TestUTF16Cursor_Seek(t *testing.T) {
+	row := []byte("aé😀b") // bytes: a=1 é=2 😀=4 b=1; units: 1 1 2 1
+	t.Run("maps each rune boundary to its byte offset", func(t *testing.T) {
+		c := utf16Cursor{row: row}
+		for _, tc := range []struct{ ch, b int }{{0, 0}, {1, 1}, {2, 3}, {4, 7}, {5, 8}} {
+			b, ok := c.seek(tc.ch)
+			require.Truef(t, ok, "character %d", tc.ch)
+			assert.Equalf(t, tc.b, b, "character %d", tc.ch)
+		}
+	})
+	t.Run("resumes from the previous seek", func(t *testing.T) {
+		c := utf16Cursor{row: row}
+		_, _ = c.seek(2)
+		assert.Equal(t, utf16Cursor{row: row, b: 3, u: 2}, c)
+		b, ok := c.seek(2)
+		assert.True(t, ok)
+		assert.Equal(t, 3, b)
+	})
+	t.Run("a Character inside a surrogate pair stops after the pair", func(t *testing.T) {
+		c := utf16Cursor{row: row}
+		b, ok := c.seek(3)
+		assert.False(t, ok)
+		assert.Equal(t, 7, b)
+	})
+	t.Run("an invalid byte counts one unit", func(t *testing.T) {
+		c := utf16Cursor{row: []byte("\xffz")}
+		b, ok := c.seek(1)
+		assert.True(t, ok)
+		assert.Equal(t, 1, b)
+	})
+}
+
+func TestUTF16Cursor_EditBytes(t *testing.T) {
+	row := []byte("a😀b")
+	tests := []struct {
+		name               string
+		edit               Edit
+		wantStart, wantEnd int
+		wantErr            string
+	}{
+		{"a range around the pair", mkEdit(2, 1, 3, "x"), 1, 5, ""},
+		{"an insert after the pair", mkEdit(2, 3, 3, "x"), 5, 5, ""},
+		{
+			"a start inside the pair", mkEdit(2, 2, 3, "x"), 0, 0,
+			"edit [2,3) on line 3 splits a surrogate pair at character 2",
+		},
+		{
+			"an end inside the pair", mkEdit(2, 1, 2, "x"), 0, 0,
+			"edit [1,2) on line 3 splits a surrogate pair at character 2",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := utf16Cursor{row: row}
+			start, end, err := c.editBytes(tt.edit, 2)
+			if tt.wantErr != "" {
+				assert.EqualError(t, err, tt.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, [2]int{tt.wantStart, tt.wantEnd}, [2]int{start, end})
 		})
 	}
 }
