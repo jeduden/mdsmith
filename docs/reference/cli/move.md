@@ -89,10 +89,13 @@ two phases.
    each temp file is renamed over its original. Last, `<src>`
    is moved. If a rename or the move fails, `move` writes the
    original bytes back to every file it had replaced. Any
-   directory it created for `<dst>` stays behind, empty.
+   directory it created for `<dst>` stays behind, empty. A
+   rewritten file that was a symlink becomes a regular file,
+   and a rollback puts the old bytes in that file, not the link.
 
-After a failure, stderr names the cause. Its last line gives
-the state of the workspace:
+A plan failure prints only its cause. Nothing was written.
+After a failed write, stderr names the cause. Its last line
+gives the state of the workspace:
 
 - `no file was changed`: the failure came before any file was
   replaced.
