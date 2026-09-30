@@ -76,8 +76,11 @@ mdsmith check -f json -o diagnostics.json docs/
 mdsmith check -f json -o - docs/ > diagnostics.json
 ```
 
-Runtime errors always stay on stderr, so they never land
-in the report. After one during linting, such as a file
+Runtime errors always go to stderr, so an `-o` report
+never contains them. On the default route they share
+stderr with the report and print before it, so capture
+a `json` or `sarif` report with `-o`, not `2>`. After a
+runtime error during linting, such as a file
 over the size limit, the report still covers the files
 that were linted. The verbose log (`-v`) and the
 non-Markdown skip warning stay on stderr too. An empty
