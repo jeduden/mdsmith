@@ -231,11 +231,14 @@ func fixFiles(fileArgs []string, opts fixCLIOpts) int {
 		fileArgs, opts.configPath, opts.verbose, opts.walk, opts.maxInputSize,
 		nonMarkdownSkipWarner(os.Stderr, opts.reportFlags),
 	)
-	if code == 0 {
-		return reportFixNoFiles(opts, processIO())
-	}
 	if code > 0 {
 		return code
+	}
+	if c := refuseOutputOverInput("fix", opts.output, runInputs{files: files, args: fileArgs}); c >= 0 {
+		return c
+	}
+	if code == 0 {
+		return reportFixNoFiles(opts, processIO())
 	}
 	return runFixThroughSession(cfg, cfgPath, opts, logger, files, maxBytes)
 }
@@ -254,11 +257,14 @@ func reportFixNoFiles(opts fixCLIOpts, rio reportIO) int {
 // and fixes them. Returns the appropriate exit code.
 func fixDiscovered(opts fixCLIOpts) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(opts.configPath, opts.verbose, opts.walk)
-	if code == 0 {
-		return reportFixNoFiles(opts, processIO())
-	}
 	if code > 0 {
 		return code
+	}
+	if c := refuseOutputOverInput("fix", opts.output, runInputs{files: files, patterns: cfg.Files}); c >= 0 {
+		return c
+	}
+	if code == 0 {
+		return reportFixNoFiles(opts, processIO())
 	}
 
 	maxBytes, err := resolveMaxInputBytes(cfg, opts.maxInputSize)

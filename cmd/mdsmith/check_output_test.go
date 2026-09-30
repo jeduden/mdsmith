@@ -308,6 +308,12 @@ func TestParseCheckFlags_BadColorIsUsageError(t *testing.T) {
 	}
 }
 
+func TestColorFlag_Types(t *testing.T) {
+	var mode colorMode
+	assert.Equal(t, "when", colorFlag{&mode}.Type())
+	assert.Equal(t, "bool", noColorFlag{&mode}.Type())
+}
+
 // --help lists --color with its value and --no-color as a plain
 // switch, with no "(default ...)" noise for either.
 func TestParseCheckFlags_HelpListsColorFlags(t *testing.T) {

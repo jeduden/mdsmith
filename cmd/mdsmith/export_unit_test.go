@@ -150,6 +150,30 @@ func TestWriteExportOutput_DashIsStdout(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "no file named - may be created")
 }
 
+// export -o may not name the file being exported, however it is
+// spelled: export never modifies its source.
+func TestRefuseExportOverInput(t *testing.T) {
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.WriteFile("doc.md", []byte("# D\n"), 0o644))
+	require.NoError(t, os.WriteFile("other.md", []byte("# O\n"), 0o644))
+	for _, tc := range []struct {
+		input, output string
+		want          int
+	}{
+		{"doc.md", "", -1},
+		{"doc.md", "-", -1},
+		{"doc.md", "other.md", -1},
+		{"doc.md", "new.md", -1},
+		{"missing.md", "doc.md", -1},
+	} {
+		assert.Equal(t, tc.want, refuseExportOverInput(tc.input, tc.output), "%s -o %s", tc.input, tc.output)
+	}
+	stderr := captureStderr(func() {
+		assert.Equal(t, 2, refuseExportOverInput("doc.md", "./doc.md"))
+	})
+	assert.Equal(t, "mdsmith: export: refusing --output \"./doc.md\": it is the file being exported\n", stderr)
+}
+
 // minimalConfig builds a config.Config with frontMatter enabled and
 // the named ignore patterns, suitable for prepareExportFile.
 func minimalConfig() *config.Config {

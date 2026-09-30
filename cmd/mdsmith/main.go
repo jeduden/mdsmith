@@ -325,7 +325,8 @@ func splitStdinArg(args []string) (hasStdin bool, fileArgs []string) {
 // discoverFiles loads config, discovers files from config patterns, and
 // returns the config, config path, logger, and discovered file list. On
 // error it prints a message and returns 2; when no file is found it
-// returns 0 silently. A negative code means "continue with the returned
+// returns 0 silently, still with the config, whose files: patterns the
+// -o guard reads. A negative code means "continue with the returned
 // values".
 func discoverFiles(
 	configPath string, verbose bool, walk walkCLI,
@@ -341,7 +342,7 @@ func discoverFiles(
 		logger.Printf("config: %s", cfgPath)
 	}
 	if len(cfg.Files) == 0 {
-		return nil, "", nil, nil, 0
+		return cfg, cfgPath, logger, nil, 0
 	}
 
 	files, err := discovery.Discover(discovery.Options{
@@ -354,7 +355,7 @@ func discoverFiles(
 		return nil, "", nil, nil, 2
 	}
 	if len(files) == 0 {
-		return nil, "", nil, nil, 0
+		return cfg, cfgPath, logger, nil, 0
 	}
 	return cfg, cfgPath, logger, files, -1
 }

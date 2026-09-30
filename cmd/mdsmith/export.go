@@ -45,12 +45,33 @@ func runExport(args []string) int {
 		fmt.Fprintf(os.Stderr, "mdsmith: export requires a file argument\n")
 		return 2
 	case 1:
+		if code := refuseExportOverInput(posArgs[0], flags.output); code >= 0 {
+			return code
+		}
 		return doExport(posArgs[0], flags)
 	default:
 		fmt.Fprintf(os.Stderr,
 			"mdsmith: export takes a single file argument (got %d)\n", len(posArgs))
 		return 2
 	}
+}
+
+// refuseExportOverInput stops an export whose -o path is the file
+// being exported: the copy would replace its source, which export
+// never modifies. The two are compared by file identity, so another
+// spelling, a link, or a case-insensitive file system cannot hide the
+// match. It prints a usage error and returns 2, or returns -1.
+func refuseExportOverInput(input, output string) int {
+	if output == "" || output == "-" {
+		return -1
+	}
+	oi, oerr := os.Stat(output)
+	ii, ierr := os.Stat(input)
+	if oerr != nil || ierr != nil || !os.SameFile(oi, ii) {
+		return -1
+	}
+	fmt.Fprintf(os.Stderr, "mdsmith: export: refusing --output %q: it is the file being exported\n", output)
+	return 2
 }
 
 // parseExportFlags binds the flagset and parses args. Returns

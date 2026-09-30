@@ -32,7 +32,11 @@ both is a usage error.
 
 `-o -` writes to stdout, the same as no `-o`. The dash
 means stdout for [`check`](check.md#report-output) and
-[`fix`](fix.md#report-output) too. A stale-body
+[`fix`](fix.md#report-output) too. An `-o` path that is
+the file being exported is a usage error (exit `2`),
+since `export` never modifies its source. The two are
+compared by file identity, so another spelling or a
+link counts. A stale-body
 diagnostic goes to stderr. It is colored on a terminal,
 and `NO_COLOR` and `FORCE_COLOR` apply as they do for
 [`check`](check.md#color); `export` has no color flag.

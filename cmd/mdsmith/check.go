@@ -120,11 +120,14 @@ func checkFiles(fileArgs []string, opts checkCLIOpts) int {
 		fileArgs, opts.configPath, opts.verbose, opts.walk, opts.maxInputSize,
 		nonMarkdownSkipWarner(os.Stderr, opts.reportFlags),
 	)
-	if code == 0 {
-		return reportNoFiles(opts.reportFlags, processIO())
-	}
 	if code > 0 {
 		return code
+	}
+	if c := refuseOutputOverInput("check", opts.output, runInputs{files: files, args: fileArgs}); c >= 0 {
+		return c
+	}
+	if code == 0 {
+		return reportNoFiles(opts.reportFlags, processIO())
 	}
 
 	sess := sessionForCLI(cfg, cfgPath)
@@ -193,11 +196,14 @@ func checkStdin(opts checkCLIOpts) int {
 // and lints them. Returns the appropriate exit code.
 func checkDiscovered(opts checkCLIOpts) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(opts.configPath, opts.verbose, opts.walk)
-	if code == 0 {
-		return reportNoFiles(opts.reportFlags, processIO())
-	}
 	if code > 0 {
 		return code
+	}
+	if c := refuseOutputOverInput("check", opts.output, runInputs{files: files, patterns: cfg.Files}); c >= 0 {
+		return c
+	}
+	if code == 0 {
+		return reportNoFiles(opts.reportFlags, processIO())
 	}
 
 	maxBytes, err := resolveMaxInputBytes(cfg, opts.maxInputSize)
