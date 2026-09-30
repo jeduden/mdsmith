@@ -97,10 +97,10 @@ func tokenizeParagraph(src []byte, start, end int, spans []lint.Range) []string 
 // width: "U. S. A." moves to the next line whole rather than dragging
 // the line over the limit.
 //
-// No line may read as a line that ends the paragraph
-// (lint.InterruptsParagraph): a line starting "# " would become a
-// heading, "> " a block quote, "1. " a list (issue #844). Lines are as
-// full as that allows; see linePlanner. Returns nil for an empty token
+// No line may be unsafe (unsafeLine): a line starting "# " would become
+// a heading, "> " a block quote, "1. " a list (issue #844), and "|-|"
+// under a line with a pipe a table. Lines are as full as that allows;
+// see linePlanner. Returns nil for an empty token
 // list, when every layout has such a line, or when every layout that
 // avoids them has a line more than maxOverflowUnits units past width.
 func wrapTokens(tokens []string, indent string, width int, glue func(prev string) bool) []string {
@@ -124,8 +124,7 @@ const maxOverflowUnits = 8
 
 // linePlanner lays wrap units out into lines. A line "fits" when it is
 // no wider than width or holds a single unit, and it is "safe" when
-// lint.InterruptsParagraph is false for it. Every line of a layout is
-// safe.
+// unsafeLine is false for it. Every line of a layout is safe.
 //
 // The planner works back to front, so each choice knows what the rest
 // of the paragraph allows. For each unit s it picks the line that starts

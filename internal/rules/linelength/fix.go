@@ -26,7 +26,7 @@ func (r *Rule) FixTitle() string { return "Reflow long lines" }
 // or link — is left on its own over-long line.
 //
 // No rewrapped line may start a block that would end the paragraph, such
-// as "# " (a heading) or "> " (a block quote); see lint.InterruptsParagraph.
+// as "# " (a heading) or "> " (a block quote); see unsafeLine.
 // The wrap moves an earlier word down to lead such a line instead. A line
 // runs past Max for this only when no layout within Max exists. A
 // paragraph is left as written when it has no safe layout, or when one
