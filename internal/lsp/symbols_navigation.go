@@ -1,8 +1,9 @@
 package lsp
 
 import (
+	"cmp"
 	"encoding/json"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -13,6 +14,32 @@ import (
 // and /references, plus the target-resolution helpers they share. Split
 // out of symbols.go so each LSP dispatch group owns its own file
 // (cf. rename.go, completion.go).
+
+// compareLocations orders two locations by URI, then start line, start
+// column, end line and end column. That is a total order over location
+// values: only identical locations compare equal, so a sort by it gives
+// the same result whatever order its input arrives in.
+func compareLocations(a, b location) int {
+	return cmp.Or(
+		cmp.Compare(a.URI, b.URI),
+		cmp.Compare(a.Range.Start.Line, b.Range.Start.Line),
+		cmp.Compare(a.Range.Start.Character, b.Range.Start.Character),
+		cmp.Compare(a.Range.End.Line, b.Range.End.Line),
+		cmp.Compare(a.Range.End.Character, b.Range.End.Character),
+	)
+}
+
+// sortLocations orders locs by compareLocations, the order every
+// reference/navigation handler in this file returns. The callers
+// collect locs by ranging over index maps, so the total order keeps
+// each response deterministic. slices.SortFunc compares the concrete
+// location values directly, unlike sort.Slice, which drives
+// reflect.Swapper internally (see docs/development/high-performance-go.md,
+// "reflect in hot paths"). This runs on every textDocument/references
+// and workspace-symbol-by-kind LSP request.
+func sortLocations(locs []location) {
+	slices.SortFunc(locs, compareLocations)
+}
 
 // handleDefinition resolves textDocument/definition.
 func (s *Server) handleDefinition(msg *requestMessage) {
@@ -223,12 +250,7 @@ func (s *Server) locationsForRefsToHeading(rel, anchor string, idx *index.Index)
 			Range: rangeAt(e.SourceLine, e.SourceCol, nil),
 		})
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].URI != out[j].URI {
-			return out[i].URI < out[j].URI
-		}
-		return out[i].Range.Start.Line < out[j].Range.Start.Line
-	})
+	sortLocations(out)
 	return out
 }
 
@@ -260,7 +282,7 @@ func (s *Server) locationsForFilesByKind(kind string, idx *index.Index) []locati
 			Range: Range{Start: Position{Line: 0, Character: 0}, End: Position{Line: 0, Character: 0}},
 		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].URI < out[j].URI })
+	sortLocations(out)
 	return out
 }
 
@@ -371,12 +393,7 @@ func (s *Server) locationsForFileTop(file string, idx *index.Index) []location {
 			Range: rangeAt(e.SourceLine, e.SourceCol, nil),
 		})
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].URI != out[j].URI {
-			return out[i].URI < out[j].URI
-		}
-		return out[i].Range.Start.Line < out[j].Range.Start.Line
-	})
+	sortLocations(out)
 	return out
 }
 
@@ -404,11 +421,6 @@ func (s *Server) locationsForFileReferences(file string, idx *index.Index) []loc
 			Range: rangeAt(e.SourceLine, e.SourceCol, nil),
 		})
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].URI != out[j].URI {
-			return out[i].URI < out[j].URI
-		}
-		return out[i].Range.Start.Line < out[j].Range.Start.Line
-	})
+	sortLocations(out)
 	return out
 }

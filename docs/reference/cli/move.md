@@ -114,18 +114,55 @@ cross-directory move, check them by hand.
 When `<src>` is tracked in the current Git work tree, `move`
 runs `git mv` so the rename is staged in the index. Otherwise
 it falls back to a plain filesystem rename. The destination's
-parent directory is created first. A tracked file whose
-`git mv` fails aborts the whole operation — the source stays in
-place and no edit is written.
+parent directory is created first. A failed `git mv` leaves
+the source in place, and `move` restores every file it had
+rewritten (see [Safety](#safety)).
 
-The text edits apply before the file is moved, so the relocated
-file carries its rewritten body.
+The file moves last, after every text edit is written, so the
+relocated file carries its rewritten body.
 
 ## Safety
 
-An existing `<dst>` aborts with exit code 2 and nothing is
-moved or written. `--dry-run` prints the edits and the planned
-move and changes nothing.
+`move` is all-or-nothing. It rewrites every file and moves
+`<src>`, or it exits 2 and undoes what it wrote. It works in
+two phases.
+
+1. **Plan.** `move` reads every file it will rewrite and
+   computes the new bytes in memory. An existing `<dst>`, an
+   unreadable file, or an edit that does not apply exits 2
+   here, before anything is written. `--dry-run` runs this
+   phase too, so it reports the same errors. Then it prints
+   the edits and the planned move, and stops.
+2. **Write.** `move` writes the new bytes of each file to a
+   temp file in the same directory, with the permission bits
+   of the original. If this fails, for example on a full disk,
+   `move` deletes the temp files and no file changes. Next,
+   each temp file is renamed over its original. Last, `<src>`
+   is moved. If a rename or the move fails, `move` writes the
+   original bytes back to every file it had replaced. Any
+   directory it created for `<dst>` stays behind, empty. A
+   rewritten file that was a symlink becomes a regular file,
+   and a rollback puts the old bytes in that file, not the link.
+
+A plan failure prints only its cause. Nothing was written.
+After a failed write, stderr names the cause. Its last line
+gives the state of the workspace:
+
+- `no file was changed`: the failure came before any file was
+  replaced.
+- `restored N file(s) to their original content`: the rollback
+  put back every replaced file.
+- `N file(s) keep the rewritten content: <files>`: the
+  rollback could not restore these files. A `restoring <file>`
+  line gives the reason for each one. Restore them by hand, or
+  with `git restore` when they are tracked.
+
+This guarantee covers the failures `move` can see. A crash or
+a power loss in the write phase can leave some files rewritten
+and others not. Each file is still whole: it holds the old
+bytes or the new bytes, never a mix of both. Temp files named
+`<file>.<digits>.tmp` may be left next to the files; delete
+them.
 
 ## Flags
 
@@ -183,11 +220,11 @@ mdsmith move guide.md reference/guide.md --dry-run
 
 ## Exit codes
 
-| Code | Meaning                                             |
-| ---- | --------------------------------------------------- |
-| 0    | Moved                                               |
-| 1    | Source not found                                    |
-| 2    | Existing destination, traversal, or `git mv` failed |
+| Code | Meaning                                                               |
+| ---- | --------------------------------------------------------------------- |
+| 0    | Moved                                                                 |
+| 1    | Source not found                                                      |
+| 2    | Existing destination, traversal, or a failed edit, write, or `git mv` |
 
 ## See also
 
