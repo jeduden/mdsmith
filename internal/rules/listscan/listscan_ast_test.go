@@ -318,10 +318,14 @@ func lastLineOfNode(f *lint.File, n ast.Node) int {
 }
 
 // snippets returns the markdown corpus to validate against, keyed by a
-// descriptive name. It merges coreSnippets with the bad fixtures.
+// descriptive name. It merges coreSnippets and interruptSnippets with the
+// bad fixtures.
 func snippets(t *testing.T) map[string]string {
 	t.Helper()
 	m := coreSnippets()
+	for k, v := range interruptSnippets() {
+		m[k] = v
+	}
 	for k, v := range fixtureSnippets(t) {
 		m[k] = v
 	}
@@ -387,6 +391,14 @@ func coreSnippets() map[string]string {
 		"nested-then-fence-outer":     "- a\n  - b\n\n  ```\n  c\n  ```\n",
 		"para-blank-para-nested":      "- a\n\n  more\n\n  - sub\n",
 		"tilde-fence-in-item":         "- a\n\n  ~~~\n  x\n  ~~~\n\n- b\n",
+	}
+}
+
+// interruptSnippets cover which list markers interrupt a paragraph with
+// no blank line before them. CommonMark lets a list item interrupt a
+// paragraph only when it has content and, if ordered, starts at 1.
+func interruptSnippets() map[string]string {
+	return map[string]string{
 		// An ordered marker numbered other than 1 cannot interrupt a
 		// top-level paragraph: goldmark reads "2026." as lazy paragraph text,
 		// not a new list, so listscan must report zero lists here.
@@ -394,8 +406,46 @@ func coreSnippets() map[string]string {
 		// A blank line closes the paragraph, so the same marker then starts an
 		// ordered list with Start 2.
 		"ordered-nonone-after-blank": "Some prose.\n\n2. real item\n3. another\n",
-		// An ordered marker numbered 1 always interrupts a paragraph.
+		// An ordered marker numbered 1 interrupts a paragraph when the item
+		// has content.
 		"ordered-one-interrupts-toplevel-para": "Some prose\n1. interrupts here\n",
+		// An empty item cannot interrupt a paragraph, bullet or ordered:
+		// goldmark reads a lone marker there as paragraph text (a lone
+		// "-" is a setext underline), so listscan must report no list.
+		// Reflow puts such a lone marker on a line of its own.
+		"empty-star-after-toplevel-para":      "Some prose\n*\nmore prose\n",
+		"empty-plus-after-toplevel-para":      "Some prose\n+\nmore prose\n",
+		"empty-dash-after-toplevel-para":      "Some prose\n-\n",
+		"empty-one-dot-after-toplevel-para":   "Some prose\n1.\nmore prose\n",
+		"empty-one-paren-after-toplevel-para": "Some prose\n1)\nmore prose\n",
+		"empty-star-after-item-para":          "- a\n  *\n",
+		"empty-one-dot-after-item-para":       "- a\n  1.\n",
+		// After a blank line an empty item starts a list as usual.
+		"empty-one-dot-after-blank": "Some prose\n\n1.\n",
+		// A setext underline cannot be a lazy line, so a lower-indent
+		// "===" or "--" after an item's paragraph is lazy paragraph text:
+		// the item stays open, and the next item joins the same list.
+		"lazy-equals-after-item-para": "- a\n===\n- b\n",
+		"lazy-dashes-after-item-para": "- a\n--\n- b\n",
+		// A setext underline in the paragraph's own container turns the
+		// paragraph into a heading and closes it, so a marker after it
+		// interrupts nothing and starts a list, even at 2.
+		"setext-dash-then-ordered":           "Some prose\n-\n2. item\n",
+		"setext-dashes-then-ordered":         "Some prose\n--\n2. item\n",
+		"setext-equals-then-ordered":         "Some prose\n===\n2. item\n",
+		"setext-dash-in-item-then-ordered":   "- a\n  -\n  2. b\n",
+		"setext-equals-in-item-then-ordered": "- a\n  ===\n  2. b\n",
+		"setext-in-item-then-paragraph":      "- a\n  ===\n  more\n",
+		// With no paragraph open, "===" starts one, which "2." continues.
+		"equals-opens-para-then-ordered": "===\n2. item\n",
+		// A block quote interrupts an item's paragraph and closes the
+		// list, and after it "2." starts a list: the quote's paragraph
+		// sits in another container, so the start-at-1 rule does not
+		// apply. A backtick fence whose info string holds a backtick is
+		// no fence, so that line is lazy text and the item stays open.
+		"quote-after-item-para":      "- a\n> q\n- b\n",
+		"ordered-after-quote":        "> quote\n2. x\n",
+		"backtick-info-lazy-in-item": "- a\n```go `x`\n- b\n",
 	}
 }
 

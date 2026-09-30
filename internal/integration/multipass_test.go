@@ -134,3 +134,32 @@ func TestMultiPassFix_CrossFileCatalogIncludeCascade(t *testing.T) {
 	assert.NotContains(t, string(got), "SUMMARY_V1",
 		"a_top.md still carries the pre-merge catalog summary")
 }
+
+// TestMultiPassFix_ReflowKeepsFootnoteText runs line-length reflow with
+// MDS053 (no-unused-link-definitions), whose fixer deletes a link
+// reference definition nothing uses. Reflow once cut a first line to
+// "[^1]: <url>", which the canonical parser reads as such a definition,
+// so the fix deleted the marker and the URL. The text must survive; the
+// first line keeps its URL and so still runs past max.
+func TestMultiPassFix_ReflowKeepsFootnoteText(t *testing.T) {
+	src := "# Notes\n\n[^1]: https://example.com/a/long/path/abc is where this came from.\n"
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "doc.md")
+	require.NoError(t, os.WriteFile(mdFile, []byte(src), 0o644))
+
+	cfg := &config.Config{
+		Rules: map[string]config.RuleCfg{
+			"line-length":                {Enabled: true, Settings: map[string]any{"max": 30, "reflow": true}},
+			"no-unused-link-definitions": {Enabled: true},
+		},
+	}
+	result := (&fix.Fixer{Config: cfg, Rules: rule.All()}).Fix([]string{mdFile})
+	require.Empty(t, result.Errors, "unexpected errors: %v", result.Errors)
+
+	got, err := os.ReadFile(mdFile)
+	require.NoError(t, err)
+	assert.Equal(t, "# Notes\n\n[^1]: https://example.com/a/long/path/abc is\nwhere this came from.\n", string(got))
+	for _, d := range result.Diagnostics {
+		assert.Equal(t, "MDS001", d.RuleID, "only the over-long first line may remain: %+v", d)
+	}
+}

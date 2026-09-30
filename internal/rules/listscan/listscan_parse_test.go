@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -78,16 +79,6 @@ func TestClosingFence(t *testing.T) {
 	assert.True(t, closingFence([]byte("```"), fi))
 }
 
-// TestInterruptsParagraph covers the thematic-break return-true branch.
-func TestInterruptsParagraph(t *testing.T) {
-	assert.True(t, interruptsParagraph([]byte("---"), 0))
-	assert.True(t, interruptsParagraph([]byte("***"), 0))
-	// ATX heading interrupts.
-	assert.True(t, interruptsParagraph([]byte("# Heading"), 0))
-	// Plain text does not.
-	assert.False(t, interruptsParagraph([]byte("plain text"), 0))
-}
-
 // TestParse_LazyParaContinuation checks that a bare continuation line at
 // column 0 (below the item's content column) is absorbed as lazy paragraph
 // text, keeping the item open — exercises the lazy-break in scanLine.
@@ -108,11 +99,31 @@ func TestParse_UnclosedFence(t *testing.T) {
 }
 
 // TestParse_ThematicBreakSplitsList checks that a thematic break after a
-// list item ends the list — exercises interruptsParagraph returning true
-// inside scanLine's lazy check.
+// list item ends the list — exercises lint.StartsInterruptingBlock
+// returning true inside scanLine's lazy check.
 func TestParse_ThematicBreakSplitsList(t *testing.T) {
 	src := "- a\n- b\n---\ntext\n"
 	lists, _ := Parse(split(src))
 	assert.Len(t, lists, 1, "thematic break closes the list")
 	assert.Equal(t, 2, len(lists[0].Items))
+}
+
+// TestParser_IsSetextUnderline covers each condition: a paragraph open
+// in the line's own container, no blank before it, within three columns
+// of that container, and a run of one of '=' or '-'.
+func TestParser_IsSetextUnderline(t *testing.T) {
+	root := &parser{topInParagraph: true}
+	for _, line := range []string{"=", "===", "-", "--", "   ---  "} {
+		assert.True(t, root.isSetextUnderline([]byte(line), astutil.CountLeadingSpaces([]byte(line))), "%q", line)
+	}
+	for _, line := range []string{"= =", "=-", "--x", "    ==="} {
+		assert.False(t, root.isSetextUnderline([]byte(line), astutil.CountLeadingSpaces([]byte(line))), "%q", line)
+	}
+	assert.False(t, (&parser{}).isSetextUnderline([]byte("==="), 0), "no paragraph is open")
+	assert.False(t, (&parser{topInParagraph: true, blankRun: 1}).isSetextUnderline([]byte("==="), 0))
+
+	item := &parser{stack: []frame{{contentCol: 2, inParagraph: true}}}
+	assert.True(t, item.isSetextUnderline([]byte("  --"), 2))
+	assert.False(t, item.isSetextUnderline([]byte("--"), 0), "a lazy line is no underline")
+	assert.False(t, item.isSetextUnderline([]byte("      --"), 6))
 }

@@ -105,7 +105,7 @@ func TestTokenizeParagraph_SkipsSpansBeforeStart(t *testing.T) {
 func TestWrapTokens_GreedyNoGlue(t *testing.T) {
 	tokens := []string{"The", "quick", "brown", "fox", "jumps"}
 	noGlue := func(string) bool { return false }
-	got := wrapTokens(tokens, "", 11, noGlue)
+	got := wrapTokens(tokens, nil, "", 11, noGlue)
 	want := []string{"The quick", "brown fox", "jumps"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("wrapTokens = %q, want %q", got, want)
@@ -117,13 +117,13 @@ func TestWrapTokens_GluePreventsBreakAfterAbbrev(t *testing.T) {
 	noGlue := func(string) bool { return false }
 	glue := func(prev string) bool { return prev == "e.g." }
 
-	gotNo := wrapTokens(tokens, "", 9, noGlue)
+	gotNo := wrapTokens(tokens, nil, "", 9, noGlue)
 	wantNo := []string{"aaaa e.g.", "bbbb"} // line ends with the abbreviation
 	if !reflect.DeepEqual(gotNo, wantNo) {
 		t.Fatalf("wrapTokens(noGlue) = %q, want %q", gotNo, wantNo)
 	}
 
-	gotGlue := wrapTokens(tokens, "", 9, glue)
+	gotGlue := wrapTokens(tokens, nil, "", 9, glue)
 	// "e.g. bbbb" is one unit; it does not fit after "aaaa", so it wraps
 	// whole — the abbreviation is never left at a line end, and the line
 	// never overflows width.
@@ -138,7 +138,7 @@ func TestWrapTokens_GluedUnitWrapsWholeNoOverflow(t *testing.T) {
 	// wraps as a whole rather than overflowing the line.
 	tokens := []string{"shelved", "J.", "R.", "R.", "Tolkien", "today"}
 	initialGlue := func(prev string) bool { return prev == "J." || prev == "R." }
-	got := wrapTokens(tokens, "", 16, initialGlue)
+	got := wrapTokens(tokens, nil, "", 16, initialGlue)
 	want := []string{"shelved", "J. R. R. Tolkien", "today"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("wrapTokens = %q, want %q", got, want)
@@ -211,7 +211,7 @@ func TestWrapTokensAllocBudget(t *testing.T) {
 	}
 	noGlue := func(string) bool { return false }
 	allocs := testing.AllocsPerRun(100, func() {
-		_ = wrapTokens(tokens, "", 200, noGlue)
+		_ = wrapTokens(tokens, nil, "", 200, noGlue)
 	})
 	t.Logf("wrapTokens allocs/op = %.0f (budget = %d)",
 		allocs, wrapTokensAllocBudget)
@@ -224,7 +224,7 @@ func TestWrapTokensAllocBudget(t *testing.T) {
 
 func TestWrapTokens_LongTokenOwnsLine(t *testing.T) {
 	tokens := []string{"short", "thisisaverylongunbreakabletoken", "tail"}
-	got := wrapTokens(tokens, "", 10, func(string) bool { return false })
+	got := wrapTokens(tokens, nil, "", 10, func(string) bool { return false })
 	want := []string{"short", "thisisaverylongunbreakabletoken", "tail"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("wrapTokens = %q, want %q", got, want)
@@ -233,7 +233,7 @@ func TestWrapTokens_LongTokenOwnsLine(t *testing.T) {
 
 func TestWrapTokens_Indent(t *testing.T) {
 	tokens := []string{"alpha", "beta", "gamma"}
-	got := wrapTokens(tokens, "  ", 12, func(string) bool { return false })
+	got := wrapTokens(tokens, nil, "  ", 12, func(string) bool { return false })
 	want := []string{"  alpha beta", "  gamma"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("wrapTokens = %q, want %q", got, want)
@@ -241,7 +241,7 @@ func TestWrapTokens_Indent(t *testing.T) {
 }
 
 func TestWrapTokens_Empty(t *testing.T) {
-	if got := wrapTokens(nil, "", 80, func(string) bool { return false }); got != nil {
+	if got := wrapTokens(nil, nil, "", 80, func(string) bool { return false }); got != nil {
 		t.Errorf("wrapTokens(nil) = %q, want nil", got)
 	}
 }
