@@ -25,7 +25,7 @@ func TestApplyEdits(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "# Install\n", string(out))
 	})
-	t.Run("two edits same line apply right-to-left", func(t *testing.T) {
+	t.Run("two edits on one line both apply", func(t *testing.T) {
 		// `[a](#x) [b](#y)` → rewrite both fragments.
 		out, err := ApplyEdits([]byte("[a](#x) [b](#y)\n"), []Edit{
 			mkEdit(0, 5, 6, "X"),
@@ -51,16 +51,18 @@ func TestApplyEdits(t *testing.T) {
 	})
 }
 
-// TestApplyEdits_SameOffsetAndOverlapCharacterization pins what
-// ApplyEdits does today with edits that share a start offset or
-// overlap. It adds no checks: every edit is spliced in turn, rightmost
-// start first (ties keep input order). Each edit's range is mapped to
-// bytes against the original row but spliced into the row the previous
-// splice left behind, so a left edit that ends past the shrunk row
-// errors rather than clamping. These cases document that contract so a
-// refactor cannot change it silently — e.g. two identical zero-width
-// inserts both land (`abcxxdef`), they are not merged into one.
-func TestApplyEdits_SameOffsetAndOverlapCharacterization(t *testing.T) {
+// TestApplyEdits_SameOffsetAndOverlap pins the same-line contract. No
+// byte of the original row may be claimed by two edits: a partial
+// overlap, a containment, an insert strictly inside another edit's
+// range, and two identical replacements are all errors naming the line
+// and both ranges (in document order, whatever the input order). Edits
+// may touch: an insert at a replacement's start or end and adjacent
+// replacements all apply. Zero-width inserts at one offset all apply in
+// input order — two identical inserts both land (`abcxxdef`), they are
+// not merged — and before a replacement starting at that offset. These
+// are LSP's TextEdit rules, so a Plan lands the same here as in an
+// editor.
+func TestApplyEdits_SameOffsetAndOverlap(t *testing.T) {
 	tests := []struct {
 		name    string
 		edits   []Edit
@@ -73,29 +75,69 @@ func TestApplyEdits_SameOffsetAndOverlapCharacterization(t *testing.T) {
 			want:  "abcxxdef\n",
 		},
 		{
-			name:  "distinct zero-width inserts at one offset: later edit lands leftmost",
+			name:  "distinct zero-width inserts at one offset land in input order",
 			edits: []Edit{mkEdit(0, 3, 3, "x"), mkEdit(0, 3, 3, "y")},
-			want:  "abcyxdef\n",
+			want:  "abcxydef\n",
 		},
 		{
-			name:  "identical same-range replacements both apply",
-			edits: []Edit{mkEdit(0, 1, 3, "X"), mkEdit(0, 1, 3, "X")},
-			want:  "aXef\n",
+			name:  "insert at a replacement's start lands before it",
+			edits: []Edit{mkEdit(0, 3, 3, "x"), mkEdit(0, 3, 5, "Y")},
+			want:  "abcxYf\n",
 		},
 		{
-			name:  "partial overlap splices sequentially",
-			edits: []Edit{mkEdit(0, 1, 4, "X"), mkEdit(0, 2, 5, "Y")},
-			want:  "aX\n",
+			name:  "insert at a replacement's start lands before it whatever the input order",
+			edits: []Edit{mkEdit(0, 3, 5, "Y"), mkEdit(0, 3, 3, "x")},
+			want:  "abcxYf\n",
+		},
+		{
+			name:  "insert at a replacement's end lands after it",
+			edits: []Edit{mkEdit(0, 5, 5, "x"), mkEdit(0, 3, 5, "Y")},
+			want:  "abcYxf\n",
+		},
+		{
+			name:  "adjacent replacements both apply",
+			edits: []Edit{mkEdit(0, 1, 3, "X"), mkEdit(0, 3, 5, "Y")},
+			want:  "aXYf\n",
 		},
 		{
 			name:  "ties keep input order past the insertion-sort cutoff",
 			edits: tiedInsertsAfterRowStart(),
-			want:  "AabcMLKJIHGFEDCBdef\n",
+			want:  "AabcBCDEFGHIJKLMdef\n",
 		},
 		{
-			name:    "overlap whose left edit ends past the shrunk row errors",
+			name:    "identical same-range replacements are rejected",
+			edits:   []Edit{mkEdit(0, 1, 3, "X"), mkEdit(0, 1, 3, "X")},
+			wantErr: "edits [1,3) and [1,3) on line 1 overlap",
+		},
+		{
+			name:    "same-range replacements with different text are rejected",
+			edits:   []Edit{mkEdit(0, 1, 3, "X"), mkEdit(0, 1, 3, "Y")},
+			wantErr: "edits [1,3) and [1,3) on line 1 overlap",
+		},
+		{
+			name:    "partial overlap is rejected",
+			edits:   []Edit{mkEdit(0, 1, 4, "X"), mkEdit(0, 2, 5, "Y")},
+			wantErr: "edits [1,4) and [2,5) on line 1 overlap",
+		},
+		{
+			name:    "partial overlap names the ranges in document order",
+			edits:   []Edit{mkEdit(0, 2, 5, "Y"), mkEdit(0, 1, 4, "X")},
+			wantErr: "edits [1,4) and [2,5) on line 1 overlap",
+		},
+		{
+			name:    "containment is rejected",
 			edits:   []Edit{mkEdit(0, 1, 6, "X"), mkEdit(0, 2, 3, "")},
-			wantErr: "edit offset [1,6) out of range on line 1",
+			wantErr: "edits [1,6) and [2,3) on line 1 overlap",
+		},
+		{
+			name:    "insert strictly inside a replacement is rejected",
+			edits:   []Edit{mkEdit(0, 2, 2, "x"), mkEdit(0, 1, 4, "Y")},
+			wantErr: "edits [1,4) and [2,2) on line 1 overlap",
+		},
+		{
+			name:    "overlap is found past a non-overlapping edit",
+			edits:   []Edit{mkEdit(0, 0, 1, "A"), mkEdit(0, 2, 5, "B"), mkEdit(0, 4, 6, "C")},
+			wantErr: "edits [2,5) and [4,6) on line 1 overlap",
 		},
 	}
 	for _, tt := range tests {
@@ -103,6 +145,7 @@ func TestApplyEdits_SameOffsetAndOverlapCharacterization(t *testing.T) {
 			out, err := ApplyEdits([]byte("abcdef\n"), tt.edits)
 			if tt.wantErr != "" {
 				require.EqualError(t, err, tt.wantErr)
+				assert.Nil(t, out)
 				return
 			}
 			require.NoError(t, err)
@@ -115,7 +158,7 @@ func TestApplyEdits_SameOffsetAndOverlapCharacterization(t *testing.T) {
 // 0 followed by twelve tied zero-width inserts "B".."M" at offset 3.
 // Thirteen edits is past the 12-element cutoff below which
 // slices.SortFunc falls back to insertion sort and happens to keep ties
-// in order, so only a stable sort splices "B".."M" in input order.
+// in order, so only a stable sort lands "B".."M" in input order.
 func tiedInsertsAfterRowStart() []Edit {
 	edits := make([]Edit, 0, 13)
 	edits = append(edits, mkEdit(0, 0, 0, "A"))
