@@ -88,8 +88,8 @@ Left out, with the reason:
   own tests.
 - `sortEdgesBySource` in [index.go][index]: open PR #838 adds
   `TestSortEdgesBySource_NoReflectSort` and
-  `TestSortEdgesBySource_TiesPreserveInsertionOrder`. If #838
-  closes without merging, add it back here.
+  `TestSortEdgesBySource_DeterministicAcrossInputOrders`. If
+  #838 closes without merging, add it back here.
 - `allStrings` in [cmd/mdsmith-wasm/main.go][wasm-main]:
   [plan 2609201914][plan-0920] covers it, with the other WASM
   bridge helpers.
