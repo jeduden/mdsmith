@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jeduden/mdsmith/cue/cuelite"
+	"github.com/jeduden/mdsmith/cue/cuelite/yamltime"
 )
 
 // fieldPattern matches a single-brace placeholder using CUE path
@@ -278,7 +279,9 @@ func resolveScalar(data map[string]any, path []string) (any, error) {
 // Stringify converts a scalar value to a string representation.
 // Maps and slices return empty string to avoid nondeterministic output.
 // A time.Time — what yaml.v3 decodes an unquoted YAML timestamp into —
-// renders through formatTime, as a date or as RFC 3339.
+// renders through yamltime.Format, as a date or as RFC 3339: the same
+// text cue/cuelite lifts it to, so a CUE check sees what a catalog
+// row shows.
 func Stringify(v any) string {
 	switch x := v.(type) {
 	case string:
@@ -294,38 +297,12 @@ func Stringify(v any) string {
 	case float64:
 		return strconv.FormatFloat(x, 'g', -1, 64)
 	case time.Time:
-		return formatTime(x)
+		return yamltime.Format(x)
 	case map[string]any, []any:
 		return "" // composite types produce nondeterministic output
 	default:
 		return fmt.Sprintf("%v", x)
 	}
-}
-
-// formatTime renders a decoded YAML timestamp in one of two canonical
-// forms. yaml.v3 turns an unquoted `date: 2026-01-02` into midnight
-// UTC, so a value with no clock part and a zero UTC offset renders
-// date-only (YYYY-MM-DD), as written. Any other value renders as
-// RFC 3339 with fractional seconds only when the value has them. That
-// is a normalised form, not the source text: a space-separated or
-// zone-less `2026-01-02 10:00:00` renders `2026-01-02T10:00:00Z`.
-// Go's `%v` form (`2026-01-02 00:00:00 +0000 UTC`) would otherwise
-// leak into catalog rows, heading sync, and `fmvar(...)` globs, where
-// it matches nothing.
-//
-// The symbol index (internal/index) formats a timestamp differently:
-// always time.RFC3339, so a date renders `2026-01-02T00:00:00Z` there
-// and fractional seconds are dropped. The two agree only on a time
-// off midnight UTC with whole seconds.
-//
-// A timestamp written as exactly midnight UTC (`2026-01-02T00:00:00Z`)
-// decodes to the same value as the bare date and renders date-only too.
-func formatTime(t time.Time) string {
-	if _, off := t.Zone(); off == 0 && t.Hour() == 0 &&
-		t.Minute() == 0 && t.Second() == 0 && t.Nanosecond() == 0 {
-		return t.Format(time.DateOnly)
-	}
-	return t.Format(time.RFC3339Nano)
 }
 
 // timeSortKeyLayout is the UTC instant with a fixed-width, nine-digit
