@@ -18,7 +18,8 @@ import (
 const reportRoutingHelp = "The report (diagnostics and the stats line) goes to stderr unless -o names\n" +
 	"a file, or - for stdout. Runtime errors always go to stderr. -q silences the\n" +
 	"terminal; an -o file still gets the report. An -o path that is, or would be,\n" +
-	"one of the inputs is refused.\n\n" +
+	"one of the inputs is refused before linting starts, and so is a directory or a\n" +
+	"path in a missing directory.\n\n" +
 	"Text output is colored only when the report goes to a terminal. --color=always\n" +
 	"and --color=never (or --no-color) force it on or off, and --color=auto asks the\n" +
 	"terminal alone; the last color flag given wins. With no color flag, a non-empty\n" +

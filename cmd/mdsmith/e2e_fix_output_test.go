@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,11 +64,9 @@ func TestFixOutput_E2E(t *testing.T) {
 	})
 }
 
-// TestFixOutput_E2ECleanAndErrors pins `[]` on a clean json run on
-// every route (including a run that resolves no Markdown file), and a
-// report that cannot be opened: the fixes are already on disk, the
-// message is on stderr, and the exit code is 2.
-func TestFixOutput_E2ECleanAndErrors(t *testing.T) {
+// TestFixOutput_E2EClean pins `[]` on a clean json run on every route,
+// including a run that resolves no Markdown file.
+func TestFixOutput_E2EClean(t *testing.T) {
 	t.Run("clean json, default route", func(t *testing.T) {
 		stdout, stderr, code := runBinaryInDir(t, outputWorkspace(t), "",
 			"fix", "-f", "json", "ok.md")
@@ -102,11 +101,40 @@ func TestFixOutput_E2ECleanAndErrors(t *testing.T) {
 		assert.Contains(t, stderr, `mdsmith: skipping "notes.txt"`)
 		assert.NoFileExists(t, filepath.Join(dir, "r.json"))
 	})
-	t.Run("unwritable report", func(t *testing.T) {
+}
+
+// TestFixOutput_E2EOutputErrors pins that an -o path the report cannot
+// be created at is refused before any file is fixed, and that a report
+// that fails later is a runtime error: the fixes are already on disk,
+// the message is on stderr, and the exit code is 2.
+func TestFixOutput_E2EOutputErrors(t *testing.T) {
+	t.Run("report under a missing directory is refused before any fix", func(t *testing.T) {
 		dir := outputWorkspace(t)
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "ws.md"), []byte("# Hi  \n"), 0o644))
-		stdout, stderr, code := runBinaryInDir(t, dir, "",
-			"fix", "-o", filepath.Join("missing", "fix.txt"), "ws.md")
+		out := filepath.Join("missing", "fix.txt")
+		stdout, stderr, code := runBinaryInDir(t, dir, "", "fix", "-o", out, "ws.md")
+		assert.Equal(t, 2, code)
+		assert.Empty(t, stdout)
+		assert.True(t, strings.HasPrefix(stderr, fmt.Sprintf("mdsmith: fix: cannot write --output %q: ", out)),
+			"stderr=%q", stderr)
+		assert.Equal(t, "# Hi  \n", readReport(t, filepath.Join(dir, "ws.md")), "no file is fixed")
+	})
+	t.Run("report at a directory is refused before any fix", func(t *testing.T) {
+		dir := outputWorkspace(t)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "ws.md"), []byte("# Hi  \n"), 0o644))
+		require.NoError(t, os.Mkdir(filepath.Join(dir, "out"), 0o755))
+		_, stderr, code := runBinaryInDir(t, dir, "", "fix", "-o", "out", "ws.md")
+		assert.Equal(t, 2, code)
+		assert.Equal(t, "mdsmith: fix: cannot write --output \"out\": it is a directory\n", stderr)
+		assert.Equal(t, "# Hi  \n", readReport(t, filepath.Join(dir, "ws.md")), "no file is fixed")
+	})
+	t.Run("unwritable report", func(t *testing.T) {
+		if _, err := os.Stat("/dev/full"); err != nil {
+			t.Skip("no /dev/full on this platform")
+		}
+		dir := outputWorkspace(t)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "ws.md"), []byte("# Hi  \n"), 0o644))
+		stdout, stderr, code := runBinaryInDir(t, dir, "", "fix", "-o", "/dev/full", "ws.md")
 		assert.Equal(t, 2, code)
 		assert.Empty(t, stdout)
 		assert.True(t, strings.HasPrefix(stderr, "mdsmith: error writing output: "), "stderr=%q", stderr)

@@ -234,7 +234,7 @@ func fixFiles(fileArgs []string, opts fixCLIOpts) int {
 	if code > 0 {
 		return code
 	}
-	if c := refuseOutputOverInput("fix", opts.output, runInputs{files: files, args: fileArgs}); c >= 0 {
+	if c := guardOutput("fix", opts.output, runInputs{files: files, args: fileArgs}); c >= 0 {
 		return c
 	}
 	if code == 0 {
@@ -260,7 +260,7 @@ func fixDiscovered(opts fixCLIOpts) int {
 	if code > 0 {
 		return code
 	}
-	if c := refuseOutputOverInput("fix", opts.output, runInputs{files: files, patterns: cfg.Files}); c >= 0 {
+	if c := guardOutput("fix", opts.output, runInputs{files: files, patterns: cfg.Files}); c >= 0 {
 		return c
 	}
 	if code == 0 {

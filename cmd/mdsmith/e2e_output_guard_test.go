@@ -71,6 +71,12 @@ func TestOutputGuard_E2E(t *testing.T) {
 		assert.Equal(t, 2, code, "discovery with the default files: patterns")
 		assert.Equal(t, refusal("check", "report.md"), stderr)
 	})
+}
+
+// TestOutputGuard_E2EStdinAndLinks pins the guard for `check -`, which
+// compares -o with the file stdin reads, and for a dangling symlink,
+// which is judged by the file the report would create through it.
+func TestOutputGuard_E2EStdinAndLinks(t *testing.T) {
 	t.Run("check - -o the file stdin reads from", func(t *testing.T) {
 		dir := outputWorkspace(t)
 		src := filepath.Join(dir, "long.md")
@@ -109,6 +115,11 @@ func TestOutputGuard_E2E(t *testing.T) {
 		assert.Empty(t, stderr)
 		assert.Contains(t, readReport(t, filepath.Join(dir, "report.txt")), "MDS001")
 	})
+}
+
+// TestOutputGuard_E2EFix pins that fix refuses an -o path that is, or
+// would be, one of its inputs before it fixes any file.
+func TestOutputGuard_E2EFix(t *testing.T) {
 	t.Run("fix -o a file being fixed changes nothing", func(t *testing.T) {
 		dir := outputWorkspace(t)
 		ws := filepath.Join(dir, "ws.md")
@@ -117,6 +128,18 @@ func TestOutputGuard_E2E(t *testing.T) {
 		assert.Equal(t, 2, code)
 		assert.Equal(t, refusal("fix", "ws.md"), stderr)
 		assert.Equal(t, "# Hi  \n", readReport(t, ws), "refused before any fix")
+	})
+	t.Run("fix -o a new Markdown file in the fixed directory", func(t *testing.T) {
+		dir := outputWorkspace(t)
+		require.NoError(t, os.Mkdir(filepath.Join(dir, "docs"), 0o755))
+		ws := filepath.Join(dir, "docs", "ws.md")
+		require.NoError(t, os.WriteFile(ws, []byte("# Hi  \n"), 0o644))
+		out := filepath.Join("docs", "report.md")
+		_, stderr, code := runBinaryInDir(t, dir, "", "fix", "-o", out, "docs")
+		assert.Equal(t, 2, code)
+		assert.Equal(t, refusal("fix", out), stderr)
+		assert.Equal(t, "# Hi  \n", readReport(t, ws), "refused before any fix")
+		assert.NoFileExists(t, filepath.Join(dir, out))
 	})
 	t.Run("fix discovery -o a Markdown file it would discover", func(t *testing.T) {
 		dir := outputWorkspace(t)

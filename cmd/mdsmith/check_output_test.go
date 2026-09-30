@@ -325,6 +325,7 @@ func TestParseCheckFlags_HelpListsColorFlags(t *testing.T) {
 	assert.Regexp(t, `--no-color +Same as --color=never\n`, stderr)
 	assert.Contains(t, stderr, "FORCE_COLOR")
 	assert.Contains(t, stderr, "except in an -o file, which only --color=always colors.")
+	assert.Contains(t, stderr, "and so is a directory or a\npath in a missing directory.")
 }
 
 // --stdout was never released; -o - replaces it.

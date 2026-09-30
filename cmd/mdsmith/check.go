@@ -123,7 +123,7 @@ func checkFiles(fileArgs []string, opts checkCLIOpts) int {
 	if code > 0 {
 		return code
 	}
-	if c := refuseOutputOverInput("check", opts.output, runInputs{files: files, args: fileArgs}); c >= 0 {
+	if c := guardOutput("check", opts.output, runInputs{files: files, args: fileArgs}); c >= 0 {
 		return c
 	}
 	if code == 0 {
@@ -163,7 +163,7 @@ func batchMaxBytes(resolved int64) int64 {
 // checkStdin reads from stdin, lints the content, and returns the appropriate
 // exit code. Uses runner.RunSource to ensure Configurable settings are applied.
 func checkStdin(opts checkCLIOpts) int {
-	if c := refuseOutputOverStdin("check", opts.output, os.Stdin); c >= 0 {
+	if c := guardOutput("check", opts.output, runInputs{stdin: os.Stdin}); c >= 0 {
 		return c
 	}
 	logger := &vlog.Logger{Enabled: opts.verbose, W: os.Stderr}
@@ -202,7 +202,7 @@ func checkDiscovered(opts checkCLIOpts) int {
 	if code > 0 {
 		return code
 	}
-	if c := refuseOutputOverInput("check", opts.output, runInputs{files: files, patterns: cfg.Files}); c >= 0 {
+	if c := guardOutput("check", opts.output, runInputs{files: files, patterns: cfg.Files}); c >= 0 {
 		return c
 	}
 	if code == 0 {

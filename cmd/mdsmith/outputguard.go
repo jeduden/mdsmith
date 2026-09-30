@@ -13,8 +13,8 @@ import (
 	"github.com/jeduden/mdsmith/internal/mdpath"
 )
 
-// runInputs describes the Markdown files a check or fix run reads, for
-// the -o guard: the files it resolved, plus what decides which files a
+// runInputs describes the files a check or fix run reads, for the -o
+// guard: the files it resolved, plus what decides which files a
 // later run would pick up.
 type runInputs struct {
 	// files are the resolved input files.
@@ -24,54 +24,68 @@ type runInputs struct {
 	// patterns are the config files: patterns of a discovery run,
 	// matched relative to the working directory.
 	patterns []string
+	// stdin is the file `check -` reads, or nil on other runs.
+	stdin *os.File
 }
 
-// refuseOutputOverInput stops a check or fix run whose -o path is, or
-// once written would be, one of the run's Markdown inputs: the report
+// guardOutput vets a check or fix run's -o path before any file is
+// linted or fixed, and prints a usage error and returns 2 for a path
+// the run must not write. It refuses a path that is, or once written
+// would be, one of the run's inputs (see outputIsInput): the report
 // would overwrite a file the run lints or fixes, or turn up as an
-// input of the next run. It prints a usage error and returns 2 before
-// any file is linted, or -1 when the path is safe. "" and "-" name no
-// file.
-func refuseOutputOverInput(cmd, output string, in runInputs) int {
-	if output == "" || output == "-" || !outputIsInput(output, in) {
-		return -1
-	}
-	printInputRefusal(cmd, output)
-	return 2
-}
-
-// refuseOutputOverStdin stops a `check -` run whose -o path is the
-// file stdin reads from, as in `check - -o a.md < a.md`: the report
-// would replace the file just linted. The two are compared by file
-// identity before stdin is read. A pipe has no file identity, so
-// `cat a.md | mdsmith check - -o a.md` cannot be detected. It prints
-// the same usage error as refuseOutputOverInput and returns 2, or -1.
-func refuseOutputOverStdin(cmd, output string, stdin *os.File) int {
+// input of the next run. It also refuses a path the report cannot be
+// created at (see outputCreatable), so fix does not rewrite its files
+// and only then fail to open the report. The file itself is neither
+// created nor opened here, so a run that stops first leaves none. It
+// returns -1 when the path is safe; "" and "-" name no file.
+func guardOutput(cmd, output string, in runInputs) int {
 	if output == "" || output == "-" {
 		return -1
 	}
-	oi, oerr := os.Stat(output)
-	si, serr := stdin.Stat()
-	if oerr != nil || serr != nil || !os.SameFile(oi, si) {
-		return -1
+	if outputIsInput(output, in) {
+		fmt.Fprintf(os.Stderr,
+			"mdsmith: %s: refusing --output %q: it is an input of this run, or would be once written\n",
+			cmd, output)
+		return 2
 	}
-	printInputRefusal(cmd, output)
-	return 2
+	if err := outputCreatable(output); err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: %s: cannot write --output %q: %v\n", cmd, output, err)
+		return 2
+	}
+	return -1
 }
 
-// printInputRefusal prints the usage error for an -o path that is, or
-// would be, an input of the run.
-func printInputRefusal(cmd, output string) {
-	fmt.Fprintf(os.Stderr,
-		"mdsmith: %s: refusing --output %q: it is an input of this run, or would be once written\n",
-		cmd, output)
+// outputCreatable returns nil when the report can be opened at output:
+// an existing file or device, or a missing name in an existing
+// directory, a dangling symlink's target included. Otherwise it says
+// why not: output is a directory, or its directory is missing or is
+// not one. Permissions are left to the open.
+func outputCreatable(output string) error {
+	if info, err := os.Stat(output); err == nil {
+		if info.IsDir() {
+			return errors.New("it is a directory")
+		}
+		return nil
+	}
+	target, err := createTarget(output)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(target)
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		return nil
+	}
+	return fmt.Errorf("%s is not a directory", dir)
 }
 
 // outputIsInput reports whether output names one of the run's inputs.
-// An existing output is compared with each resolved input by file
-// identity (os.SameFile), so a relative spelling, a symlink, a hard
-// link, or a case-insensitive file system cannot hide a match. A
-// missing output, or a dangling symlink, is checked by wouldBeInput.
+// An existing output is compared with each resolved input, and with
+// the file stdin reads on `check -`, by file identity (os.SameFile),
+// so a relative spelling, a symlink, a hard link, or a
+// case-insensitive file system cannot hide a match. A pipe on stdin
+// has no identity to match, so `cat a.md | mdsmith check - -o a.md`
+// goes undetected. A missing output, or a dangling symlink, is
+// checked by wouldBeInput.
 func outputIsInput(output string, in runInputs) bool {
 	info, err := os.Stat(output)
 	if err != nil {
@@ -84,6 +98,11 @@ func outputIsInput(output string, in runInputs) bool {
 	}
 	for _, f := range in.files {
 		if fi, err := os.Stat(f); err == nil && os.SameFile(info, fi) {
+			return true
+		}
+	}
+	if in.stdin != nil {
+		if si, err := in.stdin.Stat(); err == nil && os.SameFile(info, si) {
 			return true
 		}
 	}

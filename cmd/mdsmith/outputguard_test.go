@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -187,41 +189,70 @@ func TestCreateTarget(t *testing.T) {
 	assert.ErrorIs(t, err, errTooManyLinks)
 }
 
-func TestRefuseOutputOverInput(t *testing.T) {
+// guardOutput refuses an -o path that is an input, and one the report
+// cannot be created at, each with its own usage error; "" and "-"
+// name no file.
+func TestGuardOutput(t *testing.T) {
 	guardWorkspace(t)
 	in := runInputs{files: []string{"notes.md"}, args: []string{"notes.md"}}
-	for _, output := range []string{"", "-", "report.json"} {
-		assert.Equal(t, -1, refuseOutputOverInput("check", output, in), "-o %q", output)
+	for _, output := range []string{"", "-", "report.json", "data.txt", os.DevNull} {
+		assert.Equal(t, -1, guardOutput("check", output, in), "-o %q", output)
 	}
 	stderr := captureStderr(func() {
-		assert.Equal(t, 2, refuseOutputOverInput("fix", "notes.md", in))
+		assert.Equal(t, 2, guardOutput("fix", "notes.md", in))
 	})
 	assert.Equal(t,
 		"mdsmith: fix: refusing --output \"notes.md\": it is an input of this run, or would be once written\n",
 		stderr)
+	stderr = captureStderr(func() {
+		assert.Equal(t, 2, guardOutput("fix", "docs", in))
+	})
+	assert.Equal(t, "mdsmith: fix: cannot write --output \"docs\": it is a directory\n", stderr)
+	missing := filepath.Join("missing", "r.txt")
+	stderr = captureStderr(func() {
+		assert.Equal(t, 2, guardOutput("check", missing, in))
+	})
+	assert.True(t, strings.HasPrefix(stderr,
+		fmt.Sprintf("mdsmith: check: cannot write --output %q: ", missing)), "stderr=%q", stderr)
 }
 
 // `check - -o a.md < a.md` would truncate a.md, the file stdin reads,
 // with the report. The -o path is compared with stdin by file
 // identity, before stdin is read.
-func TestRefuseOutputOverStdin(t *testing.T) {
+func TestOutputIsInput_Stdin(t *testing.T) {
 	guardWorkspace(t)
 	stdin, err := os.Open("notes.md")
 	require.NoError(t, err)
 	defer stdin.Close() //nolint:errcheck // test cleanup
-	for _, output := range []string{"", "-", "data.txt", "missing.txt"} {
-		assert.Equal(t, -1, refuseOutputOverStdin("check", output, stdin), "-o %q", output)
-	}
-	stderr := captureStderr(func() {
-		assert.Equal(t, 2, refuseOutputOverStdin("check", "./notes.md", stdin))
-	})
-	assert.Equal(t,
-		"mdsmith: check: refusing --output \"./notes.md\": it is an input of this run, or would be once written\n",
-		stderr)
+	in := runInputs{stdin: stdin}
+	assert.True(t, outputIsInput("./notes.md", in))
+	assert.False(t, outputIsInput("data.txt", in))
+	assert.False(t, outputIsInput("missing.txt", in))
 
 	// A stdin whose Stat fails has no identity to match.
 	closed, err := os.Open("notes.md")
 	require.NoError(t, err)
 	require.NoError(t, closed.Close())
-	assert.Equal(t, -1, refuseOutputOverStdin("check", "notes.md", closed))
+	assert.False(t, outputIsInput("notes.md", runInputs{stdin: closed}))
+}
+
+// outputCreatable accepts a path the report can be opened at and
+// explains why any other cannot be.
+func TestOutputCreatable(t *testing.T) {
+	dir := guardWorkspace(t)
+	assert.NoError(t, outputCreatable("notes.md"), "an existing file")
+	assert.NoError(t, outputCreatable(filepath.Join("docs", "new.txt")), "a new file in a directory")
+	assert.NoError(t, outputCreatable(os.DevNull), "a device")
+	assert.EqualError(t, outputCreatable("docs"), "it is a directory")
+	assert.Error(t, outputCreatable(filepath.Join("missing", "r.txt")), "a missing directory")
+	assert.EqualError(t, outputCreatable(filepath.Join("data.txt", "r.txt")),
+		filepath.Join(dir, "data.txt")+" is not a directory")
+
+	symlinkOrSkip(t, filepath.Join("missing", "r.txt"), "dangling.txt")
+	assert.Error(t, outputCreatable("dangling.txt"), "a link into a missing directory")
+	require.NoError(t, os.Symlink(filepath.Join("docs", "new.txt"), "into-docs.txt"))
+	assert.NoError(t, outputCreatable("into-docs.txt"), "a link into a directory")
+	require.NoError(t, os.Symlink("loop-b.txt", "loop-a.txt"))
+	require.NoError(t, os.Symlink("loop-a.txt", "loop-b.txt"))
+	assert.ErrorIs(t, outputCreatable("loop-a.txt"), errTooManyLinks)
 }

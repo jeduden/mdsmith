@@ -90,7 +90,9 @@ non-Markdown skip warning stay on stderr too. An empty
 umask), or truncates it if it exists. An existing file
 keeps its mode. The file is opened only once linting
 ends. A run that stops first, as on a bad config, exits
-`2` and leaves the file untouched.
+`2` and leaves the file untouched. Before any file is
+linted, an `-o` path that is a directory, or whose
+directory is missing, is a usage error (exit `2`).
 
 `-o` never overwrites an input. A path that is one of
 the run's inputs is a usage error (exit `2`), reported

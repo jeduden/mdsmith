@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -187,22 +188,33 @@ func TestCheckOutput_E2EStreams(t *testing.T) {
 	})
 }
 
-// TestCheckOutput_E2EWriteErrors pins that a report that cannot be
-// opened or written is a runtime error: a message on stderr, exit 2.
+// TestCheckOutput_E2EWriteErrors pins that an -o path the report
+// cannot be created at is a usage error before any file is linted,
+// and that a report that cannot be written is a runtime error: a
+// message on stderr, exit 2.
 func TestCheckOutput_E2EWriteErrors(t *testing.T) {
 	t.Run("missing directory", func(t *testing.T) {
-		stdout, stderr, code := runBinaryInDir(t, outputWorkspace(t), "",
-			"check", "-o", filepath.Join("missing", "report.json"), "long.md")
+		out := filepath.Join("missing", "report.json")
+		stdout, stderr, code := runBinaryInDir(t, outputWorkspace(t), "", "check", "-o", out, "long.md")
 		assert.Equal(t, 2, code)
 		assert.Empty(t, stdout)
-		assert.True(t, strings.HasPrefix(stderr, "mdsmith: error writing output: "), "stderr=%q", stderr)
+		assert.True(t, strings.HasPrefix(stderr, fmt.Sprintf("mdsmith: check: cannot write --output %q: ", out)),
+			"stderr=%q", stderr)
+		assert.NotContains(t, stderr, "MDS001", "refused before linting")
 	})
 	t.Run("path is a directory", func(t *testing.T) {
 		dir := outputWorkspace(t)
 		require.NoError(t, os.Mkdir(filepath.Join(dir, "out"), 0o755))
 		_, stderr, code := runBinaryInDir(t, dir, "", "check", "-o", "out", "ok.md")
 		assert.Equal(t, 2, code)
-		assert.True(t, strings.HasPrefix(stderr, "mdsmith: error writing output: "), "stderr=%q", stderr)
+		assert.Equal(t, "mdsmith: check: cannot write --output \"out\": it is a directory\n", stderr)
+	})
+	t.Run("stdin, missing directory", func(t *testing.T) {
+		out := filepath.Join("missing", "report.json")
+		_, stderr, code := runBinaryInDir(t, outputWorkspace(t), "# Hi\n", "check", "-o", out, "-")
+		assert.Equal(t, 2, code)
+		assert.True(t, strings.HasPrefix(stderr, fmt.Sprintf("mdsmith: check: cannot write --output %q: ", out)),
+			"stderr=%q", stderr)
 	})
 	t.Run("empty path", func(t *testing.T) {
 		_, stderr, code := runBinaryInDir(t, outputWorkspace(t), "", "check", "-o", "", "ok.md")

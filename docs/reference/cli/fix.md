@@ -56,8 +56,11 @@ silences the terminal, as for `check`: an explicit
 `-o <path>` file still gets the full report.
 
 Runtime errors and all build-pass output stay on stderr.
-Fixes are written before the report, so a report that
-cannot be written exits `2` with the files already
+An `-o` path that is a directory, or whose directory is
+missing, is a usage error (exit `2`) reported before any
+file is fixed. Fixes are still written before the
+report, so a write that fails later, as on a full disk
+or a read-only file, exits `2` with the files already
 fixed. `--build-only` has no lint report, so `-o`
 creates no file.
 
