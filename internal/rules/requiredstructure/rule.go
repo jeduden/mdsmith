@@ -504,7 +504,7 @@ func parsePathPatterns(v any) ([]PathPattern, error) {
 		// a config error instead of an MDS020 diagnostic on every
 		// file assigned to the kind.
 		// PathPatternSyntaxForm swaps each `\#(fmvar(...))` reference
-		// for a literal byte, since a reference resolves per document
+		// for a `?*` wildcard, since a reference resolves per document
 		// and its own bytes are not glob syntax.
 		if !doublestar.ValidatePattern(schema.PathPatternSyntaxForm(pat)) {
 			return nil, fmt.Errorf(
@@ -2584,8 +2584,9 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 		if placeholders.HasCUEFrontmatter(r.Placeholders) {
 			// The front-matter values are CUE constraints
 			// (`name: string`), not data: a reference has no value
-			// to substitute, so it matches any single segment and
-			// only the literal rest of the pattern is checked.
+			// to substitute, so it matches any non-empty text in one
+			// segment and only the literal rest of the pattern is
+			// checked.
 			if matchWorkspacePath(schema.WildcardGlobRefs(pp.Pattern), rel) {
 				continue
 			}

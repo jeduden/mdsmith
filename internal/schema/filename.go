@@ -172,7 +172,7 @@ func filenameHintForms(
 // otherwise it returns the diagnostic the caller emits with its own
 // anchor and MakeDiag. ref names the schema source. fmIsCUE marks fm
 // as CUE constraints (the `cue-frontmatter` placeholder); a reference
-// then matches any single segment instead of a value.
+// then matches any non-empty text in one segment instead of a value.
 //
 // Both `filename:` surfaces — the inline/composed schema path
 // (validateFilename) and the legacy proto.md path

@@ -112,7 +112,7 @@ func validateKindPathPattern(name string, body KindBody) error {
 		return nil
 	}
 	// PathPatternSyntaxForm swaps each `\#(fmvar(...))` reference for
-	// a literal byte: a reference resolves per document, and its own
+	// a `?*` wildcard: a reference resolves per document, and its own
 	// bytes are not glob syntax.
 	if !doublestar.ValidatePattern(schema.PathPatternSyntaxForm(body.PathPattern)) {
 		return fmt.Errorf(
