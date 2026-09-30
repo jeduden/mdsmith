@@ -477,10 +477,16 @@ func unreserved(c byte) bool {
 }
 
 // unhex returns the value of the hex digit c, in either case. ok is
-// false when c is not a hex digit.
+// false when c is not a hex digit. Only a letter is case-folded: a
+// control byte folded with 0x20 would read as a digit.
 func unhex(c byte) (v byte, ok bool) {
-	i := strings.IndexByte("0123456789abcdef", c|0x20)
-	return byte(i), i >= 0
+	if c >= '0' && c <= '9' {
+		return c - '0', true
+	}
+	if l := c | 0x20; l >= 'a' && l <= 'f' {
+		return l - 'a' + 10, true
+	}
+	return 0, false
 }
 
 // inlineDest is one destination the locator found: the bytes goldmark

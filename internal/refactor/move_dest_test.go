@@ -500,7 +500,7 @@ func TestUnhex(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, want, got)
 	}
-	for _, c := range []byte("gG.%") {
+	for _, c := range []byte("gG.%\x10\x19/:@`") {
 		_, ok := unhex(c)
 		assert.False(t, ok, "%q", c)
 	}
