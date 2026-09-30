@@ -100,3 +100,26 @@ func isDefinitionDescription(line []byte) bool {
 	return indent <= 3 && indent+1 < len(line) && line[indent] == ':' &&
 		(line[indent+1] == ' ' || line[indent+1] == '\t')
 }
+
+// StartsListItem reports whether line opens a list item of any kind: a
+// bullet '-', '+' or '*', or an ordered marker of one to nine digits
+// with any number, each followed by a space, a tab, or the line end, so
+// with content or empty. Up to three spaces of indent are allowed.
+//
+// At the top level only some of these can interrupt a paragraph (see
+// StartsInterruptingBlock). After the first line of a footnote
+// definition or a definition, goldmark opens a list for all of them: the
+// container does not continue on an unindented line, and lazy
+// continuation keeps the line in the container's paragraph only when it
+// opens no block, so "2019. Accessed" there starts a list at 2019.
+func StartsListItem(line []byte) bool {
+	indent := leadingSpaces(line)
+	if indent > 3 || indent == len(line) {
+		return false
+	}
+	switch line[indent] {
+	case '-', '+', '*':
+		return isBulletMarker(line, indent)
+	}
+	return isOrderedMarker(line, indent)
+}

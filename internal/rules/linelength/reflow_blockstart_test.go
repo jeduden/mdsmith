@@ -691,6 +691,7 @@ func TestFix_LeavesExistingBlockStartsAlone(t *testing.T) {
 		{"footnote definition", "The claim in this sentence is backed by a source, yes.[^1]\n[^1]: The footnote."},
 		{"bare list marker", "Some text that is long enough to be flagged at thirty\n*\nmore"},
 		{"spec-only html start", "Some text that is long enough to be flagged at thirty\n<!doctype html>"},
+		{"list marker under a footnote", "[^1]: A footnote that runs past thirty columns\n2019. Accessed later."},
 	}
 	r := &Rule{Max: 30, Reflow: true}
 	for _, tc := range cases {
@@ -719,6 +720,11 @@ func TestHasUnsafeContinuation(t *testing.T) {
 	assert.True(t, hasUnsafeContinuation(f, 1, 3), `": c" is a definition`)
 	assert.False(t, hasUnsafeContinuation(f, 3, 4))
 	assert.True(t, hasUnsafeContinuation(f, 4, 5), "a CRLF line ending is ignored")
+
+	note, err := lint.NewFile("t.md", []byte("[^1]: a\n2019. b\nx\n2019. b\n"))
+	require.NoError(t, err)
+	assert.True(t, hasUnsafeContinuation(note, 1, 2), "a list marker leaves the footnote")
+	assert.False(t, hasUnsafeContinuation(note, 3, 4), `"2019. b" continues a plain paragraph`)
 }
 
 // TestWrapTokens_BackslashNeverEndsALineButTheLast covers a word that
@@ -790,4 +796,35 @@ func TestIsLinkRefDefinition(t *testing.T) {
 	for _, line := range []string{"[^1]:", "[^1]: a b", "[foo]: /url more", "text [foo]: /url", "    [foo]: /url", ""} {
 		assert.False(t, isLinkRefDefinition([]byte(line)), "%q", line)
 	}
+}
+
+// TestWrapTokens_ContainerKeepsListMarkersInside covers a paragraph whose
+// first line opens a footnote definition or a definition. There a later
+// line that starts with any list marker, such as "2." or "1999.", opens
+// a list outside the container, so the guard rejects it too. In a plain
+// paragraph "2. c" is text and wraps as greedy packing does.
+func TestWrapTokens_ContainerKeepsListMarkersInside(t *testing.T) {
+	plain := []string{"x", "a", "bbbb", "2.", "c"}
+	require.Equal(t, []string{"x a bbbb", "2. c"}, greedyWrap(plain, 8))
+	assert.Equal(t, greedyWrap(plain, 8), wrapTokens(plain, []byte("x a bbbb 2. c"), "", 8, noGlue))
+
+	def := []string{":", "a", "bbbb", "2.", "c"}
+	assert.Equal(t, []string{": a", "bbbb 2.", "c"}, wrapTokens(def, []byte(": a bbbb 2. c"), "", 8, noGlue))
+	note := []string{"[^1]:", "a", "b", "2.", "c"}
+	assert.Equal(t, []string{"[^1]: a b 2.", "c"}, wrapTokens(note, []byte("[^1]: a b 2. c"), "", 11, noGlue))
+}
+
+// TestFix_FootnoteKeepsYearInside is the review repro: at max 50 a plain
+// wrap starts the footnote's second line with "2019. Accessed", which
+// the flavor parser reads as a list that starts at 2019, outside the
+// footnote. The reflowed footnote keeps all of its text.
+func TestFix_FootnoteKeepsYearInside(t *testing.T) {
+	r := &Rule{Max: 50, Reflow: true}
+	src := "# T\n\nA claim[^smith] here.\n\n" +
+		"[^smith]: Smith, John. The Book. Publisher Press, 2019. Accessed in March of 2024 online.\n"
+	got := fixSource(t, r, src)
+	assert.Equal(t, "# T\n\nA claim[^smith] here.\n\n"+
+		"[^smith]: Smith, John. The Book. Publisher\n"+
+		"Press, 2019. Accessed in March of 2024 online.\n", got)
+	assert.Equal(t, flavorBlocks(t, src), flavorBlocks(t, got))
 }

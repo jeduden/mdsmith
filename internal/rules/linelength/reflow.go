@@ -113,11 +113,12 @@ func wrapTokens(tokens []string, first []byte, indent string, width int, glue fu
 		return nil
 	}
 	p := linePlanner{
-		units:   buildWrapUnits(tokens, glue),
-		first:   first,
-		indent:  indent,
-		indentW: utf8.RuneCountInString(indent),
-		width:   width,
+		units:     buildWrapUnits(tokens, glue),
+		first:     first,
+		container: lint.ExtensionInterruptsParagraph(first),
+		indent:    indent,
+		indentW:   utf8.RuneCountInString(indent),
+		width:     width,
 	}
 	return p.layout()
 }
@@ -147,12 +148,13 @@ const maxOverflowUnits = 8
 // greedy packing would put at the start of a line pulls the unit before
 // it down to lead that line instead.
 type linePlanner struct {
-	units   []string
-	first   []byte // the paragraph's first line as written; see keepsStart
-	indent  string
-	indentW int
-	width   int
-	buf     []byte // scratch for rendering one candidate line
+	units     []string
+	first     []byte // the paragraph's first line as written; see keepsStart
+	container bool   // first opens an extension block; see unsafeContinuation
+	indent    string
+	indentW   int
+	width     int
+	buf       []byte // scratch for rendering one candidate line
 }
 
 // linePlan is the line picked for one start unit: it holds units[s:end].
@@ -230,7 +232,7 @@ func (p *linePlanner) fitEnd(s int) int {
 }
 
 // breaks reports whether the line holding units[s:e] is unsafe: a
-// later line that unsafeLine rejects, a first line that does not keep
+// later line that unsafeContinuation rejects, a first line that does not keep
 // the paragraph's own start (keepsStart), or a line other than the last
 // that ends in "\", which CommonMark reads as a hard line break.
 func (p *linePlanner) breaks(s, e int) bool {
@@ -241,7 +243,7 @@ func (p *linePlanner) breaks(s, e int) bool {
 	if s == 0 {
 		return !keepsStart(p.first, line)
 	}
-	return unsafeLine(line)
+	return unsafeContinuation(line, p.container)
 }
 
 // keepsStart reports whether line may be a paragraph's first line in
@@ -306,6 +308,18 @@ func oneWord(line []byte) bool {
 func unsafeLine(line []byte) bool {
 	return lint.InterruptsParagraph(line) || lint.ExtensionInterruptsParagraph(line) ||
 		isBareListMarker(line)
+}
+
+// unsafeContinuation reports whether line, placed after a line of a
+// paragraph, could end the paragraph (unsafeLine) or, when container is
+// set, leave it for a list. container is set when the paragraph's first
+// line opens an extension block. For a footnote definition or a
+// definition that block is a container, and inside it any list marker
+// opens a list, "2019." included (see lint.StartsListItem). A first line
+// that is a table delimiter row opens no container; it is rare enough
+// that the stricter check does no harm.
+func unsafeContinuation(line []byte, container bool) bool {
+	return unsafeLine(line) || container && lint.StartsListItem(line)
 }
 
 // isBareListMarker reports whether line is a list marker with nothing

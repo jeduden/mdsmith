@@ -154,15 +154,16 @@ func (r *Rule) reflowParagraph(
 
 // hasUnsafeContinuation reports whether a source line after the first
 // of the paragraph spanning [startLine, endLine] (1-based) is one that
-// unsafeLine rejects. The canonical parser read that line as paragraph
+// unsafeContinuation rejects. The canonical parser read that line as paragraph
 // text, but the flavor parser or another renderer reads a block there,
 // such as a definition under its term, the delimiter row of a table
 // without outer pipes, or a footnote definition. Reflow would join that
 // block into the paragraph, so the paragraph is left as written. This is
 // the reverse of the guard, which keeps reflow from starting such a line.
 func hasUnsafeContinuation(f *lint.File, startLine, endLine int) bool {
+	container := lint.ExtensionInterruptsParagraph(trimTrailingCR(f.Lines[startLine-1], true))
 	for i := startLine; i < endLine; i++ {
-		if unsafeLine(trimTrailingCR(f.Lines[i], true)) {
+		if unsafeContinuation(trimTrailingCR(f.Lines[i], true), container) {
 			return true
 		}
 	}

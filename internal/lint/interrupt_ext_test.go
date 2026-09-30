@@ -133,3 +133,35 @@ func TestIsDefinitionDescription(t *testing.T) {
 		assert.False(t, isDefinitionDescription([]byte(line)), "%q", line)
 	}
 }
+
+// TestStartsListItem checks each line after a footnote definition's
+// first line, under the flavor parser. Lazy continuation keeps a line in
+// the footnote's paragraph unless it opens a block, and there every list
+// marker opens a list, empty or not, whatever its number.
+func TestStartsListItem(t *testing.T) {
+	items := []string{
+		"- x", "-", "+ x", "*", "1. x", "1.", "2. x", "2)", "1999. x", "1999.", "10) x", "   2. x", "2.\tx",
+	}
+	plain := []string{"x", "-x", "2.x", "2:", "**", "***", "    2. x", "1234567890. x", "#", ".", ""}
+	opensList := func(line string) bool {
+		src := []byte("x[^1]\n\n[^1]: a\n" + line + "\n")
+		found := false
+		flavor.WithSharedParser(func(p parser.Parser) {
+			_ = ast.Walk(p.Parse(text.NewReader(src)), func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+				found = found || entering && n.Kind() == ast.KindList
+				return ast.WalkContinue, nil
+			})
+		})
+		return found
+	}
+	for _, line := range items {
+		assert.True(t, StartsListItem([]byte(line)), "%q", line)
+		assert.True(t, opensList(line), "%q must open a list in the footnote", line)
+	}
+	for _, line := range plain {
+		assert.False(t, StartsListItem([]byte(line)), "%q", line)
+		if line != "***" { // a thematic break, not a list
+			assert.False(t, opensList(line), "%q must stay in the footnote", line)
+		}
+	}
+}
