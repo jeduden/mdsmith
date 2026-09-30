@@ -317,3 +317,52 @@ func TestParsePathPatterns_RecordsMatchFormOnce(t *testing.T) {
 	assert.False(t, pp[1].interp)
 	assert.Equal(t, "plan/[0-9]*.md", pp[1].match)
 }
+
+// newPathPattern keeps the pattern as written and derives, once, the
+// form it is matched in and whether that form interpolates.
+func TestNewPathPattern(t *testing.T) {
+	pp := newPathPattern("doc", "docs/*.md")
+	assert.Equal(t, "doc", pp.Kind)
+	assert.Equal(t, "docs/*.md", pp.Pattern)
+	assert.Equal(t, "docs/*.md", pp.match)
+	assert.False(t, pp.interp)
+
+	pp = newPathPattern("skill", apmSkillPattern)
+	assert.Equal(t, apmSkillPattern, pp.Pattern)
+	wantMatch, wantInterp := schema.PathPatternMatchForm(apmSkillPattern)
+	assert.Equal(t, wantMatch, pp.match)
+	assert.Equal(t, wantInterp, pp.interp)
+	assert.True(t, pp.interp)
+}
+
+// matchWorkspacePath anchors a plain glob at the workspace root, and
+// a brace pattern goes through the validating matcher, which reports
+// a syntax error as a non-match.
+func TestMatchWorkspacePath(t *testing.T) {
+	assert.True(t, matchWorkspacePath("docs/**/*.md", "docs/a/b.md"))
+	assert.False(t, matchWorkspacePath("README.md", "docs/README.md"),
+		"root-anchored: the basename alone must not match")
+	assert.True(t, matchWorkspacePath("{docs,notes}/*.md", "notes/a.md"))
+	assert.False(t, matchWorkspacePath("{docs,notes}/*.md", "plan/a.md"))
+	assert.False(t, matchWorkspacePath("{[!,docs}/*.md", "docs/a.md"),
+		"a syntax error in a brace pattern is a non-match")
+}
+
+// pathPatternDiag names the path, the pattern as written, the kind,
+// and the hint when one is given.
+func TestPathPatternDiag(t *testing.T) {
+	f := newTestFile(t, "doc.md", "# X\n")
+	pp := newPathPattern("doc", `docs/\#(fmvar(name))/x.md`)
+	d := pathPatternDiag(f, "notes/x.md", pp, "some hint")
+	assert.Equal(t, "MDS020", d.RuleID)
+	assert.Equal(t, f.Path, d.File)
+	assert.Contains(t, d.Message, `path: got "notes/x.md"`)
+	assert.Contains(t, d.Message,
+		`expected path matching glob docs/\#(fmvar(name))/x.md`)
+	assert.Contains(t, d.Message, "(some hint)")
+	require.Len(t, d.RelatedLocations, 1)
+	assert.Equal(t, "kinds[doc] / path-pattern", d.RelatedLocations[0].Message)
+
+	d = pathPatternDiag(f, "notes/x.md", newPathPattern("doc", "docs/*.md"), "")
+	assert.NotContains(t, d.Message, "()")
+}

@@ -61,3 +61,20 @@ func TestCachedDocFrontMatterRaw_ToleratesUnexpectedMemoValue(t *testing.T) {
 	assert.Equal(t, "x", raw["name"])
 	assert.Empty(t, diags)
 }
+
+// buildDocFrontMatter is the memo builder: it boxes one decode, map
+// and parse diagnostics together, as a *docFrontMatter.
+func TestBuildDocFrontMatter(t *testing.T) {
+	got, ok := buildDocFrontMatter(
+		newTestFile(t, "doc.md", "---\nname: x\n---\n# X\n")).(*docFrontMatter)
+	require.True(t, ok)
+	assert.Equal(t, map[string]any{"name": "x"}, got.raw)
+	assert.Empty(t, got.diags)
+
+	got, ok = buildDocFrontMatter(
+		newTestFile(t, "doc.md", "---\nname: [x\n---\n# X\n")).(*docFrontMatter)
+	require.True(t, ok)
+	assert.Nil(t, got.raw)
+	require.Len(t, got.diags, 1)
+	assert.Contains(t, got.diags[0].Message, "front matter: invalid YAML")
+}

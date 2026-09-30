@@ -96,6 +96,72 @@ func TestFilenameDiagnostic_InvalidGlobUnderCUEHasNoAppliedHint(t *testing.T) {
 	assert.Equal(t, "syntax error in pattern", d.Hint)
 }
 
+// filenameHintForms lists, as written, each entry that carried a
+// reference and resolved. A plain entry and an unresolved one are
+// left out, and under cue-frontmatter nothing was substituted.
+func TestFilenameHintForms(t *testing.T) {
+	pats := []string{"README.md", `\#(fmvar(id))-*.md`, `\#(fmvar(slug)).md`}
+	fm := map[string]any{"id": "a*b"}
+	assert.Equal(t, []string{"a*b-*.md"}, filenameHintForms(pats, fm, false))
+	assert.Nil(t, filenameHintForms(pats, fm, true))
+	assert.Nil(t, filenameHintForms([]string{"README.md"}, fm, false))
+}
+
+// resolveFilenameEntry returns a plain entry unchanged, a reference
+// escaped for filepath.Match, a wildcard under cue-frontmatter, and
+// the resolution error for a missing field.
+func TestResolveFilenameEntry(t *testing.T) {
+	r, interp, err := resolveFilenameEntry("notes-*.md", nil, false)
+	assert.Equal(t, "notes-*.md", r)
+	assert.False(t, interp)
+	assert.NoError(t, err)
+
+	r, interp, err = resolveFilenameEntry(`\#(fmvar(id)).md`,
+		map[string]any{"id": "a*"}, false)
+	assert.Equal(t, "a[*].md", r)
+	assert.True(t, interp)
+	assert.NoError(t, err)
+
+	r, interp, err = resolveFilenameEntry(`\#(fmvar(id)).md`, nil, true)
+	assert.Equal(t, "?*.md", r)
+	assert.True(t, interp)
+	assert.NoError(t, err)
+
+	_, interp, err = resolveFilenameEntry(`\#(fmvar(id)).md`, nil, false)
+	assert.True(t, interp)
+	assert.EqualError(t, err, "`fmvar(id)`: frontmatter value missing")
+}
+
+// authoredFilenamePattern maps a resolved entry back to the entry as
+// written, with the applied form as the hint for a reference, and
+// keeps a plain entry as it is with no hint.
+func TestAuthoredFilenamePattern(t *testing.T) {
+	pats := []string{"[.md", `[\#(fmvar(tag))].md`}
+	fm := map[string]any{"tag": "-"}
+	got, hint := authoredFilenamePattern(pats, "[-].md", fm, false)
+	assert.Equal(t, `[\#(fmvar(tag))].md`, got)
+	assert.Equal(t, "with front matter applied: [-].md", hint)
+
+	got, hint = authoredFilenamePattern(pats, "[.md", fm, false)
+	assert.Equal(t, "[.md", got)
+	assert.Empty(t, hint)
+
+	got, hint = authoredFilenamePattern(pats, "other", fm, false)
+	assert.Equal(t, "other", got, "an unknown entry is returned as given")
+	assert.Empty(t, hint)
+}
+
+func TestMissingFmvarErr(t *testing.T) {
+	assert.EqualError(t, MissingFmvarErr("a.b"),
+		"`fmvar(a.b)`: frontmatter value missing")
+}
+
+func TestInvalidFmvarPathErr(t *testing.T) {
+	err := InvalidFmvarPathErr("my-key")
+	assert.EqualError(t, err, "`fmvar(my-key)`: invalid frontmatter path "+
+		"(non-identifier keys must be quoted, e.g. `fmvar(\"my-key\")`)")
+}
+
 // A reference whose path walks into a scalar (`fmvar(a.b)` with
 // `a: x`) names that key as not a mapping instead of reporting the
 // field as missing: `a` is there, it just holds no `b`.

@@ -75,7 +75,7 @@ func TestResolveSortKey_MixedDateFormsOrderChronologically(t *testing.T) {
 		`v: "2026-01-02T10:00"`,
 		"v: 2026-01-02 10:30:00",
 		`v: "2026-01-02T11:00:00+00:00"`,
-		"v: 2026-01-02T11:15", // not a YAML timestamp: a string
+		"v: 2026-01-02T11:15",            // not a YAML timestamp: a string
 		`v: "2026-01-02T10:00:00-05:00"`, // 15:00Z
 		`v: "2026-01-02T15:00:00.5"`,
 		"v: 2026-01-03T00:00:00.000000001Z",
@@ -202,4 +202,34 @@ func TestParseSortTime(t *testing.T) {
 		_, ok := parseSortTime(s)
 		assert.False(t, ok, s)
 	}
+}
+
+// resolveScalar returns the leaf value as decoded, not its string
+// form, and rejects every path ResolvePath rejects.
+func TestResolveScalar(t *testing.T) {
+	ts := time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)
+	data := map[string]any{
+		"n": 3, "t": ts, "s": "x",
+		"m": map[string]any{"k": true}, "l": []any{"a"},
+	}
+	for path, want := range map[string]any{"n": 3, "t": ts, "s": "x"} {
+		got, err := resolveScalar(data, []string{path})
+		require.NoError(t, err, path)
+		assert.Equal(t, want, got, path)
+	}
+	got, err := resolveScalar(data, []string{"m", "k"})
+	require.NoError(t, err)
+	assert.Equal(t, true, got)
+
+	_, err = resolveScalar(data, nil)
+	assert.EqualError(t, err, "empty path")
+	_, err = resolveScalar(nil, []string{"n"})
+	assert.EqualError(t, err, `front-matter key "n" not found`)
+	_, err = resolveScalar(data, []string{"absent"})
+	assert.EqualError(t, err, `front-matter key "absent" not found`)
+	_, err = resolveScalar(data, []string{"s", "k"})
+	assert.EqualError(t, err, `front-matter key "s" is not a map`)
+	assert.ErrorIs(t, err, ErrNotMap)
+	_, err = resolveScalar(data, []string{"l"})
+	assert.ErrorIs(t, err, ErrCompositeValue)
 }
