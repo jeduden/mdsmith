@@ -140,6 +140,15 @@ func globRefAt(pattern string, start int) (name string, end int, err error) {
 // in pattern with its fmvar argument and [start, end) byte span. A
 // literal opener is stepped over, so a reference that follows it is
 // still found.
+//
+// It does not reuse scanInterps, the `regex:` surface's scanner in
+// matcher.go. The two differ on purpose, in the opener only:
+// scanInterps reads every `\#(` as a reference and fails on an
+// unterminated body, while a glob must skip an escaped backslash
+// (`\\#(`) and keep any opener that is not a well-formed reference
+// as the literal it was before interpolation existed. The body
+// grammar is one implementation: both call findInterpEnd and
+// parseFmvarCall.
 func scanGlobRefs(
 	pattern string, visit func(name string, start, end int) error,
 ) error {
