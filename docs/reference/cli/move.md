@@ -41,7 +41,8 @@ code 2.
   from `dst`'s directory. Moving `docs/a.md` to `guide/a.md`
   fixes its own `[x](./b.md)` as well as the links pointing at
   it. A destination that still resolves, such as `sub/../b.md`
-  after a move within one directory, keeps its spelling.
+  after a move within one directory, keeps its spelling. A link
+  to a directory, such as `sub/`, keeps its trailing `/`.
 - **Wikilinks.** `[[old-stem]]` becomes `[[new-stem]]` only when
   the basename stem changes. A move that keeps the basename
   (`docs/api.md` → `ref/api.md`) leaves wikilinks alone, because

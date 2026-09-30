@@ -30,3 +30,17 @@ func TestMarkupEscaped(t *testing.T) {
 		})
 	}
 }
+
+func TestRelFrom(t *testing.T) {
+	for name, tc := range map[string]struct{ from, target, want string }{
+		"down":            {".", "docs/a.md", "docs/a.md"},
+		"up":              {"docs", "b.md", "../b.md"},
+		"same directory":  {"docs", "docs", "."},
+		"up to the root":  {"docs", ".", ".."},
+		"across branches": {"a/b", "c/d.md", "../../c/d.md"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, relFrom(tc.from, tc.target))
+		})
+	}
+}

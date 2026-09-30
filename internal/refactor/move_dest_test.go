@@ -450,6 +450,8 @@ func TestDestResolver_Target(t *testing.T) {
 		"nope.md?100%":   {target: "nope.md", path: "nope.md", tokLen: 7},
 		`sub\a.md#s\_1`:  {target: "sub/a.md", path: `sub\a.md`, tokLen: 8},
 		"./a:b.md":       {target: "a:b.md", path: "./a:b.md", tokLen: 8},
+		"sub/#x":         {target: "sub", path: "sub/", tokLen: 4, dir: true},
+		"a.md/":          {target: "a.md", path: "a.md/", tokLen: 5},
 	} {
 		t.Run(dest, func(t *testing.T) {
 			r := &destResolver{ws: ws, src: "a.md"}

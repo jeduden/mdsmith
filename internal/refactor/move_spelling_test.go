@@ -63,3 +63,20 @@ func TestMove_ColonInFirstSegmentGetsDotSlash(t *testing.T) {
 	}, "x.md", "d/n:1.md")
 	assert.Equal(t, "[x](d/n:1.md)\n", got["c.md"])
 }
+
+// TestMove_TrailingSlashKeptOnDirectoryLinks pins that the moved file's
+// link to a directory keeps its trailing `/` when it is recomputed,
+// with or without a fragment, while a trailing `/` after a file name is
+// dropped. An incoming `[x](a.md/)` becomes `docs/a.md` for the same
+// reason: the `/` after a file name is a typo the rewrite fixes.
+func TestMove_TrailingSlashKeptOnDirectoryLinks(t *testing.T) {
+	got := moveAndApply(t, map[string]string{
+		"a.md":      "[d](sub/) [f](sub/#x) [h](./) [g](./docs/) [b](b.md/)\n",
+		"b.md":      "# B\n",
+		"c.md":      "[x](a.md/)\n",
+		"sub/e.md":  "# E\n",
+		"docs/z.md": "# Z\n",
+	}, "a.md", "docs/a.md")
+	assert.Equal(t, "[d](../sub/) [f](../sub/#x) [h](../) [g](./) [b](../b.md)\n", got["a.md"])
+	assert.Equal(t, "[x](docs/a.md)\n", got["c.md"])
+}

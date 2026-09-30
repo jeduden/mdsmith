@@ -128,16 +128,17 @@ func workspaceRelative(p string) bool {
 	return cleaned != ".." && !strings.HasPrefix(cleaned, "../")
 }
 
-// relFrom returns the forward-slash path from fromDir to target, both
-// workspace-relative. It falls back to target on the rare error path
-// (paths on different volumes), which cannot happen for two
+// relFrom returns the clean forward-slash path from fromDir to target,
+// both workspace-relative; filepath.Rel spells the path to the root
+// `.` from `docs` as `../.`. It falls back to target on the rare error
+// path (paths on different volumes), which cannot happen for two
 // workspace-relative inputs.
 func relFrom(fromDir, target string) string {
 	r, err := filepath.Rel(fromDir, target)
 	if err != nil {
 		return target
 	}
-	return filepath.ToSlash(r)
+	return path.Clean(filepath.ToSlash(r))
 }
 
 var (
@@ -230,19 +231,23 @@ func outboundEdit(r *destResolver, d inlineDest, src, dst string) (Edit, bool) {
 // spellFrom's directory, it names target. ok is false when the token
 // already names target from there, so a spelling such as
 // `sub/../b.md` is kept while it still resolves. An explicit `./x`
-// keeps its prefix unless the new path climbs out of the directory
-// (a `../` result already reads as relative); everything else is
-// bare-relative. A new path whose first segment holds a `:` gets a
-// `./` prefix too: a bare `a:b.md` reads as the URL scheme `a:`.
+// keeps its prefix unless the new path starts with `.` or `..`, which
+// already reads as relative; everything else is bare-relative. A new
+// path whose first segment holds a `:` gets a `./` prefix too: a bare
+// `a:b.md` reads as the URL scheme `a:`. A link to a directory keeps
+// its trailing `/`.
 func destEdit(d inlineDest, ref destRef, spellFrom, target string) (Edit, bool) {
 	if linkgraph.ResolveRelTarget(spellFrom, ref.path) == target {
 		return Edit{}, false
 	}
 	newPath := relFrom(path.Dir(spellFrom), target)
 	first, _, _ := strings.Cut(newPath, "/")
-	if strings.HasPrefix(ref.path, "./") && !strings.HasPrefix(newPath, "../") ||
+	if strings.HasPrefix(ref.path, "./") && first != "." && first != ".." ||
 		strings.IndexByte(first, ':') >= 0 {
 		newPath = "./" + newPath
+	}
+	if ref.dir {
+		newPath += "/"
 	}
 	pe := d.ps + ref.tokLen
 	return Edit{
@@ -259,6 +264,7 @@ type destRef struct {
 	target string // the workspace file the destination names
 	path   string // the path token, percent-decoded
 	tokLen int    // byte length of the path token as written
+	dir    bool   // path ends in `/` and target is no file: a directory
 }
 
 // destResolver reads destinations for a move of src. It lists the
@@ -306,7 +312,8 @@ func (r *destResolver) target(refFile string, dest []byte) (destRef, bool) {
 	if tgt == "" || markupEscaped(dest[:tokLen], tokLen < len(dest)) {
 		return destRef{}, false
 	}
-	return destRef{target: tgt, path: p, tokLen: tokLen}, true
+	dir := strings.HasSuffix(p, "/") && !r.exists(tgt)
+	return destRef{target: tgt, path: p, tokLen: tokLen, dir: dir}, true
 }
 
 // markupEscaped reports whether a renderer reads tok, a destination's
