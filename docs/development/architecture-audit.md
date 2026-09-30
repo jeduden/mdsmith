@@ -110,6 +110,43 @@ None.
 [2609271912]: ../../plan/2609271912_arch-fix-shared-rename-mode-detection.md
 [2609271913]: ../../plan/2609271913_arch-fix-remove-dead-frontmatter-helpers.md
 
+## Audit 2026-09-13 (range: 0ca0d2f..b48e90c)
+
+The 2026-09-27 sweep above re-covers this range. Only
+the findings it does not record are kept here.
+
+### blockers (2026-09-13)
+
+None.
+
+### tax (2026-09-13)
+
+- The absolute-path predicate had three copies: in `cmd/mdsmith`,
+  in `internal/linkgraph`, and in `internal/backlinks`, inside a
+  full copy of `linkgraph.ResolveRelTarget` ([go.md][go]). Fixed directly:
+  `cmd/mdsmith` and `internal/linkgraph` call `internal/pathutil` (`\` is a
+  separator on every host); `internal/backlinks` calls `ResolveRelTarget`.
+  Left separate: `internal/refactor`'s `workspaceRelative` (`path.IsAbs`
+  only, so `Session.Move` and the LSP accept a `C:/x.md` destination the
+  CLI rejects), `internal/lsp`'s `isAbsPath`, and the drive-letter checks
+  in `internal/schema`, `internal/rules/build`, and `internal/lsp`.
+- `cliRenameWorkspace` and `sessionRefactorWorkspace` share
+  four matching `Workspace` pass-throughs (`Resolve`
+  differs by design) — [plan/2609131911][2609131911].
+- `internal/refactor/move.go`'s `recomputeToken`,
+  `encodePathToken`, `pathEdit`, `countFilesWithStem`
+  lack tests by name ([tests.md][tests]) —
+  [plan/2609131913][2609131913].
+
+### nice-to-have (2026-09-13)
+
+- Four `cmd/mdsmith` move/rename helpers lack test
+  symbols but are covered indirectly; optional —
+  [plan/2609131913][2609131913].
+
+[2609131911]: ../../plan/2609131911_arch-fix-refactor-workspace-duplication.md
+[2609131913]: ../../plan/2609131913_arch-fix-move-helper-unit-tests.md
+
 ## Audit 2026-08-30 (range: b706d76..0ca0d2f)
 
 59 commits, ~130 files touched (~125 Go files, no
@@ -182,7 +219,7 @@ None.
   `go build ./...`, `go test ./...`, and
   `go tool golangci-lint run` are green; behavior is
   unchanged (existing unit and e2e tests moved/kept
-  untouched).
+  untouched). Superseded by the 2026-09-13 audit.
 - `internal/mdtext/wordfreq.go`'s `WordFrequencyInto` and
   three helpers in `internal/directivefiles/directivefiles.go`
   (`openingFence`, `isClosingFence`, `isIndentedCodeBlock`)

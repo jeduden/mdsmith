@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
+
+	"github.com/jeduden/mdsmith/internal/pathutil"
 )
 
 // ResolveRelTarget joins srcFile's directory with linkPath and
@@ -29,10 +31,7 @@ import (
 func ResolveRelTarget(srcFile, linkPath string) string {
 	srcFile = strings.ReplaceAll(srcFile, `\`, `/`)
 	linkPath = strings.ReplaceAll(linkPath, `\`, `/`)
-	if path.IsAbs(srcFile) || path.IsAbs(linkPath) {
-		return ""
-	}
-	if isDriveOrUNC(srcFile) || isDriveOrUNC(linkPath) {
+	if pathutil.IsAbsOrDriveOrUNC(srcFile) || pathutil.IsAbsOrDriveOrUNC(linkPath) {
 		return ""
 	}
 	dir := path.Dir(srcFile)
@@ -41,20 +40,6 @@ func ResolveRelTarget(srcFile, linkPath string) string {
 		return ""
 	}
 	return cleaned
-}
-
-// isDriveOrUNC reports whether p starts with a Windows drive letter
-// (e.g. `C:`) or a UNC prefix (`//server`). Used by ResolveRelTarget
-// to refuse non-relative inputs even when running on POSIX hosts,
-// where filepath.IsAbs wouldn't flag them.
-func isDriveOrUNC(p string) bool {
-	if len(p) >= 2 && p[1] == ':' {
-		c := p[0]
-		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
-			return true
-		}
-	}
-	return strings.HasPrefix(p, "//")
 }
 
 // DecodeAnchor URL-decodes raw and returns the decoded form. On
