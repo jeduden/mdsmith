@@ -307,10 +307,10 @@ func TestApplyPlan_WriteErrorAndFallback(t *testing.T) {
 	assert.Contains(t, string(got), "# Install")
 
 	// Resolve normalizes "./sub" → "sub" and reads the mapped file
-	// (ok), but applyEditsToFile's raw-key lookup misses and falls back
-	// to rootDir/sub — a directory — so writeFilePreservingMode fails
-	// → exit 2. This drives the write-error arm without relying on
-	// permission bits (the test runs as root).
+	// (ok), but computePlanWrite's raw-key lookup misses and falls back
+	// to rootDir/sub — a directory — so renaming the staged temp over
+	// it fails → exit 2. This drives the write-error arm without
+	// relying on permission bits (the test runs as root).
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o755))
 	ws2 := cliRenameWorkspace{relToAbs: map[string]string{"sub": abs}, rootDir: dir}
 	code := applyPlan(&bytes.Buffer{}, ws2,
