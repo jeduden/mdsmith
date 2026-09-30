@@ -150,20 +150,6 @@ func printVersion() {
 // write syscall per formatted line.
 const reportBufSize = 64 << 10
 
-// formatDiagnosticsTo writes diagnostics to w using the specified format.
-// Returns a non-zero exit code on write error, or 0 on success. The
-// write-error message is best-effort routed to the same w so callers
-// that pass an alternate writer (production: os.Stderr; tests: a
-// fault-injecting writer or a buffer) keep all formatter output
-// confined to one destination.
-func formatDiagnosticsTo(w io.Writer, diags []lint.Diagnostic, format string, noColor bool) int {
-	if err := writeDiagnostics(w, diags, format, !noColor); err != nil {
-		printWriteErrorTo(w, err)
-		return 2
-	}
-	return 0
-}
-
 // writeDiagnostics writes diagnostics to w in format ("json",
 // "sarif", or text for any other value) and returns the formatter's
 // error without reporting it. color turns on ANSI color in text
@@ -188,9 +174,14 @@ func printWriteErrorTo(w io.Writer, err error) {
 	_, _ = fmt.Fprintf(w, "mdsmith: error writing output: %v\n", err)
 }
 
-// formatDiagnostics writes diagnostics to stderr using the specified format.
+// formatDiagnostics writes diagnostics to stderr using the specified
+// format, for export and extract. Like the check and fix report, text
+// is colored only when stderr is a terminal (see reportIO.colorFor).
+// Returns 2 on a write error, or 0 on success.
 func formatDiagnostics(diags []lint.Diagnostic, format string, noColor bool) int {
-	return formatDiagnosticsTo(os.Stderr, diags, format, noColor)
+	return processIO().deliverReport("", noColor, nil, func(w io.Writer, color bool) error {
+		return writeDiagnostics(w, diags, format, color)
+	})
 }
 
 // printErrors writes runtime errors to stderr.

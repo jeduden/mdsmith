@@ -1538,9 +1538,9 @@ func TestReportFixResultTo_DryRunJSONWriteErrorFlushes(t *testing.T) {
 }
 
 func TestReportFixResultTo_DryRunSARIFWriteErrorReturns2(t *testing.T) {
-	// Drive lines 369-370 in fix.go: enough diagnostics to overflow the
-	// 64 KiB buffer during SARIF JSON encoding so formatDiagnosticsTo
-	// returns non-zero and the early-return branch is taken.
+	// Enough diagnostics to overflow the 64 KiB buffer during SARIF
+	// JSON encoding, so writeDiagnostics itself sees the failure and
+	// the report exits 2.
 	opts := fixCLIOpts{dryRun: true, format: "sarif"}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
 	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))

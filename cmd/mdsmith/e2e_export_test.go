@@ -65,6 +65,7 @@ func TestE2E_Export_DefaultMode_StaleBody_Refuses(t *testing.T) {
 		"diagnostic should describe the stale body, got: %s", stderr)
 	assert.Contains(t, stderr, "MDS038",
 		"diagnostic should name the toc rule, got: %s", stderr)
+	assert.NotContains(t, stderr, "\033[", "stderr is a pipe here, not a terminal: no color")
 
 	// Source file must not be modified.
 	bytes, err := os.ReadFile(path)
