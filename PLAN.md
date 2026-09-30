@@ -237,7 +237,7 @@ footer: |
 | 2606270013 | ✅     | sonnet | [Add built-in Slidev convention](plan/2606270013_slidev-convention.md)                                                                                  |
 | 2606280208 | ✅     | opus   | [External URL link checking rule (MDS072)](plan/2606280208_external-link-check.md)                                                                      |
 | 2606292015 | 🔲     | opus   | [Scope the LSP workspace singleton per client so instances coexist](plan/2606292015_lsp-multi-instance-coexistence.md)                                  |
-| 2607022118 | 🔲     | sonnet | [General occurrence rule — bound how often a pattern appears per scope](plan/2607022118_occurrence-rule.md)                                             |
+| 2607022118 | ✅     | sonnet | [General occurrence rule — bound how often a pattern appears per scope](plan/2607022118_occurrence-rule.md)                                             |
 | 2607022119 | ✅     | sonnet | [Word-frequency metric and over-repetition rule](plan/2607022119_word-frequency-metric-rule.md)                                                         |
 | 2607022120 | 🔲     | opus   | [Substitution rule — deterministic word-choice swaps with auto-fix](plan/2607022120_substitution-rule.md)                                               |
 | 2607031500 | ✅     | sonnet | [Security hardening batch — 2026-07-03 post-audit diff review (low)](plan/2607031500_security-hardening-batch-2026-07-03.md)                            |
@@ -271,4 +271,10 @@ footer: |
 | 2608301918 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-30 touched-set tax findings](plan/2608301918_arch-fix-touched-set-unit-tests-0830.md)                         |
 | 2608301919 | 🔲     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
 | 2609032052 | 🔲     | opus   | [Resolve config from `pyproject.toml` under `[tool.mdsmith]`](plan/2609032052_pyproject-config-source.md)                                               |
+| 2609061915 | 🔲     | sonnet | [Add unit tests for the untested rename/move helpers](plan/2609061915_arch-fix-touched-set-unit-tests-0906.md)                                          |
+| 2609131911 | 🔲     | sonnet | [Share the refactor Workspace adapter between CLI and Session](plan/2609131911_arch-fix-refactor-workspace-duplication.md)                              |
+| 2609131913 | 🔲     | sonnet | [Add unit tests for untested move.go helper functions](plan/2609131913_arch-fix-move-helper-unit-tests.md)                                              |
+| 2609201914 | 🔲     | sonnet | [Add dedicated unit tests for AdvancePastLine and the WASM bridge helpers](plan/2609201914_arch-fix-missing-unit-tests-0920.md)                         |
+| 2609271912 | 🔲     | sonnet | [Share rename-mode detection between the CLI and the engine](plan/2609271912_arch-fix-shared-rename-mode-detection.md)                                  |
+| 2609271913 | 🔲     | haiku  | [Remove dead front-matter parse helpers in internal/index](plan/2609271913_arch-fix-remove-dead-frontmatter-helpers.md)                                 |
 <?/catalog?>

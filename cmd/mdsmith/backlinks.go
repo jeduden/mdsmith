@@ -14,6 +14,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/backlinks"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
+	"github.com/jeduden/mdsmith/internal/pathutil"
 )
 
 // backlinksOptions bundles the parsed CLI flags for `backlinks`.
@@ -182,16 +183,17 @@ func validateIncludePatterns(patterns []string) error {
 	return nil
 }
 
-// normalizeWorkspacePath returns the cleaned workspace-relative form
-// of target. validateBacklinksArgs already rejects absolute paths
-// and `..` traversals and routes the input through
-// linkgraph.ParseTarget (which percent-decodes), so this helper only
-// has to handle a relative, decoded path: strip a leading `./`,
-// normalize separators, and clean the result.
+// normalizeWorkspacePath returns the cleaned, forward-slash form of
+// target: `\` becomes `/` on every host (filepath.ToSlash is a no-op
+// for backslashes on Linux and macOS), then path.Clean resolves `.`
+// and `..` segments and repeated slashes. index.NormalizePath and
+// linkgraph.ResolveRelTarget also treat `\` as a separator, so
+// `docs\api.md` names the same file in all three; index.NormalizePath
+// only strips a leading `./` and does not clean the path.
+// isWorkspaceRelativeTarget checks this form too, so a target is
+// never validated as one path and then looked up as another.
 func normalizeWorkspacePath(target string) string {
-	t := filepath.ToSlash(target)
-	t = strings.TrimPrefix(t, "./")
-	return path.Clean(t)
+	return path.Clean(strings.ReplaceAll(target, `\`, "/"))
 }
 
 // workspaceRelativePath returns p relative to rootDir using forward
@@ -217,33 +219,22 @@ func workspaceRelativePath(p, rootDir string) string {
 	return filepath.ToSlash(rel)
 }
 
-// isAbsOrDriveOrUNC reports whether p is absolute under any of the
-// schemes mdsmith targets: POSIX-style leading `/`, Windows drive
-// letters like `C:/`, or UNC prefixes like `//host`. `path.IsAbs`
-// alone misses the Windows forms because the path package is Unix-only.
-func isAbsOrDriveOrUNC(p string) bool {
-	if path.IsAbs(p) {
-		return true
-	}
-	if len(p) >= 2 && p[1] == ':' {
-		c := p[0]
-		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
-			return true
-		}
-	}
-	return strings.HasPrefix(p, "//")
-}
-
 // isWorkspaceRelativeTarget reports whether target is a usable
-// workspace-relative path. Absolute paths (POSIX / Windows / UNC)
-// and parent-traversal entries are rejected so the caller can fail
-// loudly instead of silently producing an empty result set.
+// workspace-relative path. Absolute paths (POSIX / Windows / UNC,
+// with either separator) and parent-traversal entries are rejected
+// so the caller can fail loudly instead of silently producing an
+// empty result set — or, for rename and move, reading or writing a
+// file outside the workspace.
+//
+// The absolute check runs on target and on its normalizeWorkspacePath
+// form, the one the commands look up: normalizing can turn
+// `./C:/x.md` into the drive path `C:/x.md`. The traversal check runs
+// on the normalized form, so `sub\..\..\x.md` is caught on every host.
 func isWorkspaceRelativeTarget(target string) bool {
-	t := filepath.ToSlash(target)
-	if isAbsOrDriveOrUNC(t) {
+	cleaned := normalizeWorkspacePath(target)
+	if pathutil.IsAbsOrDriveOrUNC(target) || pathutil.IsAbsOrDriveOrUNC(cleaned) {
 		return false
 	}
-	cleaned := path.Clean(t)
 	return cleaned != ".." && !strings.HasPrefix(cleaned, "../")
 }
 

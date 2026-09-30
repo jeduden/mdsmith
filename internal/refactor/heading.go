@@ -1,10 +1,11 @@
 package refactor
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -311,10 +312,7 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 		return Edit{}, false
 	}
 	row := lines[line-1]
-	startByte, endByte, ok := atxHeadingTextByteRange(row)
-	if !ok {
-		startByte, endByte = trimmedRange(row)
-	}
+	startByte, endByte := HeadingTextRange(row)
 	startCh := mdtext.UTF16FromByteOffset(row, startByte)
 	endCh := mdtext.UTF16FromByteOffset(row, endByte)
 	return Edit{
@@ -324,6 +322,26 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 		},
 		NewText: newName,
 	}, true
+}
+
+// HeadingTextRange returns the byte offsets of the heading text on an
+// ATX or setext heading line — what a rename replaces. For an ATX
+// line it's the run between the opening `#`s and any trailing closing
+// `#` run; for anything else (a setext heading's text line) it falls
+// back to the line trimmed of leading and trailing horizontal
+// whitespace.
+//
+// Shared by the CLI/engine rename path (headingTextEdit, above) and
+// the LSP's prepareRename range (internal/lsp/rename.go) so both
+// surfaces agree on the same boundary, fallback included — a change
+// to either the ATX rule or the setext fallback here reaches both
+// callers automatically.
+func HeadingTextRange(row []byte) (int, int) {
+	start, end, ok := atxHeadingTextByteRange(row)
+	if !ok {
+		start, end = trimmedRange(row)
+	}
+	return start, end
 }
 
 // atxHeadingTextByteRange returns the byte offsets of the heading text
@@ -804,20 +822,29 @@ func refDefParseTarget(dest string) (refDefDestTarget, bool) {
 	return refDefDestTarget{path: u.Path, fragment: u.Fragment}, true
 }
 
+// ComparePositionsBottomUp orders two positions in reverse document
+// order — later line first, then later character first within a
+// shared line — the order a consumer applying edits sequentially must
+// walk so an earlier (later-positioned) edit's insertion never shifts
+// the offset a later edit relies on. Exported so internal/lsp's
+// sortTextEditsBottomUp, which sorts its own (structurally identical)
+// Position type, can share this comparator instead of duplicating it.
+func ComparePositionsBottomUp(a, b Position) int {
+	return cmp.Or(
+		cmp.Compare(b.Line, a.Line),
+		cmp.Compare(b.Character, a.Character),
+	)
+}
+
 // stableSortEdits sorts each key's Edit slice in reverse document
 // order so a consumer applying edits sequentially ends up with the
 // right buffer state: earlier (later-positioned) edits don't shift
 // the offsets the next edit relies on, particularly when two edits
 // share a line.
 func stableSortEdits(changes map[string][]Edit) {
-	for key, edits := range changes {
-		sort.SliceStable(edits, func(i, j int) bool {
-			a, b := edits[i].Range.Start, edits[j].Range.Start
-			if a.Line != b.Line {
-				return a.Line > b.Line
-			}
-			return a.Character > b.Character
+	for _, edits := range changes {
+		slices.SortStableFunc(edits, func(a, b Edit) int {
+			return ComparePositionsBottomUp(a.Range.Start, b.Range.Start)
 		})
-		changes[key] = edits
 	}
 }

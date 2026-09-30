@@ -22,10 +22,13 @@ func init() {
 // Rule implements MDS075. It counts every content word per scope unit
 // (file, section, or paragraph) and emits a diagnostic when any word's
 // count exceeds Max. Words in Stopwords are subtracted before checking.
-// The rule is off by default and requires Max > 0 to fire.
+// The rule is off by default (max: -1) and fires only when Max >= 1.
 type Rule struct {
-	Scope          string
-	Max            int // 0 = unconfigured (skip); -1 = unlimited (skip)
+	Scope string
+	// Max is the per-word limit: >= 1 to fire, or -1 (the default) for
+	// no limit. Settings reject 0 and values below -1, so 0 only appears
+	// as the zero value of an unconfigured Rule, which Check skips.
+	Max            int
 	MinLength      int
 	Stopwords      []string
 	lowerStopwords map[string]struct{}

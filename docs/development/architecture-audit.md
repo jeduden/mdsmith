@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: 0ca0d2f7c95ab53e3e9ed8851150af98b95088fb
+audit-from: 979bb7fbfc7379d628b029336f3fc075dd16edab
 ---
 # Architecture audit log
 
@@ -16,6 +16,136 @@ The oldest entries have moved to the
 [archive shards](architecture-audit-archive.md) to stay
 under the file-length budget; every finding there is
 resolved.
+
+## Audit 2026-09-27 (range: 0ca0d2f..979bb7f)
+
+39 production files touched (Go plus one TypeScript file
+in the Obsidian editor).
+
+Clean surfaces, verified:
+
+- Line-count budgets, checked directly against the
+  ~1000-line threshold [audit-checklist.md][audit-checklist]
+  names: `cmd/mdsmith/main.go` (566 lines),
+  `internal/lsp/server.go` (558 lines), and
+  `internal/lsp/symbols.go` (511 lines).
+- No rule package imports another rule package.
+- Test coverage, spot-checked on `cmd/mdsmith/main.go`,
+  `internal/rules/astutil`, `internal/rules/catalog`, and
+  `internal/rules/linkvalidity`: every production function
+  has a matching `TestFoo`/`TestReceiver_Foo`, and trivial
+  accessors carry the required exemption comment.
+
+### blockers (2026-09-27)
+
+None.
+
+### tax (2026-09-27)
+
+- `internal/lsp/rename.go` and `internal/refactor/heading.go`
+  independently carried byte-for-byte identical
+  implementations of the six ATX-heading-text-range parsing
+  helpers (`atxHeadingTextByteRange`, `atxHeadingTextStart`,
+  `trimTrailingHashRun`, `skipLeadingSpaces`,
+  `trimRightSpace`, `trimmedRange`). [go.md][go]'s "Refactor
+  moves we have used" calls for pushing a duplicated helper
+  into the shared package a caller already imports;
+  `internal/lsp/rename.go` already imports `internal/refactor`
+  for `refactor.Heading` and `refactor.FindHeadingLine`, so
+  nothing justified re-deriving the same CommonMark edge-case
+  logic (tab handling, trailing `#` runs, the zero-width
+  empty-heading case) a second time. A future goldmark parsing
+  fix applied to one copy and not the other would let
+  `textDocument/prepareRename`'s highlighted range silently
+  disagree with the range `textDocument/rename` actually edits.
+  Fixed directly (not filed as a plan): exported the six
+  helpers from `internal/refactor/heading.go`
+  (`AtxHeadingTextByteRange`, `AtxHeadingTextStart`,
+  `TrimTrailingHashRun`, `SkipLeadingSpaces`,
+  `TrimRightSpace`, `TrimmedRange`) and pointed
+  `internal/lsp/rename.go`'s `headingPrepareRange` at them;
+  merged every edge case from the two packages' test suites
+  into `internal/refactor/heading_test.go` and deleted the
+  now-redundant direct-unit tests from `internal/lsp`.
+  `go build ./...`, `go test ./...`, and
+  `go tool -modfile=tools/go.mod golangci-lint run` are green;
+  behavior is unchanged.
+- `cmd/mdsmith/rename.go`'s `detectRenameMode` and
+  `pkg/mdsmith/refactor.go`'s `detectRenameKind` both wrap the
+  same `refactor.FindHeadingLine` / `refactor.HasLinkRef` pair
+  in an identical "both → error, heading, label, neither →
+  error" switch. [go.md][go]'s "Common violations to flag":
+  logic reimplemented per host surface instead of living once
+  on the shared engine both the CLI and the public
+  `pkg/mdsmith` API call —
+  [engine-api.md][engine-api] documents the two as mirroring
+  one-to-one, so a future refinement to the
+  ambiguous/no-match messaging is likely to drift between them
+  — [plan/2609271912][2609271912].
+- `internal/index/build.go`'s `frontMatterSymbols`,
+  `frontMatterScalar`, and `frontMatterStringList` are no
+  longer called by any production path; `frontMatterAll`
+  replaced them, and the only remaining callers are in
+  `internal/index/coverage_test.go` — the function's own
+  comment says they're "kept ... for the targeted coverage
+  test." [tests.md][tests]'s per-function unit-test rule
+  exists to get production code tested, not to justify keeping
+  ~130 lines of dead production code alive as a test subject;
+  the duplicate YAML-parse logic can also drift from
+  `frontMatterAll`'s behavior with nothing in the real build
+  path to catch it — [plan/2609271913][2609271913].
+
+### nice-to-have (2026-09-27)
+
+- `internal/rules/requiredstructure/rule.go` is 2700 lines,
+  the largest touched file. Not a named budget in the docs
+  (only `cmd/mdsmith/main.go` and `internal/lsp/server.go`
+  are called out by name), and the package is already split
+  into `fieldpatterncache.go`, `runcache_wiring.go`, and
+  `scope_rules.go` beside it — worth a maintainer's eye if it
+  keeps growing, not a violation today. No plan filed.
+
+[audit-checklist]: architecture/audit-checklist.md
+[engine-api]: ../background/concepts/engine-api.md
+[2609271912]: ../../plan/2609271912_arch-fix-shared-rename-mode-detection.md
+[2609271913]: ../../plan/2609271913_arch-fix-remove-dead-frontmatter-helpers.md
+
+## Audit 2026-09-13 (range: 0ca0d2f..b48e90c)
+
+The 2026-09-27 sweep above re-covers this range. Only
+the findings it does not record are kept here.
+
+### blockers (2026-09-13)
+
+None.
+
+### tax (2026-09-13)
+
+- The absolute-path predicate had three copies: in `cmd/mdsmith`,
+  in `internal/linkgraph`, and in `internal/backlinks`, inside a
+  full copy of `linkgraph.ResolveRelTarget` ([go.md][go]). Fixed directly:
+  `cmd/mdsmith` and `internal/linkgraph` call `internal/pathutil` (`\` is a
+  separator on every host); `internal/backlinks` calls `ResolveRelTarget`.
+  Left separate: `internal/refactor`'s `workspaceRelative` (`path.IsAbs`
+  only, so `Session.Move` and the LSP accept a `C:/x.md` destination the
+  CLI rejects), `internal/lsp`'s `isAbsPath`, and the drive-letter checks
+  in `internal/schema`, `internal/rules/build`, and `internal/lsp`.
+- `cliRenameWorkspace` and `sessionRefactorWorkspace` share
+  four matching `Workspace` pass-throughs (`Resolve`
+  differs by design) — [plan/2609131911][2609131911].
+- `internal/refactor/move.go`'s `recomputeToken`,
+  `encodePathToken`, `pathEdit`, `countFilesWithStem`
+  lack tests by name ([tests.md][tests]) —
+  [plan/2609131913][2609131913].
+
+### nice-to-have (2026-09-13)
+
+- Four `cmd/mdsmith` move/rename helpers lack test
+  symbols but are covered indirectly; optional —
+  [plan/2609131913][2609131913].
+
+[2609131911]: ../../plan/2609131911_arch-fix-refactor-workspace-duplication.md
+[2609131913]: ../../plan/2609131913_arch-fix-move-helper-unit-tests.md
 
 ## Audit 2026-08-30 (range: b706d76..0ca0d2f)
 
@@ -89,7 +219,7 @@ None.
   `go build ./...`, `go test ./...`, and
   `go tool golangci-lint run` are green; behavior is
   unchanged (existing unit and e2e tests moved/kept
-  untouched).
+  untouched). Superseded by the 2026-09-13 audit.
 - `internal/mdtext/wordfreq.go`'s `WordFrequencyInto` and
   three helpers in `internal/directivefiles/directivefiles.go`
   (`openingFence`, `isClosingFence`, `isIndentedCodeBlock`)
@@ -125,7 +255,6 @@ None.
 
 [go]: architecture/go.md
 [tests]: architecture/tests.md
-[cross]: architecture/cross-system.md
 [2608021916]: ../../plan/2608021916_arch-fix-githooks-package-split.md
 [2608091910]: ../../plan/2608091910_arch-fix-mds073-collision.md
 [2608301918]: ../../plan/2608301918_arch-fix-touched-set-unit-tests-0830.md
@@ -176,86 +305,3 @@ see the linked PR once opened.
 ### nice-to-have (2026-08-23)
 
 None found this cycle.
-
-## Audit 2026-08-16 (range: 2ab4b29..81f0d96)
-
-185 commits, 227 files touched (187 Go files). No
-TypeScript changes.
-
-No rule-to-rule imports. No reverse-layer imports. No
-Liskov breaks. `cmd/mdsmith/main.go` and
-`internal/lsp/server.go`/`symbols.go` stayed well under
-the ~1000-line threshold. The MDS073 collision from the
-prior cycle stays resolved — `rule_id_uniqueness_test.go`
-now guards it as a contract test.
-
-Clean surfaces, verified:
-
-- Every touched `internal/rules/*` package (catalog,
-  duplicatedcontent, markdownflavor, occurrence,
-  requiredstructure, slidevstructure, externallink, and
-  17 more) imports only shared helper packages — zero
-  rule-to-rule imports.
-- `internal/engine/source_config_cache.go` (new): a
-  cache hit returns a fresh `cloneRules` copy per caller,
-  never the shared template pointer, pinned by a
-  dedicated `-race` concurrency test.
-- `internal/pack/apm.go` (new): scoped correctly, no
-  cross-layer imports, registered via the existing
-  `pack.register` plugin point.
-- `internal/rules/externallink/probe_net.go`'s SSRF
-  hardening (`isRestrictedIP`, `ssrfControl`,
-  `ssrfCheckRedirect`): 9 dedicated tests, no
-  architecture concerns.
-- The two new `links:` settings
-  (`external-allow-internal`, `external-max-probes`) live
-  in MDS072's own settings struct — not a "field reachable
-  from only one rule" violation, consistent with the
-  existing `links:` precedent.
-
-### blockers (2026-08-16)
-
-None.
-
-### tax (2026-08-16)
-
-- `pkg/mdsmith/session.go`'s `readBoundedFrontMatterSource`
-  — the bounded/fallback front-matter read path on the
-  public `pkg/mdsmith` engine API — had no dedicated unit
-  test; only exercised indirectly via
-  `TestSessionKindsOversizedFile*`.
-  [tests.md][tests] requires a test by the function's own
-  name, and `pkg/mdsmith` is the highest-blast-radius
-  surface touched this cycle. Fixed directly (not filed as
-  a plan): added `TestReadBoundedFrontMatterSource`, a
-  table-driven test in `session_test.go` covering the
-  bounded (`OSWorkspace`) and fallback (`MemWorkspace`)
-  paths, the missing-file error, and both `max<=0` and
-  `math.MaxInt64` unbounded cases. `go test ./...` and
-  `go tool golangci-lint run` are green.
-- Six more functions across `cmd/mdsmith`, `pkg/mdsmith`,
-  `internal/rules/duplicatedcontent`,
-  `internal/rules/astutil`, `internal/bytelimit`, and
-  `pkg/markdown/flavor` have no dedicated unit test by
-  name, each covered only behaviorally —
-  [plan/2608161914][2608161914].
-
-### nice-to-have (2026-08-16)
-
-- `internal/lsp/server_diagnostics.go`'s
-  `surfaceForeignDiagnostics` changed the
-  `window/logMessage` notification shape from one
-  notification per diagnostic to at most two batched
-  notifications grouped by severity — a behavior change on
-  the LSP wire surface [cross-system.md][cross] tracks.
-  Well-tested; worth a one-line changelog note per that
-  page's "breaks must be deliberate and noted" policy. No
-  plan filed.
-- `internal/engine/source_config_cache.go`'s
-  `NewSourceConfigCache` is a trivial one-line constructor
-  without the "no test by design" exemption comment
-  [tests.md][tests] asks for on untested trivial functions.
-  Documentation nit; the type it constructs is otherwise
-  exhaustively tested. No plan filed.
-
-[2608161914]: ../../plan/2608161914_arch-fix-touched-set-unit-tests.md

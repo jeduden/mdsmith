@@ -247,55 +247,121 @@ func TestHeadingTextEdit_OutOfRange(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// TestAtxHeadingTextByteRange covers the heading-line parsing that
+// HeadingTextRange (shared by refactor's rename engine and the LSP's
+// prepareRename range in internal/lsp/rename.go) falls through to for
+// an ATX line. These cases drive both surfaces' rename popups so they
+// need to stay tight against the documented behavior.
 func TestAtxHeadingTextByteRange(t *testing.T) {
-	t.Run("trailing hash run", func(t *testing.T) {
-		s, e, ok := atxHeadingTextByteRange([]byte("## Title ##"))
-		require.True(t, ok)
-		assert.Equal(t, "Title", string([]byte("## Title ##")[s:e]))
-	})
-	t.Run("not atx", func(t *testing.T) {
-		_, _, ok := atxHeadingTextByteRange([]byte("plain text"))
-		assert.False(t, ok)
-	})
-	t.Run("empty heading", func(t *testing.T) {
-		s, e, ok := atxHeadingTextByteRange([]byte("### "))
-		require.True(t, ok)
-		assert.Equal(t, s, e)
-	})
-	t.Run("hash#text not closing", func(t *testing.T) {
-		s, e, ok := atxHeadingTextByteRange([]byte("# foo#bar"))
-		require.True(t, ok)
-		assert.Equal(t, "foo#bar", string([]byte("# foo#bar")[s:e]))
-	})
+	cases := []struct {
+		row                string
+		wantOK             bool
+		wantStart, wantEnd int
+	}{
+		{"# Hello", true, 2, 7},
+		{"## Hi there", true, 3, 11},
+		{"### Setup ###", true, 4, 9}, // trailing " ###" stripped
+		{"###### Six", true, 7, 10},
+		{"   ## Indented", true, 6, 14},
+		{"#NoSpace", false, 0, 0},
+		{"####### TooMany", false, 0, 0},
+		{"plain text", false, 0, 0},
+		{"## ", true, 3, 3}, // empty heading: zero-width range
+		{"##\tWith tab", true, 3, 11},
+		{"##  spaced", true, 4, 10},
+		{"##  spaced  ", true, 4, 10},
+		{"## foo ###", true, 3, 6},
+		{"## foo###", true, 3, 9}, // no preceding space — hashes kept as text
+		{"##", true, 2, 2},
+	}
+	for _, tc := range cases {
+		start, end, ok := atxHeadingTextByteRange([]byte(tc.row))
+		assert.Equal(t, tc.wantOK, ok, "row=%q", tc.row)
+		if !ok {
+			continue
+		}
+		assert.Equal(t, tc.wantStart, start, "start row=%q", tc.row)
+		assert.Equal(t, tc.wantEnd, end, "end row=%q", tc.row)
+	}
 }
 
 func TestAtxHeadingTextStart(t *testing.T) {
-	_, ok := atxHeadingTextStart([]byte("    # x")) // >3 leading spaces
-	assert.False(t, ok)
-	_, ok = atxHeadingTextStart([]byte("####### x")) // level 7
-	assert.False(t, ok)
-	_, ok = atxHeadingTextStart([]byte("##foo")) // no space after markers
-	assert.False(t, ok)
-	i, ok := atxHeadingTextStart([]byte("#\tx")) // tab separator
-	require.True(t, ok)
-	assert.Equal(t, 2, i)
-	_, ok = atxHeadingTextStart([]byte("no hash"))
-	assert.False(t, ok)
+	cases := []struct {
+		row    string
+		wantI  int
+		wantOK bool
+	}{
+		{"    # x", 0, false},   // >3 leading spaces
+		{"####### x", 0, false}, // level 7
+		{"##foo", 0, false},     // no space after markers
+		{"#\tx", 2, true},       // tab separator
+		{"no hash", 0, false},
+		{"", 0, false},
+		{"# Hello", 2, true},
+		{"## Hi", 3, true},
+		{"###### Six", 7, true},
+		{"   ## Indented", 6, true},
+		{"##\tTab", 3, true},
+	}
+	for _, tc := range cases {
+		i, ok := atxHeadingTextStart([]byte(tc.row))
+		assert.Equal(t, tc.wantOK, ok, "row=%q", tc.row)
+		assert.Equal(t, tc.wantI, i, "row=%q", tc.row)
+	}
 }
 
 func TestTrimTrailingHashRun(t *testing.T) {
-	assert.Equal(t, 0, trimTrailingHashRun([]byte(""), 0, 0)) // end<=start
-	row := []byte("# abc")
-	assert.Equal(t, 5, trimTrailingHashRun(row, 2, 5)) // no trailing #
-	row = []byte("# a#")
-	assert.Equal(t, 4, trimTrailingHashRun(row, 2, 4)) // # not preceded by space
-	row = []byte("#  ###")
-	assert.Equal(t, 1, trimTrailingHashRun(row, 1, 6)) // k<=start after run
+	cases := []struct {
+		row        string
+		start, end int
+		want       int
+	}{
+		{"", 0, 0, 0},              // end<=start
+		{"# abc", 2, 5, 5},         // no trailing #
+		{"# a#", 2, 4, 4},          // # not preceded by space
+		{"#  ###", 1, 6, 1},        // k<=start after run
+		{"## Setup ###", 3, 12, 8}, // trailing " ###" stripped; text ends at 8
+		{"## Setup ##", 3, 11, 8},  // trailing " ##" stripped
+		{"## Setup #", 3, 10, 8},   // trailing " #" stripped
+		{"## Setup#", 3, 9, 9},     // no preceding space — kept
+		{"## Setup", 3, 8, 8},      // no trailing hash — unchanged
+		{"## Setup   ", 3, 11, 11}, // trailing spaces only, no hash — unchanged
+	}
+	for _, tc := range cases {
+		got := trimTrailingHashRun([]byte(tc.row), tc.start, tc.end)
+		assert.Equal(t, tc.want, got, "row=%q", tc.row)
+	}
+}
+
+// TestHeadingTextRange covers HeadingTextRange's own two branches: the
+// ATX byte range it delegates to (already exercised in detail by
+// TestAtxHeadingTextByteRange above) and the non-ATX fallback to the
+// full trimmed line, e.g. a setext heading's text line.
+func TestHeadingTextRange(t *testing.T) {
+	start, end := HeadingTextRange([]byte("## Hi there"))
+	assert.Equal(t, 3, start)
+	assert.Equal(t, 11, end)
+
+	start, end = HeadingTextRange([]byte("  Setext Title  "))
+	assert.Equal(t, 2, start)
+	assert.Equal(t, 14, end)
 }
 
 func TestTrimmedRange(t *testing.T) {
-	s, e := trimmedRange([]byte("  hi  "))
-	assert.Equal(t, "hi", string([]byte("  hi  ")[s:e]))
+	cases := []struct {
+		row                string
+		wantStart, wantEnd int
+	}{
+		{"  hello  ", 2, 7},
+		{"nospace", 0, 7},
+		{"   ", 3, 3},
+		{"  text\t", 2, 6},
+	}
+	for _, tc := range cases {
+		start, end := trimmedRange([]byte(tc.row))
+		assert.Equal(t, tc.wantStart, start, "start row=%q", tc.row)
+		assert.Equal(t, tc.wantEnd, end, "end row=%q", tc.row)
+	}
 }
 
 func TestSlugRemapPairs(t *testing.T) {
@@ -384,15 +450,38 @@ func TestSlicesOfText(t *testing.T) {
 }
 
 func TestSkipLeadingSpaces(t *testing.T) {
-	assert.Equal(t, 2, skipLeadingSpaces([]byte("  x"), 3))
-	assert.Equal(t, 3, skipLeadingSpaces([]byte("     x"), 3)) // capped at max
-	assert.Equal(t, 0, skipLeadingSpaces([]byte("x"), 3))
+	cases := []struct {
+		row   string
+		max   int
+		wantI int
+	}{
+		{"  x", 3, 2},    // fewer than max
+		{"     x", 3, 3}, // more than max — capped
+		{"x", 3, 0},      // none
+		{"", 3, 0},       // empty
+		{"   abc", 3, 3}, // exactly max
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.wantI, skipLeadingSpaces([]byte(tc.row), tc.max), "row=%q", tc.row)
+	}
 }
 
 func TestTrimRightSpace(t *testing.T) {
-	row := []byte("ab \t ")
-	assert.Equal(t, 2, trimRightSpace(row, 0, len(row)))
-	assert.Equal(t, 0, trimRightSpace([]byte("   "), 0, 3))
+	cases := []struct {
+		row        string
+		start, end int
+		want       int
+	}{
+		{"ab \t ", 0, 5, 2},   // trailing space+tab+space
+		{"   ", 0, 3, 0},      // all whitespace
+		{"hello  ", 0, 7, 5},  // trailing spaces
+		{"hello\t ", 0, 7, 5}, // trailing tab+space
+		{"hello", 0, 5, 5},    // no trailing whitespace — unchanged
+	}
+	for _, tc := range cases {
+		got := trimRightSpace([]byte(tc.row), tc.start, tc.end)
+		assert.Equal(t, tc.want, got, "row=%q", tc.row)
+	}
 }
 
 func TestInvalidHeadingRuneError_Error(t *testing.T) {

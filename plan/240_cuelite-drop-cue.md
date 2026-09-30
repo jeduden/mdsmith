@@ -109,8 +109,10 @@ above the `sonnet` band.
       allocs/op guard (`bench_test.go`). No package imports
       `cuelang.org/...` from a non-test file.
 - [x] Standard-Go WASM artifact ≤ 18 MB — measured ~11.2 MB raw /
-      ~2.8 MB gzipped; `cmd/mdsmith-wasm/size_test.go` asserts the
-      tightened ceilings (14 MiB raw / 4 MiB gzip).
+      ~2.8 MB gzipped at the time; `cmd/mdsmith-wasm/size_test.go`
+      asserted the tightened ceilings then (14 MiB raw / 4 MiB gzip).
+      The gzip ceiling was later bumped to 4.25 MiB as cumulative
+      rule-engine growth wore the original margin down to near zero.
 - [x] `tinygo build -target wasm ./cmd/mdsmith-wasm` succeeds and is
       ≤ 8 MB. The `os.Chmod`, `os.SameFile`, and
       `os.Symlink`/`filepath.EvalSymlinks` calls are now behind

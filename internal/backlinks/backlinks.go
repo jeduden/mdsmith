@@ -7,7 +7,6 @@ package backlinks
 import (
 	"cmp"
 	"fmt"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -166,7 +165,7 @@ func extractBacklinksFromSource(
 		if t.LocalAnchor {
 			continue
 		}
-		resolved := resolveLinkTarget(srcRel, t.Path)
+		resolved := linkgraph.ResolveRelTarget(srcRel, t.Path)
 		if resolved == "" || resolved != wantTarget {
 			continue
 		}
@@ -302,42 +301,6 @@ func relPath(p, rootDir string) string {
 		return fallback
 	}
 	return filepath.ToSlash(rel)
-}
-
-// resolveLinkTarget joins srcRel's directory with the link's path and
-// returns the workspace-relative result. Both inputs use forward
-// slashes. Absolute paths (including Windows drive letters and UNC
-// prefixes) and ones that escape the workspace root return "" so
-// callers treat them as "outside the graph".
-func resolveLinkTarget(srcRel, linkPath string) string {
-	srcRel = strings.ReplaceAll(srcRel, `\`, `/`)
-	linkPath = strings.ReplaceAll(linkPath, `\`, `/`)
-	if isAbsOrDriveOrUNC(srcRel) || isAbsOrDriveOrUNC(linkPath) {
-		return ""
-	}
-	dir := path.Dir(srcRel)
-	cleaned := path.Clean(path.Join(dir, linkPath))
-	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
-		return ""
-	}
-	return cleaned
-}
-
-// isAbsOrDriveOrUNC reports whether p is absolute under any of the
-// schemes mdsmith targets: POSIX-style leading `/`, Windows drive
-// letters like `C:/`, or UNC prefixes like `//host`. `path.IsAbs`
-// alone misses the Windows forms because the path package is Unix-only.
-func isAbsOrDriveOrUNC(p string) bool {
-	if path.IsAbs(p) {
-		return true
-	}
-	if len(p) >= 2 && p[1] == ':' {
-		c := p[0]
-		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
-			return true
-		}
-	}
-	return strings.HasPrefix(p, "//")
 }
 
 // sourceMatches reports whether src should be considered, given the

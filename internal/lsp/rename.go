@@ -3,7 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"errors"
-	"sort"
+	"slices"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/mdtext"
@@ -88,21 +88,16 @@ func isValidRefDefLine(source []byte, line int) bool {
 // markers excluded; setext headings cover the full text line. The
 // underline of a setext heading is left alone — CommonMark does not
 // require its width to match the text, so the rename never touches
-// it.
+// it. The range comes from refactor.HeadingTextRange, the same
+// function textDocument/rename uses to build its edit, so the popup
+// never highlights a range the rename itself would not replace.
 func headingPrepareRange(source []byte, line int, name string) (prepareRenameResult, bool) {
 	lines := splitLines(source)
 	if line-1 >= len(lines) {
 		return prepareRenameResult{}, false
 	}
 	row := lines[line-1]
-	startCol, endCol, ok := atxHeadingTextByteRange(row)
-	if !ok {
-		// Not an ATX heading — must be the text line of a setext
-		// heading. Cover the full text line, excluding leading and
-		// trailing whitespace so the rename doesn't pad the new
-		// text against indented setext underlines.
-		startCol, endCol = trimmedRange(row)
-	}
+	startCol, endCol := refactor.HeadingTextRange(row)
 	startCh := mdtext.UTF16FromByteOffset(row, startCol)
 	endCh := mdtext.UTF16FromByteOffset(row, endCol)
 	return prepareRenameResult{
@@ -112,104 +107,6 @@ func headingPrepareRange(source []byte, line int, name string) (prepareRenameRes
 		},
 		Placeholder: name,
 	}, true
-}
-
-// atxHeadingTextByteRange returns the byte offsets of the heading
-// text inside an ATX heading line — the run between the opening
-// `#`s (and required following space) and any trailing closing `#`
-// run. Returns false when row is not an ATX heading line.
-//
-// Trailing markers are recognized only when a CommonMark-significant
-// space precedes the run, mirroring goldmark's own ATX parsing
-// behavior. A heading line with no text at all (`### `) returns a
-// zero-width range at the spot where text would begin so the editor
-// inserts there rather than rejecting the rename.
-func atxHeadingTextByteRange(row []byte) (int, int, bool) {
-	textStart, ok := atxHeadingTextStart(row)
-	if !ok {
-		return 0, 0, false
-	}
-	end := trimRightSpace(row, textStart, len(row))
-	end = trimTrailingHashRun(row, textStart, end)
-	// trimTrailingHashRun never erodes past textStart — the bounded
-	// `for k > start` loop and the explicit `k > start` guard before
-	// returning trimRightSpace(row, start, k-1) keep end >= textStart.
-	return textStart, end, true
-}
-
-// atxHeadingTextStart returns the byte offset where a heading's
-// text run begins, or false when row is not an ATX heading line.
-func atxHeadingTextStart(row []byte) (int, bool) {
-	i := skipLeadingSpaces(row, 3)
-	if i >= len(row) || row[i] != '#' {
-		return 0, false
-	}
-	hashStart := i
-	for i < len(row) && row[i] == '#' {
-		i++
-	}
-	level := i - hashStart
-	if level < 1 || level > 6 {
-		return 0, false
-	}
-	// CommonMark requires a space (or end of line) after the markers.
-	// `##foo` is paragraph content even though it starts with `#`.
-	if i < len(row) && row[i] != ' ' && row[i] != '\t' {
-		return 0, false
-	}
-	for i < len(row) && (row[i] == ' ' || row[i] == '\t') {
-		i++
-	}
-	return i, true
-}
-
-// trimTrailingHashRun strips a trailing `#` run that's preceded by
-// whitespace — the optional ATX closing markers. A `#` run with no
-// preceding whitespace is part of the heading text (e.g. `# foo#bar`).
-func trimTrailingHashRun(row []byte, start, end int) int {
-	if end <= start || row[end-1] != '#' {
-		return end
-	}
-	k := end
-	for k > start && row[k-1] == '#' {
-		k--
-	}
-	if k <= start || (row[k-1] != ' ' && row[k-1] != '\t') {
-		return end
-	}
-	return trimRightSpace(row, start, k-1)
-}
-
-// skipLeadingSpaces advances past up to `max` leading space bytes in
-// row and returns the resulting offset.
-func skipLeadingSpaces(row []byte, max int) int {
-	i := 0
-	for i < len(row) && i < max && row[i] == ' ' {
-		i++
-	}
-	return i
-}
-
-// trimRightSpace returns end shrunk past any trailing space/tab
-// bytes in row[start:end].
-func trimRightSpace(row []byte, start, end int) int {
-	for end > start && (row[end-1] == ' ' || row[end-1] == '\t') {
-		end--
-	}
-	return end
-}
-
-// trimmedRange returns the byte offsets of row stripped of leading
-// and trailing horizontal whitespace.
-func trimmedRange(row []byte) (int, int) {
-	start, end := 0, len(row)
-	for start < end && (row[start] == ' ' || row[start] == '\t') {
-		start++
-	}
-	for end > start && (row[end-1] == ' ' || row[end-1] == '\t') {
-		end--
-	}
-	return start, end
 }
 
 // refDefPrepareRange builds the rename range for a `[label]: url`
@@ -553,14 +450,17 @@ func toTextEdits(edits []refactor.Edit) []textEdit {
 // overlap; it doesn't pin application order, and naive clients walk
 // the array top-to-bottom. refactor.Heading already sorts its result
 // this way internally; link-ref edits are sorted here so both paths
-// emit the same bottom-up order.
+// emit the same bottom-up order — via the same comparator:
+// refactor.ComparePositionsBottomUp, shared instead of duplicated. The
+// conversion to refactor.Position is a zero-cost reinterpretation:
+// both types have identical fields (Go ignores struct tags for
+// convertibility), so this isn't a copy of anything but the two ints.
+// If the two Position types ever diverge, this conversion stops
+// compiling — a build failure here, not a silent runtime mismatch.
 func sortTextEditsBottomUp(edits []textEdit) {
-	sort.SliceStable(edits, func(i, j int) bool {
-		a, b := edits[i].Range.Start, edits[j].Range.Start
-		if a.Line != b.Line {
-			return a.Line > b.Line
-		}
-		return a.Character > b.Character
+	slices.SortStableFunc(edits, func(a, b textEdit) int {
+		return refactor.ComparePositionsBottomUp(
+			refactor.Position(a.Range.Start), refactor.Position(b.Range.Start))
 	})
 }
 
@@ -578,15 +478,10 @@ func sortTextEditsBottomUp(edits []textEdit) {
 func (s *Server) resolveURIAndSource(rel string) (string, []byte, bool) {
 	rel = index.NormalizePath(rel)
 	_, _, root := s.snapshotConfig()
-	for _, openURI := range s.docs.openURIs() {
-		// Combine the lookup and the path check into one
-		// short-circuit so a concurrent didClose between
-		// openURIs() and get() can't nil-deref doc, without
-		// a separate uncoverable `if !found` branch.
-		if doc, ok := s.docs.get(openURI); ok &&
-			index.NormalizePath(workspaceRelative(root, doc.path)) == rel {
-			return openURI, doc.text, true
-		}
+	if uri, doc, ok := s.docs.findByPath(func(path string) bool {
+		return index.NormalizePath(workspaceRelative(root, path)) == rel
+	}); ok {
+		return uri, doc.text, true
 	}
 	uri := s.workspaceURI(rel)
 	if uri == "" {
