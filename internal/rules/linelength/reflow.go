@@ -8,6 +8,8 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
 // isAbbrev reports whether tok is an abbreviation that must stay glued
@@ -249,6 +251,9 @@ func (p *linePlanner) breaks(s, e int) bool {
 //
 //   - line opens no CommonMark block and is no bare list marker. A lone
 //     "***" is a thematic break, though "*** text" is paragraph text.
+//   - line is no link reference definition (isLinkRefDefinition). Cut
+//     after one word, "[^1]: text" is one to the canonical parser, and
+//     MDS053 deletes it when nothing uses it.
 //   - line opens an extension block exactly when first does. The
 //     canonical parser reads "[^1]: text" or ": text" on a first line
 //     as paragraph text, so a paragraph can open with one, and every
@@ -257,7 +262,7 @@ func (p *linePlanner) breaks(s, e int) bool {
 //     marker keeps the word after it: a lone "[^1]:" is an empty
 //     footnote, and a lone ":" is no definition.
 func keepsStart(first, line []byte) bool {
-	if lint.InterruptsParagraph(line) || isBareListMarker(line) {
+	if lint.InterruptsParagraph(line) || isBareListMarker(line) || isLinkRefDefinition(line) {
 		return false
 	}
 	ext := lint.ExtensionInterruptsParagraph(first)
@@ -265,6 +270,24 @@ func keepsStart(first, line []byte) bool {
 		return false
 	}
 	return !ext || oneWord(line) == oneWord(first)
+}
+
+// isLinkRefDefinition reports whether the canonical parser reads line,
+// on its own, as a link reference definition, such as "[foo]: /url" or
+// "[^1]: word". It asks the parser, since a destination may be in angle
+// brackets and a title in any of three quote styles. Only a line that
+// starts with '[' after at most three spaces can be one, so every other
+// line skips the parse.
+func isLinkRefDefinition(line []byte) bool {
+	i := 0
+	for i < len(line) && i < 4 && line[i] == ' ' {
+		i++
+	}
+	if i > 3 || i == len(line) || line[i] != '[' {
+		return false
+	}
+	doc := markdown.ParseContext(line, parser.NewContext())
+	return doc.FirstChild().Kind() == ast.KindLinkReferenceDefinition
 }
 
 // oneWord reports whether line holds a single word: no space or tab

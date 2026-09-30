@@ -438,26 +438,38 @@ func safeLayout(t *testing.T, lines []string) bool {
 // Tokens the spec reads as block starts but the parser does not, such as
 // "<!doctype", are left out, since there the guard follows the spec. The
 // last check makes sure enough cases reached the guard.
-func TestWrapTokens_RandomParagraphsMatchParser(t *testing.T) {
-	words := []string{"word", "longer", "text", "a"}
-	markers := []string{
+// fuzzWords and fuzzMarkers are the token pools of the seeded random
+// tests: plain words, and tokens that look like block syntax.
+var (
+	fuzzWords   = []string{"word", "longer", "text", "a"}
+	fuzzMarkers = []string{
 		"#", "##", "#48", "#tag", ">", ">x", "-", "--", "---", "+", "*", "**",
 		"***", "_", "__", "=", "==", "1.", "1)", "2.", "01.", "1999.", "```",
 		"```go", "``", "~~~", "~~~go", "`x`", "<div", "</div>", "<!--", "<?pi",
 		"<pre", "<!X", "<span>", "<span", "<![CDATA[", "<",
 		"|", "|-|-|", "-|-", ":-", "--|", "[^x]:", "[^1]:y", "[^]:", ":", "::",
 	}
+)
+
+// randomTokens returns head followed by 1 to 14 more tokens, each a word
+// or a marker with even odds.
+func randomTokens(rng *rand.Rand, head ...string) []string {
+	tokens := append([]string(nil), head...)
+	for n := len(head) + 1 + rng.IntN(14); len(tokens) < n; {
+		pool := fuzzWords
+		if rng.IntN(2) == 0 {
+			pool = fuzzMarkers
+		}
+		tokens = append(tokens, pool[rng.IntN(len(pool))])
+	}
+	return tokens
+}
+
+func TestWrapTokens_RandomParagraphsMatchParser(t *testing.T) {
 	rng := rand.New(rand.NewPCG(844, 851))
 	guarded := 0
 	for range 3000 {
-		tokens := []string{"start"}
-		for n := 2 + rng.IntN(14); len(tokens) < n; {
-			pool := words
-			if rng.IntN(2) == 0 {
-				pool = markers
-			}
-			tokens = append(tokens, pool[rng.IntN(len(pool))])
-		}
+		tokens := randomTokens(rng, "start")
 		width := 4 + rng.IntN(24)
 		got := wrapTokens(tokens, nil, "", width, noGlue)
 		if naive := greedyWrap(tokens, width); safeLayout(t, naive) {
@@ -649,7 +661,9 @@ func TestKeepsStart(t *testing.T) {
 		{"* text", "*", false},
 		{"<!doctype html page", "<!doctype html", false},
 		{"--- | --- text", "--- | ---", false},
-		{"[^1]: a b", "[^1]: a", true},
+		{"[^1]: a b c", "[^1]: a b", true},
+		{"[^1]: a b", "[^1]: a", false}, // a link reference definition
+		{"[foo]: /url more", "[foo]: /url", false},
 		{"[^1]: a b", "[^1]:", false},
 		{"[^1]:", "[^1]:", true},
 		{"[^1]:", "[^1]: a", false},
@@ -734,4 +748,46 @@ func TestFix_NoHardLineBreak(t *testing.T) {
 		}
 		return ast.WalkContinue, nil
 	})
+}
+
+// hasLinkRefDefinition reports whether the canonical parse of src holds
+// a link reference definition.
+func hasLinkRefDefinition(t *testing.T, src string) bool {
+	t.Helper()
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	found := false
+	for n := f.AST.FirstChild(); n != nil; n = n.NextSibling() {
+		found = found || n.Kind() == ast.KindLinkReferenceDefinition
+	}
+	return found
+}
+
+// TestFix_FirstLineIsNoLinkDefinition covers a first line that, cut
+// after its marker and one word, is a link reference definition to the
+// canonical parser: "[^1]: <url>" alone has a label and a destination.
+// MDS053 then deletes it when nothing references it. Reflow keeps the
+// next word on line 1, past max, so the head stays paragraph text, with
+// the footnote referenced or not.
+func TestFix_FirstLineIsNoLinkDefinition(t *testing.T) {
+	r := &Rule{Max: 30, Reflow: true}
+	text := "[^1]: https://example.com/a/long/path/abc is where this came from."
+	want := "[^1]: https://example.com/a/long/path/abc is\nwhere this came from."
+	for _, before := range []string{"# Notes\n\n", "# Notes\n\nA claim.[^1]\n\n"} {
+		src := before + text + "\n"
+		got := fixSource(t, r, src)
+		assert.Equal(t, before+want+"\n", got)
+		assert.False(t, hasLinkRefDefinition(t, got), "got:\n%s", got)
+		assert.Equal(t, flavorBlocks(t, src), flavorBlocks(t, got))
+	}
+}
+
+func TestIsLinkRefDefinition(t *testing.T) {
+	defs := []string{"[^1]: https://x", "[^1]: a", "[foo]: /url", "  [foo]: /url \"title\"", "[a b]: <x y>"}
+	for _, line := range defs {
+		assert.True(t, isLinkRefDefinition([]byte(line)), "%q", line)
+	}
+	for _, line := range []string{"[^1]:", "[^1]: a b", "[foo]: /url more", "text [foo]: /url", "    [foo]: /url", ""} {
+		assert.False(t, isLinkRefDefinition([]byte(line)), "%q", line)
+	}
 }
