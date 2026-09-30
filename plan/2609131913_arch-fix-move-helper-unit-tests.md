@@ -38,10 +38,11 @@ behavior suite:
 A related, smaller finding on `cmd/mdsmith` was scoped out
 of this plan on review.
 
-`applyEditsToFile` ([cmd/mdsmith/move.go][cli-move]) and
-`looksLikePath`, `firstPathish`, `resolveWriteMode`
+`looksLikePath`, `firstPathish`, and `resolveWriteMode`
 ([cmd/mdsmith/rename.go][cli-rename]) also lack a test
-symbol by name.
+symbol by name. A fourth one, `applyEditsToFile` in
+[cmd/mdsmith/move.go][cli-move], is gone. A new helper
+took its place, and it has a test.
 
 Each is small, low-risk, and already covered indirectly
 by `TestRunMove_Success`, `TestRunRename_MoveIntentGuard`,
