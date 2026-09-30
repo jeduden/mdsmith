@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -136,6 +135,8 @@ func setFixUsage(fs *flag.FlagSet) {
 			"Files can be paths, directories (walked recursively for *.md), or glob patterns.\n"+
 			"Pass - to read from stdin (rejected: files must be writable).\n"+
 			"With no file arguments, discovers files using config patterns.\n\n"+
+			reportRoutingHelp+
+			"Build-pass output stays on stderr.\n\n"+
 			"Flags:\n")
 		fs.PrintDefaults()
 	}
@@ -149,7 +150,7 @@ func setFixUsage(fs *flag.FlagSet) {
 func parseFixFlags(args []string) (fixCLIOpts, []string, bool, int) {
 	fs := flag.NewFlagSet("fix", flag.ContinueOnError)
 	var (
-		configPath, format, maxInputSize                                      string
+		configPath, format, maxInputSize, output                              string
 		noColor, quiet, verbose, noGitignore, followSymlinks, explain, dryRun bool
 	)
 	var bf buildFixFlags
@@ -168,6 +169,7 @@ func parseFixFlags(args []string) (fixCLIOpts, []string, bool, int) {
 	fs.BoolVar(&dryRun, "dry-run", false,
 		"Preview which files would change without writing; "+
 			"per-file output lists the rules that would fire and their counts")
+	registerOutputFlag(fs, &output)
 	bf.register(fs)
 	setFixUsage(fs)
 
@@ -176,10 +178,10 @@ func parseFixFlags(args []string) (fixCLIOpts, []string, bool, int) {
 			return fixCLIOpts{}, nil, false, code
 		}
 	}
-
-	if quiet {
-		verbose = false
+	if code := checkOutputFlag(fs, output, "fix"); code >= 0 {
+		return fixCLIOpts{}, nil, false, code
 	}
+	verbose = verbose && !quiet // --quiet suppresses verbose
 
 	if msg := bf.conflict(); msg != "" {
 		fmt.Fprintf(os.Stderr, "mdsmith: fix: %s\n", msg)
@@ -201,13 +203,14 @@ func parseFixFlags(args []string) (fixCLIOpts, []string, bool, int) {
 		maxInputSize: maxInputSize,
 		explain:      explain,
 		dryRun:       dryRun,
+		output:       output,
 		build:        bf.toPassOpts(),
 	}, fileArgs, hasStdin, -1
 }
 
 // fixCLIOpts bundles the runtime knobs threaded through the fix
 // command path. Grouped because runFix splits between explicit-file
-// and config-discovery entry points and the same nine values flow
+// and config-discovery entry points and the same eleven values flow
 // to both.
 type fixCLIOpts struct {
 	configPath   string
@@ -219,16 +222,27 @@ type fixCLIOpts struct {
 	maxInputSize string
 	explain      bool
 	dryRun       bool
-	build        buildPassOpts
+	// output is the -o/--output value: where the lint report goes
+	// (see reportFlags.output). Build-pass output stays on stderr.
+	output string
+	build  buildPassOpts
+}
+
+// reportFlags returns the report flags of a fix run.
+func (o fixCLIOpts) reportFlags() reportFlags {
+	return reportFlags{format: o.format, output: o.output, noColor: o.noColor, quiet: o.quiet}
 }
 
 // fixFiles fixes lint issues in the given file paths.
 func fixFiles(fileArgs []string, opts fixCLIOpts) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
 		fileArgs, opts.configPath, opts.verbose, opts.walk, opts.maxInputSize,
-		nonMarkdownSkipWarner(os.Stderr, reportFlags{format: opts.format, quiet: opts.quiet}),
+		nonMarkdownSkipWarner(os.Stderr, opts.reportFlags()),
 	)
-	if code >= 0 {
+	if code == 0 {
+		return reportNoFiles(opts.reportFlags(), processIO())
+	}
+	if code > 0 {
 		return code
 	}
 	return runFixThroughSession(cfg, cfgPath, opts, logger, files, maxBytes)
@@ -238,7 +252,10 @@ func fixFiles(fileArgs []string, opts fixCLIOpts) int {
 // and fixes them. Returns the appropriate exit code.
 func fixDiscovered(opts fixCLIOpts) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(opts.configPath, opts.verbose, opts.walk)
-	if code >= 0 {
+	if code == 0 {
+		return reportNoFiles(opts.reportFlags(), processIO())
+	}
+	if code > 0 {
 		return code
 	}
 
@@ -340,65 +357,24 @@ func orderFilesLeavesFirst(files []string, rootDir string, maxBytes int64) []str
 	return out
 }
 
-// reportFixResult writes the fix run's output and computes the exit
-// code. Shared by fixFiles and fixDiscovered so the dry-run preview,
-// stats summary, and exit-code logic stay in one place.
+// reportFixResult writes the fix run's report to the -o destination
+// and its runtime errors to stderr, and computes the exit code. Shared
+// by fixFiles and fixDiscovered so the dry-run preview, stats summary,
+// and exit-code logic stay in one place.
 func reportFixResult(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger) int {
-	return reportFixResultTo(opts, fixResult, logger, os.Stderr)
+	return reportFixResultTo(opts, fixResult, logger, processIO())
 }
 
-// reportFixResultTo is the injectable form of reportFixResult. Tests
-// pass an alternate stderr writer to exercise the write-error
-// branches without leaking to the real stderr; the formatter,
-// writeDryRunJSON, and the run-stats helper all route their own
-// write-error messages through the same writer so a fault-injecting
-// writer captures the full stderr surface.
-// All report output goes through one buffered writer, mirroring
-// reportCheckResultTo: per-line writes on an unbuffered stderr cost
-// one syscall each on diagnostic-heavy runs. The buffer is flushed
-// before the verbose logger line to preserve ordering on a shared fd.
-func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger, stderrW io.Writer) int {
-	bw := bufio.NewWriterSize(stderrW, reportBufSize)
-	printErrorsTo(bw, fixResult.Errors)
-
-	if opts.dryRun && opts.format == "json" && !opts.quiet {
-		// Match `check --format json` and `fix --format json`: lint
-		// output goes to stderr (see docs/reference/cli.md "Output").
-		if code := writeDryRunJSON(bw, fixResult); code != 0 {
-			_ = bw.Flush()
-			return code
-		}
-	} else if opts.dryRun && opts.format == "sarif" && !opts.quiet {
-		// SARIF dry-run: emit diagnostics in SARIF format without the
-		// text preview — mixing prose and structured JSON would produce
-		// invalid output.
-		if code := formatDiagnosticsTo(bw, fixResult.Diagnostics, opts.format, opts.noColor); code != 0 {
-			_ = bw.Flush()
-			return code
-		}
-	} else {
-		if opts.dryRun && !opts.quiet {
-			printDryRunPreview(bw, fixResult)
-		}
-		// SARIF must be emitted even with zero diagnostics (same reason as check).
-		if !opts.quiet && (len(fixResult.Diagnostics) > 0 || opts.format == "sarif") {
-			if code := formatDiagnosticsTo(bw, fixResult.Diagnostics, opts.format, opts.noColor); code != 0 {
-				_ = bw.Flush()
-				return code
-			}
-		}
-	}
-
-	printRunStatsTo(bw, opts.format, opts.quiet, runStats{
-		Checked:  fixResult.FilesChecked,
-		Fixed:    len(fixResult.Modified),
-		Failures: fixResult.Failures,
-		Unfixed:  len(fixResult.Diagnostics),
-		WouldFix: fixResult.WouldFix,
-		DryRun:   opts.dryRun,
+// reportFixResultTo is the injectable form of reportFixResult, the fix
+// twin of reportCheckResultTo: tests pass a reportIO over their own
+// writers, a report that cannot be written exits 2, and the verbose
+// logger line follows the flushed report.
+func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.Logger, rio reportIO) int {
+	code := rio.deliverReport(opts.output, opts.noColor, fixResult.Errors, func(w io.Writer, color bool) error {
+		return writeFixReport(w, fixResult, opts, color)
 	})
-	if err := bw.Flush(); err != nil {
-		return 2
+	if code != 0 {
+		return code
 	}
 	logger.Printf("checked %d files, %d issues found", fixResult.FilesChecked, len(fixResult.Diagnostics))
 
@@ -409,6 +385,39 @@ func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.L
 		return 1
 	}
 	return 0
+}
+
+// writeFixReport writes the fix report to w and returns the first
+// write error. -q writes nothing. A dry run in json writes only its
+// per-file records, and in sarif only the SARIF log: prose would
+// corrupt either document. Otherwise the report is the dry-run preview
+// (on a dry run), the remaining diagnostics, and the stats line. As in
+// check, json and sarif write their document even with no diagnostics.
+func writeFixReport(w io.Writer, fixResult *fixpkg.Result, opts fixCLIOpts, color bool) error {
+	if opts.quiet {
+		return nil
+	}
+	if opts.dryRun {
+		switch opts.format {
+		case "json":
+			return writeDryRunJSON(w, fixResult)
+		case "sarif":
+			return writeDiagnostics(w, fixResult.Diagnostics, opts.format, color)
+		}
+		printDryRunPreview(w, fixResult)
+	}
+	if err := writeDiagnostics(w, fixResult.Diagnostics, opts.format, color); err != nil {
+		return err
+	}
+	printRunStatsTo(w, opts.format, false, runStats{
+		Checked:  fixResult.FilesChecked,
+		Fixed:    len(fixResult.Modified),
+		Failures: fixResult.Failures,
+		Unfixed:  len(fixResult.Diagnostics),
+		WouldFix: fixResult.WouldFix,
+		DryRun:   opts.dryRun,
+	})
+	return nil
 }
 
 // printDryRunPreview writes one line per file that would change.
@@ -532,10 +541,10 @@ func diagsToJSONDiags(diags []lint.Diagnostic) []jsonDiag {
 // writeDryRunJSON emits the per-file dry-run JSON payload on w as a
 // JSON array of dryRunJSONFile records. Records are emitted for every
 // file in WouldFixFiles plus any file that has remaining diagnostics
-// not already covered. Callers route w to stderr to match the
-// existing lint-output contract documented in
-// docs/reference/cli.md. Returns a non-zero exit code on write error.
-func writeDryRunJSON(w io.Writer, fixResult *fixpkg.Result) int {
+// not already covered. w is the report destination -o picked (see
+// reportIO.deliverReport). It returns the encoder's write error
+// without reporting it.
+func writeDryRunJSON(w io.Writer, fixResult *fixpkg.Result) error {
 	diagsByFile := make(map[string][]lint.Diagnostic)
 	for _, d := range fixResult.Diagnostics {
 		diagsByFile[d.File] = append(diagsByFile[d.File], d)
@@ -573,13 +582,5 @@ func writeDryRunJSON(w io.Writer, fixResult *fixpkg.Result) int {
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(records); err != nil {
-		// Best-effort routing of the encode error through the same
-		// writer the payload was bound for, so callers that swap w
-		// (tests with a fault-injecting writer; reportFixResultTo's
-		// stderrW) keep all output confined to one destination.
-		_, _ = fmt.Fprintf(w, "mdsmith: error writing dry-run output: %v\n", err)
-		return 2
-	}
-	return 0
+	return enc.Encode(records)
 }

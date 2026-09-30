@@ -1,0 +1,178 @@
+package main
+
+import (
+	"bytes"
+	"errors"
+	"io"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	fixpkg "github.com/jeduden/mdsmith/internal/fix"
+	vlog "github.com/jeduden/mdsmith/internal/log"
+)
+
+func TestParseFixFlags_Output(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{args: []string{"a.md"}, want: ""},
+		{args: []string{"-o", "out.json", "a.md"}, want: "out.json"},
+		{args: []string{"--output", "-", "a.md"}, want: "-"},
+	} {
+		opts, _, _, code := parseFixFlags(tc.args)
+		require.Equal(t, -1, code, "%v", tc.args)
+		assert.Equal(t, tc.want, opts.output, "%v", tc.args)
+	}
+}
+
+func TestParseFixFlags_EmptyOutputIsUsageError(t *testing.T) {
+	stderr := captureStderr(func() {
+		_, _, _, code := parseFixFlags([]string{"--output=", "a.md"})
+		assert.Equal(t, 2, code)
+	})
+	assert.Equal(t, "mdsmith: fix: --output needs a path, or - for stdout\n", stderr)
+}
+
+func TestFixCLIOpts_ReportFlags(t *testing.T) {
+	opts := fixCLIOpts{format: "sarif", output: "r.sarif", noColor: true, quiet: true, dryRun: true}
+	assert.Equal(t, reportFlags{format: "sarif", output: "r.sarif", noColor: true, quiet: true}, opts.reportFlags())
+}
+
+// fix routes its report (remaining diagnostics, the dry-run preview,
+// and the stats line) exactly as check does; runtime errors stay on
+// stderr.
+func TestReportFixResultTo_RoutesReport(t *testing.T) {
+	result := &fixpkg.Result{
+		FilesChecked: 1,
+		Failures:     1,
+		Diagnostics:  manyDiagnostics(1),
+		Errors:       []error{errors.New("boom")},
+	}
+	t.Run("default is stderr", func(t *testing.T) {
+		var out, errOut bytes.Buffer
+		code := reportFixResultTo(fixCLIOpts{format: "json"}, result, &vlog.Logger{}, testIO(t, &out, &errOut))
+		assert.Equal(t, 1, code)
+		assert.Empty(t, out.String())
+		assert.Contains(t, errOut.String(), "mdsmith: boom")
+		assert.Contains(t, errOut.String(), "line too long")
+	})
+	t.Run("dash is stdout", func(t *testing.T) {
+		var out, errOut bytes.Buffer
+		opts := fixCLIOpts{format: "json", output: "-"}
+		code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, &out, &errOut))
+		assert.Equal(t, 1, code)
+		assert.Len(t, decodeJSONDiags(t, out.Bytes()), 1)
+		assert.Equal(t, "mdsmith: boom\n", errOut.String())
+	})
+	t.Run("path is a file", func(t *testing.T) {
+		var out, errOut bytes.Buffer
+		f := &fakeReportFile{}
+		var created string
+		opts := fixCLIOpts{format: "text", output: "fix.txt"}
+		code := reportFixResultTo(opts, result, &vlog.Logger{}, fileIO(t, &out, &errOut, f, &created))
+		assert.Equal(t, 1, code)
+		assert.Equal(t, "fix.txt", created)
+		assert.Regexp(t, `(?s)^f\.md:1:1 MDS001 line too long\n.*stats: checked=1 fixed=0 failures=1 unfixed=1\n$`,
+			f.String())
+		assert.Empty(t, out.String())
+		assert.Equal(t, "mdsmith: boom\n", errOut.String())
+	})
+}
+
+func TestReportFixResultTo_DryRunPreviewIsPartOfReport(t *testing.T) {
+	result := &fixpkg.Result{
+		FilesChecked: 1,
+		WouldFix:     1,
+		WouldFixFiles: []fixpkg.WouldFixFile{{
+			Path: "a.md", Count: 1,
+			Rules: []fixpkg.RuleFixCount{{RuleID: "MDS009", Count: 1}},
+		}},
+	}
+	var out, errOut bytes.Buffer
+	opts := fixCLIOpts{format: "text", output: "-", dryRun: true}
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, &out, &errOut))
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "a.md: would fix 1 violation (MDS009)\n"+
+		"stats: checked=1 fixed=0 failures=0 unfixed=0 would-fix=1\n", out.String())
+	assert.Empty(t, errOut.String())
+}
+
+// A clean json run writes `[]` and a clean sarif run an empty log on
+// every route, as check does. -q writes nothing.
+func TestReportFixResultTo_CleanRunOutput(t *testing.T) {
+	for _, output := range []string{"", "-"} {
+		for _, tc := range []struct {
+			name  string
+			opts  fixCLIOpts
+			want  string
+			sarif bool
+		}{
+			{name: "json", opts: fixCLIOpts{format: "json"}, want: "[]\n"},
+			{name: "dry-run json", opts: fixCLIOpts{format: "json", dryRun: true}, want: "[]\n"},
+			{name: "sarif", opts: fixCLIOpts{format: "sarif"}, sarif: true},
+			{name: "dry-run sarif", opts: fixCLIOpts{format: "sarif", dryRun: true}, sarif: true},
+			{name: "text", opts: fixCLIOpts{format: "text"}, want: "stats: checked=1 fixed=0 failures=0 unfixed=0\n"},
+			{name: "json quiet", opts: fixCLIOpts{format: "json", quiet: true}},
+			{name: "dry-run json quiet", opts: fixCLIOpts{format: "json", dryRun: true, quiet: true}},
+		} {
+			t.Run("-o "+output+" "+tc.name, func(t *testing.T) {
+				var out, errOut bytes.Buffer
+				tc.opts.output = output
+				code := reportFixResultTo(tc.opts, &fixpkg.Result{FilesChecked: 1},
+					&vlog.Logger{}, testIO(t, &out, &errOut))
+				assert.Equal(t, 0, code)
+				report, other := &errOut, &out
+				if output == "-" {
+					report, other = &out, &errOut
+				}
+				if tc.sarif {
+					assertEmptySARIF(t, report.Bytes())
+				} else {
+					assert.Equal(t, tc.want, report.String())
+				}
+				assert.Empty(t, other.String())
+			})
+		}
+	}
+}
+
+func TestReportFixResultTo_Color(t *testing.T) {
+	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
+	for _, tty := range []bool{true, false} {
+		var out bytes.Buffer
+		rio := testIO(t, &out, io.Discard)
+		rio.isTerminal = func(w io.Writer) bool { return tty && w == &out }
+		assert.Equal(t, 1, reportFixResultTo(fixCLIOpts{format: "text", output: "-"}, result, &vlog.Logger{}, rio))
+		assert.Equal(t, tty, bytes.Contains(out.Bytes(), []byte("\033[")), "tty=%v report=%q", tty, out.String())
+	}
+}
+
+// A failed write of any report part is a runtime error on stderr with
+// exit 2, never text inside the report.
+func TestReportFixResultTo_WriteErrorGoesToStderr(t *testing.T) {
+	result := &fixpkg.Result{
+		FilesChecked:  1,
+		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
+		Diagnostics:   manyDiagnostics(2000),
+	}
+	for _, opts := range []fixCLIOpts{
+		{format: "json", dryRun: true, output: "-"},
+		{format: "sarif", dryRun: true, output: "-"},
+		{format: "text", output: "-"},
+	} {
+		var errOut bytes.Buffer
+		code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, &alwaysErrorWriter{}, &errOut))
+		assert.Equal(t, 2, code, "%+v", opts)
+		assert.Equal(t, "mdsmith: error writing output: write failed\n", errOut.String(), "%+v", opts)
+	}
+}
+
+func TestWriteFixReport_Quiet(t *testing.T) {
+	var buf bytes.Buffer
+	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
+	require.NoError(t, writeFixReport(&buf, result, fixCLIOpts{format: "text", quiet: true, dryRun: true}, false))
+	assert.Empty(t, buf.String())
+}

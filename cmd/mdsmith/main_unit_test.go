@@ -339,7 +339,7 @@ func TestPrintDryRunPreview_MultipleFiles(t *testing.T) {
 
 func TestWriteDryRunJSON_EmitsPerFileRecords(t *testing.T) {
 	var buf bytes.Buffer
-	code := writeDryRunJSON(&buf, &fixpkg.Result{
+	err := writeDryRunJSON(&buf, &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{
 			{
 				Path:  "a.md",
@@ -356,7 +356,7 @@ func TestWriteDryRunJSON_EmitsPerFileRecords(t *testing.T) {
 				Severity: lint.Warning, Message: "trailing punctuation"},
 		},
 	})
-	assert.Equal(t, 0, code)
+	require.NoError(t, err)
 
 	var records []map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &records),
@@ -377,8 +377,7 @@ func TestWriteDryRunJSON_EmitsPerFileRecords(t *testing.T) {
 
 func TestWriteDryRunJSON_EmptyResultEmitsEmptyArray(t *testing.T) {
 	var buf bytes.Buffer
-	code := writeDryRunJSON(&buf, &fixpkg.Result{})
-	assert.Equal(t, 0, code)
+	require.NoError(t, writeDryRunJSON(&buf, &fixpkg.Result{}))
 	assert.Equal(t, "[]\n", buf.String())
 }
 
@@ -434,25 +433,22 @@ func TestReportFixResultTo_BuffersDiagnosticWrites(t *testing.T) {
 	opts := fixCLIOpts{format: "text", noColor: true}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
 	w := &countingWriter{}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, w)
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, w))
 	assert.Equal(t, 1, code)
 	assert.Contains(t, w.buf.String(), "line too long")
 	assert.LessOrEqual(t, w.calls, 4)
 }
 
-func TestWriteDryRunJSON_WriteErrorReturns2(t *testing.T) {
-	var code int
-	captureStderr(func() {
-		code = writeDryRunJSON(&alwaysErrorWriter{}, &fixpkg.Result{
-			WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
-		})
+func TestWriteDryRunJSON_ReturnsWriteError(t *testing.T) {
+	err := writeDryRunJSON(&alwaysErrorWriter{}, &fixpkg.Result{
+		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
 	})
-	assert.Equal(t, 2, code)
+	assert.EqualError(t, err, "write failed")
 }
 
 func TestWriteDryRunJSON_PopulatesSourceLinesAndExplanation(t *testing.T) {
 	var buf bytes.Buffer
-	code := writeDryRunJSON(&buf, &fixpkg.Result{
+	err := writeDryRunJSON(&buf, &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{
 			{Path: "a.md", Count: 1, Rules: []fixpkg.RuleFixCount{{RuleID: "MDS001", Count: 1}}},
 		},
@@ -472,7 +468,7 @@ func TestWriteDryRunJSON_PopulatesSourceLinesAndExplanation(t *testing.T) {
 			},
 		},
 	})
-	require.Equal(t, 0, code)
+	require.NoError(t, err)
 
 	var records []map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &records))
@@ -492,14 +488,14 @@ func TestWriteDryRunJSON_PopulatesSourceLinesAndExplanation(t *testing.T) {
 
 func TestWriteDryRunJSON_IncludesUnfixableDiagFiles(t *testing.T) {
 	var buf bytes.Buffer
-	code := writeDryRunJSON(&buf, &fixpkg.Result{
+	err := writeDryRunJSON(&buf, &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{},
 		Diagnostics: []lint.Diagnostic{
 			{File: "b.md", Line: 3, Column: 1, RuleID: "MDS099",
 				RuleName: "unfixable-rule", Severity: lint.Error, Message: "unfixable"},
 		},
 	})
-	assert.Equal(t, 0, code)
+	require.NoError(t, err)
 
 	var records []map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &records),
@@ -723,7 +719,7 @@ func TestReportFixResultTo_DryRunJSONWriteErrorReturns2(t *testing.T) {
 	result := &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
 	}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
@@ -737,7 +733,7 @@ func TestReportFixResultTo_DiagWriteErrorReturns2(t *testing.T) {
 				RuleName: "test-rule", Severity: lint.Warning, Message: "issue"},
 		},
 	}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
@@ -1525,7 +1521,7 @@ func TestReportCheckResultTo_FlushErrorReturns2(t *testing.T) {
 
 func TestReportFixResultTo_FlushErrorReturns2(t *testing.T) {
 	code := reportFixResultTo(fixCLIOpts{format: "text"},
-		&fixpkg.Result{FilesChecked: 1}, &vlog.Logger{}, &failAfterWriter{n: 0})
+		&fixpkg.Result{FilesChecked: 1}, &vlog.Logger{}, testIO(t, io.Discard, &failAfterWriter{n: 0}))
 	assert.Equal(t, 2, code)
 }
 
@@ -1537,7 +1533,7 @@ func TestReportFixResultTo_DryRunJSONWriteErrorFlushes(t *testing.T) {
 		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
 		Diagnostics:   manyDiagnostics(2000),
 	}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
@@ -1547,7 +1543,7 @@ func TestReportFixResultTo_DryRunSARIFWriteErrorReturns2(t *testing.T) {
 	// returns non-zero and the early-return branch is taken.
 	opts := fixCLIOpts{dryRun: true, format: "sarif"}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
@@ -1564,7 +1560,7 @@ func TestReportCheckResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
 func TestReportFixResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
 	opts := fixCLIOpts{format: "text", noColor: true}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
