@@ -52,10 +52,12 @@ func (e SourceNotFoundError) Error() string {
 //
 // The Plan rewrites, keyed per output target:
 //
-//   - incoming destinations — every inline link, image, and
-//     reference definition in another file whose destination names
-//     src, its path token rewritten to name dst, any `?query` and
-//     `#fragment` kept;
+//   - incoming destinations — every inline link and reference
+//     definition in another file whose destination names src, its
+//     path token rewritten to name dst, any `?query` and `#fragment`
+//     kept. An image naming src is repointed only in a file that also
+//     holds such a link or a `]:`: the index records no image edge,
+//     so no other file is parsed for one;
 //   - wikilink stems — `[[old-stem]]` → `[[new-stem]]`, but only when
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented

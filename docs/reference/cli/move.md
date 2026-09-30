@@ -93,6 +93,10 @@ cross-directory move, check them by hand.
   point at `src` are repointed.
 - **Raw HTML links.** `<a href="a.md">` and `<img src="a.png">`
   are not Markdown destinations.
+- **Backslash escapes and entities.** A destination spelled with
+  one, such as `a\_b.md` or `a&amp;b.md`, is not decoded, so it
+  does not name `a_b.md` or `a&b.md` and is left as written.
+  Write the name out, or percent-escape it as in `a%26b.md`.
 - **Ambiguous wikilinks.** When another file shares the old or
   the new basename stem, no `[[stem]]` is rewritten, because the
   rewrite could point it at the wrong file.
