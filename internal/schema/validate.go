@@ -113,14 +113,28 @@ func Validate(
 	f *lint.File, sch *Schema, docFM map[string]any, fmIsCUE bool,
 	mkDiag MakeDiag,
 ) []lint.Diagnostic {
+	return ValidateWithParseErr(f, sch, docFM, nil, fmIsCUE, mkDiag)
+}
+
+// ValidateWithParseErr is Validate for a document whose front matter
+// may have failed to parse. fmErr is that failure, or nil; the caller
+// reports it as its own diagnostic. A failed parse leaves docFM empty,
+// so every field reads as absent: the CUE field check is skipped
+// rather than reporting each required field as "<missing>", and the
+// `filename:` hint names fmErr for a reference it could not resolve.
+func ValidateWithParseErr(
+	f *lint.File, sch *Schema, docFM map[string]any, fmErr error,
+	fmIsCUE bool, mkDiag MakeDiag,
+) []lint.Diagnostic {
 	if sch == nil || sch.IsEmpty() {
 		return nil
 	}
 	var diags []lint.Diagnostic
 
-	diags = append(diags, validateFilename(f, sch, docFM, fmIsCUE, mkDiag)...)
+	diags = append(diags,
+		validateFilename(f, sch, docFM, fmErr, fmIsCUE, mkDiag)...)
 
-	if !fmIsCUE {
+	if !fmIsCUE && fmErr == nil {
 		diags = append(diags, validateFrontmatterDiags(f, sch, docFM, mkDiag)...)
 	}
 
@@ -1678,11 +1692,11 @@ func formatHeading(level int, text string) string {
 // the "expected" is the glob spelled out as a pattern-matching
 // constraint.
 func validateFilename(
-	f *lint.File, sch *Schema, docFM map[string]any, fmIsCUE bool,
-	mkDiag MakeDiag,
+	f *lint.File, sch *Schema, docFM map[string]any, fmErr error,
+	fmIsCUE bool, mkDiag MakeDiag,
 ) []lint.Diagnostic {
 	d := FilenameDiagnostic(sch.Filename, filepath.Base(f.Path), docFM,
-		fmIsCUE, schemaRef(sch, ""))
+		fmErr, fmIsCUE, schemaRef(sch, ""))
 	if d == nil {
 		return nil
 	}

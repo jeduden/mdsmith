@@ -728,7 +728,8 @@ func (r *Rule) checkSingleInlineSchema(f *lint.File, sch *schema.Schema) []lint.
 	docFMRaw, fmDiags := cachedDocFrontMatterRaw(f)
 	diags = append(diags, fmDiags...)
 	fmIsCUE := placeholders.HasCUEFrontmatter(r.Placeholders)
-	diags = append(diags, schema.Validate(f, sch, docFMRaw, fmIsCUE, makeDiag)...)
+	diags = append(diags, schema.ValidateWithParseErr(f, sch, docFMRaw,
+		frontMatterParseErr(fmDiags), fmIsCUE, makeDiag)...)
 	diags = append(diags, r.applyScopeRules(f, sch, docFMRaw)...)
 	diags = append(diags, schema.ValidateCrossReferences(f, sch, makeDiag)...)
 	diags = append(diags, schema.ValidateAcronyms(f, sch, docFMRaw, makeDiag)...)
@@ -947,15 +948,20 @@ func (r *Rule) checkSingleFileSchemaFromData(
 	// values as CUE expressions rather than concrete data.
 	fmIsCUE := placeholders.HasCUEFrontmatter(r.Placeholders)
 
+	fmErr := frontMatterParseErr(fmDiags)
+
 	// Check filename pattern.
-	diags = append(diags, checkFilenamePattern(f, sch, r.Schema, docFMRaw, fmIsCUE)...)
+	diags = append(diags,
+		checkFilenamePattern(f, sch, r.Schema, docFMRaw, fmErr, fmIsCUE)...)
 
 	// Check structure: required headings present and in order.
 	diags = append(diags, checkStructure(f, sch, docHeadings, r.Schema)...)
 
 	// Validate document front matter against schema-embedded CUE
-	// constraints, unless the values are CUE expressions themselves.
-	if !fmIsCUE {
+	// constraints, unless the values are CUE expressions themselves
+	// or failed to parse: the parse diagnostic above names the cause,
+	// and every field would otherwise read as "<missing>".
+	if !fmIsCUE && fmErr == nil {
 		fmSch := &schema.Schema{
 			Frontmatter:      sch.Config.Frontmatter,
 			FrontmatterLines: sch.Config.FrontmatterLines,
@@ -1032,7 +1038,8 @@ func (r *Rule) checkComposedSources(f *lint.File, sources []SchemaSource) []lint
 	}
 
 	fmIsCUE := placeholders.HasCUEFrontmatter(r.Placeholders)
-	diags = append(diags, schema.Validate(f, composed, docFMRaw, fmIsCUE, makeDiag)...)
+	diags = append(diags, schema.ValidateWithParseErr(f, composed, docFMRaw,
+		frontMatterParseErr(fmDiags), fmIsCUE, makeDiag)...)
 	diags = append(diags, r.applyScopeRules(f, composed, docFMRaw)...)
 	diags = append(diags, schema.ValidateCrossReferences(f, composed, makeDiag)...)
 	diags = append(diags, schema.ValidateAcronyms(f, composed, docFMRaw, makeDiag)...)
@@ -2523,6 +2530,18 @@ func readDocFrontMatterRaw(f *lint.File) (map[string]any, []lint.Diagnostic) {
 	return raw, nil
 }
 
+// frontMatterParseErr returns the front-matter parse failure that
+// readDocFrontMatterRaw reported as fmDiags, or nil when the block
+// parsed. The `filename:` and `path-pattern:` hints name it in place
+// of "frontmatter value missing", and the field check is skipped
+// because every field would read as absent.
+func frontMatterParseErr(fmDiags []lint.Diagnostic) error {
+	if len(fmDiags) == 0 {
+		return nil
+	}
+	return errors.New(fmDiags[0].Message)
+}
+
 // extractYAML extracts the YAML content between --- delimiters.
 // The closing fence is removed via TrimSuffix on the canonical
 // `---\n` (or bare `---` for blocks that omit the trailing
@@ -2629,9 +2648,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			// in Check that would report the parse error itself.
 			var fmDiags []lint.Diagnostic
 			docFM, fmDiags = cachedDocFrontMatterRaw(f)
-			if len(fmDiags) > 0 {
-				fmParseErr = errors.New(fmDiags[0].Message)
-			}
+			fmParseErr = frontMatterParseErr(fmDiags)
 			fmRead = true
 		}
 		resolved, err := schema.ResolveGlobPattern(pp.match, docFM)
@@ -2753,7 +2770,7 @@ func workspaceRelPath(f *lint.File) string {
 // schema's filename glob pattern (if configured).
 func checkFilenamePattern(
 	f *lint.File, sch *parsedSchema, schemaSource string,
-	docFM map[string]any, fmIsCUE bool,
+	docFM map[string]any, fmErr error, fmIsCUE bool,
 ) []lint.Diagnostic {
 	// schema.FilenameDiagnostic owns the wording, the
 	// `\#(fmvar(name))` resolution against the document's front
@@ -2763,7 +2780,7 @@ func checkFilenamePattern(
 	// cannot drift apart.
 	d := schema.FilenameDiagnostic(
 		sch.Config.FilenamePatterns, filepath.Base(f.Path), docFM,
-		fmIsCUE, buildSchemaRefForLegacy(schemaSource))
+		fmErr, fmIsCUE, buildSchemaRefForLegacy(schemaSource))
 	if d == nil {
 		return nil
 	}

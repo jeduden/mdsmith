@@ -12,7 +12,7 @@ import (
 // printing that form would show text the author never wrote.
 func TestFilenameDiagnostic_HintShowsValueAsWritten(t *testing.T) {
 	d := FilenameDiagnostic([]string{`\#(fmvar(id))-*.md`}, "other.md",
-		map[string]any{"id": "[draft]*"}, false, "kind note")
+		map[string]any{"id": "[draft]*"}, nil, false, "kind note")
 	require.NotNil(t, d)
 	assert.Equal(t, "with front matter applied: [draft]*-*.md", d.Hint)
 }

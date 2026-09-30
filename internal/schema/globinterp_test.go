@@ -297,7 +297,7 @@ func TestFilenameDiagnostic_LiteralOpenerMatchesAsBefore(t *testing.T) {
 	const pat, base = `notes-\#(draft)*.md`, "notes-#(draft)-1.md"
 	before, err := filepath.Match(pat, base)
 	require.NoError(t, err)
-	d := FilenameDiagnostic([]string{pat}, base, nil, false, "kind note")
+	d := FilenameDiagnostic([]string{pat}, base, nil, nil, false, "kind note")
 	assert.Equal(t, before, d == nil)
 	if runtime.GOOS != "windows" {
 		assert.Nil(t, d, "on POSIX `\\#` is an escaped `#`")
@@ -309,7 +309,7 @@ func TestFilenameDiagnostic_LiteralOpenerMatchesAsBefore(t *testing.T) {
 // guess that the reference never resolved.
 func TestFilenameDiagnostic_MalformedFmvarHint(t *testing.T) {
 	d := FilenameDiagnostic([]string{`\#(fmvar(my-key)).md`}, "x.md",
-		map[string]any{"my-key": "x"}, false, "kind note")
+		map[string]any{"my-key": "x"}, nil, false, "kind note")
 	require.NotNil(t, d)
 	assert.Contains(t, d.Hint, "matched literally")
 	assert.Contains(t, d.Hint, "must be quoted")
@@ -484,7 +484,7 @@ func TestGlobMismatchHint(t *testing.T) {
 func TestFilenameDiagnostic_UnresolvedKeepsSiblingExpansion(t *testing.T) {
 	d := FilenameDiagnostic(
 		[]string{`\#(fmvar(id)).md`, `\#(fmvar(slug)).md`}, "other.md",
-		map[string]any{"id": "rfc-7"}, false, "kind note")
+		map[string]any{"id": "rfc-7"}, nil, false, "kind note")
 	require.NotNil(t, d)
 	assert.Contains(t, d.Hint, "`fmvar(slug)`: frontmatter value missing")
 	assert.Contains(t, d.Hint, "with front matter applied: rfc-7.md")
