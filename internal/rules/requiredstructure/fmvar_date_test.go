@@ -16,7 +16,7 @@ func TestCheck_PathPatternFmvar_UnquotedDate(t *testing.T) {
 	f := newRootedFile(t, root, "posts/2026-01-02/index.md",
 		"---\ndate: 2026-01-02\n---\n# Post\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "post", Pattern: `posts/\#(fmvar(date))/index.md`},
+		newPathPattern("post", `posts/\#(fmvar(date))/index.md`),
 	}}
 	expectDiags(t, r.Check(f), 0)
 }

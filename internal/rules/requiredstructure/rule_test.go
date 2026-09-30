@@ -944,7 +944,7 @@ func TestCheck_PathPattern_Match(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "plan/140_my-plan.md", "# My Plan\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "plan", Pattern: "plan/[0-9][0-9]*_*.md"},
+		newPathPattern("plan", "plan/[0-9][0-9]*_*.md"),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
@@ -954,7 +954,7 @@ func TestCheck_PathPattern_Mismatch(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "plan/early-draft.md", "# Draft\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "plan", Pattern: "plan/[0-9][0-9]*_*.md"},
+		newPathPattern("plan", "plan/[0-9][0-9]*_*.md"),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
@@ -1033,7 +1033,7 @@ func TestCheck_PathPattern_RootAnchoredNotBasenameOnly(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "docs/README.md", "# Docs\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "readme", Pattern: "README.md"},
+		newPathPattern("readme", "README.md"),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
@@ -1048,7 +1048,7 @@ func TestCheck_PathPattern_DoublestarWildcardMatchesNested(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "docs/sub/README.md", "# Sub\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "readme", Pattern: "**/README.md"},
+		newPathPattern("readme", "**/README.md"),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
@@ -1078,7 +1078,7 @@ func TestCheck_PathPattern_BraceAlternateWithSyntaxErrorUsesMatchVerdict(t *test
 	root := t.TempDir()
 	f := newRootedFile(t, root, "docs/a.md", "# A\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "special", Pattern: pattern},
+		newPathPattern("special", pattern),
 	}}
 	diags := r.Check(f)
 	// checkPathPatterns must match doublestar.Match's verdict (no
@@ -1095,7 +1095,7 @@ func TestCheck_PathPattern_BraceAlternateThatMatchesSucceeds(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "docs/README.markdown", "# Docs\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "readme", Pattern: "docs/*.{md,markdown}"},
+		newPathPattern("readme", "docs/*.{md,markdown}"),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
@@ -1109,7 +1109,7 @@ func TestCheck_PathPattern_EmptyRootDirFallsBackToPath(t *testing.T) {
 		"plan/140_x.md", []byte("# x\n"), true)
 	require.NoError(t, err)
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "plan", Pattern: "plan/[0-9][0-9]*_*.md"},
+		newPathPattern("plan", "plan/[0-9][0-9]*_*.md"),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 0)
@@ -1127,8 +1127,8 @@ func TestCheck_PathPattern_MultipleKindsBothFail(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "docs/notes.md", "# Notes\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "plan", Pattern: "plan/[0-9]*_*.md"},
-		{Kind: "rfc", Pattern: "docs/rfc/RFC-*.md"},
+		newPathPattern("plan", "plan/[0-9]*_*.md"),
+		newPathPattern("rfc", "docs/rfc/RFC-*.md"),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 2)
@@ -1148,7 +1148,7 @@ filename: "[0-9]*_*.md"
 	r := &Rule{
 		Schema: "proto.md",
 		PathPatterns: []PathPattern{
-			{Kind: "plan", Pattern: "plan/[0-9][0-9]*_*.md"},
+			newPathPattern("plan", "plan/[0-9][0-9]*_*.md"),
 		},
 	}
 	diags := r.Check(f)

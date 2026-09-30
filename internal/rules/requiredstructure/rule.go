@@ -70,10 +70,26 @@ type SchemaSource struct {
 // PathPattern records a kind's `path-pattern:` constraint: the kind
 // that declared it and the glob the workspace-relative path of every
 // file in the kind must match. Populated by the config merge layer
-// from KindBody.PathPattern.
+// from KindBody.PathPattern. Build one with newPathPattern so the
+// derived fields are set.
 type PathPattern struct {
 	Kind    string
-	Pattern string
+	Pattern string // as the author wrote it; diagnostics quote this
+
+	// match is Pattern in the form it is matched in, and interp
+	// reports whether that form carries a `\#(fmvar(...))`
+	// reference (schema.PathPatternMatchForm). Both depend only on
+	// the pattern, so they are computed once here rather than for
+	// every file on the check hot path.
+	match  string
+	interp bool
+}
+
+// newPathPattern builds the PathPattern for one kind's
+// `path-pattern:`, deriving its match form once.
+func newPathPattern(kind, pattern string) PathPattern {
+	match, interp := schema.PathPatternMatchForm(pattern)
+	return PathPattern{Kind: kind, Pattern: pattern, match: match, interp: interp}
 }
 
 // ID implements rule.Rule.
@@ -512,7 +528,7 @@ func parsePathPatterns(v any) ([]PathPattern, error) {
 				"path-patterns[%d].pattern %q is not a valid doublestar glob",
 				i, pat)
 		}
-		out = append(out, PathPattern{Kind: kind, Pattern: pat})
+		out = append(out, newPathPattern(kind, pat))
 	}
 	return out, nil
 }
@@ -2566,16 +2582,12 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 	var fmParseErr error
 	fmRead := false
 	for _, pp := range r.PathPatterns {
-		// filepath.ToSlash normalizes a pattern written with the
-		// host separator — but on Windows it rewrites every `\`,
-		// including the one that opens a `\#(fmvar(...))` reference
-		// and the ones escapeGlobMeta adds to a resolved value. An
-		// interpolating pattern therefore matches on its raw text;
-		// doublestar takes `/` on every platform anyway, and `\` in
-		// a doublestar pattern is the escape character, never a
-		// separator.
-		if !schema.PatternHasInterp(pp.Pattern) {
-			if matchWorkspacePath(filepath.ToSlash(pp.Pattern), rel) {
+		// pp.match is the pattern with host separators turned into
+		// `/`, keeping the `\` that opens each reference, and
+		// pp.interp says whether it has one; newPathPattern derived
+		// both once, so a plain glob costs no scan here.
+		if !pp.interp {
+			if matchWorkspacePath(pp.match, rel) {
 				continue
 			}
 			diags = append(diags, pathPatternDiag(f, rel, pp,
@@ -2588,7 +2600,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			// to substitute, so it matches any non-empty text in one
 			// segment and only the literal rest of the pattern is
 			// checked.
-			if matchWorkspacePath(schema.WildcardGlobRefs(pp.Pattern), rel) {
+			if matchWorkspacePath(schema.WildcardGlobRefs(pp.match), rel) {
 				continue
 			}
 			diags = append(diags, pathPatternDiag(f, rel, pp,
@@ -2608,7 +2620,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			}
 			fmRead = true
 		}
-		resolved, err := schema.ResolveGlobPattern(pp.Pattern, docFM)
+		resolved, err := schema.ResolveGlobPattern(pp.match, docFM)
 		if err != nil {
 			// The parse failure is WHY the reference did not
 			// resolve, so it takes the "missing" report's place.
@@ -2630,7 +2642,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			continue
 		}
 		hint := schema.GlobMismatchHint(nil, []string{pp.Pattern},
-			schema.GlobHintForm(pp.Pattern, docFM))
+			schema.GlobHintForm(pp.match, docFM))
 		if mErr != nil {
 			// The escaped value keeps the glob valid everywhere but
 			// inside a character class, where a reference is not

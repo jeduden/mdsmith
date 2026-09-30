@@ -339,21 +339,75 @@ func fmvarGlobValue(fm map[string]any, name string) (string, error) {
 	return val, nil
 }
 
+// PathPatternMatchForm returns the text a kind `path-pattern:` is
+// matched in, and whether that text carries a well-formed
+// `\#(fmvar(...))` reference. Both depend only on the pattern, so
+// requiredstructure.parsePathPatterns computes them once at config
+// load and the per-file check neither rescans nor re-normalizes.
+//
+// The form is the pattern with host separators turned into `/`, as
+// filepath.ToSlash always did — except the `\` that opens a
+// reference, which ToSlash would turn into a literal `/#(` on Windows
+// (see slashOutsideRefs). So a pattern written with native
+// separators matches the same files with or without a reference.
+func PathPatternMatchForm(pattern string) (form string, interp bool) {
+	form = slashOutsideRefs(pattern, filepath.Separator)
+	return form, PatternHasInterp(form)
+}
+
+// slashOutsideRefs rewrites every sep byte in pattern to `/`, keeping
+// the bytes of each well-formed `\#(fmvar(...))` reference verbatim.
+// sep is filepath.Separator, a parameter so the Windows behaviour is
+// testable on any host.
+//
+// On a `/` host the pattern is returned as written: `\` there is the
+// glob escape character, never a separator. On Windows ToSlash has
+// always rewritten every `\` in a path-pattern, so `\` is a
+// separator there, and a reference is recognised at any `\#(`
+// without the escape-pair reading nextGlobOpener applies: in
+// `skills\\#(fmvar(name))` the first `\` is the separator and the
+// second opens the reference.
+func slashOutsideRefs(pattern string, sep byte) string {
+	if sep == '/' || strings.IndexByte(pattern, sep) < 0 {
+		return pattern
+	}
+	var b strings.Builder
+	b.Grow(len(pattern))
+	for i := 0; i < len(pattern); {
+		c := pattern[i]
+		if c != sep {
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		if strings.HasPrefix(pattern[i:], interpMarker) {
+			if _, end, err := globRefAt(pattern, i); err == nil {
+				b.WriteString(pattern[i:end])
+				i = end
+				continue
+			}
+		}
+		b.WriteByte('/')
+		i++
+	}
+	return b.String()
+}
+
 // PathPatternSyntaxForm returns the text a kind `path-pattern:` is
 // syntax-checked with (doublestar.ValidatePattern) at config load.
 //
-// A pattern with no reference is slash-normalized, which is also the
-// form it is matched in. A pattern with a reference keeps its raw
-// text, as matching does — filepath.ToSlash would rewrite the
-// opener's `\` on Windows — with every reference replaced by `?*`:
-// the reference's own bytes are not glob syntax, and a quoted CUE key
-// may hold `[` or `{`. The resolved value is escaped into a literal,
-// so a pattern whose syntax form is valid stays valid once resolved.
+// It starts from PathPatternMatchForm, the form the pattern is
+// matched in. A pattern with a reference then has every reference
+// replaced by `?*`: the reference's own bytes are not glob syntax,
+// and a quoted CUE key may hold `[` or `{`. The resolved value is
+// escaped into a literal, so a pattern whose syntax form is valid
+// stays valid once resolved.
 func PathPatternSyntaxForm(pattern string) string {
-	if !PatternHasInterp(pattern) {
-		return filepath.ToSlash(pattern)
+	form, interp := PathPatternMatchForm(pattern)
+	if !interp {
+		return form
 	}
-	return WildcardGlobRefs(pattern)
+	return WildcardGlobRefs(form)
 }
 
 // LiteralFmvarHint names the first opener in pattern that looks like

@@ -22,7 +22,7 @@ func TestCheck_PathPatternFmvar_CUEFrontmatterMatchesAnySegment(t *testing.T) {
 	f := newRootedFile(t, root, ".apm/skills/_template/SKILL.md",
 		"---\nname: 'string & =~\"^[a-z-]+$\"'\n---\n# Skill\n")
 	r := &Rule{
-		PathPatterns: []PathPattern{{Kind: "apm-skill", Pattern: apmSkillPattern}},
+		PathPatterns: []PathPattern{newPathPattern("apm-skill", apmSkillPattern)},
 		Placeholders: cuePlaceholders,
 	}
 	expectDiags(t, r.Check(f), 0)
@@ -33,7 +33,7 @@ func TestCheck_PathPatternFmvar_CUEFrontmatterStillChecksLiteralParts(t *testing
 	f := newRootedFile(t, root, ".apm/prompts/_template/SKILL.md",
 		"---\nname: string\n---\n# Skill\n")
 	r := &Rule{
-		PathPatterns: []PathPattern{{Kind: "apm-skill", Pattern: apmSkillPattern}},
+		PathPatterns: []PathPattern{newPathPattern("apm-skill", apmSkillPattern)},
 		Placeholders: cuePlaceholders,
 	}
 	diags := r.Check(f)
@@ -80,7 +80,7 @@ func TestCheck_Fmvar_CUEFrontmatterWildcardIsNonEmpty(t *testing.T) {
 		root := t.TempDir()
 		f := newRootedFile(t, root, "docs/.md", "---\nid: string\n---\n# T\n")
 		r := &Rule{
-			PathPatterns: []PathPattern{{Kind: "doc", Pattern: `docs/\#(fmvar(id)).md`}},
+			PathPatterns: []PathPattern{newPathPattern("doc", `docs/\#(fmvar(id)).md`)},
 			Placeholders: cuePlaceholders,
 		}
 		expectDiags(t, r.Check(f), 1)

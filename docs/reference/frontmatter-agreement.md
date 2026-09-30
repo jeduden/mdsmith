@@ -113,8 +113,9 @@ written before interpolation existed still loads and
 matches the same files: `notes/\#(draft)*.md` still
 accepts `notes/#(draft)-1.md`.
 
-A pattern with a reference is matched on its raw
-text, so write its separators as `/`, not `\`.
+On Windows a `path-pattern:` may use `\` as its
+separator, as any pattern can. mdsmith reads each
+`\` as `/`, except the `\` that opens a reference.
 
 Under the `cue-frontmatter` placeholder, a template's
 front-matter values are CUE constraints such as

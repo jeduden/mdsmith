@@ -24,7 +24,7 @@ func TestCheck_PathPatternFmvar_MatchesDirectory(t *testing.T) {
 	f := newRootedFile(t, root, ".apm/skills/code-review/SKILL.md",
 		"---\nname: code-review\n---\n# Code review\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "apm-skill", Pattern: apmSkillPattern},
+		newPathPattern("apm-skill", apmSkillPattern),
 	}}
 	expectDiags(t, r.Check(f), 0)
 }
@@ -34,7 +34,7 @@ func TestCheck_PathPatternFmvar_MismatchedDirectory(t *testing.T) {
 	f := newRootedFile(t, root, ".apm/skills/code-review/SKILL.md",
 		"---\nname: reviewer\n---\n# Code review\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "apm-skill", Pattern: apmSkillPattern},
+		newPathPattern("apm-skill", apmSkillPattern),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
@@ -49,7 +49,7 @@ func TestCheck_PathPatternFmvar_MissingFieldReportsClearly(t *testing.T) {
 	f := newRootedFile(t, root, ".apm/skills/code-review/SKILL.md",
 		"# Code review\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "apm-skill", Pattern: apmSkillPattern},
+		newPathPattern("apm-skill", apmSkillPattern),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
@@ -69,7 +69,7 @@ func TestCheck_PathPatternFmvar_UnparseableFrontMatterNamesParseError(t *testing
 	f := newRootedFile(t, root, ".apm/skills/code-review/SKILL.md",
 		"---\nname: [code-review\n---\n# Code review\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "apm-skill", Pattern: apmSkillPattern},
+		newPathPattern("apm-skill", apmSkillPattern),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
@@ -86,7 +86,7 @@ func TestCheck_PathPatternFmvar_ParseErrorKeepsLiteralOpenerHint(t *testing.T) {
 	f := newRootedFile(t, root, "docs/a/b/x.md",
 		"---\nname: [b\n---\n# X\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "doc", Pattern: `docs/\#(fmvar(my-key))/\#(fmvar(name))/x.md`},
+		newPathPattern("doc", `docs/\#(fmvar(my-key))/\#(fmvar(name))/x.md`),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
@@ -103,7 +103,7 @@ func TestCheck_PathPatternFmvar_EscapesValueMetacharacters(t *testing.T) {
 	f := newRootedFile(t, root, ".apm/skills/axb/SKILL.md",
 		"---\nname: \"a*b\"\n---\n# A\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "apm-skill", Pattern: apmSkillPattern},
+		newPathPattern("apm-skill", apmSkillPattern),
 	}}
 	expectDiags(t, r.Check(f), 1)
 }
@@ -117,7 +117,7 @@ func TestCheck_PathPatternFmvar_ValueWithSeparatorDoesNotSpanDirs(t *testing.T) 
 	f := newRootedFile(t, root, ".apm/skills/a/b/SKILL.md",
 		"---\nname: a/b\n---\n# A\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "apm-skill", Pattern: apmSkillPattern},
+		newPathPattern("apm-skill", apmSkillPattern),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
@@ -133,7 +133,7 @@ func TestCheck_PathPatternFmvar_InvalidResolvedGlobIsNamed(t *testing.T) {
 	f := newRootedFile(t, root, "docs/x/a.md",
 		"---\ntag: \"!\"\n---\n# A\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "doc", Pattern: `docs/[\#(fmvar(tag))]/a.md`},
+		newPathPattern("doc", `docs/[\#(fmvar(tag))]/a.md`),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
@@ -147,7 +147,7 @@ func TestCheck_PathPatternFmvar_NestedFieldPath(t *testing.T) {
 	f := newRootedFile(t, root, "docs/install.md",
 		"---\nmeta:\n  slug: install\n---\n# Install\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "doc", Pattern: `docs/\#(fmvar(meta.slug)).md`},
+		newPathPattern("doc", `docs/\#(fmvar(meta.slug)).md`),
 	}}
 	expectDiags(t, r.Check(f), 0)
 }
@@ -186,7 +186,7 @@ func TestCheck_PathPatternLiteralOpenerMatchesAsBefore(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "notes/#(draft)-1.md", "# Draft\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "note", Pattern: `notes/\#(draft)*.md`},
+		newPathPattern("note", `notes/\#(draft)*.md`),
 	}}
 	expectDiags(t, r.Check(f), 0)
 }
@@ -197,7 +197,7 @@ func TestCheck_PathPatternMalformedFmvarHint(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "docs/x.md", "---\nmy-key: x\n---\n# X\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "doc", Pattern: `docs/\#(fmvar(my-key)).md`},
+		newPathPattern("doc", `docs/\#(fmvar(my-key)).md`),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
@@ -269,7 +269,7 @@ func TestCheck_PathPatternFmvar_RawPatternDrivesInterpDetection(t *testing.T) {
 	f := newRootedFile(t, root, ".apm/skills/code-review/SKILL.md",
 		"---\nname: code-review\n---\n# Code review\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "apm-skill", Pattern: apmSkillPattern},
+		newPathPattern("apm-skill", apmSkillPattern),
 	}}
 	require.True(t, schema.PatternHasInterp(r.PathPatterns[0].Pattern),
 		"the raw pattern is what PatternHasInterp must see")
@@ -293,10 +293,27 @@ func TestCheck_PathPatternFmvar_HintShowsValueAsWritten(t *testing.T) {
 	root := t.TempDir()
 	f := newRootedFile(t, root, "docs/c/x.md", "---\nname: a*b\n---\n# X\n")
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "doc", Pattern: `docs/\#(fmvar(name))/x.md`},
+		newPathPattern("doc", `docs/\#(fmvar(name))/x.md`),
 	}}
 	diags := r.Check(f)
 	expectDiags(t, diags, 1)
 	assert.Contains(t, diags[0].Message,
 		"(with front matter applied: docs/a*b/x.md)")
+}
+
+// Whether a pattern interpolates, and the form it is matched in,
+// depend only on the pattern text, so parsePathPatterns records both
+// once instead of Check rescanning every pattern for every file.
+func TestParsePathPatterns_RecordsMatchFormOnce(t *testing.T) {
+	pp, err := parsePathPatterns([]any{
+		map[string]any{"kind": "apm-skill", "pattern": apmSkillPattern},
+		map[string]any{"kind": "plan", "pattern": "plan/[0-9]*.md"},
+	})
+	require.NoError(t, err)
+	require.Len(t, pp, 2)
+	assert.Equal(t, newPathPattern("apm-skill", apmSkillPattern), pp[0])
+	assert.True(t, pp[0].interp)
+	assert.Equal(t, apmSkillPattern, pp[0].match)
+	assert.False(t, pp[1].interp)
+	assert.Equal(t, "plan/[0-9]*.md", pp[1].match)
 }
