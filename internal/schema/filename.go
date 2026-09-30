@@ -3,7 +3,6 @@ package schema
 import (
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -108,17 +107,24 @@ func MatchFilename(patterns []string, base string) (matched bool, badPattern str
 // When fmIsCUE is set the front-matter values are CUE constraints,
 // not data, so every reference becomes a non-empty `?*` wildcard
 // (WildcardGlobRefs).
+//
+// Each entry is scanned once. The output list is only allocated at
+// the first entry that interpolates, seeded with the plain entries
+// before it.
 func resolveFilenamePatterns(
 	patterns []string, fm map[string]any, fmIsCUE bool,
 ) (resolved []string, unresolved error) {
-	if !slices.ContainsFunc(patterns, PatternHasInterp) {
-		return patterns, nil
-	}
-	out := make([]string, 0, len(patterns))
-	for _, p := range patterns {
+	var out []string
+	for i, p := range patterns {
 		if !PatternHasInterp(p) {
-			out = append(out, p)
+			if out != nil {
+				out = append(out, p)
+			}
 			continue
+		}
+		if out == nil {
+			out = make([]string, i, len(patterns))
+			copy(out, patterns[:i])
 		}
 		if fmIsCUE {
 			out = append(out, WildcardGlobRefs(p))
@@ -135,6 +141,9 @@ func resolveFilenamePatterns(
 			continue
 		}
 		out = append(out, r)
+	}
+	if out == nil {
+		return patterns, nil // no entry interpolates
 	}
 	return out, unresolved
 }
