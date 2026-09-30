@@ -100,13 +100,12 @@ func tokenizeParagraph(src []byte, start, end int, spans []lint.Range) []string 
 // No line after the first may be unsafe (unsafeLine): a line starting
 // "# " would become a heading, "> " a block quote, "1. " a list (issue
 // #844), and "|-|" under a line with a pipe a table. No line but the
-// last may end in "\", a hard line break. The first line
-// must keep the start of first, the paragraph's first line as written
-// (keepsStart); nil stands for plain text. Lines are as full as that
-// allows; see linePlanner. Returns nil for an empty token list, when
-// every layout has a line that breaks these rules, or when every layout
-// that keeps them has a line more than maxOverflowUnits units past
-// width.
+// last may end in "\", a hard line break. The first line must keep the
+// start of first, the paragraph's first line as written (keepsStart);
+// nil stands for plain text. Lines are as full as that allows; see
+// linePlanner. Returns nil for an empty token list, when every layout
+// has a line that breaks these rules, or when every layout that keeps
+// them has a line more than maxOverflowUnits units past width.
 func wrapTokens(tokens []string, first []byte, indent string, width int, glue func(prev string) bool) []string {
 	if len(tokens) == 0 {
 		return nil
