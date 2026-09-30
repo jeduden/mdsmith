@@ -80,11 +80,11 @@ Runtime errors always go to stderr, so an `-o` report
 never contains them. On the default route they share
 stderr with the report and print before it, so capture
 a `json` or `sarif` report with `-o`, not `2>`. After a
-runtime error during linting, such as a file
-over the size limit, the report still covers the files
-that were linted. The verbose log (`-v`) and the
-non-Markdown skip warning stay on stderr too. An empty
-`-o` value is a usage error (exit `2`).
+runtime error during linting, such as a file over the
+size limit, the report still covers the files that were
+linted. The verbose log (`-v`) and the non-Markdown skip
+warning stay on stderr too. An empty `-o` value is a
+usage error (exit `2`).
 
 `-o <path>` creates the file with mode `0644` (before the
 umask), or truncates it if it exists. An existing file
@@ -96,9 +96,8 @@ directory is missing, is a usage error (exit `2`).
 
 `-o` never overwrites an input. A path that is one of
 the run's inputs is a usage error (exit `2`), reported
-before any file is linted. So is a missing
-path that the run would pick up once the report created
-it:
+before any file is linted. So is a missing path that the
+run would pick up once the report created it:
 
 - a Markdown path inside a directory argument, as in
   `check -o docs/report.md docs/`;

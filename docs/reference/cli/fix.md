@@ -65,9 +65,9 @@ fixed. `--build-only` has no lint report, so it ignores
 `-o`: no file is created, and the path is not checked.
 
 As for [`check`](check.md#report-output), an `-o` path
-that is, or would be, one of the run's inputs
-is a usage error (exit `2`), and no file is fixed. For
-example, `fix -o notes.md notes.md` is refused.
+that is, or would be, one of the run's inputs is a usage
+error (exit `2`), and no file is fixed. For example,
+`fix -o notes.md notes.md` is refused.
 
 ## Examples
 
