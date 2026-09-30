@@ -123,3 +123,11 @@ func TestMove_NonMarkdownSourceBytesUntouched(t *testing.T) {
 	assert.Equal(t, "see [z](x.md)\n", got["docs/n.txt"])
 	assert.Equal(t, "[n](../guide/n.txt)\n", got["docs/b.md"])
 }
+
+// TestMove_SelfRefDefFollowsRenamedFile pins that the moved file's
+// ref-def to itself follows a move that changes both the directory and
+// the basename, spelled from the new directory.
+func TestMove_SelfRefDefFollowsRenamedFile(t *testing.T) {
+	got := moveAndApply(t, map[string]string{"a.md": "[s][self]\n\n[self]: ./a.md#top\n"}, "a.md", "d/b.md")
+	assert.Equal(t, "[s][self]\n\n[self]: ./b.md#top\n", got["a.md"])
+}
