@@ -279,9 +279,10 @@ func (p *linePlanner) opensDefinition(e int, plans []linePlan) bool {
 //     canonical parser reads "[^1]: text" or ": text" on a first line
 //     as paragraph text, so a paragraph can open with one, and every
 //     layout's first line then starts with it too.
-//   - when first opens one, line is one word exactly when first is. A
-//     marker keeps the word after it: a lone "[^1]:" is an empty
-//     footnote, and a lone ":" is no definition.
+//   - when first opens one, line is an empty footnote definition
+//     exactly when first is (lint.EmptyFootnoteDefinition), so a marker
+//     keeps the word after it: a lone "[^1]:" or "[^a b]:" is an empty
+//     footnote. A lone ":" is no definition at all.
 func keepsStart(first, line []byte) bool {
 	if lint.InterruptsParagraph(line) || isBareListMarker(line) {
 		return false
@@ -290,7 +291,7 @@ func keepsStart(first, line []byte) bool {
 	if lint.ExtensionInterruptsParagraph(line) != ext {
 		return false
 	}
-	return !ext || oneWord(line) == oneWord(first)
+	return !ext || lint.EmptyFootnoteDefinition(line) == lint.EmptyFootnoteDefinition(first)
 }
 
 // startsWithBracket reports whether line starts with '[' after at most
@@ -311,12 +312,6 @@ func startsWithBracket(line []byte) bool {
 func headIsLinkRefDefinition(src []byte) bool {
 	doc := markdown.ParseContext(src, parser.NewContext())
 	return doc.FirstChild().Kind() == ast.KindLinkReferenceDefinition
-}
-
-// oneWord reports whether line holds a single word: no space or tab
-// between its first and last non-blank bytes.
-func oneWord(line []byte) bool {
-	return !bytes.ContainsAny(bytes.TrimSpace(line), " \t")
 }
 
 // unsafeLine reports whether line, placed after a paragraph line, could

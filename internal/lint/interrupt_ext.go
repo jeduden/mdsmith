@@ -71,9 +71,16 @@ func isDelimiterCell(cell []byte) bool {
 // '['; it ends at the first unescaped ']'. A backslash escapes an ASCII
 // punctuation byte.
 func isFootnoteDefinition(line []byte) bool {
+	return footnoteMarkerEnd(line) >= 0
+}
+
+// footnoteMarkerEnd returns the index just past the "]:" of the
+// footnote definition marker that opens line (see isFootnoteDefinition),
+// or -1 when line opens none.
+func footnoteMarkerEnd(line []byte) int {
 	indent := leadingSpaces(line)
 	if indent > 3 || !bytes.HasPrefix(line[indent:], []byte("[^")) {
-		return false
+		return -1
 	}
 	start := indent + 2
 	for i := start; i < len(line); i++ {
@@ -83,12 +90,24 @@ func isFootnoteDefinition(line []byte) bool {
 				i++
 			}
 		case '[':
-			return false
+			return -1
 		case ']':
-			return i+1 < len(line) && line[i+1] == ':' && !isBlankLine(line[start:i])
+			if i+1 < len(line) && line[i+1] == ':' && !isBlankLine(line[start:i]) {
+				return i + 2
+			}
+			return -1
 		}
 	}
-	return false
+	return -1
+}
+
+// EmptyFootnoteDefinition reports whether line opens a footnote
+// definition and holds nothing but spaces or tabs after its "[^label]:"
+// marker. Such a footnote is empty: the footnote extension closes it at
+// the next unindented line, which then starts a paragraph of its own.
+func EmptyFootnoteDefinition(line []byte) bool {
+	end := footnoteMarkerEnd(line)
+	return end >= 0 && isBlankLine(line[end:])
 }
 
 // isDefinitionDescription reports whether line opens a definition-list

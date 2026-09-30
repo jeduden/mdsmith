@@ -642,6 +642,8 @@ func TestWrapTokens_FirstLineKeepsItsStart(t *testing.T) {
 			[]string{"[^1]:", "a", "#", "b"}, 7, []string{"[^1]: a #", "b"}},
 		{"lone footnote marker stays alone", "[^1]:",
 			[]string{"[^1]:", "aaaa", "bbbb"}, 10, []string{"[^1]:", "aaaa bbbb"}},
+		{"marker with a spaced label keeps its word", "[^a b]: c # d",
+			[]string{"[^a", "b]:", "c", "#", "d"}, 9, []string{"[^a b]: c #", "d"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -663,6 +665,8 @@ func TestKeepsStart(t *testing.T) {
 		{"--- | --- text", "--- | ---", false},
 		{"[^1]: a b", "[^1]: a", true}, // opensDefinition rejects it
 		{"[^1]: a b", "[^1]:", false},
+		{"[^a b]: c d", "[^a b]:", false},
+		{"[^a b]:", "[^a b]:", true},
 		{"[^1]:", "[^1]:", true},
 		{"[^1]:", "[^1]: a", false},
 		{": a b", ": a", true},

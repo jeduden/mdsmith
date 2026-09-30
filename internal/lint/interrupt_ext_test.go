@@ -165,3 +165,12 @@ func TestStartsListItem(t *testing.T) {
 		}
 	}
 }
+
+func TestEmptyFootnoteDefinition(t *testing.T) {
+	for _, line := range []string{"[^1]:", "[^1]:  \t", "[^a b]:", `   [^a\]b]:`} {
+		assert.True(t, EmptyFootnoteDefinition([]byte(line)), "%q", line)
+	}
+	for _, line := range []string{"[^1]: x", "[^1]:x", "[^a b]: x", `[^a\]b]: x`, "[^1]", ": ", "text", ""} {
+		assert.False(t, EmptyFootnoteDefinition([]byte(line)), "%q", line)
+	}
+}
