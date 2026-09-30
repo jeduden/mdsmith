@@ -409,7 +409,7 @@ func manyDiagnostics(n int) []lint.Diagnostic {
 }
 
 func TestReportCheckResultTo_BuffersDiagnosticWrites(t *testing.T) {
-	opts := checkCLIOpts{format: "text", noColor: true}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text", noColor: true}}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
 	w := &countingWriter{}
 	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, io.Discard, w))
@@ -421,7 +421,7 @@ func TestReportCheckResultTo_BuffersDiagnosticWrites(t *testing.T) {
 }
 
 func TestReportFixResultTo_BuffersDiagnosticWrites(t *testing.T) {
-	opts := fixCLIOpts{format: "text", noColor: true}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text", noColor: true}}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
 	w := &countingWriter{}
 	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, w))
@@ -508,7 +508,7 @@ func TestWriteDryRunJSON_IncludesUnfixableDiagFiles(t *testing.T) {
 // --- reportFixResult ---
 
 func TestReportFixResult_DryRunTextPreview(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "text"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text"}, dryRun: true}
 	result := &fixpkg.Result{
 		FilesChecked: 2,
 		Failures:     1,
@@ -527,7 +527,7 @@ func TestReportFixResult_DryRunTextPreview(t *testing.T) {
 }
 
 func TestReportFixResult_DryRunJSONOutput(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "json"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "json"}, dryRun: true}
 	result := &fixpkg.Result{
 		FilesChecked: 1,
 		WouldFix:     1,
@@ -553,7 +553,7 @@ func TestReportFixResult_DryRunJSONOutput(t *testing.T) {
 }
 
 func TestReportFixResult_DryRunSARIFOutput(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "sarif"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "sarif"}, dryRun: true}
 	result := &fixpkg.Result{
 		FilesChecked: 1,
 		WouldFix:     1,
@@ -587,7 +587,7 @@ func TestReportFixResult_DryRunSARIFOutput(t *testing.T) {
 }
 
 func TestReportFixResult_DryRunSARIFQuietSuppressesOutput(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "sarif", quiet: true}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "sarif", quiet: true}, dryRun: true}
 	result := &fixpkg.Result{
 		WouldFix: 1,
 		WouldFixFiles: []fixpkg.WouldFixFile{
@@ -610,7 +610,7 @@ func TestReportFixResult_DryRunSARIFQuietSuppressesOutput(t *testing.T) {
 }
 
 func TestReportFixResult_DryRunJSONQuietSuppressesOutput(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "json", quiet: true}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "json", quiet: true}, dryRun: true}
 	result := &fixpkg.Result{
 		WouldFix: 1,
 		WouldFixFiles: []fixpkg.WouldFixFile{
@@ -632,7 +632,7 @@ func TestReportFixResult_DryRunJSONQuietSuppressesOutput(t *testing.T) {
 func TestReportCheckResult_SARIFEmittedWhenNoDiagnostics(t *testing.T) {
 	// SARIF must always be emitted so github/codeql-action/upload-sarif
 	// receives a valid document (not an empty file) on a clean codebase.
-	opts := checkCLIOpts{format: "sarif"}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "sarif"}}
 	result := &engine.Result{FilesChecked: 3}
 	var code int
 	var stdout string
@@ -656,7 +656,7 @@ func TestReportCheckResult_SARIFEmittedWhenNoDiagnostics(t *testing.T) {
 func TestReportFixResult_SARIFEmittedWhenNoDiagnostics(t *testing.T) {
 	// Same invariant as check: fix -f sarif must produce a valid SARIF
 	// document even when fixing resolved all issues (Diagnostics empty).
-	opts := fixCLIOpts{format: "sarif"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "sarif"}}
 	result := &fixpkg.Result{FilesChecked: 2, Modified: []string{"f.md"}}
 	var code int
 	var stdout string
@@ -675,7 +675,7 @@ func TestReportFixResult_SARIFEmittedWhenNoDiagnostics(t *testing.T) {
 }
 
 func TestReportFixResult_DiagnosticsReturnsCode1(t *testing.T) {
-	opts := fixCLIOpts{format: "text"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text"}}
 	result := &fixpkg.Result{
 		FilesChecked: 1,
 		Failures:     1,
@@ -692,7 +692,7 @@ func TestReportFixResult_DiagnosticsReturnsCode1(t *testing.T) {
 }
 
 func TestReportFixResult_ErrorsOnlyReturnsCode2(t *testing.T) {
-	opts := fixCLIOpts{format: "text"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text"}}
 	result := &fixpkg.Result{
 		FilesChecked: 1,
 		Errors:       []error{fmt.Errorf("disk error")},
@@ -706,7 +706,7 @@ func TestReportFixResult_ErrorsOnlyReturnsCode2(t *testing.T) {
 }
 
 func TestReportFixResultTo_DryRunJSONWriteErrorReturns2(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "json"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "json"}, dryRun: true}
 	result := &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
 	}
@@ -715,7 +715,7 @@ func TestReportFixResultTo_DryRunJSONWriteErrorReturns2(t *testing.T) {
 }
 
 func TestReportFixResultTo_DiagWriteErrorReturns2(t *testing.T) {
-	opts := fixCLIOpts{format: "text"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text"}}
 	result := &fixpkg.Result{
 		FilesChecked: 1,
 		Failures:     1,
@@ -731,7 +731,7 @@ func TestReportFixResultTo_DiagWriteErrorReturns2(t *testing.T) {
 // --- reportCheckResultTo ---
 
 func TestReportCheckResultTo_DiagWriteErrorReturns2(t *testing.T) {
-	opts := checkCLIOpts{format: "text"}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text"}}
 	result := &engine.Result{
 		FilesChecked: 1,
 		Diagnostics: []lint.Diagnostic{
@@ -1506,12 +1506,12 @@ func TestReportCheckResultTo_FlushErrorReturns2(t *testing.T) {
 	// No diagnostics: only the run-stats line sits in the buffer, so
 	// the first underlying write happens at the final Flush.
 	code := reportCheckResultTo(&engine.Result{FilesChecked: 1},
-		checkCLIOpts{format: "text"}, &vlog.Logger{}, testIO(t, io.Discard, &failAfterWriter{n: 0}))
+		checkCLIOpts{reportFlags: reportFlags{format: "text"}}, &vlog.Logger{}, testIO(t, io.Discard, &failAfterWriter{n: 0}))
 	assert.Equal(t, 2, code)
 }
 
 func TestReportFixResultTo_FlushErrorReturns2(t *testing.T) {
-	code := reportFixResultTo(fixCLIOpts{format: "text"},
+	code := reportFixResultTo(fixCLIOpts{reportFlags: reportFlags{format: "text"}},
 		&fixpkg.Result{FilesChecked: 1}, &vlog.Logger{}, testIO(t, io.Discard, &failAfterWriter{n: 0}))
 	assert.Equal(t, 2, code)
 }
@@ -1519,7 +1519,7 @@ func TestReportFixResultTo_FlushErrorReturns2(t *testing.T) {
 func TestReportFixResultTo_DryRunJSONWriteErrorFlushes(t *testing.T) {
 	// The dry-run JSON path returns the formatter's error code after
 	// flushing what it can; the underlying writer rejects everything.
-	opts := fixCLIOpts{format: "json", dryRun: true}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "json"}, dryRun: true}
 	result := &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
 		Diagnostics:   manyDiagnostics(2000),
@@ -1532,7 +1532,7 @@ func TestReportFixResultTo_DryRunSARIFWriteErrorReturns2(t *testing.T) {
 	// Enough diagnostics to overflow the 64 KiB buffer during SARIF
 	// JSON encoding, so writeDiagnostics itself sees the failure and
 	// the report exits 2.
-	opts := fixCLIOpts{dryRun: true, format: "sarif"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "sarif"}, dryRun: true}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
 	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
@@ -1542,14 +1542,14 @@ func TestReportCheckResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
 	// Enough diagnostics to overflow the 64 KiB stderr buffer, so the
 	// formatter itself observes the write failure mid-stream and the
 	// report path takes its early-return branch.
-	opts := checkCLIOpts{format: "text", noColor: true}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text", noColor: true}}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
 	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
 func TestReportFixResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
-	opts := fixCLIOpts{format: "text", noColor: true}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text", noColor: true}}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
 	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)

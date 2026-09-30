@@ -16,25 +16,17 @@ import (
 
 // checkCLIOpts bundles the runtime knobs threaded through the check
 // command path. Grouped because runCheck splits between explicit-file,
-// stdin, and config-discovery entry points and the same nine values
-// flow to all three.
+// stdin, and config-discovery entry points and the same values flow
+// to all three.
 type checkCLIOpts struct {
+	// reportFlags holds -f, -o, the color flags, and -q, shared with
+	// fix. Runtime errors always stay on stderr.
+	reportFlags
 	configPath   string
-	format       string
-	noColor      bool
-	quiet        bool
 	verbose      bool
 	walk         walkCLI
 	maxInputSize string
 	explain      bool
-	// output is the -o/--output value: where the report goes (see
-	// reportFlags.output). Runtime errors always stay on stderr.
-	output string
-}
-
-// reportFlags returns the report flags of a check run.
-func (o checkCLIOpts) reportFlags() reportFlags {
-	return reportFlags{format: o.format, output: o.output, noColor: o.noColor, quiet: o.quiet}
 }
 
 // runCheck implements the "check" subcommand: lint files.
@@ -108,18 +100,15 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	hasStdin, fileArgs := splitStdinArg(fs.Args())
 
 	return checkCLIOpts{
-		configPath: configPath,
-		format:     format,
-		noColor:    noColor,
-		quiet:      quiet,
-		verbose:    verbose,
+		reportFlags: reportFlags{format: format, output: output, noColor: noColor, quiet: quiet},
+		configPath:  configPath,
+		verbose:     verbose,
 		walk: walkCLI{
 			noGitignore:    noGitignore,
 			followSymlinks: followSymlinksOverride(fs, followSymlinks),
 		},
 		maxInputSize: maxInputSize,
 		explain:      explain,
-		output:       output,
 	}, fileArgs, hasStdin, -1
 }
 
@@ -127,10 +116,10 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 func checkFiles(fileArgs []string, opts checkCLIOpts) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
 		fileArgs, opts.configPath, opts.verbose, opts.walk, opts.maxInputSize,
-		nonMarkdownSkipWarner(os.Stderr, opts.reportFlags()),
+		nonMarkdownSkipWarner(os.Stderr, opts.reportFlags),
 	)
 	if code == 0 {
-		return reportNoFiles(opts.reportFlags(), processIO())
+		return reportNoFiles(opts.reportFlags, processIO())
 	}
 	if code > 0 {
 		return code
@@ -203,7 +192,7 @@ func checkStdin(opts checkCLIOpts) int {
 func checkDiscovered(opts checkCLIOpts) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(opts.configPath, opts.verbose, opts.walk)
 	if code == 0 {
-		return reportNoFiles(opts.reportFlags(), processIO())
+		return reportNoFiles(opts.reportFlags, processIO())
 	}
 	if code > 0 {
 		return code

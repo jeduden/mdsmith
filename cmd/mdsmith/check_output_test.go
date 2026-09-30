@@ -34,7 +34,7 @@ func TestReportCheckResultTo_RoutesReport(t *testing.T) {
 		Diagnostics:  manyDiagnostics(1),
 		Errors:       []error{errors.New("boom")},
 	}
-	opts := checkCLIOpts{format: "json"}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "json"}}
 
 	t.Run("default is stderr", func(t *testing.T) {
 		var out, errOut bytes.Buffer
@@ -77,7 +77,7 @@ func decodeJSONDiags(t *testing.T, b []byte) []map[string]any {
 }
 
 func TestReportCheckResultTo_TextStatsFollowDiagnostics(t *testing.T) {
-	opts := checkCLIOpts{format: "text", output: "-"}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text", output: "-"}}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
 	var out, errOut bytes.Buffer
 	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, &out, &errOut))
@@ -90,7 +90,7 @@ func TestReportCheckResultTo_TextStatsFollowDiagnostics(t *testing.T) {
 // Off the default route the report is batched through its own
 // buffer, so a diagnostic-heavy run does not pay one write per line.
 func TestReportCheckResultTo_BuffersRoutedWrites(t *testing.T) {
-	opts := checkCLIOpts{format: "text", output: "-"}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text", output: "-"}}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
 	w := &countingWriter{}
 	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, w, io.Discard))
@@ -104,7 +104,7 @@ func TestReportCheckResultTo_BuffersRoutedWrites(t *testing.T) {
 // diagnostics overflow the 64 KiB buffer, so the formatter itself
 // sees the failure.
 func TestReportCheckResultTo_WriteErrorGoesToStderr(t *testing.T) {
-	opts := checkCLIOpts{format: "text", output: "-"}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text", output: "-"}}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
 	var errOut bytes.Buffer
 	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, &alwaysErrorWriter{}, &errOut))
@@ -115,7 +115,7 @@ func TestReportCheckResultTo_WriteErrorGoesToStderr(t *testing.T) {
 // A stderr that fails writes must not keep the report off stdout, and
 // the exit code must still be the lint result (1), not 2.
 func TestReportCheckResultTo_BrokenStderrStillWritesReport(t *testing.T) {
-	opts := checkCLIOpts{format: "json", output: "-"}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "json", output: "-"}}
 	result := &engine.Result{
 		FilesChecked: 1,
 		Diagnostics:  manyDiagnostics(1),
@@ -138,12 +138,12 @@ func TestReportCheckResultTo_CleanRunOutput(t *testing.T) {
 			want  string
 			sarif bool
 		}{
-			{name: "json", opts: checkCLIOpts{format: "json"}, want: "[]\n"},
-			{name: "sarif", opts: checkCLIOpts{format: "sarif"}, sarif: true},
-			{name: "text", opts: checkCLIOpts{format: "text"}, want: "stats: checked=1 fixed=0 failures=0 unfixed=0\n"},
-			{name: "json quiet", opts: checkCLIOpts{format: "json", quiet: true}},
-			{name: "sarif quiet", opts: checkCLIOpts{format: "sarif", quiet: true}},
-			{name: "text quiet", opts: checkCLIOpts{format: "text", quiet: true}},
+			{name: "json", opts: checkCLIOpts{reportFlags: reportFlags{format: "json"}}, want: "[]\n"},
+			{name: "sarif", opts: checkCLIOpts{reportFlags: reportFlags{format: "sarif"}}, sarif: true},
+			{name: "text", opts: checkCLIOpts{reportFlags: reportFlags{format: "text"}}, want: "stats: checked=1 fixed=0 failures=0 unfixed=0\n"},
+			{name: "json quiet", opts: checkCLIOpts{reportFlags: reportFlags{format: "json", quiet: true}}},
+			{name: "sarif quiet", opts: checkCLIOpts{reportFlags: reportFlags{format: "sarif", quiet: true}}},
+			{name: "text quiet", opts: checkCLIOpts{reportFlags: reportFlags{format: "text", quiet: true}}},
 		} {
 			t.Run("-o "+output+" "+tc.name, func(t *testing.T) {
 				var out, errOut bytes.Buffer
@@ -201,7 +201,7 @@ func TestReportCheckResultTo_Color(t *testing.T) {
 			rio := testIO(t, &out, io.Discard)
 			rio.isTerminal = func(w io.Writer) bool { return tc.tty && w == &out }
 			rio.getenv = func(string) string { return tc.env }
-			opts := checkCLIOpts{format: "text", output: "-", noColor: tc.noColor}
+			opts := checkCLIOpts{reportFlags: reportFlags{format: "text", output: "-", noColor: tc.noColor}}
 			assert.Equal(t, 1, reportCheckResultTo(result, opts, &vlog.Logger{}, rio))
 			assert.Equal(t, tc.want, bytes.Contains(out.Bytes(), []byte("\033[")), "report=%q", out.String())
 		})
@@ -212,17 +212,17 @@ func TestWriteCheckReport(t *testing.T) {
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
 	t.Run("diagnostics then stats", func(t *testing.T) {
 		var buf bytes.Buffer
-		require.NoError(t, writeCheckReport(&buf, result, checkCLIOpts{format: "text"}, false))
+		require.NoError(t, writeCheckReport(&buf, result, checkCLIOpts{reportFlags: reportFlags{format: "text"}}, false))
 		assert.Regexp(t, `(?s)line too long.*stats: checked=1 fixed=0 failures=1 unfixed=1\n$`, buf.String())
 	})
 	t.Run("quiet writes nothing", func(t *testing.T) {
 		var buf bytes.Buffer
-		require.NoError(t, writeCheckReport(&buf, result, checkCLIOpts{format: "json", quiet: true}, false))
+		require.NoError(t, writeCheckReport(&buf, result, checkCLIOpts{reportFlags: reportFlags{format: "json", quiet: true}}, false))
 		assert.Empty(t, buf.String())
 	})
 	t.Run("returns formatter error", func(t *testing.T) {
 		assert.EqualError(t,
-			writeCheckReport(&alwaysErrorWriter{}, result, checkCLIOpts{format: "text"}, false),
+			writeCheckReport(&alwaysErrorWriter{}, result, checkCLIOpts{reportFlags: reportFlags{format: "text"}}, false),
 			"write failed")
 	})
 }
@@ -261,11 +261,6 @@ func TestParseCheckFlags_StdoutFlagIsGone(t *testing.T) {
 		assert.Equal(t, 2, code)
 	})
 	assert.Contains(t, stderr, "unknown flag: --stdout")
-}
-
-func TestCheckCLIOpts_ReportFlags(t *testing.T) {
-	opts := checkCLIOpts{format: "json", output: "-", noColor: true, quiet: true, verbose: true}
-	assert.Equal(t, reportFlags{format: "json", output: "-", noColor: true, quiet: true}, opts.reportFlags())
 }
 
 // A run that resolved no Markdown file is clean. json and sarif still

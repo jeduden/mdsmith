@@ -36,11 +36,6 @@ func TestParseFixFlags_EmptyOutputIsUsageError(t *testing.T) {
 	assert.Equal(t, "mdsmith: fix: --output needs a path, or - for stdout\n", stderr)
 }
 
-func TestFixCLIOpts_ReportFlags(t *testing.T) {
-	opts := fixCLIOpts{format: "sarif", output: "r.sarif", noColor: true, quiet: true, dryRun: true}
-	assert.Equal(t, reportFlags{format: "sarif", output: "r.sarif", noColor: true, quiet: true}, opts.reportFlags())
-}
-
 // fix routes its report (remaining diagnostics, the dry-run preview,
 // and the stats line) exactly as check does; runtime errors stay on
 // stderr.
@@ -53,7 +48,7 @@ func TestReportFixResultTo_RoutesReport(t *testing.T) {
 	}
 	t.Run("default is stderr", func(t *testing.T) {
 		var out, errOut bytes.Buffer
-		code := reportFixResultTo(fixCLIOpts{format: "json"}, result, &vlog.Logger{}, testIO(t, &out, &errOut))
+		code := reportFixResultTo(fixCLIOpts{reportFlags: reportFlags{format: "json"}}, result, &vlog.Logger{}, testIO(t, &out, &errOut))
 		assert.Equal(t, 1, code)
 		assert.Empty(t, out.String())
 		assert.Contains(t, errOut.String(), "mdsmith: boom")
@@ -61,7 +56,7 @@ func TestReportFixResultTo_RoutesReport(t *testing.T) {
 	})
 	t.Run("dash is stdout", func(t *testing.T) {
 		var out, errOut bytes.Buffer
-		opts := fixCLIOpts{format: "json", output: "-"}
+		opts := fixCLIOpts{reportFlags: reportFlags{format: "json", output: "-"}}
 		code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, &out, &errOut))
 		assert.Equal(t, 1, code)
 		assert.Len(t, decodeJSONDiags(t, out.Bytes()), 1)
@@ -71,7 +66,7 @@ func TestReportFixResultTo_RoutesReport(t *testing.T) {
 		var out, errOut bytes.Buffer
 		f := &fakeReportFile{}
 		var created string
-		opts := fixCLIOpts{format: "text", output: "fix.txt"}
+		opts := fixCLIOpts{reportFlags: reportFlags{format: "text", output: "fix.txt"}}
 		code := reportFixResultTo(opts, result, &vlog.Logger{}, fileIO(t, &out, &errOut, f, &created))
 		assert.Equal(t, 1, code)
 		assert.Equal(t, "fix.txt", created)
@@ -92,7 +87,7 @@ func TestReportFixResultTo_DryRunPreviewIsPartOfReport(t *testing.T) {
 		}},
 	}
 	var out, errOut bytes.Buffer
-	opts := fixCLIOpts{format: "text", output: "-", dryRun: true}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text", output: "-"}, dryRun: true}
 	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, &out, &errOut))
 	assert.Equal(t, 0, code)
 	assert.Equal(t, "a.md: would fix 1 violation (MDS009)\n"+
@@ -110,13 +105,13 @@ func TestReportFixResultTo_CleanRunOutput(t *testing.T) {
 			want  string
 			sarif bool
 		}{
-			{name: "json", opts: fixCLIOpts{format: "json"}, want: "[]\n"},
-			{name: "dry-run json", opts: fixCLIOpts{format: "json", dryRun: true}, want: "[]\n"},
-			{name: "sarif", opts: fixCLIOpts{format: "sarif"}, sarif: true},
-			{name: "dry-run sarif", opts: fixCLIOpts{format: "sarif", dryRun: true}, sarif: true},
-			{name: "text", opts: fixCLIOpts{format: "text"}, want: "stats: checked=1 fixed=0 failures=0 unfixed=0\n"},
-			{name: "json quiet", opts: fixCLIOpts{format: "json", quiet: true}},
-			{name: "dry-run json quiet", opts: fixCLIOpts{format: "json", dryRun: true, quiet: true}},
+			{name: "json", opts: fixCLIOpts{reportFlags: reportFlags{format: "json"}}, want: "[]\n"},
+			{name: "dry-run json", opts: fixCLIOpts{reportFlags: reportFlags{format: "json"}, dryRun: true}, want: "[]\n"},
+			{name: "sarif", opts: fixCLIOpts{reportFlags: reportFlags{format: "sarif"}}, sarif: true},
+			{name: "dry-run sarif", opts: fixCLIOpts{reportFlags: reportFlags{format: "sarif"}, dryRun: true}, sarif: true},
+			{name: "text", opts: fixCLIOpts{reportFlags: reportFlags{format: "text"}}, want: "stats: checked=1 fixed=0 failures=0 unfixed=0\n"},
+			{name: "json quiet", opts: fixCLIOpts{reportFlags: reportFlags{format: "json", quiet: true}}},
+			{name: "dry-run json quiet", opts: fixCLIOpts{reportFlags: reportFlags{format: "json", quiet: true}, dryRun: true}},
 		} {
 			t.Run("-o "+output+" "+tc.name, func(t *testing.T) {
 				var out, errOut bytes.Buffer
@@ -145,7 +140,7 @@ func TestReportFixResultTo_Color(t *testing.T) {
 		var out bytes.Buffer
 		rio := testIO(t, &out, io.Discard)
 		rio.isTerminal = func(w io.Writer) bool { return tty && w == &out }
-		assert.Equal(t, 1, reportFixResultTo(fixCLIOpts{format: "text", output: "-"}, result, &vlog.Logger{}, rio))
+		assert.Equal(t, 1, reportFixResultTo(fixCLIOpts{reportFlags: reportFlags{format: "text", output: "-"}}, result, &vlog.Logger{}, rio))
 		assert.Equal(t, tty, bytes.Contains(out.Bytes(), []byte("\033[")), "tty=%v report=%q", tty, out.String())
 	}
 }
@@ -159,9 +154,9 @@ func TestReportFixResultTo_WriteErrorGoesToStderr(t *testing.T) {
 		Diagnostics:   manyDiagnostics(2000),
 	}
 	for _, opts := range []fixCLIOpts{
-		{format: "json", dryRun: true, output: "-"},
-		{format: "sarif", dryRun: true, output: "-"},
-		{format: "text", output: "-"},
+		{reportFlags: reportFlags{format: "json", output: "-"}, dryRun: true},
+		{reportFlags: reportFlags{format: "sarif", output: "-"}, dryRun: true},
+		{reportFlags: reportFlags{format: "text", output: "-"}},
 	} {
 		var errOut bytes.Buffer
 		code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, &alwaysErrorWriter{}, &errOut))
@@ -173,6 +168,6 @@ func TestReportFixResultTo_WriteErrorGoesToStderr(t *testing.T) {
 func TestWriteFixReport_Quiet(t *testing.T) {
 	var buf bytes.Buffer
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
-	require.NoError(t, writeFixReport(&buf, result, fixCLIOpts{format: "text", quiet: true, dryRun: true}, false))
+	require.NoError(t, writeFixReport(&buf, result, fixCLIOpts{reportFlags: reportFlags{format: "text", quiet: true}, dryRun: true}, false))
 	assert.Empty(t, buf.String())
 }
