@@ -1,20 +1,19 @@
 package linkgraph
 
-import "testing"
+import (
+	"math/rand"
+	"strconv"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 // TestSortByDepthThenName_NoReflectSort pins the allocation cost of
 // sortByDepthThenName, which drove sort.Slice — reflect.Swapper
 // internally — the "reflect in hot paths" anti-pattern in
 // docs/development/high-performance-go.md. It runs once per colliding-
-// basename bucket on every WikilinkIndex (re)build.
-//
-// The budget is 1, not 0: sortByDepthThenName decorates each path with
-// its precomputed depth (one []keyedPath allocation) so the comparator
-// doesn't re-run strings.Count on both operands on every one of the
-// O(n log n) comparisons — trading one allocation for O(n) instead of
-// O(n log n) strings.Count calls, the same "memoize per-input
-// computations" trade-off internal/build/cache.go's
-// sortEntriesByOutputKey makes for its own comparator.
+// basename bucket on every WikilinkIndex (re)build. The sort compares
+// the paths in place, so no bucket size allocates.
 func TestSortByDepthThenName_NoReflectSort(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
@@ -22,48 +21,55 @@ func TestSortByDepthThenName_NoReflectSort(t *testing.T) {
 	if raceEnabled {
 		t.Skip("alloc gate skipped under -race")
 	}
-	paths := []string{
+	unsorted := []string{
 		"docs/deep/nested/z.md",
 		"a.md",
 		"docs/b.md",
 	}
-	sortByDepthThenName(paths)
-	if paths[0] != "a.md" || paths[len(paths)-1] != "docs/deep/nested/z.md" {
-		t.Fatalf("sortByDepthThenName did not sort by depth then name: %v", paths)
+	buf := make([]string, len(unsorted))
+	copy(buf, unsorted)
+	sortByDepthThenName(buf)
+	if buf[0] != "a.md" || buf[len(buf)-1] != "docs/deep/nested/z.md" {
+		t.Fatalf("sortByDepthThenName did not sort by depth then name: %v", buf)
 	}
 
-	const runs = 200
-	const allocBudget = 1
-	allocs := testing.AllocsPerRun(runs, func() {
-		sortByDepthThenName(paths)
-	})
-	t.Logf("sortByDepthThenName allocs/op = %.0f (budget = %d)", allocs, allocBudget)
-	if allocs > allocBudget {
-		t.Fatalf("sortByDepthThenName allocs/op = %.0f, want <= %d (no reflection, "+
-			"one decorate allocation)", allocs, allocBudget)
+	for _, n := range []int{0, 1, len(unsorted)} {
+		src := unsorted[:n]
+		dst := buf[:n]
+		// Refill dst from the unsorted input on every run, so each run
+		// moves elements instead of re-sorting an already-sorted slice.
+		allocs := testing.AllocsPerRun(200, func() {
+			copy(dst, src)
+			sortByDepthThenName(dst)
+		})
+		t.Logf("sortByDepthThenName allocs/op (%d paths) = %.0f", n, allocs)
+		if allocs > 0 {
+			t.Fatalf("sortByDepthThenName allocs/op = %.0f for %d path(s), want 0 (no reflection)",
+				allocs, n)
+		}
 	}
 }
 
-// TestSortByDepthThenName_SingleOrEmptyAllocatesNothing pins the early
-// return for fewer than 2 paths — the common case, since most basenames
-// are unique in a real workspace. See sortByDepthThenName's comment for
-// why that guard exists (test determinism, not a measured performance
-// win — the property already held without it).
-func TestSortByDepthThenName_SingleOrEmptyAllocatesNothing(t *testing.T) {
-	if testing.Short() {
-		t.Skip("alloc gate skipped in -short mode")
-	}
-	if raceEnabled {
-		t.Skip("alloc gate skipped under -race")
-	}
-	for _, paths := range [][]string{nil, {"a.md"}} {
-		allocs := testing.AllocsPerRun(200, func() {
-			sortByDepthThenName(paths)
-		})
-		t.Logf("sortByDepthThenName allocs/op (%d paths) = %.0f", len(paths), allocs)
-		if allocs > 0 {
-			t.Fatalf("sortByDepthThenName allocs/op = %.0f for %d path(s), want 0",
-				allocs, len(paths))
+// TestSortByDepthThenName_DeterministicAcrossInputOrders pins the
+// bucket order WikilinkIndex.Resolve relies on: it returns the first
+// path of a basename bucket, so the shallowest path wins and a name
+// tie at one depth goes to the lexically smaller path. The walk fills
+// buckets in fs.WalkDir order; whatever order they arrive in, the
+// sorted bucket must be the same. Twenty paths put the sort past
+// pdqsort's 12-element insertion-sort cutoff.
+func TestSortByDepthThenName_DeterministicAcrossInputOrders(t *testing.T) {
+	want := make([]string, 0, 20)
+	for _, dir := range []string{"", "a/", "b/", "a/x/", "b/y/z/"} {
+		for i := range 4 {
+			want = append(want, dir+"n"+strconv.Itoa(i)+"/README.md")
 		}
+	}
+	for seed := int64(1); seed <= 5; seed++ {
+		got := append([]string(nil), want...)
+		rand.New(rand.NewSource(seed)).Shuffle(len(got), func(i, j int) {
+			got[i], got[j] = got[j], got[i]
+		})
+		sortByDepthThenName(got)
+		require.Equal(t, want, got, "seed %d", seed)
 	}
 }

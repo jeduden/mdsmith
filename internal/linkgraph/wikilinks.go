@@ -291,53 +291,26 @@ func skipHeavyDirs(p string) error {
 	return nil
 }
 
-// sortByDepthThenName orders paths by (path-separator count, name).
-// slices.SortFunc compares the concrete string values directly, unlike
-// sort.Slice, which drives reflect.Swapper internally (see
+// sortByDepthThenName orders paths by (path-separator count, name), so
+// Resolve's first match is the shallowest path. slices.SortFunc
+// compares the concrete string values directly, unlike sort.Slice,
+// which drives reflect.Swapper internally (see
 // docs/development/high-performance-go.md, "reflect in hot paths").
 // This runs once per basename bucket on every WikilinkIndex (re)build,
 // so real workspaces with colliding basenames (README.md, index.md)
 // pay it N times per rebuild, not once.
 //
-// Each path's depth is computed once up front rather than inside the
-// comparator: a comparator re-running strings.Count on both operands
-// redoes that work on every one of the O(n log n) comparisons instead
-// of once per path (docs/development/high-performance-go.md, "memoize
-// per-input computations") — the same decorate-sort-undecorate pattern
-// internal/build/cache.go's sortEntriesByOutputKey uses for its own
-// comparator.
-//
-// The early return below isn't a measured performance win the way
-// sortEntriesByOutputKey's is (skipping its per-entry outputSetKey call
-// saves real allocations): strings.Count never allocates, and for 0 or
-// 1 paths escape analysis already stack-allocates `decorated` since it
-// never leaves the function, measured identical allocs/op with or
-// without the guard. It's here so that invariant doesn't depend on an
-// escape-analysis threshold (keyedPath's size relative to the
-// compiler's stack-allocation limit for a non-constant-length slice)
-// that a future Go version could shift — see
-// TestSortByDepthThenName_SingleOrEmptyAllocatesNothing.
+// The comparator counts separators on each call rather than caching
+// the depths in a side slice. strings.Count does not allocate, and
+// buckets are small: a cached-depth copy cost one allocation per
+// bucket and measured slower below about 50 paths, breaking even there.
 func sortByDepthThenName(paths []string) {
-	if len(paths) < 2 {
-		return
-	}
-	type keyedPath struct {
-		depth int
-		path  string
-	}
-	decorated := make([]keyedPath, len(paths))
-	for i, p := range paths {
-		decorated[i] = keyedPath{depth: strings.Count(p, "/"), path: p}
-	}
-	slices.SortFunc(decorated, func(a, b keyedPath) int {
+	slices.SortFunc(paths, func(a, b string) int {
 		return cmp.Or(
-			cmp.Compare(a.depth, b.depth),
-			cmp.Compare(a.path, b.path),
+			cmp.Compare(strings.Count(a, "/"), strings.Count(b, "/")),
+			cmp.Compare(a, b),
 		)
 	})
-	for i, d := range decorated {
-		paths[i] = d.path
-	}
 }
 
 // ResolveWikiLink resolves an Obsidian-style wikilink target against
