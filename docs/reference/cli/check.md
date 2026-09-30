@@ -25,8 +25,9 @@ reaches it or you name it explicitly. Naming one
 explicitly prints a `skipping …: not a Markdown file`
 warning on stderr, so the skip is never a silent no-op;
 `--quiet` suppresses it. The `json`/`sarif` formats also
-suppress it, unless `--stdout` moves their output off
-stderr.
+suppress it while their report goes to stderr, since a
+prose line would corrupt the document there; with `-o`
+the warning shows.
 
 ## Flags
 
@@ -41,7 +42,7 @@ stderr.
 | `-q`, `--quiet`     | false   | Suppress non-error output              |
 | `-v`, `--verbose`   | false   | Show config, files, and rules          |
 | `--explain`         | false   | Attach per-leaf rule provenance        |
-| `--stdout`          | false   | Diagnostics to stdout, not stderr      |
+| `-o`, `--output`    | stderr  | Report to a file; `-` is stdout        |
 
 `--follow-symlinks` is tri-state. Omitted defers to the
 config key (default: skip). `--follow-symlinks` or
@@ -62,30 +63,54 @@ the winning source for each leaf setting:
 ]}
 ```
 
-`--stdout` writes diagnostics and the text-format stats line
-to stdout instead of stderr, so a plain redirect captures
-them. Text output keeps its ANSI colors in the file; add
-`--no-color` for plain text. A clean run still writes a
-valid document: `[]` for `json` and an empty log for
-`sarif`, even when it finds no Markdown file. `--quiet`
-writes nothing.
+## Report output
 
-Runtime errors stay on stderr, so they never land in the
-redirected file. After one, stdout still holds the report
-for the files that were linted, or nothing if the run
-stopped first, as on a bad config. The verbose log and
-the non-Markdown skip warning stay on stderr too.
+The report is the diagnostics plus the text-format stats
+line. It goes to stderr by default. `-o <path>` writes it
+to a file and `-o -` writes it to stdout, where a plain
+redirect captures it:
 
-A failed write to stdout is reported on stderr and exits
-`2`. If a write to stderr fails, the error messages are
-lost, but the diagnostics still reach stdout and the exit
-code does not change. On Unix, a write to a closed pipe,
-as in `| head`, is not such a failure on either stream:
-the process ends on `SIGPIPE` instead.
+```bash
+mdsmith check -f json -o diagnostics.json docs/
+mdsmith check -f json -o - docs/ > diagnostics.json
+```
 
-Without the flag, all output goes to stderr as before,
-and a clean `json` run writes nothing.
-[`mdsmith fix`](fix.md) has no `--stdout`.
+Runtime errors always stay on stderr, so they never land
+in the report. The verbose log (`-v`) and the
+non-Markdown skip warning stay on stderr too. An empty
+`-o` value is a usage error (exit `2`).
+
+`-o <path>` creates the file with mode `0644` (before the
+umask), or truncates it if it exists. An existing file
+keeps its mode. The file is opened only once linting
+ends. A run that stops first, as on a bad config, exits
+`2` and leaves the file untouched.
+
+A clean run still writes a valid document on every route:
+`[]` for `json`, and a SARIF log with one run and no
+results for `sarif`. This holds even when no Markdown
+file is found. Text writes only the stats line, and
+nothing when no file is found. `-q` writes no report at
+all; with `-o <path>` the file is left empty.
+
+A report that cannot be written is a runtime error. The
+file may fail to open, or a write or close may fail.
+`mdsmith: error writing output: …` goes to stderr and the
+exit code is `2`. A write that fails partway leaves an
+incomplete report. When the report goes elsewhere, a
+failed write of an error message to stderr is ignored,
+and the report still arrives. On Unix, a write to a
+closed pipe, as in `| head`, ends the process on
+`SIGPIPE` instead.
+
+### Color
+
+Text output uses ANSI color only when the report's
+destination is a terminal. A file, a pipe, or a
+redirected stream gets plain text. CI logs, where stderr
+is usually a pipe, are plain as a result. `--no-color`,
+or a `NO_COLOR` environment variable that is set and not
+empty, turns color off on a terminal as well.
 
 ## Examples
 
@@ -93,7 +118,7 @@ and a clean `json` run writes nothing.
 mdsmith check docs/                  # lint a directory
 mdsmith check -f json docs/          # JSON output
 mdsmith check -f sarif docs/         # SARIF 2.1.0 output
-mdsmith check --stdout -f json docs/ > diagnostics.json
+mdsmith check -o report.txt docs/    # report to a file
 mdsmith check --explain README.md    # provenance trailer
 echo "# Hi" | mdsmith check -        # lint stdin
 ```
@@ -106,7 +131,7 @@ Code Scanning dashboard ingests directly. Upload with
 
 ```yaml
 - name: Run mdsmith
-  run: mdsmith check -f sarif . 2> report.sarif || true
+  run: mdsmith check -f sarif -o report.sarif . || true
 - name: Upload SARIF
   uses: github/codeql-action/upload-sarif@v3
   with:
@@ -130,11 +155,11 @@ pre-commit:
 
 ## Exit codes
 
-| Code | Meaning                        |
-| ---- | ------------------------------ |
-| 0    | No lint issues found           |
-| 1    | Lint issues found              |
-| 2    | Runtime or configuration error |
+| Code | Meaning                                                    |
+| ---- | ---------------------------------------------------------- |
+| 0    | No lint issues found                                       |
+| 1    | Lint issues found                                          |
+| 2    | Runtime or configuration error, or the report write failed |
 
 ## See also
 

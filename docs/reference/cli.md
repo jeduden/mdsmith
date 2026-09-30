@@ -130,11 +130,16 @@ Per-command exits may vary; see the per-command pages.
 
 ## Output
 
-Lint output goes to **stderr**. `mdsmith check --stdout` sends
-diagnostics and the stats line to **stdout** instead, so
-`mdsmith check --stdout -f json > out.json` captures them;
-runtime errors stay on stderr. Only `check` has the flag.
-Format:
+Lint output goes to **stderr** by default. `check` and
+`fix` take `-o <path>` to write their report (diagnostics
+and the stats line) to a file, or `-o -` to write it to
+**stdout**. Runtime errors stay on stderr on every route;
+see [`mdsmith check`](cli/check.md#report-output). A clean
+`json` run prints `[]`.
+
+Text output is colored only when it goes to a terminal.
+`--no-color`, or a `NO_COLOR` environment variable that
+is set and not empty, turns color off. Format:
 
 **text** (default):
 

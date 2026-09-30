@@ -20,8 +20,9 @@ Only Markdown files are fixed. A non-Markdown path (such
 as `.gitattributes`) is skipped whether the walk reaches
 it or you name it explicitly, so `fix` never rewrites it.
 Naming one explicitly prints a `skipping …: not a
-Markdown file` warning on stderr; `--quiet` and the
-`json`/`sarif` formats suppress it.
+Markdown file` warning on stderr. `--quiet` suppresses
+it, and so do the `json`/`sarif` formats while their
+report goes to stderr.
 
 ## Flags
 
@@ -37,9 +38,25 @@ Markdown file` warning on stderr; `--quiet` and the
 | `-v`, `--verbose`   | false   | Show config, files, and rules          |
 | `--explain`         | false   | Attach per-leaf rule provenance        |
 | `--dry-run`         | false   | Preview changes; write nothing         |
+| `-o`, `--output`    | stderr  | Report to a file; `-` is stdout        |
 
 `--follow-symlinks` semantics match
 [`mdsmith check`](check.md#flags).
+
+## Report output
+
+`-o` routes the report as it does for
+[`mdsmith check`](check.md#report-output): a file for
+`-o <path>`, stdout for `-o -`, stderr by default. The
+same color rule applies. Here the report is the
+remaining diagnostics, the `--dry-run` preview or JSON,
+and the stats line. A clean `json` run writes `[]`.
+
+Runtime errors and all build-pass output stay on stderr.
+Fixes are written before the report, so a report that
+cannot be written exits `2` with the files already
+fixed. `--build-only` has no lint report, so `-o`
+creates no file.
 
 ## Examples
 
@@ -90,8 +107,9 @@ or diagnostic counts would change:
 ```
 
 The `diagnostics` array carries the same per-diagnostic
-fields `check --format json` returns. Like every other
-lint output, the JSON goes to **stderr**. The text-mode
+fields `check --format json` returns. The JSON goes where
+the report goes: **stderr** by default, or the `-o`
+destination. The text-mode
 `stats:` summary is suppressed in JSON mode; the
 machine-readable counts live inside each record's
 `would_fix` field.
@@ -119,11 +137,11 @@ pre-commit:
 
 ## Exit codes
 
-| Code | Meaning                        |
-| ---- | ------------------------------ |
-| 0    | No remaining issues            |
-| 1    | Issues remain after fixing     |
-| 2    | Runtime or configuration error |
+| Code | Meaning                                                    |
+| ---- | ---------------------------------------------------------- |
+| 0    | No remaining issues                                        |
+| 1    | Issues remain after fixing                                 |
+| 2    | Runtime or configuration error, or the report write failed |
 
 ## See also
 
