@@ -474,7 +474,13 @@ string and renders exactly as written.
 A catalog `sort:` on such a field orders by time, not
 by the rendered text. A value sorts by its UTC instant
 when it is an unquoted time or a quoted string in one
-of these forms: `YYYY-MM-DD`, RFC 3339,
-`YYYY-MM-DDTHH:MM`, or `YYYY-MM-DD HH:MM:SS`. A value
-with no zone counts as UTC. Any other text sorts as
-text.
+of these forms:
+
+- `YYYY-MM-DD`
+- `YYYY-MM-DDTHH:MM`, optionally with seconds
+  (`:SS`), which may carry a fraction (`.sss`)
+- `YYYY-MM-DD HH:MM:SS`, optionally with a fraction
+
+Either time form may end in a zone, `Z` or `±HH:MM`.
+A value with no zone counts as UTC. Any other text
+sorts as text.

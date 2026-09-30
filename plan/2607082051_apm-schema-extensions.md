@@ -163,8 +163,9 @@ A catalog `sort:` keys a date or timestamp on its UTC
 instant (`fieldinterp.ResolveSortKey`), not on that
 text, so mixed offsets still order chronologically.
 A quoted value keys the same way when it reads as
-`YYYY-MM-DD`, RFC 3339, RFC 3339 without seconds or
-zone, or `YYYY-MM-DD HH:MM:SS`; no zone means UTC.
+`YYYY-MM-DD`, `YYYY-MM-DDTHH:MM[:SS]` or
+`YYYY-MM-DD HH:MM:SS`, each time with an optional
+fraction and zone; no zone means UTC.
 The key has no letters, so case-folding keeps it.
 Other strings sort as text.
 

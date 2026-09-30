@@ -207,15 +207,16 @@ var (
 		"2006-01-02T15:04",       // 2026-01-02T10:00
 	}
 	sortTimeLayoutsSpace = []string{
-		time.DateTime, // 2026-01-02 10:00:00, YAML's spaced form
+		time.DateTime,               // 2026-01-02 10:00:00, YAML's spaced form
+		"2006-01-02 15:04:05Z07:00", // 2026-01-02 10:00:00-05:00
 	}
 )
 
 // parseSortTime reads s as a date or timestamp: `YYYY-MM-DD`, RFC 3339
 // (`2026-01-02T10:00:00-05:00`), RFC 3339 without seconds or without
-// a zone (`2026-01-02T10:00`), or YAML's `2026-01-02 10:00:00`. The
-// byte checks before the parse keep plain text, which is nearly every
-// sort value, off time.Parse.
+// a zone (`2026-01-02T10:00`), or YAML's `2026-01-02 10:00:00`, with
+// or without a zone. The byte checks before the parse keep plain
+// text, which is nearly every sort value, off time.Parse.
 func parseSortTime(s string) (time.Time, bool) {
 	n := len(time.DateOnly)
 	if len(s) < n || s[4] != '-' || s[7] != '-' {
