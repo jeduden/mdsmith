@@ -269,9 +269,11 @@ result matches the native engine on the same in-memory fixture.
 
 Both target budgets are met and CI-verified:
 
-- The standard Go WASM artifact is about 11.2 MB uncompressed (2.8 MB
-  gzipped, the figure that crosses the wire), measured by
-  `cmd/mdsmith-wasm/size_test.go`. It was about 40 MB before
+- The standard Go WASM artifact is about 13.1 MiB uncompressed (about
+  3.2 MiB gzipped at standard compression, the figure that crosses the
+  wire; `cmd/mdsmith-wasm/size_test.go` measures about 4.0 MiB at the
+  pessimistic BestSpeed level and fails above 4.25 MiB). It was about
+  40 MB before
   `cuelang.org/go` was removed: CUE (95 packages) plus `cockroachdb/apd`
   and protobuf were the dominant cost, pulled in by `internal/schema`
   (MDS020 file-schema validation), `internal/fieldinterp` (catalog and
