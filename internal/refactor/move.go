@@ -276,7 +276,8 @@ type inlineDest struct {
 // (its `[` or `!`) but not where its destination sits. So the locator
 // walks the AST with a cursor. Entering a link or image moves the cursor
 // to its opening byte. Each text, code-span, raw-HTML and autolink segment
-// in its label moves it forward, and so does each nested destination.
+// in its label moves it forward, and so does each nested destination;
+// the cursor never moves back.
 // On leaving the node, the first `](` at or after the cursor closes that
 // node's own label. A `](` in a code span, an HTML comment, an earlier
 // row or a nested node's label is never reached.
@@ -294,9 +295,12 @@ func (d *destLocator) visit(n ast.Node, entering bool) (ast.WalkStatus, error) {
 	case *ast.Text:
 		d.advance(entering, t.Segment.Stop)
 	case *ast.RawHTML:
-		d.advance(entering, t.Segments.At(t.Segments.Len()-1).Stop)
+		if k := t.Segments.Len(); k > 0 {
+			d.advance(entering, t.Segments.At(k-1).Stop)
+		}
 	case *ast.AutoLink:
-		d.advance(entering, t.Pos()+len(t.Label(d.lf.Source)))
+		// The label sits between the `<` at Pos() and the closing `>`.
+		d.advance(entering, t.Pos()+len(t.Label(d.lf.Source))+2)
 	case *ast.Link:
 		d.linkNode(entering, t.Pos(), t.Destination, t.Reference == nil)
 	case *ast.Image:
@@ -305,21 +309,22 @@ func (d *destLocator) visit(n ast.Node, entering bool) (ast.WalkStatus, error) {
 	return ast.WalkContinue, nil
 }
 
-// advance moves the cursor to stop when entering a node whose bytes end
-// there. The walk visits inline nodes in source order, so stop never
-// lies before the cursor.
+// advance moves the cursor forward to stop when entering a node whose
+// bytes end there. It never moves the cursor back: the walk visits
+// inline nodes in source order, and an out-of-order stop must not bring
+// back a `](` the cursor already passed.
 func (d *destLocator) advance(entering bool, stop int) {
-	if entering {
+	if entering && stop > d.cursor {
 		d.cursor = stop
 	}
 }
 
 // linkNode handles a link or image that opens at pos. Entering it
-// resets the cursor to pos. Leaving an inline one locates its
+// moves the cursor to pos. Leaving an inline one locates its
 // destination; a reference-style `[a][ref]` has none in the text.
 func (d *destLocator) linkNode(entering bool, pos int, dest []byte, inline bool) {
 	if entering {
-		d.cursor = pos
+		d.advance(true, pos)
 		return
 	}
 	if inline {

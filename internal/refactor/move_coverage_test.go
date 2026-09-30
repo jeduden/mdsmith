@@ -197,9 +197,9 @@ func TestDestLocator_Advance(t *testing.T) {
 }
 
 func TestDestLocator_LinkNode(t *testing.T) {
-	d := destLocator{cursor: 7}
+	d := destLocator{}
 	d.linkNode(true, 2, nil, true)
-	assert.Equal(t, 2, d.cursor, "entering resets the cursor to the opening byte")
+	assert.Equal(t, 2, d.cursor, "entering moves the cursor to the opening byte")
 	d.linkNode(false, 2, []byte("r.md"), false)
 	assert.Empty(t, d.dests, "a reference-style node is not located")
 	assert.Equal(t, 2, d.cursor)
