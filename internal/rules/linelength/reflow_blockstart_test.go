@@ -483,7 +483,8 @@ func TestFix_TableDelimiterRowStaysInsideParagraph(t *testing.T) {
 		"greedy wrapping at 8 must build a table")
 	got := fixSource(t, r, "# T\n\n"+text+"\n")
 	assert.Equal(t, "# T\n\naa |\nbb |-|-|\ncccccccc\ndddddddd\n", got)
-	assert.True(t, singleParagraph(t, strings.Split(strings.TrimSuffix(strings.TrimPrefix(got, "# T\n\n"), "\n"), "\n")))
+	body := strings.TrimSuffix(strings.TrimPrefix(got, "# T\n\n"), "\n")
+	assert.True(t, singleParagraph(t, strings.Split(body, "\n")), "layout %q", body)
 	assert.Equal(t, got, fixSource(t, r, got), "reflow is not a fixpoint")
 }
 
