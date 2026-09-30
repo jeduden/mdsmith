@@ -153,7 +153,8 @@ these rules that applies decides:
 1. `--color=always` turns color on and `--color=never`
    turns it off, wherever the report goes. `--no-color`
    is the same as `--color=never`. When several color
-   flags are given, the last one wins.
+   flags are given, the last one wins. `--no-color=false`
+   sets nothing, so an earlier color flag still holds.
 2. `--color=auto` colors a terminal and nothing else,
    whatever the environment says.
 3. With no color flag, a `NO_COLOR` variable that is set

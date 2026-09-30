@@ -281,6 +281,7 @@ func TestParseCheckFlags_Color(t *testing.T) {
 		{args: []string{"--no-color=false"}, want: colorUnset},
 		{args: []string{"--no-color", "--color=always"}, want: colorAlways},
 		{args: []string{"--color=always", "--no-color"}, want: colorNever},
+		{args: []string{"--color=always", "--no-color=false"}, want: colorAlways},
 	} {
 		opts, _, _, code := parseCheckFlags(tc.args)
 		require.Equal(t, -1, code, "%v", tc.args)
