@@ -135,6 +135,8 @@ A `proto.md` cannot set the key: each of its
 front-matter keys names a document field. Both proto.md
 parsers report `frontmatter-closed:` as an invalid
 schema rather than reading it as a field.
+When a `proto.md` with front matter is what keeps
+the composite closed, the hint names that file.
 
 **Design decision (feature b).** A resolved
 `\#(fmvar(...))` value is substituted into the glob
@@ -178,6 +180,12 @@ front-matter values are CUE constraints, not data.
 A reference then matches any non-empty text within
 one path segment instead of substituting the
 constraint text.
+
+Front matter that fails to parse leaves every
+reference unresolved. The `path-pattern:` and
+`filename:` hints then name the YAML error instead of
+a missing field. The front-matter field check is
+skipped, since every field would read as missing.
 
 ## Acceptance Criteria
 
