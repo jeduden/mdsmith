@@ -196,6 +196,18 @@ func TestMove_QuestionMarkFilenameNotTruncated(t *testing.T) {
 	assert.Equal(t, "[self](what?.md) [o](../other.md?x)\n", got["what?.md"])
 }
 
+// TestMove_QuestionMarkLiteralOnlyReferrer pins that a file whose only
+// reference is the literal `what?.md` is still read: the index takes
+// that link for the file `what`, so it records no edge to the moved
+// file, and the file holds no `]:` either.
+func TestMove_QuestionMarkLiteralOnlyReferrer(t *testing.T) {
+	got := moveAndApply(t, map[string]string{
+		"what?.md": "# W\n",
+		"b.md":     "[l](what?.md)\n",
+	}, "what?.md", "docs/what?.md")
+	assert.Equal(t, "[l](docs/what%3F.md)\n", got["b.md"])
+}
+
 // TestMove_OutboundQuestionMarkFilename pins the outbound side: a
 // link from the moved file to an existing `what?.md` is recomputed
 // whole, while a query on a file that exists keeps its query.
