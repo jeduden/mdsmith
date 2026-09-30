@@ -6,7 +6,6 @@
 </p>
 
 [![Build][ci-badge]][ci-link]
-[![Quality][grc-badge]][grc-link]
 [![Coverage][cov-badge]][cov-link]
 
 Neat, consistent *Markdown*.
@@ -196,7 +195,7 @@ kinds, then per-glob overrides. `mdsmith check --explain` and
 `mdsmith kinds resolve` show which layer set each effective value.
 
 **[Quality you can verify](docs/features/quality.md).**
-The CI, Go Report Card, and Codecov badges report live project
+The CI and Codecov badges report live project
 health. mdsmith lints its own docs with the rules it ships, and a
 coverage gate blocks any merge that drops below the line.
 <?/include?>
@@ -334,8 +333,6 @@ upgrades stay reviewable.
 
 [ci-badge]: https://github.com/jeduden/mdsmith/actions/workflows/ci.yml/badge.svg?branch=main
 [ci-link]: https://github.com/jeduden/mdsmith/actions/workflows/ci.yml?query=branch%3Amain
-[grc-badge]: https://goreportcard.com/badge/github.com/jeduden/mdsmith
-[grc-link]: https://goreportcard.com/report/github.com/jeduden/mdsmith
 [cov-badge]: https://codecov.io/gh/jeduden/mdsmith/branch/main/graph/badge.svg
 [cov-link]: https://codecov.io/gh/jeduden/mdsmith/branch/main
 [bench-live]: https://github.com/jeduden/mdsmith/blob/assets/assets/benchmarks/results.fragment.md
