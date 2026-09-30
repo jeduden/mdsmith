@@ -114,14 +114,14 @@ func outputIsInput(output string, in runInputs) bool {
 // inside a directory argument or matching a glob argument, or, on a
 // discovery run, any name matching a files: pattern under the working
 // directory, since discovery takes whatever its patterns match. The
-// name checked is the one the open creates (see
-// createTarget), so a dangling symlink is judged by its final target,
-// not its own name. Directories are compared by identity. Names are
-// matched without regard to case, so the check also holds on a
-// case-insensitive file system. Ignore rules are not consulted, so a
-// Markdown output name in the linted tree is refused even where
-// .gitignore would skip it. A path the open cannot create at all, as
-// under a missing directory, is left to preflightOutput.
+// name checked is the one the open creates (see createTarget), so a
+// dangling symlink is judged by its final target, not its own name.
+// Directories are compared by identity. Names are matched without
+// regard to case, so the check also holds on a case-insensitive file
+// system. Ignore rules are not consulted, so a Markdown output name in
+// the linted tree is refused even where .gitignore would skip it. A
+// path the open cannot create at all, as under a missing directory, is
+// left to outputCreatable.
 func wouldBeInput(output string, in runInputs) bool {
 	target, err := createTarget(output)
 	if err != nil {
