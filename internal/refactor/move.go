@@ -61,9 +61,10 @@ func (e SourceNotFoundError) Error() string {
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
 //     asymmetry with path links);
-//   - outbound destinations inside src — every `[t](path)`,
+//   - outbound destinations inside a Markdown src — every `[t](path)`,
 //     `![a](path)` and `[label]: path` recomputed so it still resolves
-//     from dst's directory.
+//     from dst's directory. Another file, such as an image, keeps its
+//     bytes.
 //
 // Every destination is found in the parsed document (see destLocator),
 // so each one is rewritten exactly once, at its own bytes: an empty
@@ -108,7 +109,9 @@ func Move(ws Workspace, src, dst string) (Plan, error) {
 	r := &destResolver{ws: ws, src: src}
 	appendReferrerEdits(changes, ws, p, r, src, dst)
 	appendWikilinkStemEdits(changes, ws, src, dst)
-	appendOutboundEdits(changes, p, r, srcKey, src, dst, srcSource)
+	if mdpath.HasMarkdownExt(path.Ext(src)) {
+		appendOutboundEdits(changes, p, r, srcKey, src, dst, srcSource)
+	}
 	stableSortEdits(changes)
 	return Plan{Edits: changes, FileOp: &FileOp{From: src, To: dst}}, nil
 }

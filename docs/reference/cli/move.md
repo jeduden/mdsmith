@@ -42,7 +42,9 @@ code 2.
   fixes its own `[x](./b.md)` as well as the links pointing at
   it. A destination that still resolves, such as `sub/../b.md`
   after a move within one directory, keeps its spelling. A link
-  to a directory, such as `sub/`, keeps its trailing `/`.
+  to a directory, such as `sub/`, keeps its trailing `/`. A
+  moved file without a Markdown extension, such as an image,
+  keeps its bytes.
 - **Wikilinks.** `[[old-stem]]` becomes `[[new-stem]]` only when
   the basename stem changes. A move that keeps the basename
   (`docs/api.md` → `ref/api.md`) leaves wikilinks alone, because

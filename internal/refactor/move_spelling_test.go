@@ -109,3 +109,17 @@ func TestMove_FootnoteDefinitionsLeftAsWritten(t *testing.T) {
 		got["docs/a.md"])
 	assert.Equal(t, "T[^n] [a][r].\n\n[^n]: docs/a.md\n[r]: guide/a.md\n", got["b.md"])
 }
+
+// TestMove_NonMarkdownSourceBytesUntouched pins that a moved file
+// without a Markdown extension, such as an image or a text file, keeps
+// its bytes: link-shaped bytes in it are not destinations. The links
+// that name it are still repointed.
+func TestMove_NonMarkdownSourceBytesUntouched(t *testing.T) {
+	got := moveAndApply(t, map[string]string{
+		"docs/n.txt": "see [z](x.md)\n",
+		"docs/x.md":  "# X\n",
+		"docs/b.md":  "[n](n.txt)\n",
+	}, "docs/n.txt", "guide/n.txt")
+	assert.Equal(t, "see [z](x.md)\n", got["docs/n.txt"])
+	assert.Equal(t, "[n](../guide/n.txt)\n", got["docs/b.md"])
+}
