@@ -427,8 +427,8 @@ func parensPair(p string, esc *escapeSet) bool {
 }
 
 // escapeSetFor builds encodeLike's escape set for a token written like
-// oldTok. oldTok decoded cleanly, so every `%` in it starts a two-digit
-// escape.
+// oldTok. A `%` not followed by two hex digits is not an escape and
+// adds nothing.
 func escapeSetFor(oldTok string, angle bool) escapeSet {
 	var s escapeSet
 	for c := 0; c < 0x20; c++ {
@@ -443,7 +443,12 @@ func escapeSetFor(oldTok string, angle bool) escapeSet {
 		if oldTok[i] != '%' {
 			continue
 		}
-		c := unhex(oldTok[i+1])<<4 | unhex(oldTok[i+2])
+		hi, okHi := unhex(oldTok[i+1])
+		lo, okLo := unhex(oldTok[i+2])
+		if !okHi || !okLo {
+			continue
+		}
+		c := hi<<4 | lo
 		s[c] = true
 		if c >= 0x80 {
 			for h := 0x80; h < 0x100; h++ {
@@ -456,9 +461,11 @@ func escapeSetFor(oldTok string, angle bool) escapeSet {
 	return s
 }
 
-// unhex returns the value of the hex digit c, in either case.
-func unhex(c byte) byte {
-	return byte(strings.IndexByte("0123456789abcdef", c|0x20))
+// unhex returns the value of the hex digit c, in either case. ok is
+// false when c is not a hex digit.
+func unhex(c byte) (v byte, ok bool) {
+	i := strings.IndexByte("0123456789abcdef", c|0x20)
+	return byte(i), i >= 0
 }
 
 // inlineDest is one destination the locator found: the bytes goldmark

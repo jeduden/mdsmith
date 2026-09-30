@@ -420,6 +420,31 @@ func TestDestResolverTarget(t *testing.T) {
 	}
 }
 
+// TestEscapeSetFor pins which bytes a token's own escapes add, and that
+// a `%` not followed by two hex digits adds none.
+func TestEscapeSetFor(t *testing.T) {
+	s := escapeSetFor("my%20caf%c3%A9.md", false)
+	assert.True(t, s[' '], "an escaped space")
+	assert.True(t, s[0xC3] && s[0xA9] && s[0x80] && s[0xFF], "one escaped high byte escapes them all")
+	assert.False(t, s['/'], "a slash never")
+	for _, tok := range []string{"100%.md", "a%4G.md", "a%G4.md", "a%"} {
+		s = escapeSetFor(tok, false)
+		assert.False(t, s[0xFF] || s[0xC3], "%q adds no high bytes", tok)
+	}
+}
+
+func TestUnhex(t *testing.T) {
+	for c, want := range map[byte]byte{'0': 0, '9': 9, 'a': 10, 'F': 15} {
+		got, ok := unhex(c)
+		assert.True(t, ok)
+		assert.Equal(t, want, got)
+	}
+	for _, c := range []byte("gG.%") {
+		_, ok := unhex(c)
+		assert.False(t, ok, "%q", c)
+	}
+}
+
 func TestParensPair(t *testing.T) {
 	var none, open escapeSet
 	open['('] = true
