@@ -48,9 +48,13 @@ func (s *Server) handleWorkspaceSymbol(msg *requestMessage) {
 }
 
 // sortSymbolInformation orders out by (ContainerName, Name), the order
-// workspace/symbol results are returned in. slices.SortFunc compares
-// the concrete symbolInformation values directly, unlike sort.Slice,
-// which drives reflect.Swapper internally (see
+// workspace/symbol results are returned in, then by Location and Kind.
+// The last two keys matter: Index.SearchSymbols ranges over a map, so
+// the hits arrive in a different order on each request, and a file
+// that repeats a heading ("## Example" under several sections) must
+// still list those symbols in line order. slices.SortFunc compares the
+// concrete symbolInformation values directly, unlike sort.Slice, which
+// drives reflect.Swapper internally (see
 // docs/development/high-performance-go.md, "reflect in hot paths").
 // This runs on every workspace/symbol query the editor's symbol picker
 // issues as the user types.
@@ -59,6 +63,8 @@ func sortSymbolInformation(out []symbolInformation) {
 		return cmp.Or(
 			cmp.Compare(a.ContainerName, b.ContainerName),
 			cmp.Compare(a.Name, b.Name),
+			compareLocations(a.Location, b.Location),
+			cmp.Compare(a.Kind, b.Kind),
 		)
 	})
 }

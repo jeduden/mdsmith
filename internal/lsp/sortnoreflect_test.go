@@ -18,14 +18,19 @@ func TestSortItems_NoReflectSort(t *testing.T) {
 		{Label: "alpha", SortText: "1"},
 		{Label: "beta", SortText: "2"},
 	}
-	sortItems(items)
-	if items[0].Label != "alpha" || items[2].Label != "zeta" {
-		t.Fatalf("sortItems did not sort: %+v", items)
+	buf := make([]completionItem, len(items))
+	copy(buf, items)
+	sortItems(buf)
+	if buf[0].Label != "alpha" || buf[2].Label != "zeta" {
+		t.Fatalf("sortItems did not sort: %+v", buf)
 	}
 
+	// Refill buf from the unsorted items on every run, so each run
+	// moves elements instead of re-sorting an already-sorted slice.
 	const runs = 200
 	allocs := testing.AllocsPerRun(runs, func() {
-		sortItems(items)
+		copy(buf, items)
+		sortItems(buf)
 	})
 	t.Logf("sortItems allocs/op = %.0f", allocs)
 	if allocs > 0 {
@@ -48,14 +53,17 @@ func TestSortSymbolInformation_NoReflectSort(t *testing.T) {
 		{Name: "a", ContainerName: "a.md"},
 		{Name: "b", ContainerName: "a.md"},
 	}
-	sortSymbolInformation(out)
-	if out[0].ContainerName != "a.md" || out[0].Name != "a" || out[2].ContainerName != "b.md" {
-		t.Fatalf("sortSymbolInformation did not sort: %+v", out)
+	buf := make([]symbolInformation, len(out))
+	copy(buf, out)
+	sortSymbolInformation(buf)
+	if buf[0].ContainerName != "a.md" || buf[0].Name != "a" || buf[2].ContainerName != "b.md" {
+		t.Fatalf("sortSymbolInformation did not sort: %+v", buf)
 	}
 
 	const runs = 200
 	allocs := testing.AllocsPerRun(runs, func() {
-		sortSymbolInformation(out)
+		copy(buf, out)
+		sortSymbolInformation(buf)
 	})
 	t.Logf("sortSymbolInformation allocs/op = %.0f", allocs)
 	if allocs > 0 {
@@ -63,11 +71,11 @@ func TestSortSymbolInformation_NoReflectSort(t *testing.T) {
 	}
 }
 
-// TestSortLocationsByURIThenLine_NoReflectSort pins the allocation cost
-// of sortLocationsByURIThenLine, which drove sort.Slice (4 separate call
-// sites) — reflect.Swapper internally. It runs on every
+// TestSortLocations_NoReflectSort pins the allocation cost of
+// sortLocations, which replaced sort.Slice at 4 separate call sites
+// (sort.Slice drives reflect.Swapper internally). It runs on every
 // textDocument/references and workspace-symbol-by-kind LSP request.
-func TestSortLocationsByURIThenLine_NoReflectSort(t *testing.T) {
+func TestSortLocations_NoReflectSort(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
@@ -79,18 +87,21 @@ func TestSortLocationsByURIThenLine_NoReflectSort(t *testing.T) {
 		{URI: "file:///a.md", Range: Range{Start: Position{Line: 5}}},
 		{URI: "file:///a.md", Range: Range{Start: Position{Line: 2}}},
 	}
-	sortLocationsByURIThenLine(locs)
-	if locs[0].URI != "file:///a.md" || locs[0].Range.Start.Line != 2 || locs[2].URI != "file:///z.md" {
-		t.Fatalf("sortLocationsByURIThenLine did not sort: %+v", locs)
+	buf := make([]location, len(locs))
+	copy(buf, locs)
+	sortLocations(buf)
+	if buf[0].URI != "file:///a.md" || buf[0].Range.Start.Line != 2 || buf[2].URI != "file:///z.md" {
+		t.Fatalf("sortLocations did not sort: %+v", buf)
 	}
 
 	const runs = 200
 	allocs := testing.AllocsPerRun(runs, func() {
-		sortLocationsByURIThenLine(locs)
+		copy(buf, locs)
+		sortLocations(buf)
 	})
-	t.Logf("sortLocationsByURIThenLine allocs/op = %.0f", allocs)
+	t.Logf("sortLocations allocs/op = %.0f", allocs)
 	if allocs > 0 {
-		t.Fatalf("sortLocationsByURIThenLine allocs/op = %.0f, want 0 (no reflection)", allocs)
+		t.Fatalf("sortLocations allocs/op = %.0f, want 0 (no reflection)", allocs)
 	}
 }
 
