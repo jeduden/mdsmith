@@ -168,6 +168,19 @@ func TestMove_IncomingSplitLabels(t *testing.T) {
 		got["b.md"])
 }
 
+// TestMove_OutboundRefDefsRecomputed pins that the moved file's own
+// ref-defs are recomputed like its inline links: from the new
+// directory, keeping the fragment and the author's `./`, while one
+// that names the moved file itself still does.
+func TestMove_OutboundRefDefsRecomputed(t *testing.T) {
+	got := moveAndApply(t, map[string]string{
+		"a.md":     "[r]: c.md\n[s]: ./sub/e.md#x\n[self]: a.md\n\n[t][r] [u][s] [v][self]\n",
+		"c.md":     "# C\n",
+		"sub/e.md": "# X\n",
+	}, "a.md", "d/a.md")
+	assert.Equal(t, "[r]: ../c.md\n[s]: ../sub/e.md#x\n[self]: a.md\n\n[t][r] [u][s] [v][self]\n", got["a.md"])
+}
+
 // TestMove_OutboundSplitLabel pins the same for the moved file's own
 // links, with CRLF line endings.
 func TestMove_OutboundSplitLabel(t *testing.T) {

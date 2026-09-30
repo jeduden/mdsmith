@@ -60,9 +60,9 @@ func (e SourceNotFoundError) Error() string {
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
 //     asymmetry with path links);
-//   - outbound inline links and images inside src — every `[t](path)`
-//     or `![a](path)` recomputed so it still resolves from dst's
-//     directory.
+//   - outbound destinations inside src — every `[t](path)`,
+//     `![a](path)` and `[label]: path` recomputed so it still resolves
+//     from dst's directory.
 //
 // Every destination is found in the parsed document (see destLocator),
 // so each one is rewritten exactly once, at its own bytes: an empty
@@ -82,14 +82,9 @@ func (e SourceNotFoundError) Error() string {
 // existing destination returns DestinationExistsError. Each aborts with
 // a zero Plan and no edit.
 //
-// Two reference kinds inside src are not yet recomputed, so a
-// cross-directory move can leave them stale — both tracked follow-ups:
-//
-//   - `<?include?>`, `<?build?>`, and `<?catalog?>` directive paths;
-//   - reference-definition destinations that src itself declares
-//     (`[label]: ../other.md`) — only src's inline links and images
-//     are recomputed, while ref-defs elsewhere that point at src are
-//     handled above.
+// `<?include?>`, `<?build?>`, and `<?catalog?>` directive paths are
+// not yet recomputed, so a cross-directory move can leave them stale —
+// a tracked follow-up.
 func Move(ws Workspace, src, dst string) (Plan, error) {
 	src = index.NormalizePath(src)
 	dst = index.NormalizePath(dst)
@@ -170,7 +165,7 @@ func appendReferrerEdits(
 		if !ok || !mayName(source, base) {
 			continue
 		}
-		for _, d := range locateDests(p, rel, source, true) {
+		for _, d := range locateDests(p, rel, source) {
 			ref, ok := r.target(rel, d.dest)
 			if !ok || ref.target != src {
 				continue
@@ -194,14 +189,14 @@ func mayName(source, base []byte) bool {
 	return bytes.Contains(source, base) || bytes.IndexByte(source, '%') >= 0
 }
 
-// appendOutboundEdits recomputes every relative inline link and image
-// destination inside the moved file so it still resolves from dst's
-// directory. Edits key under the moved file's own key: the host applies
+// appendOutboundEdits recomputes every relative inline link, image and
+// reference-definition destination inside the moved file so it still
+// resolves from dst's directory. Edits key under the moved file's own key: the host applies
 // them before the file relocates.
 func appendOutboundEdits(
 	changes map[string][]Edit, p parser.Parser, r *destResolver, srcKey, src, dst string, source []byte,
 ) {
-	for _, d := range locateDests(p, src, source, false) {
+	for _, d := range locateDests(p, src, source) {
 		if edit, ok := outboundEdit(r, d, src, dst); ok {
 			changes[srcKey] = append(changes[srcKey], edit)
 		}
@@ -455,16 +450,15 @@ type inlineDest struct {
 	angle bool   // written as `<dest>`
 }
 
-// locateDests parses a file's source and returns every inline link and
-// image destination in it, plus every reference-definition destination
-// when refDefs is set, in document order.
-func locateDests(p parser.Parser, file string, source []byte, refDefs bool) []inlineDest {
+// locateDests parses a file's source and returns every inline link,
+// image and reference-definition destination in it, in document order.
+func locateDests(p parser.Parser, file string, source []byte) []inlineDest {
 	body, fmOffset := bodyAndFMOffset(source)
 	root := p.Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
 	// The locator reads only Source (for offset-to-row mapping) and the
 	// AST; file rows come from fileLines, shifted by fmOffset.
 	lf := &lint.File{Path: file, Source: body, AST: root}
-	loc := destLocator{lf: lf, fileLines: splitLines(source), fmOffset: fmOffset, refDefs: refDefs}
+	loc := destLocator{lf: lf, fileLines: splitLines(source), fmOffset: fmOffset}
 	_ = ast.Walk(root, loc.visit)
 	return loc.dests
 }
@@ -485,12 +479,11 @@ func locateDests(p parser.Parser, file string, source []byte, refDefs bool) []in
 // anything else is skipped, never guessed at.
 //
 // A reference definition's destination follows the first `]:` after
-// its `[` in the same way, when refDefs is set.
+// its `[` in the same way.
 type destLocator struct {
 	lf        *lint.File
 	fileLines [][]byte
 	fmOffset  int
-	refDefs   bool
 	cursor    int
 	dests     []inlineDest
 }
@@ -512,7 +505,7 @@ func (d *destLocator) visit(n ast.Node, entering bool) (ast.WalkStatus, error) {
 	case *ast.Image:
 		d.linkNode(entering, t.Pos(), t.Destination, t.Reference == nil)
 	case *ast.LinkReferenceDefinition:
-		if entering && d.refDefs {
+		if entering {
 			d.locateRefDef(t)
 		}
 	}

@@ -99,8 +99,8 @@ func TestDestLocator(t *testing.T) {
 		assert.Equal(t, []string{"html.md"},
 			locatedTokens(t, "[<i title=\"](x.md)\">](html.md)\n"))
 	})
-	t.Run("reference-style nodes are not located", func(t *testing.T) {
-		assert.Equal(t, []string{"b.png"},
+	t.Run("reference-style uses are not located, their definition is", func(t *testing.T) {
+		assert.Equal(t, []string{"b.png", "a.png"},
 			locatedTokens(t, "![][r] ![](b.png) [t][r]\n\n[r]: a.png\n"))
 	})
 	t.Run("destination on the row after the label is located", func(t *testing.T) {

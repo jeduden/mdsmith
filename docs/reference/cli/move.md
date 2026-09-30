@@ -34,11 +34,13 @@ code 2.
   explicit `./x` keeps the prefix.
 - **Ref-def destinations.** A `[label]: src` definition is
   repointed the same way, including one with a `?query`.
-- **Outbound inline links and images inside the moved file.**
-  Each inline `[x](path)` or `![x](path)` in `src` is recomputed
-  so it still resolves from `dst`'s directory. Moving
-  `docs/a.md` to `guide/a.md` fixes its own `[x](./b.md)` as
-  well as the links pointing at it.
+- **Outbound links, images, and ref-defs inside the moved
+  file.** Each inline `[x](path)`, `![x](path)`, and
+  `[label]: path` in `src` is recomputed so it still resolves
+  from `dst`'s directory. Moving `docs/a.md` to `guide/a.md`
+  fixes its own `[x](./b.md)` as well as the links pointing at
+  it. A destination that still resolves, such as `sub/../b.md`
+  after a move within one directory, keeps its spelling.
 - **Wikilinks.** `[[old-stem]]` becomes `[[new-stem]]` only when
   the basename stem changes. A move that keeps the basename
   (`docs/api.md` → `ref/api.md`) leaves wikilinks alone, because
@@ -88,10 +90,6 @@ cross-directory move, check them by hand.
   `inputs:` path in `<?build?>`, in the moved file or in a file
   that points at it, and a `<?catalog?>` glob in the moved
   file.
-- **The moved file's own ref-defs.** A definition such as
-  `[label]: ../other.md` inside `src` is not recomputed. Only
-  its inline links and images are. Ref-defs in other files that
-  point at `src` are repointed.
 - **Raw HTML links.** `<a href="a.md">` and `<img src="a.png">`
   are not Markdown destinations.
 - **Backslash escapes and entities.** A destination spelled with
