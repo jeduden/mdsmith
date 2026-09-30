@@ -76,9 +76,9 @@ func LoadCache(root string) (*Cache, error) {
 
 // outputSetKey joins a sorted set of output paths into a single
 // length-framed key so two different sets cannot collide. Builds the
-// key with strconv and strings.Builder rather than fmt.Fprintf, which
-// drives reflection-based formatting on every path
-// (docs/development/high-performance-go.md, "strconv over
+// key with strconv and strings.Builder rather than fmt.Fprintf, whose
+// variadic arguments box each path into an interface, one allocation
+// per path (docs/development/high-performance-go.md, "strconv over
 // fmt.Sprintf").
 func outputSetKey(paths []string) string {
 	sorted := append([]string(nil), paths...)
