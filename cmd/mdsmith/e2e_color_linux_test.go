@@ -4,12 +4,15 @@ package main_test
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
 	"strconv"
 	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/stretchr/testify/assert"
@@ -52,21 +55,33 @@ func runOnTerminal(t *testing.T, dir string, extraEnv []string, args ...string) 
 		close(done)
 	}()
 
-	cmd := exec.Command(binaryPath, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), ptyTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binaryPath, args...)
 	cmd.Dir = dir
 	cmd.Env = append(envWithCoverDir(coverDir), extraEnv...)
 	cmd.Stderr = tty
 	err := cmd.Run()
 	require.NoError(t, tty.Close())
-	<-done
+	select {
+	case <-done:
+	case <-time.After(ptyTimeout):
+		t.Fatal("the terminal read did not end")
+	}
+	require.NoError(t, ctx.Err(), "the binary did not finish in time")
 	code := 0
-	if exitErr, ok := err.(*exec.ExitError); ok {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
 		code = exitErr.ExitCode()
 	} else {
 		require.NoError(t, err)
 	}
 	return got.String(), code
 }
+
+// ptyTimeout bounds each wait in runOnTerminal, so a hung binary or
+// terminal read fails the test instead of the whole package run.
+const ptyTimeout = 30 * time.Second
 
 // TestCheckOutput_E2EColorOnTerminal pins the terminal side of the
 // color rule through the real binary: text on a terminal is colored;
