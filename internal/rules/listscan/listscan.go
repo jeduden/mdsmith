@@ -30,6 +30,7 @@ package listscan
 import (
 	"bytes"
 
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 )
 
@@ -186,7 +187,7 @@ func (p *parser) scanLine(i int, line []byte) int {
 	lineNo := i + 1
 	indent := astutil.CountLeadingSpaces(line)
 	markerToken := hasMarkerToken(line, indent)
-	interrupts := interruptsParagraph(line, indent)
+	interrupts := lint.StartsInterruptingBlock(line)
 	setext := p.isSetextUnderline(line, indent)
 
 	// Close any open item whose content column the line's indent does not
@@ -239,8 +240,8 @@ func (p *parser) scanLine(i int, line []byte) int {
 	case len(p.stack) == 0:
 		// Track top-level paragraph state for the next line's interruption
 		// test: when this line lands at the document root, a plain-text line
-		// opens or continues a paragraph while a heading or thematic break
-		// does not.
+		// opens or continues a paragraph, while a line that opens another
+		// block (a heading, a thematic break, a block quote) does not.
 		p.topInParagraph = !interrupts
 	}
 	return i
@@ -342,48 +343,6 @@ func (p *parser) markerIsLazyText(indent int, mi markerInfo) bool {
 	// reaches the item's content column; a shallower marker is a sibling
 	// or closes the item and does interrupt.
 	return indent >= top.contentCol
-}
-
-// interruptsParagraph reports whether line begins a block that interrupts
-// an open paragraph, so it cannot be a lazy continuation. It covers the
-// constructs CommonMark lets interrupt a paragraph and that the list
-// rules' corpus exercises: ATX headings, fenced-code openers, and
-// thematic breaks. (Blank lines are handled by the caller; HTML blocks
-// and block quotes are out of scope for the list corpus.)
-//
-// It is not lint.InterruptsParagraph, which answers a different question:
-// whether a line placed in the paragraph's own container ends it. That
-// one counts setext underlines, but a lazy line cannot be one, so a
-// lower-indent "===" or "--" after an item's paragraph is paragraph text
-// and must keep the item open. List markers are decided by the caller.
-func interruptsParagraph(line []byte, indent int) bool {
-	if indent >= 4 || indent >= len(line) {
-		return false
-	}
-	if isThematicBreak(line) {
-		return true
-	}
-	if line[indent] == '#' {
-		j := indent
-		for j < len(line) && line[j] == '#' {
-			j++
-		}
-		level := j - indent
-		if level >= 1 && level <= 6 &&
-			(j >= len(line) || line[j] == ' ' || line[j] == '\t' || line[j] == '\r') {
-			return true
-		}
-	}
-	if c := line[indent]; c == '`' || c == '~' {
-		j := indent
-		for j < len(line) && line[j] == c {
-			j++
-		}
-		if j-indent >= 3 {
-			return true
-		}
-	}
-	return false
 }
 
 // hasMarkerToken reports whether the line carries a bullet or ordered

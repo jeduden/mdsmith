@@ -78,16 +78,6 @@ func TestClosingFence(t *testing.T) {
 	assert.True(t, closingFence([]byte("```"), fi))
 }
 
-// TestInterruptsParagraph covers the thematic-break return-true branch.
-func TestInterruptsParagraph(t *testing.T) {
-	assert.True(t, interruptsParagraph([]byte("---"), 0))
-	assert.True(t, interruptsParagraph([]byte("***"), 0))
-	// ATX heading interrupts.
-	assert.True(t, interruptsParagraph([]byte("# Heading"), 0))
-	// Plain text does not.
-	assert.False(t, interruptsParagraph([]byte("plain text"), 0))
-}
-
 // TestParse_LazyParaContinuation checks that a bare continuation line at
 // column 0 (below the item's content column) is absorbed as lazy paragraph
 // text, keeping the item open — exercises the lazy-break in scanLine.
@@ -108,8 +98,8 @@ func TestParse_UnclosedFence(t *testing.T) {
 }
 
 // TestParse_ThematicBreakSplitsList checks that a thematic break after a
-// list item ends the list — exercises interruptsParagraph returning true
-// inside scanLine's lazy check.
+// list item ends the list — exercises lint.StartsInterruptingBlock
+// returning true inside scanLine's lazy check.
 func TestParse_ThematicBreakSplitsList(t *testing.T) {
 	src := "- a\n- b\n---\ntext\n"
 	lists, _ := Parse(split(src))

@@ -33,7 +33,19 @@ import (
 // case here. The answer is true when either reading sees a block start,
 // so it holds for mdsmith's parser and for other CommonMark renderers.
 func InterruptsParagraph(line []byte) bool {
-	if isBlankLine(line) || isSetextUnderline(line) || isThematicBreak(line) || isATXHeadingLine(line) {
+	return isBlankLine(line) || isSetextUnderline(line) || StartsInterruptingBlock(line)
+}
+
+// StartsInterruptingBlock reports whether line opens a block that can
+// interrupt a paragraph: every case of InterruptsParagraph except the
+// blank line and the setext underline. Those two end a paragraph only in
+// the paragraph's own container, so a line that could lazily continue a
+// paragraph from a lower indent is tested against this instead.
+func StartsInterruptingBlock(line []byte) bool {
+	if isBlankLine(line) {
+		return false
+	}
+	if isThematicBreak(line) || isATXHeadingLine(line) {
 		return true
 	}
 	if _, ok := openingFence(line); ok {

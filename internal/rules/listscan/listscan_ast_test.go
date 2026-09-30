@@ -438,6 +438,14 @@ func interruptSnippets() map[string]string {
 		"setext-in-item-then-paragraph":      "- a\n  ===\n  more\n",
 		// With no paragraph open, "===" starts one, which "2." continues.
 		"equals-opens-para-then-ordered": "===\n2. item\n",
+		// A block quote interrupts an item's paragraph and closes the
+		// list, and after it "2." starts a list: the quote's paragraph
+		// sits in another container, so the start-at-1 rule does not
+		// apply. A backtick fence whose info string holds a backtick is
+		// no fence, so that line is lazy text and the item stays open.
+		"quote-after-item-para":      "- a\n> q\n- b\n",
+		"ordered-after-quote":        "> quote\n2. x\n",
+		"backtick-info-lazy-in-item": "- a\n```go `x`\n- b\n",
 	}
 }
 

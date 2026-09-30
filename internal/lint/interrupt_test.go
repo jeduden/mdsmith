@@ -106,6 +106,25 @@ func TestInterruptsParagraph_MatchesParser(t *testing.T) {
 	}
 }
 
+// TestStartsInterruptingBlock checks that it agrees with
+// InterruptsParagraph on every table entry except a blank line and a
+// setext underline, which only end a paragraph in its own container.
+// "---" is a thematic break as well as an underline, so it still counts.
+func TestStartsInterruptingBlock(t *testing.T) {
+	ownContainerOnly := map[string]bool{
+		"": true, "   ": true, "=": true, "===": true, "=== ": true,
+		"-": true, "--": true, "--  ": true,
+	}
+	for _, line := range interruptingLines {
+		want := !ownContainerOnly[line]
+		assert.Equal(t, want, StartsInterruptingBlock([]byte(line)), "%q", line)
+	}
+	for _, line := range continuingLines {
+		assert.False(t, StartsInterruptingBlock([]byte(line)), "%q", line)
+	}
+	assert.True(t, StartsInterruptingBlock([]byte("---")))
+}
+
 // TestForkSpacedCloseTag covers the one HTML case the fork reads more
 // broadly than the spec: spaces between "</" and a type-6 tag name.
 func TestForkSpacedCloseTag(t *testing.T) {
