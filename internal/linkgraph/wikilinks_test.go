@@ -35,6 +35,10 @@ func TestWikilinkStem(t *testing.T) {
 		{"empty returns false", "", "", false},
 		{"traversal returns false", "../secret", "", false},
 		{"absolute returns false", "/etc/passwd", "", false},
+		{"padded absolute returns false", " /etc/passwd", "", false},
+		{"backslash root-relative returns false", `\notes`, "", false},
+		{"backslash UNC returns false", `\\host\share\notes`, "", false},
+		{"drive letter returns false", `C:\notes`, "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -209,7 +213,11 @@ func TestWikilinkIndex_ResolveSemantics(t *testing.T) {
 		{"drive rejected", "C:/Windows/notes.md", "", false},
 		{"UNC rejected", "//host/share/notes.md", "", false},
 		{"absolute rejected", "/notes.md", "", false},
+		{"padded absolute rejected", " /notes.md", "", false},
+		{"backslash root-relative rejected", `\notes.md`, "", false},
+		{"backslash UNC rejected", `\\host\share\notes.md`, "", false},
 		{"empty rejected", "", "", false},
+		{"dot rejected", "./", "", false},
 		{"nil index", "notes", "", false},
 	}
 	for _, tc := range cases {
