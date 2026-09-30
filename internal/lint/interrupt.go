@@ -38,9 +38,10 @@ func InterruptsParagraph(line []byte) bool {
 
 // StartsInterruptingBlock reports whether line opens a block that can
 // interrupt a paragraph: every case of InterruptsParagraph except the
-// blank line and the setext underline. Those two end a paragraph only in
-// the paragraph's own container, so a line that could lazily continue a
-// paragraph from a lower indent is tested against this instead.
+// blank line, which callers handle on their own, and the setext
+// underline, which ends a paragraph only in the paragraph's own
+// container. A line that could lazily continue a paragraph from a lower
+// indent is tested against this instead.
 func StartsInterruptingBlock(line []byte) bool {
 	if isBlankLine(line) {
 		return false
