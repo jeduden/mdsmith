@@ -42,6 +42,13 @@ The file body matches the inline
 `schema:`, `rules:`. A key outside that set is
 a config error.
 
+`path-pattern:` is a [glob](globs.md) that each
+file's workspace-relative path must match. It may
+name a front-matter value with `\#(fmvar(name))`,
+so a directory must equal a field. A value that
+contains `/` is reported. See
+[Front-matter agreement](frontmatter-agreement.md).
+
 ```yaml
 # .mdsmith/kinds/audit-log.yaml
 schema:

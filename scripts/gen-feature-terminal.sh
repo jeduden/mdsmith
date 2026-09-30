@@ -27,22 +27,28 @@ go build -o "$tmp/mdsmith" ./cmd/mdsmith
 proj="$tmp/proj"; mkdir -p "$proj"
 printf '# Quickstart\n\nLint your Markdown, then auto-fix it in one fast command.   \nRead the setup guide at https://github.com/jeduden/mdsmith today.\n' > "$proj/intro.md"
 
-# Capture check -> fix -> check. mdsmith writes diagnostics to stderr and
-# colours by default (no --no-color), so each command is run with 2>&1. A
-# blank line separates commands, with none trailing. `|| true` tolerates
-# check's non-zero exit when it finds issues; the assertion below turns a
-# real failure (crash, changed format) into a hard error.
+# Capture check -> fix -> check. mdsmith writes diagnostics to stderr, so
+# each command is run with 2>&1. That makes stderr a pipe, and mdsmith
+# colours only a terminal by default, so --color=always forces the colours
+# (it also beats a NO_COLOR in the caller's environment). The prompt line
+# still shows the plain command. A blank line separates commands, with
+# none trailing. `|| true` tolerates check's non-zero exit when it finds
+# issues; the assertion below turns a real failure (crash, changed format)
+# into a hard error.
 cap="$tmp/cap.ansi"; i=0
 for c in check fix check; do
   [ "$i" -gt 0 ] && printf '\n'; i=1
   printf '\033[38;2;229;130;51m\xe2\x9d\xaf\033[0m mdsmith %s intro.md\n' "$c"
-  ( cd "$proj" && "$tmp/mdsmith" "$c" intro.md 2>&1 ) || true
+  ( cd "$proj" && "$tmp/mdsmith" "$c" --color=always intro.md 2>&1 ) || true
 done > "$cap"
 
-# Both fixable diagnostics must appear and the FINAL line must end green,
-# so a crash or a changed output format aborts instead of writing a broken
-# SVG (don't match a stray "failures=0" from a non-final command).
+# Both fixable diagnostics must appear, mdsmith's own colours must be in
+# the capture (the rule ID in yellow; the prompt's colour does not count),
+# and the FINAL line must end green, so a crash, a changed output format,
+# or lost colours abort instead of writing a broken SVG (don't match a
+# stray "failures=0" from a non-final command).
 grep -q 'MDS006' "$cap" && grep -q 'MDS012' "$cap" \
+  && grep -qF "$(printf '\033[33mMDS006')" "$cap" \
   && tail -n1 "$cap" | grep -q 'failures=0' || {
   echo "gen-feature-terminal: unexpected mdsmith output, refusing to write SVG:" >&2
   sed 's/\x1b\[[0-9;]*m//g' "$cap" >&2

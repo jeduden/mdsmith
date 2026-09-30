@@ -158,10 +158,9 @@ per pattern.
 **`fmvar(name)`** — looks up the frontmatter
 field `name`, regex-escapes its value, and
 returns it. Use it whenever the heading text
-must equal a frontmatter value. The escape is
-needed because field values can contain RE2
-metacharacters. The "At a glance" block above
-shows both helpers in a pattern.
+must equal a frontmatter value; the escape guards RE2
+metacharacters. It also works in `filename:` and
+`path-pattern:` globs: [Front-matter agreement](frontmatter-agreement.md).
 
 `sequential: true` is a sibling field on the
 entry. Only meaningful with `digits` in the
@@ -231,6 +230,7 @@ schema:
   frontmatter:
     <key>: <cue-expression>
     "<key>?": <cue-expression>
+  frontmatter-closed: <bool>
   sections: [...]
   closed: <bool>
 ```
@@ -239,6 +239,7 @@ schema:
   which the basename matches. No `require:` wrapper.
 - `frontmatter:` — per-key CUE constraints.
   Trailing `?` on a key marks it optional.
+- `frontmatter-closed:` — `false` accepts undeclared keys.
 - `sections:` — the top-level section list.
 - `closed:` — strictness for the root scope.
   Valid only on schemas that declare

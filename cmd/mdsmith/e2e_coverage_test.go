@@ -708,7 +708,7 @@ func TestE2E_Fix_Discovered_UnfixableDiagnostic(t *testing.T) {
 	dir := t.TempDir()
 	isolateDir(t, dir)
 	// trailing-punctuation in heading is unfixable; trailing spaces are fixable.
-	// After fix, MDS017 remains → formatDiagnostics is called in fixDiscovered.
+	// After fix, MDS017 remains → fixDiscovered reports it via reportFixResult.
 	writeFixture(t, dir, ".mdsmith.yml",
 		"rules:\n  no-trailing-punctuation-in-heading: true\n  no-trailing-spaces: true\n")
 	writeFixture(t, dir, "dirty.md", "# Title!\n\nHello   \n")

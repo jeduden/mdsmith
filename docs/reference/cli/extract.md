@@ -13,11 +13,11 @@ required — the schema is the extraction contract.
 mdsmith extract <kind> --format <fmt> <file>
 ```
 
-`<kind>` must be one of the file's resolved kinds.
-Extraction is gated on a successful schema match: a
-non-conformant file prints the same diagnostics as
-`mdsmith check` and exits non-zero, never emitting
-partial data.
+`<kind>` must be one of the file's resolved kinds. Extraction
+is gated on a successful schema match: a non-conformant file
+prints the same diagnostics as `mdsmith check` on stderr,
+colored by the [`NO_COLOR` and `FORCE_COLOR` rules](check.md#color), and exits
+non-zero, never emitting partial data.
 
 ## Flags
 
@@ -286,11 +286,11 @@ mdsmith extract plan --format msgpack plan/166_x.md > plan.mp
 
 ## Exit codes
 
-| Code | Meaning                                                             |
-| ---- | ------------------------------------------------------------------- |
-| 0    | Extraction succeeded                                                |
-| 1    | The file is non-conformant, or a sibling key collision was detected |
-| 2    | Runtime or configuration error (unknown kind, kind not assigned, …) |
+| Code | Meaning                                                                                       |
+| ---- | --------------------------------------------------------------------------------------------- |
+| 0    | Extraction succeeded                                                                          |
+| 1    | The file is non-conformant, or a sibling key collision was detected                           |
+| 2    | Runtime or configuration error (unknown kind, kind not assigned, …), or a failed stderr write |
 
 ## See also
 

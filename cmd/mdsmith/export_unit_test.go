@@ -137,6 +137,53 @@ func TestWriteExportOutput_Stdout(t *testing.T) {
 	assert.Equal(t, "via stdout\n", stdout)
 }
 
+// `-o -` means stdout, as it does for check and fix, not a file
+// named "-".
+func TestWriteExportOutput_DashIsStdout(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	stdout := captureStdout(func() {
+		require.NoError(t, writeExportOutput("-", []byte("via dash\n")))
+	})
+	assert.Equal(t, "via dash\n", stdout)
+	_, err := os.Stat(filepath.Join(dir, "-"))
+	assert.True(t, os.IsNotExist(err), "no file named - may be created")
+}
+
+// export -o may not name the file being exported, however it is
+// spelled: export never modifies its source.
+func TestRefuseExportOverInput(t *testing.T) {
+	t.Chdir(t.TempDir())
+	require.NoError(t, os.WriteFile("doc.md", []byte("# D\n"), 0o644))
+	require.NoError(t, os.WriteFile("other.md", []byte("# O\n"), 0o644))
+	for _, tc := range []struct {
+		input, output string
+		want          int
+	}{
+		{"doc.md", "", -1},
+		{"doc.md", "-", -1},
+		{"doc.md", "other.md", -1},
+		{"doc.md", "new.md", -1},
+		{"missing.md", "doc.md", -1},
+	} {
+		assert.Equal(t, tc.want, refuseExportOverInput(tc.input, tc.output), "%s -o %s", tc.input, tc.output)
+	}
+	stderr := captureStderr(func() {
+		assert.Equal(t, 2, refuseExportOverInput("doc.md", "./doc.md"))
+	})
+	assert.Equal(t, "mdsmith: export: refusing --output \"./doc.md\": it is the file being exported\n", stderr)
+
+	require.NoError(t, os.Link("doc.md", "hard.md"))
+	captureStderr(func() {
+		assert.Equal(t, 2, refuseExportOverInput("doc.md", "hard.md"), "a hard link")
+	})
+	if err := os.Symlink("doc.md", "soft.md"); err == nil {
+		captureStderr(func() {
+			assert.Equal(t, 2, refuseExportOverInput("doc.md", "soft.md"), "a symlink")
+		})
+	}
+}
+
 // minimalConfig builds a config.Config with frontMatter enabled and
 // the named ignore patterns, suitable for prepareExportFile.
 func minimalConfig() *config.Config {
@@ -439,7 +486,7 @@ func TestDoExport_InvalidFrontMatterKinds_ExitsTwo(t *testing.T) {
 }
 
 func TestDoExport_StaleFile_PrintsDiagnostics(t *testing.T) {
-	// Stale-body refusal in Check mode goes through formatDiagnostics
+	// Stale-body refusal in Check mode goes through failWithDiagnostics
 	// and exits 1 with the diagnostic on stderr.
 	dir := t.TempDir()
 	src := "# Title\n\n<?toc?>\n\n- [Wrong](#wrong)\n\n<?/toc?>\n\n## Section\n\nbody\n"

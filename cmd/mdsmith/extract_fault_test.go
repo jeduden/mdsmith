@@ -54,6 +54,12 @@ func TestGateResultCode(t *testing.T) {
 	assert.Equal(t, 0, gateResultCode(&engine.Result{FilesChecked: 1}))
 	// An empty Result means the file was skipped (ignored): reject.
 	assert.Equal(t, 2, gateResultCode(&engine.Result{}))
+	// Diagnostics that cannot be written are a write error → 2.
+	withBrokenStderr(t, func() {
+		assert.Equal(t, 2, gateResultCode(&engine.Result{
+			FilesChecked: 1, Diagnostics: []lint.Diagnostic{{Message: "m"}},
+		}))
+	})
 }
 
 func TestGateExtractCheck_ErrorsOnly(t *testing.T) {

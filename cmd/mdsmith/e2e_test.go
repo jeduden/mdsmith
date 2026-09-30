@@ -180,11 +180,14 @@ func runBinaryInDirEnv(
 }
 
 // envWithCoverDir returns os.Environ() with any existing GOCOVERDIR removed
-// and the given dir set as GOCOVERDIR.
+// and the given dir set as GOCOVERDIR. NO_COLOR and FORCE_COLOR are
+// removed too, so a developer's shell cannot change what color the
+// binary emits; a test that needs one passes it in extraEnv.
 func envWithCoverDir(dir string) []string {
 	var env []string
 	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "GOCOVERDIR=") {
+		if !strings.HasPrefix(e, "GOCOVERDIR=") &&
+			!strings.HasPrefix(e, "NO_COLOR=") && !strings.HasPrefix(e, "FORCE_COLOR=") {
 			env = append(env, e)
 		}
 	}

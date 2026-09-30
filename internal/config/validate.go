@@ -2,11 +2,11 @@ package config
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/jeduden/mdsmith/internal/schema"
 )
 
 // ValidateKinds returns an error if any kind named in a kind-assignment
@@ -111,7 +111,10 @@ func validateKindPathPattern(name string, body KindBody) error {
 	if body.PathPattern == "" {
 		return nil
 	}
-	if !doublestar.ValidatePattern(filepath.ToSlash(body.PathPattern)) {
+	// PathPatternSyntaxForm swaps each `\#(fmvar(...))` reference for
+	// a `?*` wildcard: a reference resolves per document, and its own
+	// bytes are not glob syntax.
+	if !doublestar.ValidatePattern(schema.PathPatternSyntaxForm(body.PathPattern)) {
 		return fmt.Errorf(
 			"kind %q: path-pattern %q is not a valid doublestar glob",
 			name, body.PathPattern)

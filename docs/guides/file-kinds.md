@@ -70,8 +70,8 @@ file. For `plan/early-draft.md` with the `plan` kind
 above, the diagnostic reads:
 
 ```text
-filename: got "plan/early-draft.md", expected
-  glob plan/[0-9][0-9]*_*.md
+path: got "plan/early-draft.md", expected path
+  matching glob plan/[0-9][0-9]*_*.md
 schema: kinds[plan] / path-pattern
 ```
 
@@ -85,6 +85,12 @@ integer-only. For tighter constraints, combine
 `path-pattern:` with a `<?require filename:?>` directive
 on the schema — both run, and each emits its own
 diagnostic when violated.
+
+A pattern can also require a path segment to equal a
+front-matter value: `.apm/skills/\#(fmvar(name))/SKILL.md`
+accepts a skill only under a directory named after its
+`name` field. See
+[Front-matter agreement](../reference/frontmatter-agreement.md).
 
 `mdsmith kinds show <name>` prints `path-pattern:`
 alongside the kind's rule settings when it's set, so the
@@ -477,6 +483,10 @@ Bare-name shortcuts (`date`, `nonEmpty`, …) expand to their
 canonical CUE in the printed output, so the audit shows the
 constraint as the validator sees it rather than the shortcut
 spelling.
+
+When a kind in the chain sets `frontmatter-closed:`, a last line
+shows the effective value and the kind that set it, such as
+`effective-frontmatter-closed: false  # from rfc-base`.
 
 Add `--json` for the structured form.
 

@@ -68,7 +68,8 @@ from `internal/placeholders`:
   parts of the text.
 - `HasCUEFrontmatter(tokens)` — returns true if `cue-frontmatter` is
   configured. Used by required-structure to skip CUE front-matter
-  validation.
+  validation and to let a `\#(fmvar(...))` reference in a
+  `filename:` or `path-pattern:` glob match any single segment.
 
 ## Opt-in rules
 

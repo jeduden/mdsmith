@@ -89,6 +89,18 @@ func TestDecodeFilenameField_WrongTypeRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "filename must be a string or list of strings")
 }
 
+// An entry that is not a well-formed fmvar reference is a literal
+// glob, as it was before interpolation existed, on both list paths.
+func TestDecodeFilenameField_MalformedInterpInListIsLiteral(t *testing.T) {
+	const p = `.apm/\#(fmvar(my-key)).md`
+	got, err := DecodeFilenameField([]any{"ok.md", p})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ok.md", p}, got)
+	got, err = DecodeFilenameField([]string{"ok.md", p})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ok.md", p}, got)
+}
+
 func TestMatchFilename_NoConstraint(t *testing.T) {
 	matched, bad, err := MatchFilename(nil, "anything.md")
 	require.NoError(t, err)
@@ -139,4 +151,32 @@ func TestFilenameExpected_MultipleListsAll(t *testing.T) {
 	assert.Equal(t,
 		"filename matching one of globs [0-9]*_*.md, plan.md",
 		FilenameExpected([]string{"[0-9]*_*.md", "plan.md"}))
+}
+
+// resolveFilenamePatterns returns a list with no reference as-is,
+// without allocating. A list that has one resolves each entry in
+// place, keeping the plain siblings and their order around it, and
+// drops an entry whose reference does not resolve.
+func TestResolveFilenamePatterns_OnePassKeepsOrder(t *testing.T) {
+	plain := []string{"README.md", "*.txt"}
+	got, unresolved := resolveFilenamePatterns(plain, nil, false)
+	require.NoError(t, unresolved)
+	assert.Same(t, &plain[0], &got[0], "a plain list is returned as-is")
+	allocs := testing.AllocsPerRun(100, func() {
+		_, _ = resolveFilenamePatterns(plain, nil, false)
+	})
+	assert.Zero(t, allocs)
+
+	fm := map[string]any{"id": "rfc-7"}
+	got, unresolved = resolveFilenamePatterns([]string{
+		"README.md", `\#(fmvar(id))-notes.md`, `\#(fmvar(slug)).md`, "*.txt",
+	}, fm, false)
+	assert.Equal(t, []string{"README.md", "rfc-7-notes.md", "*.txt"}, got)
+	assert.ErrorContains(t, unresolved, "fmvar(slug)")
+
+	got, unresolved = resolveFilenamePatterns(
+		[]string{`\#(fmvar(slug)).md`}, fm, false)
+	assert.NotNil(t, got, "every entry dropped is an empty list, not nil")
+	assert.Empty(t, got)
+	assert.Error(t, unresolved)
 }
