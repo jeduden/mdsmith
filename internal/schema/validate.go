@@ -552,7 +552,7 @@ func schemaDiagFromCUEError(
 		}
 		d.Expected = "not declared in schema"
 		if sch.frontmatterClosedOverruled {
-			d.Hint = frontmatterStaysClosedHint
+			d.Hint = frontmatterStaysClosedHint(sch)
 		}
 	}
 	return d
@@ -562,10 +562,19 @@ func schemaDiagFromCUEError(
 // file whose composed kinds disagree on `frontmatter-closed:`. One
 // kind opened its front matter, but composition keeps the strictest
 // setting, and a kind that declares `frontmatter:` without the key is
-// closed by default.
-const frontmatterStaysClosedHint = "front matter stays closed: every " +
-	"kind composed for this file must set `frontmatter-closed: false` " +
-	"to open it"
+// closed by default. A proto.md that declares front matter cannot set
+// the key at all, so when one kept the composite closed the hint
+// names it rather than asking for a `false` it cannot carry.
+func frontmatterStaysClosedHint(sch *Schema) string {
+	if p := sch.frontmatterClosedByProto; p != "" {
+		return "front matter stays closed: proto.md schema " +
+			strconv.Quote(p) + " declares front matter and cannot set " +
+			"`frontmatter-closed:`, so it counts as closed; declare " +
+			"this key in it"
+	}
+	return "front matter stays closed: every kind composed for this " +
+		"file must set `frontmatter-closed: false` to open it"
+}
 
 // schemaKeyForPath finds the Frontmatter map key (with the
 // optional "?" suffix preserved) that owns the given CUE error

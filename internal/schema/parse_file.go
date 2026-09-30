@@ -58,7 +58,12 @@ func ParseFile(r *FileReader, path string) (*Schema, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot read schema %q: %w", path, err)
 	}
-	return parseFileBytes(r, path, data, map[string]bool{filepath.Clean(path): true}, []string{filepath.Clean(path)})
+	sch, err := parseFileBytes(r, path, data, map[string]bool{filepath.Clean(path): true}, []string{filepath.Clean(path)})
+	if err != nil {
+		return nil, err
+	}
+	sch.fromProto = true
+	return sch, nil
 }
 
 const maxIncludeDepth = 10

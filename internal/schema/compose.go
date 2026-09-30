@@ -166,18 +166,24 @@ func composeFrontmatter(out *Schema, schemas []*Schema) {
 //
 // When a source opened its front matter but the composite stays
 // closed, the result is marked overruled so the undeclared-key
-// diagnostic can explain it (frontmatterStaysClosedHint).
+// diagnostic can explain it (frontmatterStaysClosedHint). The first
+// proto.md that voted closed is recorded too: it cannot set the key,
+// so the hint names it as the cause.
 func composeFrontmatterClosed(out *Schema, schemas []*Schema) {
 	closed, declared, opened := false, false, false
+	byProto := ""
 	for _, s := range schemas {
 		if len(s.Frontmatter) == 0 {
 			continue
 		}
 		declared = true
-		if s.FrontmatterIsClosed() {
-			closed = true
-		} else {
+		if !s.FrontmatterIsClosed() {
 			opened = true
+			continue
+		}
+		closed = true
+		if s.fromProto && byProto == "" {
+			byProto = s.Source
 		}
 	}
 	if !declared {
@@ -185,6 +191,9 @@ func composeFrontmatterClosed(out *Schema, schemas []*Schema) {
 	}
 	out.FrontmatterClosed = &closed
 	out.frontmatterClosedOverruled = closed && opened
+	if out.frontmatterClosedOverruled {
+		out.frontmatterClosedByProto = byProto
+	}
 }
 
 func composeFilename(out *Schema, schemas []*Schema) error {

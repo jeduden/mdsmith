@@ -99,6 +99,15 @@ type Schema struct {
 	// kind the reader opened is not the one that closed it.
 	frontmatterClosedOverruled bool
 
+	// frontmatterClosedByProto is the Source of the first proto.md
+	// that voted closed in that composition, or empty when only
+	// kinds did. A proto.md cannot set `frontmatter-closed:`, so the
+	// hint names it instead of asking every kind to open.
+	frontmatterClosedByProto string
+
+	// fromProto marks a schema that ParseFile read from a proto.md.
+	fromProto bool
+
 	// Filename is a list of globs the document basename must match —
 	// the basename passes when it matches any one of them (OR
 	// semantics). A nil or empty slice means no filename constraint.

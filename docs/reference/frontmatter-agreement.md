@@ -114,6 +114,11 @@ extra: got 1, expected not declared in schema
 `mdsmith kinds resolve <file>` lists the kinds that
 claim the file.
 
+A `proto.md` cannot set `frontmatter-closed:`, so a
+`proto.md` that declares front matter always counts
+as closed. When one keeps the file closed, the hint
+names it and asks you to declare the key there.
+
 Under `extends:` the rule is different: the child's
 explicit value wins, and a child that says nothing
 inherits the parent's. Inheritance is a

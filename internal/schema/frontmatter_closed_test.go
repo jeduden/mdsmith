@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -198,7 +200,65 @@ func TestCompose_ClosedDespiteAnOpenerSaysWhy(t *testing.T) {
 		false, makeDiagForTest)
 	require.Len(t, diags, 1, "got %v", diagsMessages(diags))
 	assert.Contains(t, diags[0].Message, "extra: got 1, expected not declared in schema")
-	assert.Contains(t, diags[0].Message, frontmatterStaysClosedHint)
+	assert.Contains(t, diags[0].Message, frontmatterStaysClosedHint(out))
+	assert.Contains(t, diags[0].Message, "every kind composed")
+}
+
+// A proto.md that declares front matter cannot set
+// `frontmatter-closed:`, so it always votes closed. When it is what
+// keeps an opened composite closed, the hint names it: telling the
+// author to set `false` on every kind points at a key the proto.md
+// may not carry.
+func TestCompose_ClosedByProtoNamesTheProto(t *testing.T) {
+	open := false
+	a := &Schema{
+		Frontmatter:       map[string]string{"description": "string"},
+		FrontmatterClosed: &open,
+		Source:            "kind a",
+	}
+	b := &Schema{
+		Frontmatter: map[string]string{"model?": "string"},
+		Source:      "schemas/proto.md",
+		fromProto:   true,
+	}
+	out, err := Compose(a, b)
+	require.NoError(t, err)
+	doc := newDocFile(t, "a.prompt.md",
+		"---\ndescription: \"x\"\nextra: 1\n---\n# T\n")
+	diags := Validate(doc, out,
+		map[string]any{"description": "x", "extra": 1},
+		false, makeDiagForTest)
+	require.Len(t, diags, 1, "got %v", diagsMessages(diags))
+	msg := diags[0].Message
+	assert.Contains(t, msg, `proto.md schema "schemas/proto.md" declares front matter`)
+	assert.Contains(t, msg, "cannot set `frontmatter-closed:`")
+	assert.NotContains(t, msg, "every kind composed")
+}
+
+// frontmatterStaysClosedHint names the first proto.md that voted
+// closed, and otherwise asks every kind to open the front matter.
+func TestFrontmatterStaysClosedHint(t *testing.T) {
+	assert.Contains(t, frontmatterStaysClosedHint(&Schema{}),
+		"every kind composed for this file must set `frontmatter-closed: false`")
+	got := frontmatterStaysClosedHint(
+		&Schema{frontmatterClosedByProto: "p/proto.md"})
+	assert.Contains(t, got, `proto.md schema "p/proto.md" declares front matter`)
+}
+
+// ParseFile marks its result as a proto.md source, so composition can
+// tell a proto.md's closed vote (it has no way to open) from a kind's.
+func TestParseFile_MarksProtoSource(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "proto.md")
+	require.NoError(t, os.WriteFile(p, []byte("---\nid: string\n---\n# ?\n"), 0o644))
+	sch, err := ParseFile(nil, p)
+	require.NoError(t, err)
+	assert.True(t, sch.fromProto)
+	inline, err := ParseInline(map[string]any{
+		"frontmatter": map[string]any{"id": "string"},
+	}, "kind x")
+	require.NoError(t, err)
+	assert.False(t, inline.fromProto)
 }
 
 // With no source opening the front matter the diagnostic keeps its
@@ -215,7 +275,7 @@ func TestCompose_ClosedByEveryKindHasNoHint(t *testing.T) {
 		map[string]any{"description": "x", "extra": 1},
 		false, makeDiagForTest)
 	require.Len(t, diags, 1)
-	assert.NotContains(t, diags[0].Message, frontmatterStaysClosedHint)
+	assert.NotContains(t, diags[0].Message, "front matter stays closed")
 }
 
 func TestCompose_FrontmatterOpenWhenEverySourceOpens(t *testing.T) {
