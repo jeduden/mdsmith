@@ -3,6 +3,7 @@ package requiredstructure
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -2562,7 +2563,7 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 	// path-pattern is a plain glob, and this runs for every file of
 	// every kind on the check hot path.
 	var docFM map[string]any
-	var fmParseErr string
+	var fmParseErr error
 	fmRead := false
 	for _, pp := range r.PathPatterns {
 		// filepath.ToSlash normalizes a pattern written with the
@@ -2603,16 +2604,20 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 			var fmDiags []lint.Diagnostic
 			docFM, fmDiags = cachedDocFrontMatterRaw(f)
 			if len(fmDiags) > 0 {
-				fmParseErr = fmDiags[0].Message
+				fmParseErr = errors.New(fmDiags[0].Message)
 			}
 			fmRead = true
 		}
 		resolved, err := schema.ResolveGlobPattern(pp.Pattern, docFM)
 		if err != nil {
-			hint := schema.GlobMismatchHint(err, []string{pp.Pattern})
-			if fmParseErr != "" {
-				hint = fmParseErr
+			// The parse failure is WHY the reference did not
+			// resolve, so it takes the "missing" report's place.
+			// GlobMismatchHint still appends the rest — a malformed
+			// opener elsewhere in the pattern — after "; ".
+			if fmParseErr != nil {
+				err = fmParseErr
 			}
+			hint := schema.GlobMismatchHint(err, []string{pp.Pattern})
 			diags = append(diags, pathPatternDiag(f, rel, pp, hint))
 			continue
 		}

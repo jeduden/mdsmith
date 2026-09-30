@@ -77,6 +77,25 @@ func TestCheck_PathPatternFmvar_UnparseableFrontMatterNamesParseError(t *testing
 	assert.NotContains(t, diags[0].Message, "frontmatter value missing")
 }
 
+// The parse error stands in for the "missing" report it causes, but
+// it must not drop the rest of the hint: a malformed opener elsewhere
+// in the same pattern is matched literally whatever the front matter
+// holds, and the author needs to hear about both, joined by "; ".
+func TestCheck_PathPatternFmvar_ParseErrorKeepsLiteralOpenerHint(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, "docs/a/b/x.md",
+		"---\nname: [b\n---\n# X\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "doc", Pattern: `docs/\#(fmvar(my-key))/\#(fmvar(name))/x.md`},
+	}}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	msg := diags[0].Message
+	assert.Contains(t, msg, "(front matter: invalid YAML")
+	assert.Contains(t, msg, "; `\\#(fmvar(my-key))` is matched literally")
+	assert.NotContains(t, msg, "frontmatter value missing")
+}
+
 // A frontmatter value carrying a glob metacharacter must match
 // literally, not act as a wildcard.
 func TestCheck_PathPatternFmvar_EscapesValueMetacharacters(t *testing.T) {
