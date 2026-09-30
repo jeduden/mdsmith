@@ -70,8 +70,8 @@ file. For `plan/early-draft.md` with the `plan` kind
 above, the diagnostic reads:
 
 ```text
-filename: got "plan/early-draft.md", expected
-  glob plan/[0-9][0-9]*_*.md
+path: got "plan/early-draft.md", expected path
+  matching glob plan/[0-9][0-9]*_*.md
 schema: kinds[plan] / path-pattern
 ```
 
@@ -85,6 +85,12 @@ integer-only. For tighter constraints, combine
 `path-pattern:` with a `<?require filename:?>` directive
 on the schema — both run, and each emits its own
 diagnostic when violated.
+
+A pattern can also require a path segment to equal a
+front-matter value: `.apm/skills/\#(fmvar(name))/SKILL.md`
+accepts a skill only under a directory named after its
+`name` field. See
+[Front-matter agreement](../reference/frontmatter-agreement.md).
 
 `mdsmith kinds show <name>` prints `path-pattern:`
 alongside the kind's rule settings when it's set, so the

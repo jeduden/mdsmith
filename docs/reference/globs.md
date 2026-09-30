@@ -22,6 +22,7 @@ on config and directive surfaces but not on CLI arguments.
 | `overrides:.glob`       | `glob:`         | yes           |
 | `kind-assignment:.glob` | `glob:`         | yes           |
 | `<?catalog?>`           | `glob:`         | yes           |
+| kind `path-pattern:`    | one string      | no            |
 | CLI argument expansion  | positional      | no            |
 
 ## Supported syntax
@@ -156,6 +157,26 @@ glob:
 The directive requires at least one non-negated include
 pattern; a glob list of only exclusions is rejected at
 lint time.
+
+## Kind `path-pattern` and schema `filename`
+
+A kind's `path-pattern:` is one doublestar pattern. It
+must match the file's whole workspace-relative path:
+there is no basename fallback and no `!`-exclusion. A
+schema's `filename:` matches the basename only, with Go's
+`filepath.Match`, which has no `**` and no `{a,b}`.
+
+Both accept one extra token, `\#(fmvar(<path>))`. It is
+replaced by the document's own front-matter value before
+matching, with the value's glob metacharacters escaped so
+the value matches literally. A value that is missing,
+empty, a list or map, or that contains `/` is reported
+instead of matched. Only a well-formed reference is
+replaced. Any other `\#(` keeps its glob meaning, a `\`
+escape before `#`, so `notes/\#(draft)*.md` still matches
+`notes/#(draft)-1.md`. See
+[Front-matter agreement](frontmatter-agreement.md) for
+the full rules.
 
 ## CLI argument expansion
 
