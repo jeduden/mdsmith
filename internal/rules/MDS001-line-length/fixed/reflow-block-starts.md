@@ -10,7 +10,6 @@ and a space opens a heading, one that starts
 with > opens a block quote, and a line that begins
 with 1. and a space starts a list.
 
-The install steps in this guide are numbered from
-1.
-Step 2 builds the binary, and step 3 runs the
-tests.
+The install steps in this guide are numbered
+from 1. Step 2 builds the binary, and step 3 runs
+the tests.

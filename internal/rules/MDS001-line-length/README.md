@@ -116,31 +116,27 @@ Historians traced the founding and the early constitutional debates of the
 U. S. A. with real care.
 ```
 
-Reflow keeps each paragraph one paragraph. A rewrapped line never starts with
-syntax that CommonMark would read as the start of a new block:
+Reflow keeps each paragraph one paragraph. No rewrapped line starts with syntax
+that opens a new block in CommonMark or a common extension. This holds whatever
+`markdown-flavor` is set to:
 
 - an ATX heading: one to six `#` followed by a space, a tab, or the line end
 - a thematic break, such as `***`, `- - -`, or `_ _ _`
 - a code fence of 3 or more backticks or tildes, with or without an info string
 - a block quote marker `>`
-- a bullet `-`, `+`, or `*` followed by a space and more text
-- an ordered item `1.` or `1)` followed by a space and more text
-- an HTML block of types 1 to 6, such as `<div`, `<!--`, or a `<?name`
-  processing instruction
+- a list marker `-`, `+`, `*`, `1.`, or `1)`, even with nothing after it
+- an HTML block of types 1 to 6, such as `<div`, `<!--`, or `<?name`
 - a setext underline: a line of only `=` or only `-`
+- a GFM table delimiter row, such as `|-|-|`, `--- | ---`, or `:--|--:`
+- a footnote definition `[^label]:`, or a definition `:` then a space or tab
+
+CommonMark reads a list marker with nothing after it as paragraph text, but
+some renderers read it as an empty list item, so reflow avoids it too.
 
 If a plain word wrap would start a line with one of these, reflow moves the
-word before it down to lead that line instead. Take this paragraph, wrapped at
-fifty columns. A plain wrap starts its third line with `> opens`, a block quote:
-
-```text
-When writing Markdown, a line that starts with #
-and a space opens a heading, one that starts with
-> opens a block quote, and a line that begins with
-1. and a space starts a list.
-```
-
-Reflow keeps `>` and `1.` inside the paragraph:
+word before it down to lead that line instead. At fifty columns, a plain wrap of
+this paragraph starts its third line with `> opens`, a block quote. Reflow moves
+`with` down to lead that line:
 
 ```text
 When writing Markdown, a line that starts with #
@@ -149,10 +145,9 @@ with > opens a block quote, and a line that begins
 with 1. and a space starts a list.
 ```
 
-Text that only looks like block syntax wraps as usual. `#48` and `#tag` are not
-headings, `2.` and `1999.` cannot start a list inside a paragraph, and `x = y`
-is not a setext underline. The list follows CommonMark exactly, so a line that
-cannot interrupt a paragraph, such as an empty list item `1.`, is allowed.
+Text that only looks like block syntax wraps as usual, such as `#48`, `#tag`,
+`2.`, `1999.`, `x = y`, or a lone `:`. Reflow judges each line on its own, so a
+table delimiter row counts even when the line before it has another cell count.
 
 A line runs past `max` only when no layout within `max` avoids these starts,
 such as when the word before a marker already fills the line. That line then

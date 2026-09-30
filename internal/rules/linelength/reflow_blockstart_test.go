@@ -2,6 +2,7 @@ package linelength
 
 import (
 	"math/rand/v2"
+	"regexp"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -93,16 +94,14 @@ var blockStartCases = []struct {
 		[]string{"aaaa", "bbbb > cc"}},
 	{"dash bullet", []string{"aaaa", "bbbb", "-", "cc"}, 10,
 		[]string{"aaaa", "bbbb - cc"}},
-	// An empty list item cannot interrupt a paragraph, so a lone
-	// marker line is safe and the layout keeps the first line full.
 	{"plus bullet", []string{"aaaa", "bbbb", "+", "cc"}, 10,
-		[]string{"aaaa bbbb", "+", "cc"}},
+		[]string{"aaaa", "bbbb + cc"}},
 	{"star bullet", []string{"aaaa", "bbbb", "*", "cc"}, 10,
-		[]string{"aaaa bbbb", "*", "cc"}},
+		[]string{"aaaa", "bbbb * cc"}},
 	{"ordered item 1.", []string{"aaaa", "bbbb", "1.", "cc"}, 10,
-		[]string{"aaaa bbbb", "1.", "cc"}},
+		[]string{"aaaa", "bbbb 1. cc"}},
 	{"ordered item 1)", []string{"aaaa", "bbbb", "1)", "cc"}, 10,
-		[]string{"aaaa bbbb", "1)", "cc"}},
+		[]string{"aaaa", "bbbb 1) cc"}},
 	{"setext equals underline", []string{"aaaa", "bbbb", "="}, 10,
 		[]string{"aaaa", "bbbb ="}},
 	{"setext dash underline", []string{"aaaa", "bbbb", "--"}, 10,
@@ -180,8 +179,8 @@ func TestWrapTokens_PlainTextWrapsLikeGreedy(t *testing.T) {
 		{"issue reference in link text", []string{"aaaa", "bbbb", "#48](url),"}},
 		{"hashtag", []string{"aaaa", "bbbb", "#tag", "cc"}},
 		{"ordered item not starting at 1", []string{"aaaa", "bbbb", "2.", "cc"}},
-		{"empty star item", []string{"aaaa", "bbbb", "*"}},
-		{"empty ordered item", []string{"aaaa", "bbbb", "1."}},
+		{"empty ordered item not starting at 1", []string{"aaaa", "bbbb", "2."}},
+		{"lone colon", []string{"aaaa", "bbbb", ":"}},
 		{"dash word", []string{"aaaa", "bbbb", "-x", "cc"}},
 		{"strong emphasis", []string{"aaaa", "bbbb", "**bold**"}},
 		{"double dash with text", []string{"aaaa", "bbbb", "--", "cc"}},
@@ -202,6 +201,34 @@ func TestWrapTokens_PlainTextWrapsLikeGreedy(t *testing.T) {
 	}
 }
 
+// TestWrapTokens_BareMarkerNeverStandsAlone covers a list marker with
+// nothing after it. CommonMark lets no empty item interrupt a paragraph,
+// so the greedy layout is one paragraph, yet some renderers and
+// formatters read such a line as an empty list item. Reflow does not
+// rely on the rule: it moves the word before the marker down, as for a
+// real block start. A bare "2." could not interrupt even with content,
+// so it still wraps as text (see TestWrapTokens_PlainTextWrapsLikeGreedy).
+func TestWrapTokens_BareMarkerNeverStandsAlone(t *testing.T) {
+	for _, marker := range []string{"*", "+", "1.", "1)", "01."} {
+		t.Run(marker, func(t *testing.T) {
+			tokens := []string{"aaaa", "bbbb", marker}
+			naive := greedyWrap(tokens, 10)
+			require.Equal(t, []string{"aaaa bbbb", marker}, naive)
+			require.True(t, singleParagraph(t, naive), "greedy layout %q must stay one paragraph", naive)
+			assert.Equal(t, []string{"aaaa", "bbbb " + marker}, wrapTokens(tokens, "", 10, noGlue))
+		})
+	}
+}
+
+func TestIsBareListMarker(t *testing.T) {
+	for _, line := range []string{"-", "+", "*", "1.", "1)", "01.", "000000001)", "   *", "1. "} {
+		assert.True(t, isBareListMarker([]byte(line)), "%q", line)
+	}
+	for _, line := range []string{"", "    *", "2.", "10.", "0000000001.", "1", ".", "1:", "* x", "1.x", "**", "a."} {
+		assert.False(t, isBareListMarker([]byte(line)), "%q", line)
+	}
+}
+
 // TestWrapTokens_OverflowOnlyWhenNoLayoutFits covers the fallback: when
 // no layout within width avoids a block start, the marker stays on the
 // line before it, which then runs past width. The overflow stays on the
@@ -218,10 +245,10 @@ func TestWrapTokens_OverflowOnlyWhenNoLayoutFits(t *testing.T) {
 			[]string{"aaaa bbbb", "cccccccccc #", "d"}},
 		{"run of markers that cannot lead", []string{"x", "-", "-", "-"},
 			[]string{"x - - -"}},
-		// "1." may lead a line only alone, and "-" never may, so a
-		// line break after "aaaaaaaaa" leads nowhere: the one safe
-		// layout keeps all three on one line.
-		{"marker that may lead only alone", []string{"aaaaaaaaa", "1.", "-"},
+		// Neither "1." (bare or with "-" after it) nor "-" may lead a
+		// line, so a line break after "aaaaaaaaa" leads nowhere: the
+		// one safe layout keeps all three on one line.
+		{"markers after a nearly full word", []string{"aaaaaaaaa", "1.", "-"},
 			[]string{"aaaaaaaaa 1. -"}},
 	}
 	for _, tc := range cases {
@@ -363,15 +390,46 @@ func TestFix_BlockStartsStayInsideParagraph(t *testing.T) {
 	assert.Equal(t, got, fixSource(t, r, got), "reflow is not a fixpoint")
 }
 
+// conservativeLine matches lines the guard rejects although a paragraph
+// line before them may keep the paragraph whole: a bare list marker,
+// and a GFM table delimiter row, which builds a table only when the line
+// before it has as many cells. The patterns are written out here so the
+// test does not share code with the guard.
+var (
+	bareMarkerLine   = regexp.MustCompile(`^ {0,3}([-+*]|0{0,8}1[.)])$`)
+	delimiterRowLine = regexp.MustCompile(`^ {0,3}\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$`)
+	dashesOnlyLine   = regexp.MustCompile(`^-+$`)
+)
+
+func conservativeLine(line string) bool {
+	return bareMarkerLine.MatchString(line) ||
+		delimiterRowLine.MatchString(line) && !dashesOnlyLine.MatchString(line)
+}
+
+// safeLayout reports whether lines form one paragraph under both parsers
+// and hold no line the guard rejects on purpose (conservativeLine).
+func safeLayout(t *testing.T, lines []string) bool {
+	t.Helper()
+	for _, line := range lines {
+		if conservativeLine(line) {
+			return false
+		}
+	}
+	return singleParagraph(t, lines)
+}
+
 // TestWrapTokens_RandomParagraphsMatchParser checks the guard against the
-// canonical parser on seeded random paragraphs that mix words with
-// marker-like tokens, at random widths:
+// canonical and flavor parsers on seeded random paragraphs that mix
+// words with marker-like tokens, at random widths. The tokens include
+// pipes, table delimiter rows, footnote labels and a lone ':', so the
+// extension block starts are exercised too:
 //
-//   - where greedy packing already gives one paragraph, the layout is the
-//     greedy one, so the guard is no broader than the parser;
-//   - every other layout keeps the words in order and parses as one
-//     paragraph. It may be nil only there: a run of markers that cannot
-//     lead a line can outgrow maxOverflowUnits.
+//   - where greedy packing already gives a safe layout (safeLayout), the
+//     layout is the greedy one, so the guard is no broader than the
+//     parsers plus the conservative lines;
+//   - every other layout keeps the words in order and is safe. It may be
+//     nil only there: a run of markers that cannot lead a line can
+//     outgrow maxOverflowUnits.
 //
 // Tokens the spec reads as block starts but the parser does not, such as
 // "<!doctype", are left out, since there the guard follows the spec. The
@@ -383,6 +441,7 @@ func TestWrapTokens_RandomParagraphsMatchParser(t *testing.T) {
 		"***", "_", "__", "=", "==", "1.", "1)", "2.", "01.", "1999.", "```",
 		"```go", "``", "~~~", "~~~go", "`x`", "<div", "</div>", "<!--", "<?pi",
 		"<pre", "<!X", "<span>", "<span", "<![CDATA[", "<",
+		"|", "|-|-|", "-|-", ":-", "--|", "[^x]:", "[^1]:y", "[^]:", ":", "::",
 	}
 	rng := rand.New(rand.NewPCG(844, 851))
 	guarded := 0
@@ -397,7 +456,7 @@ func TestWrapTokens_RandomParagraphsMatchParser(t *testing.T) {
 		}
 		width := 4 + rng.IntN(24)
 		got := wrapTokens(tokens, "", width, noGlue)
-		if naive := greedyWrap(tokens, width); singleParagraph(t, naive) {
+		if naive := greedyWrap(tokens, width); safeLayout(t, naive) {
 			require.Equal(t, naive, got, "tokens %q width %d", tokens, width)
 			continue
 		}
@@ -406,8 +465,8 @@ func TestWrapTokens_RandomParagraphsMatchParser(t *testing.T) {
 		}
 		guarded++
 		require.Equal(t, tokens, strings.Fields(strings.Join(got, " ")))
-		require.True(t, singleParagraph(t, got),
-			"tokens %q width %d: layout %q splits the paragraph", tokens, width, got)
+		require.True(t, safeLayout(t, got),
+			"tokens %q width %d: layout %q is not safe", tokens, width, got)
 	}
 	assert.Greater(t, guarded, 1000, "too few cases reached the guard")
 }

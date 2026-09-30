@@ -231,10 +231,37 @@ func (p *linePlanner) breaks(s, e int) bool {
 
 // unsafeLine reports whether line, placed after a paragraph line, could
 // end the paragraph. That is a CommonMark block start
-// (lint.InterruptsParagraph) or, whatever flavor is configured, a block
-// start of a Markdown extension (lint.ExtensionInterruptsParagraph).
+// (lint.InterruptsParagraph), a block start of a Markdown extension
+// whatever flavor is configured (lint.ExtensionInterruptsParagraph), or
+// a bare list marker (isBareListMarker).
 func unsafeLine(line []byte) bool {
-	return lint.InterruptsParagraph(line) || lint.ExtensionInterruptsParagraph(line)
+	return lint.InterruptsParagraph(line) || lint.ExtensionInterruptsParagraph(line) ||
+		isBareListMarker(line)
+}
+
+// isBareListMarker reports whether line is a list marker with nothing
+// after it, of a kind that interrupts a paragraph once its item has
+// content: '-', '+', '*', or an ordered marker numbered 1 ("1.", "1)",
+// "01."), with up to three spaces of indent. CommonMark lets no empty
+// item interrupt a paragraph, so such a line is paragraph text there,
+// but some renderers and formatters read it as an empty list item.
+// Reflow does not rely on that rule. A bare "2." is not counted: it
+// could not interrupt a paragraph even with content.
+func isBareListMarker(line []byte) bool {
+	marker := bytes.TrimLeft(line, " ")
+	if len(line)-len(marker) > 3 {
+		return false
+	}
+	marker = bytes.TrimRight(marker, " \t")
+	if len(marker) == 1 {
+		return marker[0] == '-' || marker[0] == '+' || marker[0] == '*'
+	}
+	// An ordered marker has one to nine digits before its '.' or ')'.
+	if len(marker) < 2 || len(marker) > 10 {
+		return false
+	}
+	delim := marker[len(marker)-1]
+	return (delim == '.' || delim == ')') && string(bytes.TrimLeft(marker[:len(marker)-1], "0")) == "1"
 }
 
 // render writes the line holding units[s:e], indent first, into the
