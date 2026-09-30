@@ -104,8 +104,8 @@ The `row` section uses `{fieldname}` placeholder syntax.
 - Missing field -> empty string.
 - Case-mismatched field (e.g., `{Title}` when
   front matter has `title`) -> "did you mean?" hint.
-- Non-string scalar -> string; an unquoted date as
-  written (`2026-01-02`), a timestamp as RFC 3339.
+- Non-string scalar -> string. An unquoted timestamp
+  renders `YYYY-MM-DD` at midnight UTC, else RFC 3339.
   Composite values (maps, slices) -> empty string.
 - Literal `{` is written as `{{`, literal `}` as `}}`.
 
