@@ -27,36 +27,102 @@ code 2.
 
 ## What it rewrites
 
-- **Incoming links.** Every `[text](src)` and
-  `[text](src#anchor)` in the workspace is repointed to `dst`;
-  the `#anchor` fragment is kept. The path token is recomputed
-  relative to each referencing file's own directory, preserving
-  its spelling — an explicit `./x` keeps the prefix.
-- **Ref-def destinations.** A `[label]: src` definition line is
-  repointed the same way.
-- **Outbound inline links and images inside the moved file.**
-  Each inline `[x](path)` or `![x](path)` in `src` is recomputed
-  so it still resolves from `dst`'s directory. Moving
-  `docs/a.md` to `guide/a.md` fixes its own `[x](./b.md)` as
-  well as the links pointing at it. Link-shaped text in a code
-  span, a code block, or an HTML comment is not a link, so it
-  stays as written.
+- **Incoming links.** Every inline `[text](src)` or
+  `![alt](src)` in the workspace is repointed to `dst`. A
+  `?query` or `#anchor` after the path is kept. The path token
+  is recomputed relative to each referencing file's own
+  directory, preserving its spelling — an explicit `./x` keeps
+  the prefix.
+- **Ref-def destinations.** A `[label]: src` definition is
+  repointed the same way, including one with a `?query`.
+- **Outbound links, images, and ref-defs inside the moved
+  file.** Each inline `[x](path)`, `![x](path)`, and
+  `[label]: path` in `src` is recomputed so it still resolves
+  from `dst`'s directory. Moving `docs/a.md` to `guide/a.md`
+  fixes its own `[x](./b.md)` as well as the links pointing at
+  it. A destination that still resolves, such as `sub/../b.md`
+  after a move within one directory, keeps its spelling. A link
+  to a directory, such as `sub/`, keeps its trailing `/`. A
+  moved file that mdsmith does not lint as Markdown, such as an
+  image, keeps its bytes. One with another extension that the
+  `files:` patterns match, such as `x.mdx`, is recomputed too.
 - **Wikilinks.** `[[old-stem]]` becomes `[[new-stem]]` only when
   the basename stem changes. A move that keeps the basename
   (`docs/api.md` → `ref/api.md`) leaves wikilinks alone, because
   a stem still resolves to the file at its new path — an
   asymmetry with path links that `--dry-run` makes visible.
 
+Each destination is found in the parsed document, so each one is
+rewritten exactly once. These forms are all handled:
+
+- a link with empty text, such as `[](a.md)`;
+- a label that spans rows, or a destination on the row after
+  its `(` (or after a ref-def's `:`), in a block quote too;
+- an angle-bracketed destination, such as `<my file.md>`;
+- a titled destination, such as `[t](a.md "title")`.
+
+Link-shaped text in a code span, a code block, or an HTML
+comment is not a destination, so it stays as written, even
+inside a link's own label.
+
+A percent-escaped destination such as `my%20file.md` is decoded
+before it is compared. The new path is escaped the way the old
+one was. `my%20file.md` stays escaped, and `<my file.md>` keeps
+its literal space.
+
+A character that would break the link is always escaped: a space
+in a bare destination, and `%`, `?`, `#`, `<`, `>`, `&`, `\`, or
+`"`. So a move to `what?.md` writes `what%3F.md`. A bare `?` would
+start a query string and name the file `what`, and a literal
+`&amp;` would be read as `&`. A bare destination also escapes its parens
+when one has no partner. A move to `a).md` writes `a%29.md`, while
+`a(1).md` stays as written. A new path whose first segment holds a
+`:` gets a `./` prefix, so a move to `a:b.md` writes `./a:b.md`. A
+bare `a:b.md` would read as a URL with the scheme `a:`.
+
+A literal `?` is read as the start of a query unless the whole
+path names the moved file, of any type, or a Markdown file in the
+workspace, and the part before the `?` does not. Then
+`[x](what?.md)` is matched as the file `what?.md`, and the rewrite
+writes it as `what%3F.md`.
+
 Absolute URLs, `mailto:`, and root-anchored `/x` paths do not
 resolve to a workspace file, so a move never touches them.
 
-Some references inside the moved file are not yet recomputed. A
-cross-directory move can leave them stale. Two kinds need a
-manual fix. One is `<?include?>`, `<?build?>`, and `<?catalog?>`
-directive paths. The other is a reference definition the file
-declares itself, such as `[label]: ../other.md`. Only inline
-links and images are recomputed; ref-defs elsewhere that point
-at the file are still repointed.
+## What needs a manual fix
+
+A move does not rewrite these references yet. After a
+cross-directory move, check them by hand.
+
+- **Directive paths.** A `file:` path in `<?include?>` or an
+  `inputs:` path in `<?build?>`, in the moved file or in a file
+  that points at it, and a `<?catalog?>` glob in the moved
+  file.
+- **Raw HTML links.** `<a href="a.md">` and `<img src="a.png">`
+  are not Markdown destinations.
+- **Links above the workspace root.** A relative link in the
+  moved file that climbs out of the workspace, such as
+  `[p](../README.md)` in `a.md`, is never recomputed. After a move
+  to `guide/a.md`, it names the workspace's own `README.md`.
+- **Backslash escapes and entities.** A path spelled with one,
+  such as `a\_b.md` or `a&amp;b.md`, is left as written, in the
+  moved file and in the files that point at it. A renderer reads
+  it as `a_b.md` or `a&b.md`, which the move does not decode.
+  Write the name out, or percent-escape it as in `a%26b.md`. A
+  `\` just before the `#` or `?` that ends the path, as in
+  `a.md\#x`, only escapes that byte, so such a link is repointed
+  and keeps its `\`.
+- **Ambiguous wikilinks.** When another file shares the old or
+  the new basename stem, no `[[stem]]` is rewritten, because the
+  rewrite could point it at the wrong file.
+- **Footnote text that is a lone link.** mdsmith reads
+  `[^1]: [z](a.md)` as a footnote definition and leaves its text
+  as written, so the link inside it is not repointed. Longer
+  footnote text, such as `[^1]: See [z](a.md).`, is repointed.
+- **Embeds of a renamed non-Markdown file.** Moving an image
+  repoints the links and images that name it. A wikilink embed
+  such as `![[diagram.png]]` is left alone, so it goes stale
+  when the move changes the file name.
 
 ## How the file is moved
 

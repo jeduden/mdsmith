@@ -173,18 +173,17 @@ func TestMove_WikilinkLeftUntouchedWhenDestStemCollides(t *testing.T) {
 }
 
 // TestMove_SelfRefDefLeftUntouched locks that a self-referential
-// reference definition inside the moved file is not rewritten. Its
-// destination would be recomputed from the file's old directory,
-// producing a path that breaks once the file relocates; leaving it
-// alone matches the documented "src's own ref-defs are a follow-up"
-// contract and stays correct for a same-directory move.
+// reference definition inside the moved file is not rewritten when
+// the basename is kept: it is recomputed against the file's new
+// location, where `a.md` still names the file. Recomputing it from the
+// old directory, or by the incoming pass, would break it.
 func TestMove_SelfRefDefLeftUntouched(t *testing.T) {
 	src := "# A\n\n[self]: a.md\n"
 	ws := newMemWorkspace(map[string]string{"a.md": src})
 	plan, err := Move(ws, "a.md", "docs/a.md")
 	require.NoError(t, err)
 	assert.Empty(t, plan.Edits["a.md"],
-		"self-referential ref-def is left to the tracked follow-up")
+		"self-referential ref-def still names the moved file")
 }
 
 func TestMove_OutboundRelativeLinksRecomputed(t *testing.T) {
@@ -317,7 +316,7 @@ func TestMove_IncomingQueryAndPaddedDestinations(t *testing.T) {
 
 // TestMove_OutboundSkipsReferenceStyleImages pins that a reference-style
 // `![][logo]` is left alone: its destination lives in the ref-def, which
-// the move does not rewrite. It must not take the `](path)` of a code span
+// the move rewrites once. It must not take the `](path)` of a code span
 // or of a later image.
 func TestMove_OutboundSkipsReferenceStyleImages(t *testing.T) {
 	src := "# A\n\n`![](./logo.png)`\n\n![][logo] ![](./logo.png)\n\n[logo]: ./logo.png\n"
@@ -326,9 +325,9 @@ func TestMove_OutboundSkipsReferenceStyleImages(t *testing.T) {
 	require.NoError(t, err)
 
 	edits := plan.Edits["a.md"]
-	require.Len(t, edits, 1)
+	require.Len(t, edits, 2)
 	assert.Equal(t,
-		"# A\n\n`![](./logo.png)`\n\n![][logo] ![](../logo.png)\n\n[logo]: ./logo.png\n",
+		"# A\n\n`![](./logo.png)`\n\n![][logo] ![](../logo.png)\n\n[logo]: ../logo.png\n",
 		applyEditsToSource(src, edits))
 }
 
