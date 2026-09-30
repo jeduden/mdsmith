@@ -135,7 +135,10 @@ Lint output goes to **stderr** by default. `check` and
 and the stats line) to a file, or `-o -` to write it to
 **stdout**. Runtime errors stay on stderr on every route;
 see [`mdsmith check`](cli/check.md#report-output). A clean
-`json` run prints `[]`.
+`json` run prints `[]`. `-q` silences the terminal, but
+an `-o <path>` file still gets the full report. An `-o`
+path that is, or would be, one of the Markdown inputs is
+refused with exit `2`.
 
 Text output is colored only when it goes to a terminal.
 On `check` and `fix`, `--color=always` or
