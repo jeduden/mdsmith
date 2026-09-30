@@ -216,8 +216,8 @@ func appendOutboundEdits(
 
 // outboundEdit re-spells one destination of the moved file so it still
 // resolves from dst's directory. It reports ok=false for a same-file
-// anchor, an external or out-of-workspace destination, and a recompute
-// that changes nothing.
+// anchor, an external or out-of-workspace destination, and one that
+// still names its target from dst's directory.
 func outboundEdit(r *destResolver, d inlineDest, src, dst string) (Edit, bool) {
 	ref, ok := r.target(src, d.dest)
 	if !ok {
@@ -237,17 +237,19 @@ func outboundEdit(r *destResolver, d inlineDest, src, dst string) (Edit, bool) {
 }
 
 // destEdit rewrites the path token of d (read as ref) so that, from
-// spellFrom's directory, it names target. An explicit `./x` keeps its
-// prefix unless the new path climbs out of the directory (a `../`
-// result already reads as relative); everything else is
-// bare-relative. ok is false when the token already names target.
+// spellFrom's directory, it names target. ok is false when the token
+// already names target from there, so a spelling such as
+// `sub/../b.md` is kept while it still resolves. An explicit `./x`
+// keeps its prefix unless the new path climbs out of the directory
+// (a `../` result already reads as relative); everything else is
+// bare-relative.
 func destEdit(d inlineDest, ref destRef, spellFrom, target string) (Edit, bool) {
+	if linkgraph.ResolveRelTarget(spellFrom, ref.path) == target {
+		return Edit{}, false
+	}
 	newPath := relFrom(path.Dir(spellFrom), target)
 	if strings.HasPrefix(ref.path, "./") && !strings.HasPrefix(newPath, "../") {
 		newPath = "./" + newPath
-	}
-	if newPath == ref.path {
-		return Edit{}, false
 	}
 	pe := d.ps + ref.tokLen
 	return Edit{

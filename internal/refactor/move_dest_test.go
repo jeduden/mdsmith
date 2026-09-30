@@ -100,6 +100,18 @@ func TestMove_IncomingPercentEncodedAndAngleForms(t *testing.T) {
 		got["b.md"])
 }
 
+// TestMove_OutboundSpellingKeptWhileItStillResolves pins that a
+// destination in the moved file that still names its target from the
+// new directory is left as the author spelled it, while a self-link,
+// whose target moved, is repointed.
+func TestMove_OutboundSpellingKeptWhileItStillResolves(t *testing.T) {
+	got := moveAndApply(t, map[string]string{
+		"a.md": "[s](sub/../b.md) [t](./x/../b.md) [self](a.md)\n",
+		"b.md": "# B\n",
+	}, "a.md", "a2.md")
+	assert.Equal(t, "[s](sub/../b.md) [t](./x/../b.md) [self](a2.md)\n", got["a.md"])
+}
+
 // TestMove_OutboundPercentEncodedDestination pins that the moved
 // file's own escaped destination is decoded, recomputed, and
 // re-escaped the way the author wrote it.
