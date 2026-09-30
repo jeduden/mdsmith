@@ -31,6 +31,10 @@ type BodyJSON struct {
 	Extends              string                 `json:"extends,omitempty"`
 	ExtendsChain         []string               `json:"extends-chain,omitempty"`
 	EffectiveFrontmatter []FrontmatterLeafJSON  `json:"effective-frontmatter,omitempty"`
+	// EffectiveFrontmatterClosed is the resolved
+	// `frontmatter-closed:` and the kind that set it; nil when no
+	// kind in the chain sets it (the closed default applies).
+	EffectiveFrontmatterClosed *FrontmatterClosedLeafJSON `json:"effective-frontmatter-closed,omitempty"`
 	// SourcePath, when set, is the file that defined the kind body
 	// (`.mdsmith.yml` for inline kinds, `.mdsmith/kinds/<name>.{yaml,yml}`
 	// for file kinds; plan 208).
@@ -44,6 +48,15 @@ type BodyJSON struct {
 type FrontmatterLeafJSON struct {
 	Key    string `json:"key"`
 	Value  string `json:"value"`
+	Source string `json:"source"`
+}
+
+// FrontmatterClosedLeafJSON is the effective `frontmatter-closed:`
+// after the extends chain has been resolved, and the kind that set
+// it: the child when it states the key, else the nearest ancestor
+// that does.
+type FrontmatterClosedLeafJSON struct {
+	Value  bool   `json:"value"`
 	Source string `json:"source"`
 }
 
@@ -87,7 +100,37 @@ func MakeBodyJSON(name string, body config.KindBody, kinds map[string]config.Kin
 	if leaves := effectiveFrontmatterLeaves(kinds, name); len(leaves) > 0 {
 		out.EffectiveFrontmatter = leaves
 	}
+	out.EffectiveFrontmatterClosed = effectiveFrontmatterClosed(kinds, name)
 	return out
+}
+
+// effectiveFrontmatterClosed resolves `frontmatter-closed:` for
+// `name` across its extends chain and names the kind that set it. The
+// key decides whether an undeclared front-matter key is an error, so
+// without it the audit could not explain why such a key passes or
+// fails. It returns nil when the chain does not resolve or no kind in
+// it sets the key.
+func effectiveFrontmatterClosed(
+	kinds map[string]config.KindBody, name string,
+) *FrontmatterClosedLeafJSON {
+	resolved, err := config.ResolveKindInlineSchema(kinds, name)
+	if err != nil {
+		return nil
+	}
+	v, ok := resolved["frontmatter-closed"].(bool)
+	if !ok {
+		return nil
+	}
+	// The chain is child-first, and MergeRawMap lets the child's
+	// value win, so the first kind that states the key set it.
+	source := ""
+	for _, k := range config.KindExtendsChain(kinds, name) {
+		if _, set := kinds[k].Schema.Map()["frontmatter-closed"]; set {
+			source = k
+			break
+		}
+	}
+	return &FrontmatterClosedLeafJSON{Value: v, Source: source}
 }
 
 // effectiveFrontmatterLeaves resolves the inline schema for `name`
@@ -422,7 +465,8 @@ func writeExtendsHeader(
 // writeEffectiveFrontmatter prints the resolved frontmatter for the
 // extends chain, one line per key with the contributing kind in a
 // trailing comment so the reader sees the layer without re-reading
-// every schema. A kind without an inline schema or without
+// every schema, then the effective `frontmatter-closed:` when a kind
+// in the chain sets it. A kind without an inline schema or without
 // frontmatter prints nothing.
 func writeEffectiveFrontmatter(
 	w io.Writer, kinds map[string]config.KindBody, name string,
@@ -439,6 +483,12 @@ func writeEffectiveFrontmatter(
 			sanitizeControl(leaf.Key),
 			sanitizeControl(leaf.Value),
 			sanitizeControl(leaf.Source)); err != nil {
+			return err
+		}
+	}
+	if c := effectiveFrontmatterClosed(kinds, name); c != nil {
+		if _, err := fmt.Fprintf(w, "  effective-frontmatter-closed: %t  # from %s\n",
+			c.Value, sanitizeControl(c.Source)); err != nil {
 			return err
 		}
 	}

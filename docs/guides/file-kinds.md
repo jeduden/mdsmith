@@ -478,6 +478,10 @@ canonical CUE in the printed output, so the audit shows the
 constraint as the validator sees it rather than the shortcut
 spelling.
 
+When a kind in the chain sets `frontmatter-closed:`, a last line
+shows the effective value and the kind that set it, such as
+`effective-frontmatter-closed: false  # from rfc-base`.
+
 Add `--json` for the structured form.
 
 ## Merge order
