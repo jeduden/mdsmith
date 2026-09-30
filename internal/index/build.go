@@ -282,7 +282,7 @@ func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, ki
 	if len(fm) == 0 {
 		return nil, "", nil
 	}
-	node, err := yamlutil.UnmarshalNodeSafe(stripDelimiters(fm))
+	node, err := yamlutil.UnmarshalNodeSafe(lint.FrontMatterYAML(fm))
 	if err != nil || len(node.Content) == 0 {
 		return nil, "", nil
 	}
@@ -291,23 +291,48 @@ func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, ki
 		return nil, "", nil
 	}
 	syms = make([]Symbol, 0, len(mapping.Content)/2)
+	seen := make(map[string]struct{}, len(mapping.Content)/2)
+	duplicate := false
 	for i := 0; i < len(mapping.Content); i += 2 {
 		k := mapping.Content[i]
 		v := mapping.Content[i+1]
 		if k.Kind != yaml.ScalarNode || k.Value == "" {
 			continue
 		}
+		if _, dup := seen[k.Value]; dup {
+			duplicate = true
+		}
+		seen[k.Value] = struct{}{}
 		syms = append(syms, frontMatterKeySymbol(filePath, k))
 		switch k.Value {
 		case "title":
-			if v.Kind == yaml.ScalarNode {
-				title = v.Value
-			}
+			title = frontMatterTitle(v)
 		case "kinds":
-			kinds = append(kinds, frontMatterKindsList(v)...)
+			kinds = frontMatterKindsList(v)
 		}
 	}
+	if duplicate {
+		// The engine's front-matter decoders reject a block with a
+		// duplicate key, so no title or kinds take effect there.
+		// Keep the outline symbols; drop the derived values.
+		return syms, "", nil
+	}
 	return syms, title, kinds
+}
+
+// frontMatterTitle returns the display text of a `title:` value
+// node. A null or non-scalar value has no title. Runs of whitespace,
+// including the newlines a block scalar carries, collapse to one
+// space so the title fits on a single workspace-symbol row. Typed
+// scalars (numbers, booleans, dates) keep their source spelling.
+func frontMatterTitle(v *yaml.Node) string {
+	if v.Kind != yaml.ScalarNode || v.Tag == "!!null" {
+		return ""
+	}
+	if !strings.ContainsAny(v.Value, " \t\r\n") {
+		return v.Value
+	}
+	return strings.Join(strings.Fields(v.Value), " ")
 }
 
 // frontMatterKeySymbol builds the SymbolFrontMatter entry for a YAML
@@ -326,44 +351,20 @@ func frontMatterKeySymbol(filePath string, k *yaml.Node) Symbol {
 	}
 }
 
-// frontMatterKindsList extracts string entries from a `kinds:` block
-// list value. yaml.v3 sets Tag to "!!str" for explicit strings and
-// "" for unresolved plain scalars (which the type resolver maps to
-// string when the value doesn't look like a number / bool). Anything
-// tagged !!int, !!bool, !!float, etc. is filtered out — matches the
-// previous map[string]any path that dropped them via type assertion.
+// frontMatterKindsList decodes a `kinds:` value node exactly as
+// lint.ParseFrontMatterKinds decodes the key: into a []string.
+// Scalar entries of any type keep their source text (`- 42` is
+// "42"); a non-sequence value or a non-scalar entry makes the
+// decode fail, and then no kinds apply, as in the engine.
 func frontMatterKindsList(v *yaml.Node) []string {
 	if v == nil || v.Kind != yaml.SequenceNode {
 		return nil
 	}
-	out := make([]string, 0, len(v.Content))
-	for _, item := range v.Content {
-		if item.Kind != yaml.ScalarNode {
-			continue
-		}
-		if item.Tag != "" && item.Tag != "!!str" {
-			continue
-		}
-		out = append(out, item.Value)
+	var out []string
+	if err := v.Decode(&out); err != nil {
+		return nil
 	}
 	return out
-}
-
-// stripDelimiters removes the leading and trailing `---\n` lines
-// from a front-matter prefix as returned by lint.StripFrontMatter.
-// The trailing strip uses TrimSuffix with the exact `---\n`
-// pattern (or `---` without a trailing newline as a fallback for
-// truncated input) rather than scanning for the last occurrence
-// of `---`. The previous LastIndex approach could match `---`
-// inside YAML content (e.g. inside a multi-line quoted string),
-// which would over-truncate the front matter.
-func stripDelimiters(fm []byte) []byte {
-	body := fm
-	body = bytes.TrimPrefix(body, []byte("---\n"))
-	if t := bytes.TrimSuffix(body, []byte("---\n")); len(t) != len(body) {
-		return t
-	}
-	return bytes.TrimSuffix(body, []byte("---"))
 }
 
 // refDefRE matches a CommonMark reference definition at the start of

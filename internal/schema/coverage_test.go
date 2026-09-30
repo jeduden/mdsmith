@@ -368,7 +368,7 @@ func TestParseFile_RequireBadFilenameType(t *testing.T) {
 func TestParseFile_FrontmatterPropagatesToSchema(t *testing.T) {
 	// Frontmatter CUE constraints declared in the proto.md surface
 	// on the parsed Schema. lint.StripFrontMatter consumes the
-	// "---\n…---\n" delimiters before stripDelimiters runs.
+	// "---\n…---\n" delimiters before lint.FrontMatterYAML runs.
 	dir := t.TempDir()
 	p := writeFile(t, dir, "proto.md",
 		"---\nid: 'string'\n---\n# ?\n")
@@ -773,32 +773,6 @@ func TestParseFile_IncludeMalformedYAMLDirective(t *testing.T) {
 	_, err := ParseFile(&FileReader{}, p)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid include directive YAML")
-}
-
-func TestStripDelimiters_HappyPath(t *testing.T) {
-	// stripDelimiters matches the exact "---\n…---\n" shape that
-	// lint.StripFrontMatter feeds it.
-	got := stripDelimiters([]byte("---\nfoo: 1\n---\n"))
-	assert.Equal(t, "foo: 1\n", string(got))
-}
-
-// TestStripDelimiters_BlockScalarFenceSequence regresses a
-// Copilot review observation: a YAML block-scalar value can
-// contain the literal `---\n` sequence inside its body. The
-// earlier strings.Index search truncated at the first match;
-// TrimSuffix on the canonical closing fence preserves the
-// entire body.
-func TestStripDelimiters_BlockScalarFenceSequence(t *testing.T) {
-	in := []byte(
-		"---\n" +
-			"id: 1\n" +
-			"notes: |\n" +
-			"  ---\n" +
-			"  more text\n" +
-			"status: open\n" +
-			"---\n")
-	want := "id: 1\nnotes: |\n  ---\n  more text\nstatus: open\n"
-	assert.Equal(t, want, string(stripDelimiters(in)))
 }
 
 func TestParseFile_FrontmatterEmptyBody(t *testing.T) {

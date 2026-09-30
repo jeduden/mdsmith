@@ -69,6 +69,31 @@ The 2026-09-27 audit (see [the audit log][audit-log]) found:
 6. `go tool -modfile=tools/go.mod golangci-lint run` reports
    no issues.
 
+## Deviations
+
+The port found drift. `frontMatterAll` did not agree with
+the old helpers or with the [internal/lint][lint-fm]
+decoders. The port fixes the drift:
+
+- A null `title:` (`null`, `~`, empty) yields no title.
+  Before, `frontMatterAll` returned the text `null` or `~`.
+- A block-scalar title collapses runs of whitespace to one
+  space, so a workspace symbol name has no newlines.
+- Typed scalar titles (int, float, uint64, bool, date) keep
+  their source text. The deleted `frontMatterScalar` wrote
+  a date in RFC 3339 form; the index never used that path.
+- `kinds:` decodes into `[]string`, the same way as
+  `lint.ParseFrontMatterKinds`: `- 42` is kept as `"42"`,
+  and a mapping entry drops the whole list.
+- A block with a duplicate key yields no title and no
+  kinds, since the engine rejects that block. Every key
+  still gets an outline symbol.
+- The index's `stripDelimiters` had a fallback for a closing
+  `---` with no newline, which `StripFrontMatter` never
+  produces. It and the schema package's copy were replaced
+  by one `lint.FrontMatterYAML` helper, which the three
+  `internal/lint` decoders now use too.
+
 ## Acceptance Criteria
 
 - [x] `frontMatterSymbols`, `frontMatterScalar`, and
@@ -86,3 +111,4 @@ The 2026-09-27 audit (see [the audit log][audit-log]) found:
 [coverage]: ../docs/development/coverage.md
 [build]: ../internal/index/build.go
 [coverage-test]: ../internal/index/coverage_test.go
+[lint-fm]: ../internal/lint/frontmatter.go

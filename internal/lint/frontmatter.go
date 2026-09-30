@@ -17,6 +17,17 @@ func StripFrontMatter(source []byte) (prefix, content []byte) {
 	return markdown.StripFrontMatter(source)
 }
 
+// FrontMatterYAML returns the YAML body of a front-matter block
+// (as returned by StripFrontMatter) with its opening and closing
+// "---\n" fences removed. The closing fence is removed with a
+// suffix trim, not a search, so a "---" line inside a block-scalar
+// value is never mistaken for the fence. It is the one home for the
+// delimiter trim every front-matter decoder needs.
+func FrontMatterYAML(fm []byte) []byte {
+	delim := []byte("---\n")
+	return bytes.TrimSuffix(bytes.TrimPrefix(fm, delim), delim)
+}
+
 // UnmarshalFrontMatter strips the leading YAML front matter block off
 // source, decodes it into v via yamlutil.UnmarshalSafe, and returns
 // the body with the block removed. hadFrontMatter reports whether
@@ -25,16 +36,12 @@ func StripFrontMatter(source []byte) (prefix, content []byte) {
 // to distinguish "no front matter" from "front matter with no
 // recognised keys" (typos, schema mismatch) use hadFrontMatter rather
 // than inspecting v's zero state, which conflates the two.
-// Centralises the "---\n" delimiter trim that several call sites
-// were repeating after StripFrontMatter.
 func UnmarshalFrontMatter(source []byte, v any) (body []byte, hadFrontMatter bool, err error) {
 	prefix, content := markdown.StripFrontMatter(source)
 	if prefix == nil {
 		return content, false, nil
 	}
-	delim := []byte("---\n")
-	yamlBody := bytes.TrimPrefix(prefix, delim)
-	yamlBody = bytes.TrimSuffix(yamlBody, delim)
+	yamlBody := FrontMatterYAML(prefix)
 	if err := yamlutil.UnmarshalSafe(yamlBody, v); err != nil {
 		return content, true, err
 	}
@@ -55,10 +62,7 @@ func ParseFrontMatterKinds(fm []byte) ([]string, error) {
 	if len(fm) == 0 {
 		return nil, nil
 	}
-	// Strip the leading and trailing --- delimiters to get raw YAML.
-	delim := []byte("---\n")
-	body := bytes.TrimPrefix(fm, delim)
-	body = bytes.TrimSuffix(body, delim)
+	body := FrontMatterYAML(fm)
 
 	// Fast path: skip full YAML decode when no "kinds:" key is present.
 	if !bytes.Contains(body, []byte("kinds:")) {
@@ -86,9 +90,7 @@ func ParseFrontMatterFields(fm []byte) (map[string]any, error) {
 	if len(fm) == 0 {
 		return nil, nil
 	}
-	delim := []byte("---\n")
-	body := bytes.TrimPrefix(fm, delim)
-	body = bytes.TrimSuffix(body, delim)
+	body := FrontMatterYAML(fm)
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil, nil
 	}

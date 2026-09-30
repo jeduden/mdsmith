@@ -36,51 +36,97 @@ func TestFrontMatterAll_SkipsEmptyAndNonScalarKeys(t *testing.T) {
 	assert.Equal(t, "real", syms[0].Name)
 }
 
-// TestFrontMatterAll_EdgeCases ports the YAML edge cases the removed
-// single-purpose helpers used to cover: empty and invalid input,
-// non-scalar title, non-list kinds, mixed-type kinds, and front
-// matter whose closing delimiter has no trailing newline.
-func TestFrontMatterAll_EdgeCases(t *testing.T) {
+// The TestFrontMatterAll_* tests below port the YAML edge cases the
+// removed single-purpose helpers (frontMatterScalar,
+// frontMatterStringList, frontMatterSymbols) used to cover, plus the
+// title and kinds cases where the index must agree with the engine's
+// front-matter decoders.
+
+// TestFrontMatterAll_UnusableInput covers inputs that yield no
+// symbols, title, or kinds at all.
+func TestFrontMatterAll_UnusableInput(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct{ name, src string }{
+		{"nil input", ""},
+		{"invalid yaml", "---\nthis: is\n  not: valid yaml\nxx: [\n---\n"},
+		{"tagged scalar document", "---\n!!invalid\n---\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			syms, title, kinds := frontMatterAll("a.md", []byte(tc.src))
+			assert.Nil(t, syms)
+			assert.Empty(t, title)
+			assert.Nil(t, kinds)
+		})
+	}
+}
 
-	syms, title, kinds := frontMatterAll("a.md", nil)
-	assert.Nil(t, syms)
+// TestFrontMatterAll_MissingTitleAndKinds covers a mapping with
+// neither key: the outline symbol survives, title and kinds do not.
+func TestFrontMatterAll_MissingTitleAndKinds(t *testing.T) {
+	t.Parallel()
+	syms, title, kinds := frontMatterAll("a.md", []byte("---\nfoo: bar\n---\n"))
+	require.Len(t, syms, 1)
+	assert.Equal(t, "foo", syms[0].Name)
 	assert.Empty(t, title)
 	assert.Nil(t, kinds)
+}
 
-	syms, title, kinds = frontMatterAll("a.md",
-		[]byte("---\nthis: is\n  not: valid yaml\nxx: [\n---\n"))
-	assert.Nil(t, syms)
+// TestFrontMatterAll_Kinds checks the kinds list against what
+// lint.ParseFrontMatterKinds (a []string decode) would report.
+func TestFrontMatterAll_Kinds(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, src string
+		want      []string
+	}{
+		{"non-list value", "kinds: hello", nil},
+		{"typed scalars kept as text", "kinds:\n  - a\n  - 42\n  - b", []string{"a", "42", "b"}},
+		{"mapping entry rejects the list", "kinds:\n  - a\n  - {x: y}", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, kinds := frontMatterAll("a.md", []byte("---\n"+tc.src+"\n---\n"))
+			assert.Equal(t, tc.want, kinds)
+		})
+	}
+}
+
+// TestFrontMatterAll_Title checks the title text for each scalar
+// shape. Typed scalars keep their source text; the removed
+// frontMatterScalar formatted a timestamp as RFC 3339 instead.
+func TestFrontMatterAll_Title(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{"non-scalar", "title: [a, b]", ""},
+		{"null", "title: null", ""},
+		{"tilde", "title: ~", ""},
+		{"empty", "title:", ""},
+		{"block scalar collapses whitespace", "title: |\n  multi\n  line", "multi line"},
+		{"int", "title: 42", "42"},
+		{"float", "title: 3.14", "3.14"},
+		{"uint64", "title: 18446744073709551615", "18446744073709551615"},
+		{"bool", "title: true", "true"},
+		{"timestamp", "title: 2024-01-15", "2024-01-15"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, title, _ := frontMatterAll("a.md", []byte("---\n"+tc.src+"\n---\n"))
+			assert.Equal(t, tc.want, title)
+		})
+	}
+}
+
+// TestFrontMatterAll_DuplicateKeys: the engine's decoders reject a
+// duplicate mapping key, so the index derives no title or kinds
+// from such a block but still outlines every key.
+func TestFrontMatterAll_DuplicateKeys(t *testing.T) {
+	t.Parallel()
+	syms, title, kinds := frontMatterAll("a.md",
+		[]byte("---\ntitle: hi\ntitle: bye\nkinds: [a]\nkinds: [b]\n---\n"))
+	assert.Len(t, syms, 4)
 	assert.Empty(t, title)
 	assert.Nil(t, kinds)
-
-	_, _, _ = frontMatterAll("a.md", []byte("---\n!!invalid\n---\n"))
-
-	// Missing title and kinds keys.
-	_, title, kinds = frontMatterAll("a.md", []byte("---\nfoo: bar\n---\n"))
-	assert.Empty(t, title)
-	assert.Nil(t, kinds)
-
-	// Non-list kinds value.
-	_, _, kinds = frontMatterAll("a.md", []byte("---\nkinds: hello\n---\n"))
-	assert.Empty(t, kinds)
-
-	// Mixed kinds list: non-string elements are skipped.
-	_, _, kinds = frontMatterAll("a.md",
-		[]byte("---\nkinds:\n  - a\n  - 42\n  - b\n---\n"))
-	assert.Equal(t, []string{"a", "b"}, kinds)
-
-	// Non-scalar title is ignored; null title yields no text.
-	_, title, _ = frontMatterAll("a.md", []byte("---\ntitle: [a, b]\n---\n"))
-	assert.Empty(t, title)
-
-	// Numeric title keeps its source text.
-	_, title, _ = frontMatterAll("a.md", []byte("---\ntitle: 42\n---\n"))
-	assert.Equal(t, "42", title)
-
-	// No trailing newline after the closing delimiter.
-	_, title, _ = frontMatterAll("a.md", []byte("---\ntitle: hi\n---"))
-	assert.Equal(t, "hi", title)
 }
 
 // TestFrontMatterKindsList_NonSequence covers the
@@ -94,9 +140,9 @@ func TestFrontMatterKindsList_NonSequence(t *testing.T) {
 		"scalar value short-circuits to nil — the front-matter walk")
 }
 
-// TestFrontMatterKindsList_NonScalarItem covers the
-// `item.Kind != ScalarNode` skip branch — a mapping entry in a
-// kinds: list is filtered out without crashing.
+// TestFrontMatterKindsList_NonScalarItem covers the decode-error
+// branch: a mapping entry in a kinds: list fails the []string
+// decode, so no kinds apply (lint.ParseFrontMatterKinds errors).
 func TestFrontMatterKindsList_NonScalarItem(t *testing.T) {
 	t.Parallel()
 	mapping := &yaml.Node{Kind: yaml.MappingNode}
@@ -105,21 +151,7 @@ func TestFrontMatterKindsList_NonScalarItem(t *testing.T) {
 		Kind:    yaml.SequenceNode,
 		Content: []*yaml.Node{mapping, str},
 	}
-	got := frontMatterKindsList(seq)
-	assert.Equal(t, []string{"ok"}, got)
-}
-
-// TestFrontMatterKindsList_NonStringTaggedItem covers the
-// `item.Tag != "" && item.Tag != "!!str"` skip branch — a YAML
-// integer in a kinds: list is filtered out so callers see only
-// string entries (matches the previous map[string]any path that
-// dropped non-strings via type assertion).
-func TestFrontMatterKindsList_NonStringTaggedItem(t *testing.T) {
-	t.Parallel()
-	// `- 42` in YAML resolves to Tag "!!int"; `- "real"` is "!!str".
-	src := []byte("---\nkinds:\n  - 42\n  - real\n---\n")
-	_, _, kinds := frontMatterAll("a.md", src)
-	assert.Equal(t, []string{"real"}, kinds)
+	assert.Nil(t, frontMatterKindsList(seq))
 }
 
 // TestRefDefRegexpMatches covers the exported wrapper that lets the

@@ -13,6 +13,31 @@ import (
 // YAML decoders ParseFrontMatterKinds / ParseFrontMatterFields are
 // tested below.
 
+func TestFrontMatterYAML(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"nil", "", ""},
+		{"typical block", "---\ntitle: hi\n---\n", "title: hi\n"},
+		{"empty block", "---\n---\n", ""},
+		{
+			"inner fence in block scalar kept",
+			"---\nnotes: |\n  a\n  ---\n  b\n---\n",
+			"notes: |\n  a\n  ---\n  b\n",
+		},
+		{"no delimiters passes through", "title: hi\n", "title: hi\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, string(FrontMatterYAML([]byte(tt.input))))
+		})
+	}
+}
+
 func TestParseFrontMatterKinds(t *testing.T) {
 	tests := []struct {
 		name  string
