@@ -66,8 +66,9 @@ func soleParagraph(doc ast.Node, n int) bool {
 var noGlue = func(string) bool { return false }
 
 // blockStartCases hold one case per kind of block start that can
-// interrupt a paragraph. Each width makes plain greedy wrapping put the
-// marker at the start of a line; want is the guarded layout.
+// interrupt a paragraph, in CommonMark or in an extension (tables,
+// footnotes, definition lists). Each width makes plain greedy wrapping
+// put the marker at the start of a line; want is the guarded layout.
 var blockStartCases = []struct {
 	name   string
 	tokens []string
@@ -145,9 +146,9 @@ var blockStartCases = []struct {
 // kind of block start that can interrupt a paragraph (blockStartCases).
 // Each case first checks that greedy wrapping splits the paragraph at
 // its width. The guarded layout differs, keeps every line within width,
-// and parses as the one paragraph it came from. Each want is exact, so
-// removing any kind from lint.InterruptsParagraph changes the output and
-// fails its case.
+// and parses as the one paragraph it came from, under the canonical and
+// the flavor parser. Each want is exact, so removing any kind from the
+// guard (unsafeLine) changes the output and fails its case.
 func TestWrapTokens_BlockStartNeverLeadsALine(t *testing.T) {
 	for _, tc := range blockStartCases {
 		t.Run(tc.name, func(t *testing.T) {
