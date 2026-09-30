@@ -200,11 +200,11 @@ const (
 	alignRight        // ---:
 )
 
-// isSeparatorCell reports whether cell is a delimiter-row cell: an optional
+// IsSeparatorCell reports whether cell is a delimiter-row cell: an optional
 // ':', one or more '-', then an optional ':'. It replaces a regexp of the
 // same shape so the per-cell check runs without the regexp engine
 // (docs/development/high-performance-go.md, "regexp for a literal").
-func isSeparatorCell[T ~string | ~[]byte](cell T) bool {
+func IsSeparatorCell[T ~string | ~[]byte](cell T) bool {
 	i, n := 0, len(cell)
 	if i < n && cell[i] == ':' {
 		i++
@@ -300,7 +300,7 @@ func isSeparatorLine(line []byte) bool {
 		if len(cell) == 0 {
 			continue
 		}
-		if !isSeparatorCell(cell) {
+		if !IsSeparatorCell(cell) {
 			return false
 		}
 		hasCells = true
@@ -587,7 +587,7 @@ func isSeparatorRow(cells []string) bool {
 	}
 	for _, cell := range cells {
 		cell = strings.TrimSpace(cell)
-		if !isSeparatorCell(cell) {
+		if !IsSeparatorCell(cell) {
 			return false
 		}
 	}

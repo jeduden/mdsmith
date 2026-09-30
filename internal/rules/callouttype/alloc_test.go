@@ -38,3 +38,9 @@ func TestIsAllowed_Semantics(t *testing.T) {
 	lowerLong := setutil.FromStrings([]string{strings.ToLower(long)})
 	assert.True(t, isAllowed(lowerLong, long))
 }
+
+func TestIsAllowed_NonASCIITokenFallsBack(t *testing.T) {
+	allowed := setutil.FromStrings([]string{"é"})
+	assert.True(t, isAllowed(allowed, "\u00c9"))
+	assert.False(t, isAllowed(allowed, "\u00c8"))
+}

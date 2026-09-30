@@ -221,29 +221,6 @@ type tableRow struct {
 	isSeparator bool
 }
 
-// isSeparatorCell reports whether cell is a delimiter-row cell: an optional
-// ':', one or more '-', then an optional ':'. It replaces a regexp of the
-// same shape so the per-cell check runs without the regexp engine
-// (docs/development/high-performance-go.md, "regexp for a literal").
-func isSeparatorCell[T ~string | ~[]byte](cell T) bool {
-	i, n := 0, len(cell)
-	if i < n && cell[i] == ':' {
-		i++
-	}
-	dashes := 0
-	for i < n && cell[i] == '-' {
-		i++
-		dashes++
-	}
-	if dashes == 0 {
-		return false
-	}
-	if i < n && cell[i] == ':' {
-		i++
-	}
-	return i == n
-}
-
 // parseTables uses tablefmt.ScanTableBoundaries to locate table blocks,
 // then parses each block's cells into the tablereadability-local table
 // type. Scanning and cell-parsing are separated so the scanner lives in
@@ -596,7 +573,7 @@ func isSeparatorRow(cells [][]byte) bool {
 		return false
 	}
 	for _, cell := range cells {
-		if !isSeparatorCell(bytes.TrimSpace(cell)) {
+		if !tablefmt.IsSeparatorCell(bytes.TrimSpace(cell)) {
 			return false
 		}
 	}

@@ -15,7 +15,7 @@ func TestIsSeparatorCell_MatchesRegexp(t *testing.T) {
 		"", ":", "::", "-", "--", ":-", "-:", ":-:", ":--:", "---", ":---:",
 		"-:-", "- -", " -", "- ", ":-:-", "a", "-a", "::-", "-::", ":-x", "–",
 	} {
-		assert.Equal(t, ref.MatchString(c), isSeparatorCell([]byte(c)), "bytes %q", c)
-		assert.Equal(t, ref.MatchString(c), isSeparatorCell(c), "string %q", c)
+		assert.Equal(t, ref.MatchString(c), IsSeparatorCell([]byte(c)), "bytes %q", c)
+		assert.Equal(t, ref.MatchString(c), IsSeparatorCell(c), "string %q", c)
 	}
 }

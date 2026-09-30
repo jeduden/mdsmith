@@ -52,8 +52,8 @@ func (r *Rule) Category() string { return "structural" }
 func (r *Rule) EnabledByDefault() bool { return false }
 
 // builtInTypes lists every base Obsidian callout type and its
-// aliases. Lowercased; lookup uses strings.ToLower on the captured
-// token. Keep this map in sync with Obsidian's published
+// aliases. Lowercased; isAllowed case-folds the captured
+// token before lookup. Keep this map in sync with Obsidian's published
 // vocabulary; the diagnostic message orders names via
 // validTypeOrder below, so map iteration order does not affect
 // output stability.

@@ -21,8 +21,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"unicode"
-	"unicode/utf8"
 )
 
 // SymbolKind enumerates the four symbol shapes the index recognizes.
@@ -854,31 +852,38 @@ func nameMatches(name, q string) bool {
 	return containsFold(name, q)
 }
 
-// containsFold reports whether lower-cased q is a substring of name under
-// simple case folding, without allocating a lower-cased copy of name.
-// q must already be lower-cased.
+// containsFold reports whether q, already lower-cased, is a substring of
+// name under case folding. When both are ASCII it folds in place with no
+// allocation; otherwise it takes the strings.ToLower path, because
+// lower-casing can change byte length for non-ASCII runes.
 func containsFold(name, q string) bool {
-	if len(q) > len(name) {
-		return false
+	if !isASCII(name) || !isASCII(q) {
+		return strings.Contains(strings.ToLower(name), q)
 	}
 	for i := 0; i+len(q) <= len(name); i++ {
-		if hasPrefixFoldAt(name[i:], q) {
+		j := 0
+		for j < len(q) {
+			c := name[i+j]
+			if 'A' <= c && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			if c != q[j] {
+				break
+			}
+			j++
+		}
+		if j == len(q) {
 			return true
 		}
 	}
 	return false
 }
 
-func hasPrefixFoldAt(s, q string) bool {
-	for _, qr := range q {
-		if s == "" {
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
 			return false
 		}
-		r, size := utf8.DecodeRuneInString(s)
-		if unicode.ToLower(r) != qr {
-			return false
-		}
-		s = s[size:]
 	}
 	return true
 }

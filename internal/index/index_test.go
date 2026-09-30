@@ -628,4 +628,9 @@ func TestNameMatches_Semantics(t *testing.T) {
 	assert.False(t, nameMatches("Apple", "pie"))
 	assert.False(t, nameMatches("ap", "apple"))
 	assert.True(t, nameMatches("Überblick", "überblick"))
+	// Lower-casing lengthens these (2 bytes -> 3), so byte-length guards
+	// on the raw name would wrongly reject them.
+	assert.True(t, nameMatches("\u023a", "\u2c65"))
+	assert.True(t, nameMatches("\u023ax", "\u2c65x"))
+	assert.False(t, nameMatches("日本", "\ufffd"))
 }

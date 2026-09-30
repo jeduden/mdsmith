@@ -663,3 +663,14 @@ func TestFixSpans_SingleAllocWithoutNesting(t *testing.T) {
 	assert.LessOrEqual(t, allocs, 1.0)
 	assert.Equal(t, "a [x] b [y] c\n", string(fixSpans(src, spans, 0, len(src))))
 }
+
+func TestFix_DoesNotAliasSource(t *testing.T) {
+	for _, src := range []string{"plain text\n", "a [ x ] b\n"} {
+		f, err := lint.NewFile("t.md", []byte(src))
+		require.NoError(t, err)
+		out := (&Rule{}).Fix(f)
+		require.NotEmpty(t, out)
+		out[0] = 'Z'
+		assert.Equal(t, src, string(f.Source))
+	}
+}
