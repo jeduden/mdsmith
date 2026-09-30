@@ -126,7 +126,15 @@ workspace. It is narrowed to `false`.
 Composition takes the strictest setting. The composite
 stays closed unless every composed kind opens. Under
 `extends:` the child wins instead. Both match how
-`closed:` already behaves.
+`closed:` already behaves. When one kind's `false` is
+overruled this way, the undeclared-key diagnostic says
+so, and `mdsmith kinds show` prints the effective value
+and the kind in the `extends:` chain that set it.
+
+A `proto.md` cannot set the key: each of its
+front-matter keys names a document field. Both proto.md
+parsers report `frontmatter-closed:` as an invalid
+schema rather than reading it as a field.
 
 **Design decision (feature b).** A resolved
 `\#(fmvar(...))` value is substituted into the glob
@@ -143,12 +151,20 @@ same files. A malformed `fmvar` opener is therefore
 not a config error; the mismatch hint names it.
 
 An unquoted YAML date substitutes as written,
-`YYYY-MM-DD`, and a timestamp as RFC 3339. The fix
-sits in `fieldinterp.Stringify`, so catalog rows and
-heading sync render dates the same way. A catalog
-`sort:` keys a timestamp on its instant
+`YYYY-MM-DD`. Any other timestamp substitutes as
+RFC 3339, a normalised form: midnight UTC renders as
+the date, and a zone-less time gains `Z`. The fix sits
+in `fieldinterp.Stringify`, so catalog rows, heading
+sync and `regex:` fmvar render dates the same way. A
+catalog `sort:` keys a timestamp on its instant
 (`fieldinterp.ResolveSortKey`), not on that text, so
-mixed offsets still order chronologically.
+mixed offsets still order chronologically. A quoted
+RFC 3339 string with a clock part is keyed the same
+way; other strings sort as text.
+
+On Windows a `path-pattern:` may use `\` separators.
+Each is read as `/`, except the `\` that opens a
+reference.
 
 The mismatch hint shows each value as written, not
 in the escaped form the matcher sees.
