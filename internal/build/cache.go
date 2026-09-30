@@ -1,12 +1,15 @@
 package build
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -72,15 +75,62 @@ func LoadCache(root string) (*Cache, error) {
 }
 
 // outputSetKey joins a sorted set of output paths into a single
-// length-framed key so two different sets cannot collide.
+// length-framed key so two different sets cannot collide. Builds the
+// key with strconv and strings.Builder rather than fmt.Fprintf, whose
+// variadic arguments box each path into an interface, one allocation
+// per path (docs/development/high-performance-go.md, "strconv over
+// fmt.Sprintf").
 func outputSetKey(paths []string) string {
 	sorted := append([]string(nil), paths...)
 	sort.Strings(sorted)
 	var b strings.Builder
 	for _, p := range sorted {
-		fmt.Fprintf(&b, "%d:%s|", len(p), p)
+		b.WriteString(strconv.Itoa(len(p)))
+		b.WriteByte(':')
+		b.WriteString(p)
+		b.WriteByte('|')
 	}
 	return b.String()
+}
+
+// sortEntriesByOutputKey orders entries by output-set key for stable
+// diffs. Each entry's key is computed once up front rather than inside
+// the sort's comparator: outputSetKey itself sorts and joins the
+// entry's full output-path set, so recomputing it on both sides of
+// every comparison turned an O(n log n) sort into O(n log n) key
+// rebuilds (docs/development/high-performance-go.md, "memoize per-
+// input computations"). slices.SortStableFunc also drops the
+// sort.SliceStable reflect.Swapper cost ("reflect in hot paths").
+//
+// The sort itself moves only a (key, index) pair per swap rather than a
+// full CacheEntry (whose Outputs/Inputs slice headers still cost a copy
+// per swap) — entries are reordered in a single final pass instead.
+//
+// A cache of fewer than 2 entries is already sorted, and the early
+// return skips every outputSetKey call entirely, not just the sort's
+// own bookkeeping — outputPaths and outputSetKey each allocate (a path
+// slice, a sorted copy, and the joined key string), so computing a key
+// nothing will ever compare against is real, measurable waste.
+func sortEntriesByOutputKey(entries []CacheEntry) {
+	if len(entries) < 2 {
+		return
+	}
+	type keyedIndex struct {
+		key string
+		idx int
+	}
+	keyed := make([]keyedIndex, len(entries))
+	for i, e := range entries {
+		keyed[i] = keyedIndex{key: outputSetKey(e.outputPaths()), idx: i}
+	}
+	slices.SortStableFunc(keyed, func(a, b keyedIndex) int {
+		return cmp.Compare(a.key, b.key)
+	})
+	sorted := make([]CacheEntry, len(entries))
+	for i, k := range keyed {
+		sorted[i] = entries[k.idx]
+	}
+	copy(entries, sorted)
 }
 
 // Lookup returns the entry whose output-path set equals the given set
@@ -123,10 +173,7 @@ func (c *Cache) Save(root string) error {
 	if c.Version == 0 {
 		c.Version = CacheVersion
 	}
-	sort.SliceStable(c.Entries, func(i, j int) bool {
-		return outputSetKey(c.Entries[i].outputPaths()) <
-			outputSetKey(c.Entries[j].outputPaths())
-	})
+	sortEntriesByOutputKey(c.Entries)
 
 	dir := filepath.Join(root, ".mdsmith")
 	if err := os.MkdirAll(dir, 0o755); err != nil {

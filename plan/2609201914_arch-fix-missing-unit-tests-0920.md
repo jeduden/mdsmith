@@ -78,61 +78,75 @@ trivial accessor.
    equals `start`, which is kept. Last, thread the returned
    index through calls with non-decreasing `start`.
 2. Add a test file with the `//go:build js && wasm`
-   constraint, such as `cmd/mdsmith-wasm/main_js_test.go`.
-   Put `TestResolveVersion`, `TestWorkspaceFromJS`,
+   constraint, such as `cmd/mdsmith-wasm/bridge_test.go`.
+   Avoid a `_js` or `_wasm` file-name suffix; it adds an
+   implicit constraint on top of the build tag. Put
+   `TestResolveVersion`, `TestWorkspaceFromJS`,
    `TestURIAndSource`, and `TestAllStrings` in it. Build
    inputs with `js.ValueOf`. Do not move or change the
    helpers.
 
-  - `TestResolveVersion`: set the package-level `version`
-     and restore it with `t.Cleanup`; the set value wins.
-     Then, with `version` empty, the result is non-empty.
-     Do not mark the test `t.Parallel`, since it writes a
-     package variable. A `go test` binary always carries
-     build info with `Main.Version` set to `(devel)`, so the
-     final `(devel)` return is not reachable from a test.
-     Do not add a seam to reach it.
-  - `TestWorkspaceFromJS`: a non-object gives `nil`; an
-     object keeps its string entries and drops a non-string
-     entry.
-  - `TestURIAndSource`: too few args and a non-string arg
-     each return `ok == false`; two strings return both.
-  - `TestAllStrings`: no args and all strings return `true`;
-     one non-string returns `false`.
+   `TestResolveVersion` sets the package-level `version` and
+   restores it with `t.Cleanup`; the set value wins. With
+   `version` empty, the result must equal the
+   `Main.Version` that `debug.ReadBuildInfo` reports. On Go
+   1.25.11 that is `(devel)` in a test binary, both native
+   and `js/wasm`, even inside this Git checkout. So the final
+   `(devel)` fallback is not reachable from a test; do not
+   add a seam for it. The test writes a package variable, so
+   it must not call `t.Parallel`.
+
+   `TestWorkspaceFromJS`: a non-object gives `nil`, and an
+   object keeps its string entries and drops a non-string
+   entry. `TestURIAndSource`: too few args and a non-string
+   arg each return `ok == false`, and two strings return
+   both. `TestAllStrings`: no args and all strings return
+   `true`, and one non-string returns `false`.
 
 3. Run the task 2 tests in CI. Add a step to the `wasm` job
    in [ci.yml][ci], which already installs Node, next to the
-   existing "Vet the WASM bridge" step:
+   existing "Vet the WASM bridge" step. The test names are
+   listed once, and both the `-run` filter and the pass count
+   come from that list:
 
    ```bash
+   tests='ResolveVersion|WorkspaceFromJS|URIAndSource|AllStrings'
    env -i PATH="$PATH" HOME="$HOME" \
      GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)" \
+     GOTOOLCHAIN="$(go env GOTOOLCHAIN)" GOFLAGS="$(go env GOFLAGS)" \
      GOOS=js GOARCH=wasm go test -v \
      -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" \
-     -run '^Test(ResolveVersion|WorkspaceFromJS|URIAndSource|AllStrings)$' \
+     -run "^Test($tests)\$" \
      ./cmd/mdsmith-wasm/ > wasm-bridge.log || { cat wasm-bridge.log; exit 1; }
    cat wasm-bridge.log
-   test "$(grep -c '^--- PASS: Test' wasm-bridge.log)" -eq 4
+   want=$(printf '%s\n' "$tests" | tr '|' '\n' | wc -l)
+   test "$(grep -c '^--- PASS: Test' wasm-bridge.log)" -eq "$want"
    ```
 
-   Each part of the command is there for a reason:
+   `env -i` is needed because `wasm_exec.js` caps arguments
+   plus environment at about 8 KB. With a full shell
+   environment the test binary exits with "total length of
+   command line and environment variables exceeds limit". The
+   step passes through only what `go test` needs: `PATH`,
+   `HOME`, the two caches, `GOTOOLCHAIN` (so the job's
+   `setup-go` toolchain is used, not a download), and
+   `GOFLAGS`.
 
-  - `env -i`: `wasm_exec.js` caps arguments plus environment
-     at about 8 KB. With a full shell environment the test
-     binary exits with "total length of command line and
-     environment variables exceeds limit".
-  - The `grep -c` check: a `-run` filter that matches no
-     test prints `[no tests to run]` and exits 0. The check
-     fails the step unless all four tests ran and passed.
-  - The `go_js_wasm_exec` path: [go.mod][gomod] pins Go
-     1.25.11, and the job's `setup-go` reads it. Go 1.24
-     moved the script from `misc/wasm` to `lib/wasm`.
-  - The `-run` filter: [methods_test.go][wasm-methods],
-     [size_test.go][wasm-size], and
-     [smoke_test.go][wasm-smoke] have no build constraint, so
-     they also compile under `js/wasm`. The filter keeps them
-     from running there; the size and smoke tests shell out
-     to `go` and `node`.
+   The count check is there because a `-run` filter that
+   matches no test prints `[no tests to run]` and exits 0.
+   The step fails unless every listed test ran and passed.
+
+   The `go_js_wasm_exec` path depends on the Go version.
+   [go.mod][gomod] pins Go 1.25.11, and the job's `setup-go`
+   reads it. Go 1.24 moved the script from `misc/wasm` to
+   `lib/wasm`.
+
+   The `-run` filter matters because
+   [methods_test.go][wasm-methods], [size_test.go][wasm-size],
+   and [smoke_test.go][wasm-smoke] have no build constraint,
+   so they also compile under `js/wasm`. The filter keeps them
+   from running there; the size and smoke tests shell out to
+   `go` and `node`.
 
 4. Do not delete or duplicate the tests named in the
    Background section. They cover the public contract and
