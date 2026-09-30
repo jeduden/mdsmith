@@ -27,11 +27,12 @@ code 2.
 
 ## What it rewrites
 
-- **Incoming links.** Every inline `[text](src)` in the workspace
-  is repointed to `dst`. A `?query` or `#anchor` after the path
-  is kept. The path token is recomputed relative to each
-  referencing file's own directory, preserving its spelling — an
-  explicit `./x` keeps the prefix.
+- **Incoming links.** Every inline `[text](src)` or
+  `![alt](src)` in the workspace is repointed to `dst`. A
+  `?query` or `#anchor` after the path is kept. The path token
+  is recomputed relative to each referencing file's own
+  directory, preserving its spelling — an explicit `./x` keeps
+  the prefix.
 - **Ref-def destinations.** A `[label]: src` definition is
   repointed the same way, including one with a `?query`.
 - **Outbound links, images, and ref-defs inside the moved
@@ -99,9 +100,14 @@ cross-directory move, check them by hand.
 - **Ambiguous wikilinks.** When another file shares the old or
   the new basename stem, no `[[stem]]` is rewritten, because the
   rewrite could point it at the wrong file.
-- **Non-Markdown files.** The index tracks links between
-  Markdown files only. Moving an image or another non-Markdown
-  file may leave the links and images that name it stale.
+- **Footnote text that is a lone link.** mdsmith reads
+  `[^1]: [z](a.md)` as a reference definition whose destination
+  is `[z](a.md)`, so the link inside it is not repointed. Longer
+  footnote text, such as `[^1]: See [z](a.md).`, is repointed.
+- **Embeds of a renamed non-Markdown file.** Moving an image
+  repoints the links and images that name it. A wikilink embed
+  such as `![[diagram.png]]` is left alone, so it goes stale
+  when the move changes the file name.
 
 ## How the file is moved
 
