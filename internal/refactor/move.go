@@ -16,6 +16,7 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 // ErrTraversalPath is returned when a move source or destination
@@ -276,6 +277,11 @@ type destResolver struct {
 // names no workspace file and the whole path does, the whole path is
 // the target, so a move never truncates a real file name. The rewrite
 // then escapes that `?` as `%3F`, which both readings agree on.
+//
+// ok is also false when the path token holds a backslash escape or an
+// entity (see markupEscaped): a renderer reads `a\_b.md` as `a_b.md`
+// and `a&amp;b.md` as `a&b.md`, which neither the index nor a rewrite
+// decodes, so the token is left as written.
 func (r *destResolver) target(refFile string, dest []byte) (destRef, bool) {
 	t, ok := linkgraph.ParseTargetBytes(dest)
 	if !ok || t.LocalAnchor {
@@ -285,18 +291,34 @@ func (r *destResolver) target(refFile string, dest []byte) (destRef, bool) {
 	if h := bytes.IndexByte(dest, '#'); h >= 0 {
 		tokLen = h
 	}
-	tgt := linkgraph.ResolveRelTarget(refFile, t.Path)
+	tgt, p := linkgraph.ResolveRelTarget(refFile, t.Path), t.Path
 	if q := bytes.IndexByte(dest[:tokLen], '?'); q >= 0 {
 		lit, litTgt := literalTarget(refFile, dest[:tokLen])
 		if litTgt != "" && !r.exists(tgt) && r.exists(litTgt) {
-			return destRef{target: litTgt, path: lit, tokLen: tokLen}, true
+			tgt, p = litTgt, lit
+		} else {
+			tokLen = q
 		}
-		tokLen = q
 	}
-	if tgt == "" {
+	if tgt == "" || markupEscaped(dest[:tokLen], tokLen < len(dest)) {
 		return destRef{}, false
 	}
-	return destRef{target: tgt, path: t.Path, tokLen: tokLen}, true
+	return destRef{target: tgt, path: p, tokLen: tokLen}, true
+}
+
+// markupEscaped reports whether a renderer reads tok, a destination's
+// path token, as other bytes. goldmark resolves a backslash before
+// ASCII punctuation and every entity in a destination before it writes
+// the link out; a `\` before any other byte, as in a Windows-style
+// `sub\a.md`, is kept. more is true when a `?` or `#` follows tok: a
+// `\` or `&` just before it escapes that byte or opens a reference
+// such as `&#35;`.
+func markupEscaped(tok []byte, more bool) bool {
+	if n := len(tok); more && n > 0 && (tok[n-1] == '\\' || tok[n-1] == '&') {
+		return true
+	}
+	v := util.ResolveEntityNames(util.ResolveNumericReferences(util.UnescapePunctuations(tok)))
+	return !bytes.Equal(v, tok)
 }
 
 // literalTarget decodes pre, a destination's path and query read as

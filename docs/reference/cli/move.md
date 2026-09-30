@@ -93,9 +93,10 @@ cross-directory move, check them by hand.
   file.
 - **Raw HTML links.** `<a href="a.md">` and `<img src="a.png">`
   are not Markdown destinations.
-- **Backslash escapes and entities.** A destination spelled with
-  one, such as `a\_b.md` or `a&amp;b.md`, is not decoded, so it
-  does not name `a_b.md` or `a&b.md` and is left as written.
+- **Backslash escapes and entities.** A path spelled with one,
+  such as `a\_b.md` or `a&amp;b.md`, is left as written, in the
+  moved file and in the files that point at it. A renderer reads
+  it as `a_b.md` or `a&b.md`, which the move does not decode.
   Write the name out, or percent-escape it as in `a%26b.md`.
 - **Ambiguous wikilinks.** When another file shares the old or
   the new basename stem, no `[[stem]]` is rewritten, because the

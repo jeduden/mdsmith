@@ -433,11 +433,12 @@ func TestDestLocator_SkipsWhatItCannotFind(t *testing.T) {
 	assert.Empty(t, d.dests, "other bytes after the `]:`")
 }
 
-// TestDestResolverTarget pins how a destination is read: decoded, with
-// the query and fragment outside the path token, and a literal `?`
+// TestDestResolver_Target pins how a destination is read: decoded,
+// with the query and fragment outside the path token, and a literal `?`
 // kept in the path only when that names a file and the query-stripped
-// path does not.
-func TestDestResolverTarget(t *testing.T) {
+// path does not. A path token with a backslash escape or an entity is
+// not read at all, while a Windows-style `\` separator is.
+func TestDestResolver_Target(t *testing.T) {
 	ws := stubWorkspace{files: []string{"what?.md", "both", "both?.md"}}
 	for dest, want := range map[string]destRef{
 		"a.md#f":         {target: "a.md", path: "a.md", tokLen: 4},
@@ -447,6 +448,7 @@ func TestDestResolverTarget(t *testing.T) {
 		"what%3F.md":     {target: "what?.md", path: "what?.md", tokLen: 10},
 		"both?.md":       {target: "both", path: "both", tokLen: 4},
 		"nope.md?100%":   {target: "nope.md", path: "nope.md", tokLen: 7},
+		`sub\a.md#s\_1`:  {target: "sub/a.md", path: `sub\a.md`, tokLen: 8},
 	} {
 		t.Run(dest, func(t *testing.T) {
 			r := &destResolver{ws: ws, src: "a.md"}
@@ -455,8 +457,11 @@ func TestDestResolverTarget(t *testing.T) {
 			assert.Equal(t, want, got)
 		})
 	}
-	for _, dest := range []string{"https://x.io/a.md", "#top", "../x.md", "../what?.md"} {
-		t.Run(dest+" names no workspace file", func(t *testing.T) {
+	for _, dest := range []string{
+		"https://x.io/a.md", "#top", "../x.md", "../what?.md",
+		`a\_b.md`, "a&amp;b.md", "a&#35;b.md", `what\?.md`,
+	} {
+		t.Run(dest+" is not read", func(t *testing.T) {
 			r := &destResolver{ws: ws, src: "a.md"}
 			_, ok := r.target("a.md", []byte(dest))
 			assert.False(t, ok)
