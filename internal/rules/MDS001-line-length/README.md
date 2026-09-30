@@ -117,8 +117,8 @@ U. S. A. with real care.
 ```
 
 Reflow keeps each paragraph one paragraph. No rewrapped line starts with syntax
-that opens a new block in CommonMark or a common extension. This holds whatever
-`markdown-flavor` is set to:
+that opens a block in CommonMark or in the GFM table, footnote, or definition
+list extensions. Reflow avoids these whatever `markdown-flavor` is set to:
 
 - an ATX heading: one to six `#` followed by a space, a tab, or the line end
 - a thematic break, such as `***`, `- - -`, or `_ _ _`
@@ -130,9 +130,10 @@ that opens a new block in CommonMark or a common extension. This holds whatever
 - a GFM table delimiter row, such as `|-|-|`, `--- | ---`, or `:--|--:`
 - a footnote definition `[^label]:`, or a definition `:` then a space or tab
 
-CommonMark reads a list marker with nothing after it as paragraph text, but
-some renderers read it as an empty list item, so reflow avoids it too. No line
-but the last ends in `\`, which would be a hard line break.
+A bare list marker is paragraph text to CommonMark, but some renderers read it
+as an empty list item. No line but the last ends in `\`, a hard line break.
+Block starts that only MyST has, such as `%` (a comment), `:::`, `+++`, or
+`(label)=`, are not avoided, so reflow can create one in a MyST file.
 
 If a plain word wrap would start a line with one of these, reflow moves the
 word before it down to lead that line instead. At fifty columns, a plain wrap of

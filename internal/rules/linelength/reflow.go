@@ -278,7 +278,9 @@ func oneWord(line []byte) bool {
 // end the paragraph. That is a CommonMark block start
 // (lint.InterruptsParagraph), a block start of a Markdown extension
 // whatever flavor is configured (lint.ExtensionInterruptsParagraph), or
-// a bare list marker (isBareListMarker).
+// a bare list marker (isBareListMarker). Block starts that only MyST
+// has, such as "%" or ":::", are not covered: the rule does not see the
+// configured flavor, and the MDS001 README says so.
 func unsafeLine(line []byte) bool {
 	return lint.InterruptsParagraph(line) || lint.ExtensionInterruptsParagraph(line) ||
 		isBareListMarker(line)
