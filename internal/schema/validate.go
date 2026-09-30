@@ -537,9 +537,21 @@ func schemaDiagFromCUEError(
 			d.Actual = "<extra field>"
 		}
 		d.Expected = "not declared in schema"
+		if sch.frontmatterClosedOverruled {
+			d.Hint = frontmatterStaysClosedHint
+		}
 	}
 	return d
 }
+
+// frontmatterStaysClosedHint explains an undeclared-key report on a
+// file whose composed kinds disagree on `frontmatter-closed:`. One
+// kind opened its front matter, but composition keeps the strictest
+// setting, and a kind that declares `frontmatter:` without the key is
+// closed by default.
+const frontmatterStaysClosedHint = "front matter stays closed: every " +
+	"kind composed for this file must set `frontmatter-closed: false` " +
+	"to open it"
 
 // schemaKeyForPath finds the Frontmatter map key (with the
 // optional "?" suffix preserved) that owns the given CUE error

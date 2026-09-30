@@ -174,6 +174,50 @@ func TestCompose_FrontmatterClosedStricterWins(t *testing.T) {
 		"one source leaving front matter closed keeps the composite closed")
 }
 
+// A kind that sets `frontmatter-closed: false` still sees an
+// undeclared key reported when another kind composed for the same
+// file leaves the key absent (closed by default). The diagnostic says
+// so, since the kind the reader edited is not the one that closed it.
+func TestCompose_ClosedDespiteAnOpenerSaysWhy(t *testing.T) {
+	open := false
+	a := &Schema{
+		Frontmatter:       map[string]string{"description": "string"},
+		FrontmatterClosed: &open,
+		Source:            "kind a",
+	}
+	b := &Schema{
+		Frontmatter: map[string]string{"model?": "string"},
+		Source:      "kind b",
+	}
+	out, err := Compose(a, b)
+	require.NoError(t, err)
+	doc := newDocFile(t, "a.prompt.md",
+		"---\ndescription: \"x\"\nextra: 1\n---\n# T\n")
+	diags := Validate(doc, out,
+		map[string]any{"description": "x", "extra": 1},
+		false, makeDiagForTest)
+	require.Len(t, diags, 1, "got %v", diagsMessages(diags))
+	assert.Contains(t, diags[0].Message, "extra: got 1, expected not declared in schema")
+	assert.Contains(t, diags[0].Message, frontmatterStaysClosedHint)
+}
+
+// With no source opening the front matter the diagnostic keeps its
+// historical one-line form: nothing was overruled, so there is
+// nothing to explain.
+func TestCompose_ClosedByEveryKindHasNoHint(t *testing.T) {
+	a := &Schema{Frontmatter: map[string]string{"description": "string"}, Source: "kind a"}
+	b := &Schema{Frontmatter: map[string]string{"model?": "string"}, Source: "kind b"}
+	out, err := Compose(a, b)
+	require.NoError(t, err)
+	doc := newDocFile(t, "a.prompt.md",
+		"---\ndescription: \"x\"\nextra: 1\n---\n# T\n")
+	diags := Validate(doc, out,
+		map[string]any{"description": "x", "extra": 1},
+		false, makeDiagForTest)
+	require.Len(t, diags, 1)
+	assert.NotContains(t, diags[0].Message, frontmatterStaysClosedHint)
+}
+
 func TestCompose_FrontmatterOpenWhenEverySourceOpens(t *testing.T) {
 	open := false
 	a := &Schema{
@@ -246,27 +290,31 @@ func TestComposeFrontmatterClosed(t *testing.T) {
 	open, closed := false, true
 	fm := map[string]string{"a": "string"}
 	cases := []struct {
-		name string
-		in   []*Schema
-		want bool
+		name      string
+		in        []*Schema
+		want      bool
+		overruled bool
 	}{
 		{"no declaring source keeps the closed default",
-			[]*Schema{{}}, true},
+			[]*Schema{{}}, true, false},
 		{"every declaring source opens",
-			[]*Schema{{Frontmatter: fm, FrontmatterClosed: &open}, {}}, false},
+			[]*Schema{{Frontmatter: fm, FrontmatterClosed: &open}, {}}, false, false},
 		{"an unset declaring source votes closed",
-			[]*Schema{{Frontmatter: fm, FrontmatterClosed: &open}, {Frontmatter: fm}}, true},
+			[]*Schema{{Frontmatter: fm, FrontmatterClosed: &open}, {Frontmatter: fm}}, true, true},
 		{"an explicit true wins",
 			[]*Schema{
 				{Frontmatter: fm, FrontmatterClosed: &closed},
 				{Frontmatter: fm, FrontmatterClosed: &open},
-			}, true},
+			}, true, true},
+		{"every declaring source closed overrules nothing",
+			[]*Schema{{Frontmatter: fm}, {Frontmatter: fm, FrontmatterClosed: &closed}}, true, false},
 	}
 	for _, tc := range cases {
 		out := &Schema{}
 		composeFrontmatterClosed(out, tc.in)
 		require.NotNil(t, out.FrontmatterClosed, tc.name)
 		assert.Equal(t, tc.want, *out.FrontmatterClosed, tc.name)
+		assert.Equal(t, tc.overruled, out.frontmatterClosedOverruled, tc.name)
 	}
 }
 

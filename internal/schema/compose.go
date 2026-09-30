@@ -163,9 +163,12 @@ func composeFrontmatter(out *Schema, schemas []*Schema) {
 // resolved the question for every input. With no declaring source the
 // value is the historical closed default, which is inert because the
 // composed schema then emits no front-matter constraint at all.
+//
+// When a source opened its front matter but the composite stays
+// closed, the result is marked overruled so the undeclared-key
+// diagnostic can explain it (frontmatterStaysClosedHint).
 func composeFrontmatterClosed(out *Schema, schemas []*Schema) {
-	closed := false
-	declared := false
+	closed, declared, opened := false, false, false
 	for _, s := range schemas {
 		if len(s.Frontmatter) == 0 {
 			continue
@@ -173,13 +176,15 @@ func composeFrontmatterClosed(out *Schema, schemas []*Schema) {
 		declared = true
 		if s.FrontmatterIsClosed() {
 			closed = true
-			break
+		} else {
+			opened = true
 		}
 	}
 	if !declared {
 		closed = true
 	}
 	out.FrontmatterClosed = &closed
+	out.frontmatterClosedOverruled = closed && opened
 }
 
 func composeFilename(out *Schema, schemas []*Schema) error {

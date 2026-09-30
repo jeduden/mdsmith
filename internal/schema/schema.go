@@ -92,6 +92,13 @@ type Schema struct {
 	// guard.
 	FrontmatterClosed *bool
 
+	// frontmatterClosedOverruled is set by Compose when a source
+	// opened its front matter (`frontmatter-closed: false`) but
+	// another source that declares front matter kept the composite
+	// closed. The undeclared-key diagnostic then says why, since the
+	// kind the reader opened is not the one that closed it.
+	frontmatterClosedOverruled bool
+
 	// Filename is a list of globs the document basename must match —
 	// the basename passes when it matches any one of them (OR
 	// semantics). A nil or empty slice means no filename constraint.

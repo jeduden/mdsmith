@@ -96,6 +96,24 @@ loosen another kind's contract. A kind with no
 `frontmatter:` map of its own — a sections-only or
 filename-only kind — casts no vote either way.
 
+A kind that declares `frontmatter:` but leaves
+`frontmatter-closed:` out counts as closed, since
+closed is the default. So to open a file's front
+matter, set `false` on every kind with a
+`frontmatter:` map that claims the file. When one
+kind opened it and another kept it closed, the
+undeclared-key report says so:
+
+```text
+extra: got 1, expected not declared in schema
+  (front matter stays closed: every kind composed
+  for this file must set `frontmatter-closed: false`
+  to open it)
+```
+
+`mdsmith kinds resolve <file>` lists the kinds that
+claim the file.
+
 Under `extends:` the rule is different: the child's
 explicit value wins, and a child that says nothing
 inherits the parent's. Inheritance is a
