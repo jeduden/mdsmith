@@ -75,6 +75,14 @@ func TestFixOutput_E2ECleanAndErrors(t *testing.T) {
 		assert.Equal(t, "[]\n", stdout)
 		assert.Contains(t, stderr, `mdsmith: skipping "notes.txt": not a Markdown file`)
 	})
+	t.Run("discovery without Markdown, sarif", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+		stdout, stderr, code := runBinaryInDir(t, dir, "", "fix", "-o", "-", "-f", "sarif")
+		assert.Equal(t, 0, code)
+		assert.Contains(t, stdout, `"version": "2.1.0"`)
+		assert.Empty(t, stderr)
+	})
 	t.Run("unwritable report", func(t *testing.T) {
 		dir := outputWorkspace(t)
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "ws.md"), []byte("# Hi  \n"), 0o644))
