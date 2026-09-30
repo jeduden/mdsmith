@@ -232,13 +232,16 @@ func outboundEdit(r *destResolver, d inlineDest, src, dst string) (Edit, bool) {
 // `sub/../b.md` is kept while it still resolves. An explicit `./x`
 // keeps its prefix unless the new path climbs out of the directory
 // (a `../` result already reads as relative); everything else is
-// bare-relative.
+// bare-relative. A new path whose first segment holds a `:` gets a
+// `./` prefix too: a bare `a:b.md` reads as the URL scheme `a:`.
 func destEdit(d inlineDest, ref destRef, spellFrom, target string) (Edit, bool) {
 	if linkgraph.ResolveRelTarget(spellFrom, ref.path) == target {
 		return Edit{}, false
 	}
 	newPath := relFrom(path.Dir(spellFrom), target)
-	if strings.HasPrefix(ref.path, "./") && !strings.HasPrefix(newPath, "../") {
+	first, _, _ := strings.Cut(newPath, "/")
+	if strings.HasPrefix(ref.path, "./") && !strings.HasPrefix(newPath, "../") ||
+		strings.IndexByte(first, ':') >= 0 {
 		newPath = "./" + newPath
 	}
 	pe := d.ps + ref.tokLen

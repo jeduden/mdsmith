@@ -72,7 +72,9 @@ in a bare destination, and `%`, `?`, `#`, `<`, `>`, `&`, `\`, or
 start a query string and name the file `what`, and a literal
 `&amp;` would be read as `&`. A bare destination also escapes its parens
 when one has no partner. A move to `a).md` writes `a%29.md`, while
-`a(1).md` stays as written.
+`a(1).md` stays as written. A new path whose first segment holds a
+`:` gets a `./` prefix, so a move to `a:b.md` writes `./a:b.md`. A
+bare `a:b.md` would read as a URL with the scheme `a:`.
 
 A literal `?` is read as the start of a query unless the whole
 path names a Markdown file in the workspace and the part before

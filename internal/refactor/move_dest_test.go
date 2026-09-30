@@ -449,6 +449,7 @@ func TestDestResolver_Target(t *testing.T) {
 		"both?.md":       {target: "both", path: "both", tokLen: 4},
 		"nope.md?100%":   {target: "nope.md", path: "nope.md", tokLen: 7},
 		`sub\a.md#s\_1`:  {target: "sub/a.md", path: `sub\a.md`, tokLen: 8},
+		"./a:b.md":       {target: "a:b.md", path: "./a:b.md", tokLen: 8},
 	} {
 		t.Run(dest, func(t *testing.T) {
 			r := &destResolver{ws: ws, src: "a.md"}
@@ -459,7 +460,7 @@ func TestDestResolver_Target(t *testing.T) {
 	}
 	for _, dest := range []string{
 		"https://x.io/a.md", "#top", "../x.md", "../what?.md",
-		`a\_b.md`, "a&amp;b.md", "a&#35;b.md", `what\?.md`,
+		`a\_b.md`, "a&amp;b.md", "a&#35;b.md", `what\?.md`, "a:b.md",
 	} {
 		t.Run(dest+" is not read", func(t *testing.T) {
 			r := &destResolver{ws: ws, src: "a.md"}
