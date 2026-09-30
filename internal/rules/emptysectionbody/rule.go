@@ -321,13 +321,9 @@ func htmlBlockMeaningful(n *ast.HTMLBlock, source []byte) bool {
 			return strings.TrimSpace(stripHTMLComments(nodeLinesText(n, source))) != ""
 		}
 	}
-	for i := 0; i < lines.Len(); i++ {
-		seg := lines.At(i)
-		if len(bytes.TrimSpace(seg.Value(source))) != 0 {
-			return true
-		}
-	}
-	return false
+	// An HTML block opens with '<' on its first line, so a block with no
+	// comment opener always has content.
+	return lines.Len() > 0
 }
 
 func nodeHasText(node ast.Node, source []byte) bool {

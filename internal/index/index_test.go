@@ -628,8 +628,8 @@ func TestNameMatches_Semantics(t *testing.T) {
 	assert.False(t, nameMatches("Apple", "pie"))
 	assert.False(t, nameMatches("ap", "apple"))
 	assert.True(t, nameMatches("Überblick", "überblick"))
-	// Lower-casing lengthens these (2 bytes -> 3), so byte-length guards
-	// on the raw name would wrongly reject them.
+	// Lower-casing changes byte length (2 -> 3), and the Kelvin sign folds to ASCII 'k'.
+	assert.True(t, nameMatches("\u212a", "k"))
 	assert.True(t, nameMatches("\u023a", "\u2c65"))
 	assert.True(t, nameMatches("\u023ax", "\u2c65x"))
 	assert.False(t, nameMatches("日本", "\ufffd"))

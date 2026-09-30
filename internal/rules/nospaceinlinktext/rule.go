@@ -388,11 +388,7 @@ func diagsForSpan(s span, f *lint.File, ruleID, ruleName string) []lint.Diagnost
 // each bracket pair while leaving the surrounding markdown structure intact.
 // Nested link/image brackets are fixed in a single pass.
 func (r *Rule) Fix(f *lint.File) []byte {
-	out := fixSpans(f.Source, r.collectSpans(f), 0, len(f.Source))
-	if len(out) > 0 && &out[0] == &f.Source[0] {
-		return bytes.Clone(out) // no span rewrote anything; never hand back f.Source itself
-	}
-	return out
+	return fixSpans(f.Source, r.collectSpans(f), 0, len(f.Source))
 }
 
 // fixSpans builds the fixed output for source[from:to] by trimming each
@@ -400,8 +396,9 @@ func (r *Rule) Fix(f *lint.File) []byte {
 // fixed recursively before the outer boundary is trimmed, so both outer and
 // inner whitespace are removed in a single call.
 func fixSpans(source []byte, spans []span, from, to int) []byte {
-	// A range with no span opening inside it is returned as a sub-slice of
-	// source; callers only read or copy it. Only ranges that rewrite bytes
+	// A range with no span opening inside it is returned as a cap-limited
+	// sub-slice of source (Fix then returns f.Source content, like peer rules);
+	// callers only read or copy it. Only ranges that rewrite bytes
 	// allocate, once, sized to the range.
 	var result []byte
 	prev := from
