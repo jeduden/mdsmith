@@ -517,8 +517,9 @@ jobs:
   # native engine on an in-memory fixture. It SKIPS when node is absent,
   # so it must run in a job that installs node or it never gates. The
   # same `go test` run also enforces the artifact size budget
-  # (size_test.go, a regression guard now at ~13.1 MiB raw / ~4.0 MiB
-  # gzipped at BestSpeed) and the Go↔JS method-set
+  # (size_test.go: ceilings of 14 MiB raw / 4.25 MiB gzipped at
+  # BestSpeed, against an artifact of ~13.1 MiB / ~4.0 MiB) and the
+  # Go↔JS method-set
   # parity (methods_test.go). tinygo is built in the separate tinygo-wasm
   # job below, which is now enforcing (plan 247).
   wasm:
