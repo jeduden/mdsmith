@@ -9,6 +9,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // errWriter always returns an error on Write so we can test the failure path.
@@ -69,13 +70,27 @@ func TestWriteDiagnostics(t *testing.T) {
 			"sarif": `"version": "2.1.0"`,
 		} {
 			var buf strings.Builder
-			assert.NoError(t, writeDiagnostics(&buf, diags, format, true), format)
+			assert.NoError(t, writeDiagnostics(&buf, diags, format, false), format)
 			assert.Contains(t, buf.String(), want, format)
+		}
+	})
+	t.Run("color", func(t *testing.T) {
+		var plain, colored strings.Builder
+		require.NoError(t, writeDiagnostics(&plain, diags, "text", false))
+		require.NoError(t, writeDiagnostics(&colored, diags, "text", true))
+		assert.NotContains(t, plain.String(), "\033[")
+		assert.Contains(t, colored.String(), "\033[")
+	})
+	t.Run("empty", func(t *testing.T) {
+		for format, want := range map[string]string{"text": "", "json": "[]\n"} {
+			var buf strings.Builder
+			require.NoError(t, writeDiagnostics(&buf, nil, format, false), format)
+			assert.Equal(t, want, buf.String(), format)
 		}
 	})
 	t.Run("returns write error unreported", func(t *testing.T) {
 		w := &errWriter{err: errors.New("disk full")}
-		assert.EqualError(t, writeDiagnostics(w, diags, "text", true), "disk full")
+		assert.EqualError(t, writeDiagnostics(w, diags, "text", false), "disk full")
 	})
 }
 

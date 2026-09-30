@@ -143,8 +143,8 @@ func printVersion() {
 	fmt.Printf("mdsmith %s\n", v)
 }
 
-// reportBufSize is the buffer the report paths put in front of each
-// output stream: stderr, and stdout under `check --stdout`. The text
+// reportBufSize is the buffer the report paths put in front of the
+// report's destination (see reportIO.deliverReport). The text
 // formatter emits a handful of small writes per diagnostic; batching
 // them into 64 KiB chunks keeps a diagnostic-heavy run from paying one
 // write syscall per formatted line.
@@ -155,10 +155,9 @@ const reportBufSize = 64 << 10
 // write-error message is best-effort routed to the same w so callers
 // that pass an alternate writer (production: os.Stderr; tests: a
 // fault-injecting writer or a buffer) keep all formatter output
-// confined to one destination. A caller whose w is not stderr uses
-// writeDiagnostics and reports the error on stderr itself.
+// confined to one destination.
 func formatDiagnosticsTo(w io.Writer, diags []lint.Diagnostic, format string, noColor bool) int {
-	if err := writeDiagnostics(w, diags, format, noColor); err != nil {
+	if err := writeDiagnostics(w, diags, format, !noColor); err != nil {
 		printWriteErrorTo(w, err)
 		return 2
 	}
@@ -167,8 +166,10 @@ func formatDiagnosticsTo(w io.Writer, diags []lint.Diagnostic, format string, no
 
 // writeDiagnostics writes diagnostics to w in format ("json",
 // "sarif", or text for any other value) and returns the formatter's
-// error without reporting it.
-func writeDiagnostics(w io.Writer, diags []lint.Diagnostic, format string, noColor bool) error {
+// error without reporting it. color turns on ANSI color in text
+// output. With no diagnostics, json writes `[]`, sarif a log with no
+// results, and text nothing.
+func writeDiagnostics(w io.Writer, diags []lint.Diagnostic, format string, color bool) error {
 	var formatter output.Formatter
 	switch format {
 	case "json":
@@ -176,7 +177,7 @@ func writeDiagnostics(w io.Writer, diags []lint.Diagnostic, format string, noCol
 	case "sarif":
 		formatter = &output.SARIFFormatter{ToolVersion: version}
 	default:
-		formatter = &output.TextFormatter{Color: !noColor}
+		formatter = &output.TextFormatter{Color: color}
 	}
 	return formatter.Format(w, diags)
 }
@@ -298,16 +299,13 @@ func loadAndResolve(
 // a visible no-op instead of a silent one (issue #759).
 //
 // It returns nil — disabling the notification entirely — when the run is
-// --quiet (a skipped file is non-error output) or the format is not
-// text. check and fix emit their diagnostics, including `--format json`
-// and `--format sarif`, on stderr; a prose warning on the same stream
-// would corrupt that structured output, so the human notice is limited
-// to the text format. format is the format of w's stream, so
-// `check --stdout` passes text: its structured output is on stdout.
-// Repeated names are de-duplicated so a doubled
-// argument does not double the warning.
-func nonMarkdownSkipWarner(w io.Writer, format string, quiet bool) func(string) {
-	if quiet || format != "text" {
+// --quiet (a skipped file is non-error output) or a json or sarif
+// report goes to stderr: a prose warning on the same stream would
+// corrupt that structured output. Once -o moves the report off stderr
+// the warning is safe there again. Repeated names are de-duplicated so
+// a doubled argument does not double the warning.
+func nonMarkdownSkipWarner(w io.Writer, f reportFlags) func(string) {
+	if f.quiet || f.structuredOnStderr() {
 		return nil
 	}
 	exts := strings.Join(mdpath.Extensions(), ", ")

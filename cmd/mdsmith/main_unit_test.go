@@ -422,7 +422,7 @@ func TestReportCheckResultTo_BuffersDiagnosticWrites(t *testing.T) {
 	opts := checkCLIOpts{format: "text", noColor: true}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
 	w := &countingWriter{}
-	code := reportCheckResultTo(result, opts, &vlog.Logger{}, io.Discard, w)
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, io.Discard, w))
 	assert.Equal(t, 1, code)
 	assert.Contains(t, w.buf.String(), "line too long")
 	// 100 diagnostics × (header + snippet + caret) lines must not become
@@ -752,7 +752,7 @@ func TestReportCheckResultTo_DiagWriteErrorReturns2(t *testing.T) {
 				RuleName: "test-rule", Severity: lint.Warning, Message: "issue"},
 		},
 	}
-	code := reportCheckResultTo(result, opts, &vlog.Logger{}, io.Discard, &alwaysErrorWriter{})
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
@@ -1519,7 +1519,7 @@ func TestReportCheckResultTo_FlushErrorReturns2(t *testing.T) {
 	// No diagnostics: only the run-stats line sits in the buffer, so
 	// the first underlying write happens at the final Flush.
 	code := reportCheckResultTo(&engine.Result{FilesChecked: 1},
-		checkCLIOpts{format: "text"}, &vlog.Logger{}, io.Discard, &failAfterWriter{n: 0})
+		checkCLIOpts{format: "text"}, &vlog.Logger{}, testIO(t, io.Discard, &failAfterWriter{n: 0}))
 	assert.Equal(t, 2, code)
 }
 
@@ -1557,7 +1557,7 @@ func TestReportCheckResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
 	// report path takes its early-return branch.
 	opts := checkCLIOpts{format: "text", noColor: true}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
-	code := reportCheckResultTo(result, opts, &vlog.Logger{}, io.Discard, &alwaysErrorWriter{})
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
@@ -1570,7 +1570,7 @@ func TestReportFixResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
 
 func TestNonMarkdownSkipWarner_TextEmitsAndDedupes(t *testing.T) {
 	var buf bytes.Buffer
-	warn := nonMarkdownSkipWarner(&buf, "text", false)
+	warn := nonMarkdownSkipWarner(&buf, reportFlags{format: "text"})
 	require.NotNil(t, warn, "text, non-quiet should produce an active warner")
 
 	warn(".gitattributes")
@@ -1586,19 +1586,27 @@ func TestNonMarkdownSkipWarner_TextEmitsAndDedupes(t *testing.T) {
 	assert.Contains(t, out, ".md, .markdown")
 }
 
-func TestNonMarkdownSkipWarner_SuppressedForQuietAndNonText(t *testing.T) {
+func TestNonMarkdownSkipWarner_SuppressedForQuietAndStructuredStderr(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		format string
-		quiet  bool
+		name  string
+		flags reportFlags
 	}{
-		{"quiet", "text", true},
-		{"json", "json", false},
-		{"sarif", "sarif", false},
+		{"quiet", reportFlags{format: "text", quiet: true}},
+		{"quiet json on stdout", reportFlags{format: "json", output: "-", quiet: true}},
+		{"json on stderr", reportFlags{format: "json"}},
+		{"sarif on stderr", reportFlags{format: "sarif"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Nil(t, nonMarkdownSkipWarner(io.Discard, tc.format, tc.quiet),
+			assert.Nil(t, nonMarkdownSkipWarner(io.Discard, tc.flags),
 				"warner must be disabled to avoid non-error output / corrupting structured formats")
 		})
+	}
+}
+
+// Once -o moves a json or sarif report off stderr, a prose warning
+// there can no longer corrupt it, so the warning shows.
+func TestNonMarkdownSkipWarner_ActiveWhenStructuredReportIsRouted(t *testing.T) {
+	for _, output := range []string{"-", "report.json"} {
+		assert.NotNil(t, nonMarkdownSkipWarner(io.Discard, reportFlags{format: "json", output: output}), output)
 	}
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"math"
@@ -28,19 +27,14 @@ type checkCLIOpts struct {
 	walk         walkCLI
 	maxInputSize string
 	explain      bool
-	// stdout routes diagnostics and the stats line to stdout instead
-	// of stderr. Runtime errors always stay on stderr.
-	stdout bool
+	// output is the -o/--output value: where the report goes (see
+	// reportFlags.output). Runtime errors always stay on stderr.
+	output string
 }
 
-// stderrFormat is the format of the output check writes to stderr:
-// opts.format by default, and text under --stdout, where only prose
-// (runtime errors and warnings) stays on stderr.
-func (o checkCLIOpts) stderrFormat() string {
-	if o.stdout {
-		return "text"
-	}
-	return o.format
+// reportFlags returns the report flags of a check run.
+func (o checkCLIOpts) reportFlags() reportFlags {
+	return reportFlags{format: o.format, output: o.output, noColor: o.noColor, quiet: o.quiet}
 }
 
 // runCheck implements the "check" subcommand: lint files.
@@ -68,8 +62,8 @@ func runCheck(args []string) int {
 func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	var (
-		configPath, format, maxInputSize                                      string
-		noColor, quiet, verbose, noGitignore, followSymlinks, explain, stdout bool
+		configPath, format, maxInputSize, output                      string
+		noColor, quiet, verbose, noGitignore, followSymlinks, explain bool
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
@@ -84,8 +78,7 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 	fs.BoolVar(&explain, "explain", false, "Attach per-leaf rule provenance to each diagnostic")
 
-	fs.BoolVar(&stdout, "stdout", false,
-		"Write diagnostics to stdout instead of stderr (errors stay on stderr)")
+	registerOutputFlag(fs, &output)
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith check [flags] [files...]\n\n"+
@@ -93,6 +86,7 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 			"Files can be paths, directories (walked recursively for *.md), or glob patterns.\n"+
 			"Pass - to read from stdin. With no file arguments, discovers files using the\n"+
 			"files patterns from config (default: **/*.md, **/*.markdown).\n\n"+
+			reportRoutingHelp+
 			"Flags:\n")
 		fs.PrintDefaults()
 	}
@@ -101,6 +95,9 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: check"); code >= 0 {
 			return checkCLIOpts{}, nil, false, code
 		}
+	}
+	if code := checkOutputFlag(fs, output, "check"); code >= 0 {
+		return checkCLIOpts{}, nil, false, code
 	}
 
 	// --quiet suppresses verbose
@@ -122,7 +119,7 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 		},
 		maxInputSize: maxInputSize,
 		explain:      explain,
-		stdout:       stdout,
+		output:       output,
 	}, fileArgs, hasStdin, -1
 }
 
@@ -130,10 +127,10 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 func checkFiles(fileArgs []string, opts checkCLIOpts) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
 		fileArgs, opts.configPath, opts.verbose, opts.walk, opts.maxInputSize,
-		nonMarkdownSkipWarner(os.Stderr, opts.stderrFormat(), opts.quiet),
+		nonMarkdownSkipWarner(os.Stderr, opts.reportFlags()),
 	)
 	if code == 0 {
-		return reportNoFiles(opts)
+		return reportNoFiles(opts.reportFlags(), processIO())
 	}
 	if code > 0 {
 		return code
@@ -206,7 +203,7 @@ func checkStdin(opts checkCLIOpts) int {
 func checkDiscovered(opts checkCLIOpts) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(opts.configPath, opts.verbose, opts.walk)
 	if code == 0 {
-		return reportNoFiles(opts)
+		return reportNoFiles(opts.reportFlags(), processIO())
 	}
 	if code > 0 {
 		return code
@@ -224,51 +221,24 @@ func checkDiscovered(opts checkCLIOpts) int {
 	return reportCheckResult(result, opts, logger)
 }
 
-// reportCheckResult writes diagnostics + the run-stats line to the
-// process streams and computes the exit code shared by checkFiles,
-// checkStdin, and checkDiscovered.
+// reportCheckResult writes the report (diagnostics + the run-stats
+// line) to the -o destination and the runtime errors to stderr, and
+// computes the exit code shared by checkFiles, checkStdin, and
+// checkDiscovered.
 func reportCheckResult(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger) int {
-	return reportCheckResultTo(result, opts, logger, os.Stdout, os.Stderr)
+	return reportCheckResultTo(result, opts, logger, processIO())
 }
 
 // reportCheckResultTo is the injectable form of reportCheckResult.
-// Tests pass alternate writers to exercise the write-error branches
-// without leaking to the real streams.
-//
-// Runtime errors always go to stderrW. Diagnostics and the stats line
-// go to stdoutW under --stdout and to stderrW otherwise. A failed
-// write of those is itself a runtime error: its message goes to
-// stderrW and the exit code is 2. Without --stdout stderrW is the
-// stream that failed, so only the exit code reports it.
-//
-// Each stream gets one buffered writer: the text formatter emits
-// several small writes per diagnostic, and issuing each as its own
-// syscall dominated wall time on diagnostic-heavy runs. Without
-// --stdout both share one buffer. With it, the error buffer is
-// flushed before any diagnostic is written, so errors print first on
-// a shared terminal. Every buffer is flushed before the verbose
-// logger line so output ordering on a shared fd is preserved.
-func reportCheckResultTo(
-	result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, stdoutW, stderrW io.Writer,
-) int {
-	ew := bufio.NewWriterSize(stderrW, reportBufSize)
-	printErrorsTo(ew, result.Errors)
-	out := ew
-	if opts.stdout {
-		// A failed flush is ignored, as printErrorsTo ignores its
-		// writes: a stderr that fails writes must not keep diagnostics
-		// off stdout. A broken stderr pipe still ends the process on
-		// SIGPIPE, which the Go runtime raises for fds 1 and 2.
-		_ = ew.Flush()
-		out = bufio.NewWriterSize(stdoutW, reportBufSize)
-	}
-
-	if err := writeCheckReport(out, result, opts); err != nil {
-		// A write error is a runtime error, so it goes to stderr and
-		// never into the redirected diagnostics.
-		printWriteErrorTo(ew, err)
-		_ = ew.Flush()
-		return 2
+// Tests pass a reportIO over their own writers. A report that cannot
+// be written exits 2 (see reportIO.deliverReport). The verbose logger
+// line follows the flushed report, so ordering on a shared fd holds.
+func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, rio reportIO) int {
+	code := rio.deliverReport(opts.output, opts.noColor, result.Errors, func(w io.Writer, color bool) error {
+		return writeCheckReport(w, result, opts, color)
+	})
+	if code != 0 {
+		return code
 	}
 	logger.Printf("checked %d files, %d issues found", result.FilesChecked, len(result.Diagnostics))
 
@@ -281,44 +251,25 @@ func reportCheckResultTo(
 	return 0
 }
 
-// writeCheckReport writes the diagnostics and the run-stats line to
-// out, flushes it, and returns the first write error.
-func writeCheckReport(out *bufio.Writer, result *engine.Result, opts checkCLIOpts) error {
-	// SARIF must be emitted even with zero diagnostics so the file is valid
-	// SARIF 2.1.0 (not an empty byte stream) when uploaded to Code Scanning.
-	// JSON on stdout emits `[]` for the same reason: `--stdout -f json >
-	// out.json` must leave valid JSON, not an empty file.
-	emptyDoc := opts.format == "sarif" || (opts.stdout && opts.format == "json")
-	if !opts.quiet && (len(result.Diagnostics) > 0 || emptyDoc) {
-		if err := writeDiagnostics(out, result.Diagnostics, opts.format, opts.noColor); err != nil {
-			return err
-		}
+// writeCheckReport writes the diagnostics and the run-stats line to w
+// and returns the first write error. -q writes nothing. json and sarif
+// write their document even with no diagnostics, so a clean run leaves
+// `[]` or a SARIF log with no results rather than an empty stream,
+// wherever the report goes.
+func writeCheckReport(w io.Writer, result *engine.Result, opts checkCLIOpts, color bool) error {
+	if opts.quiet {
+		return nil
 	}
-	printRunStatsTo(out, opts.format, opts.quiet, runStats{
+	if err := writeDiagnostics(w, result.Diagnostics, opts.format, color); err != nil {
+		return err
+	}
+	printRunStatsTo(w, opts.format, false, runStats{
 		Checked:  result.FilesChecked,
 		Fixed:    0,
 		Failures: len(result.Diagnostics),
 		Unfixed:  len(result.Diagnostics),
 	})
-	return out.Flush()
-}
-
-// reportNoFiles ends a check run that resolved no Markdown file:
-// loadAndResolve and discoverFiles return exit code 0 for it, before
-// any file is linted.
-func reportNoFiles(opts checkCLIOpts) int {
-	return reportNoFilesTo(opts, os.Stdout, os.Stderr)
-}
-
-// reportNoFilesTo is the injectable form of reportNoFiles. The run is
-// clean, so it exits 0 and, as without --stdout, writes no stats line.
-// Under --stdout a json or sarif run still writes its empty document,
-// so a redirected file is valid on every clean run.
-func reportNoFilesTo(opts checkCLIOpts, stdoutW, stderrW io.Writer) int {
-	if !opts.stdout || (opts.format != "json" && opts.format != "sarif") {
-		return 0
-	}
-	return reportCheckResultTo(&engine.Result{}, opts, &vlog.Logger{}, stdoutW, stderrW)
+	return nil
 }
 
 // readStdinLimited reads stdin with an optional size limit.
