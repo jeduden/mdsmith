@@ -49,6 +49,17 @@ func TestOutputGuard_E2E(t *testing.T) {
 		assert.Equal(t, refusal("check", "report.md"), stderr)
 		assert.NoFileExists(t, filepath.Join(dir, "report.md"))
 	})
+	t.Run("check discovery -o a non-Markdown name a files: pattern takes", func(t *testing.T) {
+		dir := outputWorkspace(t)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"), []byte("files: [\"docs/**\"]\n"), 0o644))
+		require.NoError(t, os.Mkdir(filepath.Join(dir, "docs"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "docs", "a.md"), []byte("# A\n"), 0o644))
+		out := filepath.Join("docs", "report.txt")
+		_, stderr, code := runBinaryInDir(t, dir, "", "check", "-f", "json", "-o", out)
+		assert.Equal(t, 2, code)
+		assert.Equal(t, refusal("check", out), stderr)
+		assert.NoFileExists(t, filepath.Join(dir, out))
+	})
 	t.Run("check with no Markdown file yet", func(t *testing.T) {
 		dir := t.TempDir()
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))

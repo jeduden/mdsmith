@@ -90,16 +90,16 @@ ends. A run that stops first, as on a bad config, exits
 `2` and leaves the file untouched.
 
 `-o` never overwrites an input. A path that is one of
-the run's Markdown inputs is a usage error (exit `2`),
-reported before any file is linted. So is a missing
-Markdown path that the run would pick up once the
-report created it:
+the run's inputs is a usage error (exit `2`), reported
+before any file is linted. So is a missing
+path that the run would pick up once the report created
+it:
 
-- a path inside a directory argument, as in
+- a Markdown path inside a directory argument, as in
   `check -o docs/report.md docs/`;
-- a path that matches a glob argument;
+- a Markdown path that matches a glob argument;
 - on a run with no file arguments, a path that matches
-  a `files:` pattern.
+  a `files:` pattern, whatever its extension.
 
 An existing path is compared with each input by file
 identity, so another spelling, a symlink, or a hard link

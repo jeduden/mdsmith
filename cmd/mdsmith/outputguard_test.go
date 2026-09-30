@@ -115,6 +115,12 @@ func TestOutputIsInput_WouldBeInput(t *testing.T) {
 			runInputs{patterns: []string{"docs/**/*.md"}}, false},
 		{"discovery, output above the working directory", filepath.Join("..", "report.md"),
 			runInputs{patterns: []string{"**/*.md"}}, false},
+		{"discovery pattern taking any name", filepath.Join("docs", "report.txt"),
+			runInputs{patterns: []string{"docs/**"}}, true},
+		{"discovery pattern not taking a non-Markdown name", filepath.Join("docs", "report.txt"),
+			runInputs{patterns: []string{"docs/**/*.md"}}, false},
+		{"non-Markdown name under a directory argument that a pattern takes", filepath.Join("docs", "report.txt"),
+			runInputs{args: []string{"docs"}, patterns: []string{"other/**"}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, outputIsInput(tc.output, tc.in))

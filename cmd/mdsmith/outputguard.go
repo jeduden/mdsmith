@@ -92,9 +92,10 @@ func outputIsInput(output string, in runInputs) bool {
 
 // wouldBeInput reports whether a missing output, once the report
 // creates it, is a file the same run would pick up: a Markdown name
-// inside a directory argument, one matching a glob argument, or, on a
-// discovery run, one matching a files: pattern under the working
-// directory. The name checked is the one the open creates (see
+// inside a directory argument or matching a glob argument, or, on a
+// discovery run, any name matching a files: pattern under the working
+// directory, since discovery takes whatever its patterns match. The
+// name checked is the one the open creates (see
 // createTarget), so a dangling symlink is judged by its final target,
 // not its own name. Directories are compared by identity. Names are
 // matched without regard to case, so the check also holds on a
@@ -104,12 +105,15 @@ func outputIsInput(output string, in runInputs) bool {
 // under a missing directory, is left to preflightOutput.
 func wouldBeInput(output string, in runInputs) bool {
 	target, err := createTarget(output)
-	if err != nil || !mdpath.HasMarkdownExt(filepath.Ext(target)) {
+	if err != nil {
 		return false
 	}
-	for _, arg := range in.args {
-		if argWouldTake(arg, target) {
-			return true
+	// The resolver takes only Markdown files from the arguments.
+	if mdpath.HasMarkdownExt(filepath.Ext(target)) {
+		for _, arg := range in.args {
+			if argWouldTake(arg, target) {
+				return true
+			}
 		}
 	}
 	if len(in.patterns) == 0 {

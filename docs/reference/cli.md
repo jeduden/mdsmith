@@ -137,7 +137,7 @@ and the stats line) to a file, or `-o -` to write it to
 see [`mdsmith check`](cli/check.md#report-output). A clean
 `json` run prints `[]`. `-q` silences the terminal, but
 an `-o <path>` file still gets the full report. An `-o`
-path that is, or would be, one of the Markdown inputs is
+path that is, or would be, one of the inputs is
 refused with exit `2`.
 
 Text output is colored only when it goes to a terminal.
