@@ -46,9 +46,10 @@ type reportFlags struct {
 
 // structuredOnStderr reports whether a json or sarif report shares
 // stderr with the run's prose lines, where one of those lines would
-// corrupt the document.
+// corrupt the document. Any other -f value renders as text (see
+// writeDiagnostics), which a prose line cannot corrupt.
 func (f reportFlags) structuredOnStderr() bool {
-	return f.output == "" && f.format != "text"
+	return f.output == "" && (f.format == "json" || f.format == "sarif")
 }
 
 // reportBody writes a report into w. color says whether text output

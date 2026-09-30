@@ -160,6 +160,11 @@ func TestCheckOutput_E2EStreams(t *testing.T) {
 		_, stderr, code = runBinaryInDir(t, dir, "", "check", "-f", "json", "ok.md", "notes.txt")
 		assert.Equal(t, 0, code)
 		assert.Equal(t, "[]\n", stderr, "no prose warning inside json on stderr")
+
+		// An unknown -f value renders text, so the warning shows.
+		_, stderr, code = runBinaryInDir(t, dir, "", "check", "-f", "xml", "ok.md", "notes.txt")
+		assert.Equal(t, 0, code)
+		assert.Contains(t, stderr, `mdsmith: skipping "notes.txt": not a Markdown file`)
 	})
 	t.Run("quiet writes nothing", func(t *testing.T) {
 		dir := outputWorkspace(t)

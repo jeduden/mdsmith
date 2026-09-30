@@ -327,6 +327,9 @@ func TestReportFlags_StructuredOnStderr(t *testing.T) {
 		{"sarif", "", true},
 		{"json", "-", false},
 		{"sarif", "out.sarif", false},
+		// writeDiagnostics renders an unknown -f value as text, so
+		// a prose line cannot corrupt it.
+		{"xml", "", false},
 	} {
 		got := reportFlags{format: tc.format, output: tc.output}.structuredOnStderr()
 		assert.Equal(t, tc.want, got, fmt.Sprintf("%s -o %q", tc.format, tc.output))
