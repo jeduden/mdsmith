@@ -119,9 +119,11 @@ func Validate(
 // ValidateWithParseErr is Validate for a document whose front matter
 // may have failed to parse. fmErr is that failure, or nil; the caller
 // reports it as its own diagnostic. A failed parse leaves docFM empty,
-// so every field reads as absent: the CUE field check is skipped
-// rather than reporting each required field as "<missing>", and the
-// `filename:` hint names fmErr for a reference it could not resolve.
+// so every field reads as absent: the CUE field check against the
+// document is skipped rather than reporting each required field as
+// "<missing>", and the `filename:` hint names fmErr for a reference it
+// could not resolve. The schema's own CUE is still compiled, since a
+// compile failure there does not depend on the document.
 func ValidateWithParseErr(
 	f *lint.File, sch *Schema, docFM map[string]any, fmErr error,
 	fmIsCUE bool, mkDiag MakeDiag,
@@ -134,8 +136,9 @@ func ValidateWithParseErr(
 	diags = append(diags,
 		validateFilename(f, sch, docFM, fmErr, fmIsCUE, mkDiag)...)
 
-	if !fmIsCUE && fmErr == nil {
-		diags = append(diags, validateFrontmatterDiags(f, sch, docFM, mkDiag)...)
+	if !fmIsCUE {
+		diags = append(diags,
+			validateFrontmatterDiags(f, sch, docFM, fmErr, mkDiag)...)
 	}
 
 	rootLevel := sch.EffectiveRootLevel()
@@ -163,8 +166,14 @@ func ValidateWithParseErr(
 // without needing to chase the underlying CUE error. The
 // formerly-flat "front matter does not satisfy schema CUE
 // constraints" message is intentionally retired; see plan 147.
+//
+// fmErr is why the document's front matter failed to parse, or nil.
+// With a parse failure only the schema-side compile runs: its error
+// does not depend on the document, while unifying the empty docFM
+// would report every required field as "<missing>".
 func validateFrontmatterDiags(
-	f *lint.File, sch *Schema, docFM map[string]any, mkDiag MakeDiag,
+	f *lint.File, sch *Schema, docFM map[string]any, fmErr error,
+	mkDiag MakeDiag,
 ) []lint.Diagnostic {
 	expr := sch.FrontmatterCUE()
 	if strings.TrimSpace(expr) == "" {
@@ -188,6 +197,9 @@ func validateFrontmatterDiags(
 		return []lint.Diagnostic{
 			compileFailureDiag(sch, "schema", "valid schema CUE", err).
 				Emit(mkDiag, f.Path, anchor)}
+	}
+	if fmErr != nil {
+		return nil
 	}
 	if docFM == nil {
 		docFM = map[string]any{}
@@ -699,7 +711,7 @@ func compileFailureDiag(sch *Schema, field, expected string, err error) SchemaDi
 func ValidateFrontmatterDiags(
 	f *lint.File, sch *Schema, docFM map[string]any, mkDiag MakeDiag,
 ) []lint.Diagnostic {
-	return validateFrontmatterDiags(f, sch, docFM, mkDiag)
+	return validateFrontmatterDiags(f, sch, docFM, nil, mkDiag)
 }
 
 // FormatSchemaRef builds the "source:line" suffix used by every

@@ -79,3 +79,35 @@ func messages(diags []lint.Diagnostic) []string {
 	}
 	return out
 }
+
+// The schema's own CUE is compiled whatever the document holds, so a
+// compile failure is reported next to the YAML error rather than
+// hidden by it, for an inline schema and for composed inline ones.
+func TestCheck_UnparseableFrontMatterKeepsSchemaCUEError(t *testing.T) {
+	bad := &schema.Schema{
+		Frontmatter: map[string]string{"id": "string &"},
+		Source:      "kind badcue",
+	}
+	cases := map[string][]SchemaSource{
+		"inline": {{Inline: bad}},
+		"composed": {
+			{Inline: bad},
+			{Inline: &schema.Schema{
+				Frontmatter: map[string]string{"title?": "string"},
+				Source:      "kind other",
+			}},
+		},
+	}
+	for name, sources := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			f := newRootedFile(t, root, "g/bad.md",
+				"---\nid: [unclosed\n---\n# Heading\n")
+			diags := (&Rule{Sources: sources}).Check(f)
+			msgs := messages(diags)
+			require.Len(t, msgs, 2, "got %v", msgs)
+			assert.Contains(t, msgs[0], "front matter: invalid YAML")
+			assert.Contains(t, msgs[1], "expected valid schema CUE")
+		})
+	}
+}

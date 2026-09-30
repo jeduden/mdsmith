@@ -173,3 +173,19 @@ func TestFmvarGlobValue_NonMapIntermediateIsNamed(t *testing.T) {
 	_, err = fmvarGlobValue(map[string]any{"a": map[string]any{}}, "a.b")
 	assert.EqualError(t, err, "`fmvar(a.b)`: frontmatter value missing")
 }
+
+// A broken front-matter block skips only the unify step against the
+// document. The schema's own CUE does not depend on the document, so
+// a compile failure there is still reported.
+func TestValidateWithParseErr_StillReportsSchemaCUEError(t *testing.T) {
+	sch := &Schema{
+		Frontmatter: map[string]string{"id": "string &"},
+		Source:      "kind badcue",
+	}
+	doc := newDocFile(t, "g/bad.md", "---\nid: [unclosed\n---\n# Heading\n")
+	parseErr := errors.New("front matter: invalid YAML: boom")
+	msgs := diagsMessages(
+		ValidateWithParseErr(doc, sch, nil, parseErr, false, makeDiagForTest))
+	require.Len(t, msgs, 1, "got %v", msgs)
+	assert.Contains(t, msgs[0], "expected valid schema CUE")
+}
