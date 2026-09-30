@@ -304,10 +304,14 @@ func Stringify(v any) string {
 // forms. yaml.v3 turns an unquoted `date: 2026-01-02` into midnight
 // UTC, so a value with no clock part and a zero UTC offset renders
 // date-only (YYYY-MM-DD), as written. Any other value renders as
-// RFC 3339 — the form the symbol index already uses for timestamps —
-// with fractional seconds only when the value has them. That is a
-// normalised form, not the source text: a space-separated or
+// RFC 3339 with fractional seconds only when the value has them. That
+// is a normalised form, not the source text: a space-separated or
 // zone-less `2026-01-02 10:00:00` renders `2026-01-02T10:00:00Z`.
+//
+// The symbol index (internal/index) formats a timestamp differently:
+// always time.RFC3339, so a date renders `2026-01-02T00:00:00Z` there
+// and fractional seconds are dropped. The two agree only on a time
+// off midnight UTC with whole seconds.
 // Go's `%v` form (`2026-01-02 00:00:00 +0000 UTC`) would otherwise
 // leak into catalog rows, heading sync, and `fmvar(...)` globs, where
 // it matches nothing.
