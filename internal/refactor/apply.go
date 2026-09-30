@@ -17,10 +17,11 @@ import (
 // the bytes to its right are rewritten. That holds only while a line's
 // edits do not overlap: ApplyEdits does not check, and splicing
 // overlapping edits in turn can drop text, split a multi-byte rune, or
-// fail with an out-of-range error. A Character past either end of its
-// row clamps to that end. A trailing `\r` is preserved so CRLF files
-// round-trip. It is a pure in-memory transform: the host reads src and
-// writes the result.
+// fail with an out-of-range error. Characters are UTF-16 code units;
+// an edit whose Start is after its End, or whose range reaches outside
+// [0, row length], is an error rather than being clamped to the row.
+// A trailing `\r` is preserved so CRLF files round-trip. It is a pure
+// in-memory transform: the host reads src and writes the result.
 func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 	segs := splitKeepCR(src)
 	byLine := map[int][]Edit{}
@@ -44,11 +45,15 @@ func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 			row = seg[:len(seg)-1]
 		}
 		sortEditsByCharacterDesc(es)
+		rowLen := mdtext.UTF16FromByteOffset(row, len(row))
 		buf := append([]byte(nil), row...)
 		for _, e := range es {
+			if err := checkEditRange(e, rowLen, line); err != nil {
+				return nil, err
+			}
 			s := mdtext.UTF16ToByteOffset(row, e.Range.Start.Character)
 			en := mdtext.UTF16ToByteOffset(row, e.Range.End.Character)
-			if s < 0 || en < 0 || s > len(buf) || en > len(buf) || s > en {
+			if s > len(buf) || en > len(buf) {
 				return nil, fmt.Errorf("edit offset [%d,%d) out of range on line %d", s, en, line+1)
 			}
 			next := make([]byte, 0, len(buf)-(en-s)+len(e.NewText))
@@ -63,6 +68,20 @@ func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 		segs[line] = buf
 	}
 	return joinLF(segs), nil
+}
+
+// checkEditRange reports an error when e's Characters do not address a
+// valid range of a row rowLen UTF-16 units long: 0 <= Start <= End <=
+// rowLen. line is zero-based; the error names it one-based.
+func checkEditRange(e Edit, rowLen, line int) error {
+	start, end := e.Range.Start.Character, e.Range.End.Character
+	if start > end {
+		return fmt.Errorf("edit [%d,%d) on line %d ends before it starts", start, end, line+1)
+	}
+	if start < 0 || end > rowLen {
+		return fmt.Errorf("edit [%d,%d) on line %d is outside the line (length %d)", start, end, line+1, rowLen)
+	}
+	return nil
 }
 
 // sortEditsByCharacterDesc orders es by descending Start.Character in

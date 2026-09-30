@@ -49,11 +49,6 @@ func TestApplyEdits(t *testing.T) {
 		_, err := ApplyEdits([]byte("a\n"), []Edit{mkEdit(9, 0, 0, "")})
 		require.Error(t, err)
 	})
-	t.Run("offset out of range", func(t *testing.T) {
-		// Start past End after mapping → the s>en guard fires.
-		_, err := ApplyEdits([]byte("abcd\n"), []Edit{mkEdit(0, 3, 1, "x")})
-		require.Error(t, err)
-	})
 }
 
 // TestApplyEdits_SameOffsetAndOverlapCharacterization pins what
@@ -133,8 +128,7 @@ func tiedInsertsAfterRowStart() []Edit {
 // TestApplyEdits_UTF16Offsets pins how ApplyEdits maps an Edit's
 // UTF-16 Characters to bytes in the row: é is two bytes but one UTF-16
 // unit, and 😀 is four bytes but two units (a surrogate pair). A
-// Character past either end of the row clamps to that end instead of
-// erroring.
+// Character equal to the row's UTF-16 length addresses the row end.
 func TestApplyEdits_UTF16Offsets(t *testing.T) {
 	tests := []struct {
 		name string
@@ -144,14 +138,78 @@ func TestApplyEdits_UTF16Offsets(t *testing.T) {
 	}{
 		{"two-byte rune before the edit", "# Café Setup\n", mkEdit(0, 7, 12, "Install"), "# Café Install\n"},
 		{"surrogate pair before the edit", "a😀b\n", mkEdit(0, 3, 4, "Z"), "a😀Z\n"},
-		{"end past the row clamps to the row end", "abcd\n", mkEdit(0, 2, 99, "x"), "abx\n"},
-		{"negative start clamps to the row start", "abcd\n", mkEdit(0, -5, 1, "x"), "xbcd\n"},
+		{"insert at the row end", "abcd\n", mkEdit(0, 4, 4, "x"), "abcdx\n"},
+		{"insert at the row end after a surrogate pair", "a😀b\n", mkEdit(0, 4, 4, "x"), "a😀bx\n"},
+		{"replace up to the row end before a CR", "abcd\r\n", mkEdit(0, 2, 4, "x"), "abx\r\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			out, err := ApplyEdits([]byte(tt.src), []Edit{tt.edit})
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, string(out))
+		})
+	}
+}
+
+// TestApplyEdits_RejectsOutOfRangeCharacters pins that a Character
+// outside [0, row length] is an error rather than being clamped to the
+// nearer row end: a clamped edit silently rewrites bytes the producer
+// never addressed. The row length is counted in UTF-16 units and
+// excludes a CRLF file's trailing `\r`.
+func TestApplyEdits_RejectsOutOfRangeCharacters(t *testing.T) {
+	tests := []struct {
+		name    string
+		src     string
+		edit    Edit
+		wantErr string
+	}{
+		{
+			name:    "end past the row",
+			src:     "abcd\n",
+			edit:    mkEdit(0, 2, 99, "x"),
+			wantErr: "edit [2,99) on line 1 is outside the line (length 4)",
+		},
+		{
+			name:    "insert past the row",
+			src:     "abcd\n",
+			edit:    mkEdit(0, 5, 5, "x"),
+			wantErr: "edit [5,5) on line 1 is outside the line (length 4)",
+		},
+		{
+			name:    "negative start",
+			src:     "abcd\n",
+			edit:    mkEdit(0, -5, 1, "x"),
+			wantErr: "edit [-5,1) on line 1 is outside the line (length 4)",
+		},
+		{
+			name:    "length counts UTF-16 units, not bytes",
+			src:     "café\n",
+			edit:    mkEdit(0, 0, 5, "x"),
+			wantErr: "edit [0,5) on line 1 is outside the line (length 4)",
+		},
+		{
+			name:    "a surrogate pair counts two units",
+			src:     "a😀b\n",
+			edit:    mkEdit(0, 5, 5, "x"),
+			wantErr: "edit [5,5) on line 1 is outside the line (length 4)",
+		},
+		{
+			name:    "a CRLF row's trailing CR is not addressable",
+			src:     "abcd\r\n",
+			edit:    mkEdit(0, 4, 5, ""),
+			wantErr: "edit [4,5) on line 1 is outside the line (length 4)",
+		},
+		{
+			name:    "start after end",
+			src:     "abcd\n",
+			edit:    mkEdit(0, 3, 1, "x"),
+			wantErr: "edit [3,1) on line 1 ends before it starts",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ApplyEdits([]byte(tt.src), []Edit{tt.edit})
+			require.EqualError(t, err, tt.wantErr)
 		})
 	}
 }
