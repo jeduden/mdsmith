@@ -68,6 +68,24 @@ func TestMove_IncomingImageInLinkAndAngleFragment(t *testing.T) {
 	assert.Equal(t, "[![alt](img.png)](docs/a.md) [t](<docs/a.md#frag>)\n", got["b.md"])
 }
 
+// TestMove_NestedTitleOrDestinationHoldingLabelEnd pins that a `](`
+// inside the title or the destination of an image that ends a link's
+// label is skipped: the link's own destination is repointed, on a row
+// or across rows, and the title keeps its text.
+func TestMove_NestedTitleOrDestinationHoldingLabelEnd(t *testing.T) {
+	b := "[![i](x.png \"t](y)\")](a.md)\n\n" +
+		"[![j](a.md 'u](a.md)')](a.md)\n\n" +
+		"> [![k](x.png\n> \"v\n> ](a.md)\")](a.md)\n\n" +
+		"[*![l](x](y).png)*](a.md)\n"
+	got := moveAndApply(t, map[string]string{"a.md": "# A\n", "b.md": b}, "a.md", "docs/a.md")
+	assert.Equal(t,
+		"[![i](x.png \"t](y)\")](docs/a.md)\n\n"+
+			"[![j](docs/a.md 'u](a.md)')](docs/a.md)\n\n"+
+			"> [![k](x.png\n> \"v\n> ](a.md)\")](docs/a.md)\n\n"+
+			"[*![l](x](y).png)*](docs/a.md)\n",
+		got["b.md"])
+}
+
 // TestMove_IncomingPercentEncodedAndAngleForms pins the percent-escape
 // repro: an escaped `my%20file.md` is decoded before it is compared, a
 // bare `my file.md` is not a link at all, and the angle form keeps its
@@ -269,6 +287,42 @@ func TestDestStart(t *testing.T) {
 		t.Run(name+" is not found", func(t *testing.T) {
 			_, _, ok := destStart([]byte(tc.src), 1, []byte(tc.dest))
 			assert.False(t, ok)
+		})
+	}
+}
+
+func TestSkipGap(t *testing.T) {
+	for name, tc := range map[string]struct {
+		src  string
+		want int
+	}{
+		"no gap":                    {"b.md", 0},
+		"spaces and tabs":           {" \tb.md", 2},
+		"next row in a block quote": {" \r\n> >  b.md", 8},
+		"end of source":             {"  ", 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, skipGap([]byte(tc.src), 0))
+		})
+	}
+}
+
+func TestTitleEnd(t *testing.T) {
+	for name, tc := range map[string]struct {
+		src  string
+		want int
+	}{
+		"no title":                  {`)](a.md)`, 0},
+		"double-quoted":             {` "t](y)")`, 8},
+		"single-quoted":             {` 't](y)')`, 8},
+		"parenthesized":             {` (t])`, 5},
+		"escaped closer":            {` "a\"](b")`, 9},
+		"next row in a block quote": {"\n> \"t\n> ](y)\")", 13},
+		"unterminated":              {` "t](y)`, 0},
+		"end of source":             {` `, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, titleEnd([]byte(tc.src), 0))
 		})
 	}
 }

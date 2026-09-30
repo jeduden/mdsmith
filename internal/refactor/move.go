@@ -462,10 +462,11 @@ func locateDests(p parser.Parser, file string, source []byte, refDefs bool) []in
 // locator walks the AST with a cursor. Entering a link or image moves
 // the cursor to its opening byte. Each text, code-span, raw-HTML and
 // autolink segment in its label moves it forward, and so does each
-// nested destination; the cursor never moves back. On leaving the
-// node, the first `](` at or after the cursor closes that node's own
-// label, on whichever row that is. A `](` in a code span, an HTML
-// comment, an earlier row or a nested node's label is never reached.
+// nested destination and its title; the cursor never moves back. On
+// leaving the node, the first `](` at or after the cursor closes that
+// node's own label, on whichever row that is. A `](` in a code span,
+// an HTML comment, an earlier row, or a nested node's label, title or
+// destination is never reached.
 // The destination must follow after the spaces, tabs and single line
 // ending CommonMark allows, and must match goldmark's bytes exactly;
 // anything else is skipped, never guessed at.
@@ -529,7 +530,8 @@ func (d *destLocator) linkNode(entering bool, pos int, dest []byte, inline bool)
 }
 
 // locate records the destination of the inline node just left and
-// moves the cursor past it.
+// moves the cursor past it and past any title, so a `](` inside
+// either is never taken for an enclosing label's end.
 func (d *destLocator) locate(dest []byte) {
 	src := d.lf.Source
 	open := labelEnd(src, d.cursor, '(')
@@ -541,8 +543,40 @@ func (d *destLocator) locate(dest []byte) {
 	if !ok {
 		return
 	}
-	d.advance(true, start+len(dest))
+	end := start + len(dest)
+	if angle {
+		end++ // the closing `>`
+	}
+	d.advance(true, titleEnd(src, end))
 	d.record(start, dest, angle)
+}
+
+// titleEnd returns the offset just past the title that follows a
+// destination ending at i, or i when none does. goldmark parsed the
+// link, so a `"`, `'` or `(` after the gap opens its title, and the
+// first unescaped closer ends it; a title cannot nest its closer.
+func titleEnd(src []byte, i int) int {
+	j := skipGap(src, i)
+	if j >= len(src) {
+		return i
+	}
+	closer := src[j]
+	switch closer {
+	case '"', '\'':
+	case '(':
+		closer = ')'
+	default:
+		return i
+	}
+	for k := j + 1; k < len(src); k++ {
+		switch src[k] {
+		case '\\':
+			k++
+		case closer:
+			return k + 1
+		}
+	}
+	return i
 }
 
 // locateRefDef records a reference definition's destination. It
@@ -590,12 +624,27 @@ func labelEnd(src []byte, from int, next byte) int {
 }
 
 // destStart returns the offset where dest begins after open, the byte
-// past a label's `(` or `:`. CommonMark allows spaces, tabs and one
-// line ending first; the row after a line ending may repeat its
-// container's `>` markers and indentation. angle reports a `<dest>`
-// form. ok is false when goldmark's destination bytes are not there.
+// past a label's `(` or `:`, once skipGap has passed the gap before
+// it. angle reports a `<dest>` form. ok is false when goldmark's
+// destination bytes are not there.
 func destStart(src []byte, open int, dest []byte) (start int, angle, ok bool) {
-	i := open
+	i := skipGap(src, open)
+	if i < len(src) && src[i] == '<' {
+		angle = true
+		i++
+	}
+	end := i + len(dest)
+	if end > len(src) || !bytes.Equal(src[i:end], dest) ||
+		(angle && (end == len(src) || src[end] != '>')) {
+		return 0, false, false
+	}
+	return i, angle, true
+}
+
+// skipGap returns the offset past the gap CommonMark allows between a
+// link's parts: spaces, tabs and one line ending. The row after a line
+// ending may repeat its container's `>` markers and indentation.
+func skipGap(src []byte, i int) int {
 	for i < len(src) && (src[i] == ' ' || src[i] == '\t') {
 		i++
 	}
@@ -608,16 +657,7 @@ func destStart(src []byte, open int, dest []byte) (start int, angle, ok bool) {
 			i++
 		}
 	}
-	if i < len(src) && src[i] == '<' {
-		angle = true
-		i++
-	}
-	end := i + len(dest)
-	if end > len(src) || !bytes.Equal(src[i:end], dest) ||
-		(angle && (end == len(src) || src[end] != '>')) {
-		return 0, false, false
-	}
-	return i, angle, true
+	return i
 }
 
 // appendWikilinkStemEdits rewrites `[[old-stem]]` links to the new
