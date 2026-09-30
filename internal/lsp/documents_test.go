@@ -91,3 +91,25 @@ func TestFindByPathContinuesAfterMatchedCandidateCloses(t *testing.T) {
 			"to the one still open", uri)
 	}
 }
+
+// TestFindByPathPicksSmallestMatchingURI pins findByPath's winner when
+// several open URIs map to one path, for example one file opened under
+// two URI spellings on a case-insensitive filesystem. Map iteration
+// order is random, so without an explicit rule the winner could change
+// from call to call and a rename could split one file's edits across
+// two URI keys. The smallest matching URI wins, every call.
+func TestFindByPathPicksSmallestMatchingURI(t *testing.T) {
+	s := newDocumentStore()
+	for _, uri := range []string{"file:///ws/doc.md", "file:///ws/Doc.md", "file:///ws/DOC.md"} {
+		s.set(uri, &document{uri: uri, path: "/ws/doc.md", text: []byte(uri)})
+	}
+	s.set("file:///ws/other.md", &document{uri: "file:///ws/other.md", path: "/ws/other.md"})
+
+	for i := 0; i < 50; i++ {
+		uri, doc, ok := s.findByPath(func(path string) bool { return path == "/ws/doc.md" })
+		if !ok || uri != "file:///ws/DOC.md" || string(doc.text) != uri {
+			t.Fatalf("call %d: findByPath = (%q, %v), want the smallest matching URI file:///ws/DOC.md",
+				i, uri, ok)
+		}
+	}
+}
