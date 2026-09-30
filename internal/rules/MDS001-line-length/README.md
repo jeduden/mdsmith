@@ -116,9 +116,8 @@ Historians traced the founding and the early constitutional debates of the
 U. S. A. with real care.
 ```
 
-Reflow keeps each paragraph one paragraph. No rewrapped line starts with syntax
-that opens a block in CommonMark or in the GFM table, footnote, or definition
-list extensions. Reflow avoids these whatever `markdown-flavor` is set to:
+Reflow keeps each paragraph whole. No line it writes starts a new block. This
+holds for CommonMark and the extensions below, whatever `markdown-flavor` says:
 
 - an ATX heading: one to six `#` followed by a space, a tab, or the line end
 - a thematic break, such as `***`, `- - -`, or `_ _ _`
@@ -132,8 +131,8 @@ list extensions. Reflow avoids these whatever `markdown-flavor` is set to:
 
 A bare list marker is paragraph text to CommonMark, but some renderers read it
 as an empty list item. No line but the last ends in `\`, a hard line break.
-Block starts that only MyST has, such as `%` (a comment), `:::`, `+++`, or
-`(label)=`, are not avoided, so reflow can create one in a MyST file.
+Block starts of other extensions, such as a `$$` math block or MyST's `%`
+comment, `:::`, `+++`, and `(label)=`, are not avoided.
 
 If a plain word wrap would start a line with one of these, reflow moves the
 word before it down to lead that line instead. At fifty columns, a plain wrap of
@@ -150,8 +149,9 @@ with 1. and a space starts a list.
 Text that only looks like block syntax wraps as usual, such as `#48`, `#tag`,
 `2.`, `1999.`, `x = y`, or a lone `:`. Reflow judges each line on its own, so a
 table delimiter row counts even when the line before it has another cell count.
-The first line keeps the start it had: a paragraph that opens with `[^1]:` or
-`: ` still wraps, and the marker keeps the word after it on that line.
+A paragraph that opens with `[^1]:` or `: ` still wraps. Its marker keeps the
+next word, its first line never forms a link reference definition, and no later
+line starts with a list marker such as `2.`, which would open a list there.
 
 A line runs past `max` only when no layout within `max` avoids these starts,
 such as when the word before a marker already fills the line. That line then

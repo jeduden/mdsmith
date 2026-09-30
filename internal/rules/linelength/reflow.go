@@ -99,12 +99,13 @@ func tokenizeParagraph(src []byte, start, end int, spans []lint.Range) []string 
 // width: "U. S. A." moves to the next line whole rather than dragging
 // the line over the limit.
 //
-// No line after the first may be unsafe (unsafeLine): a line starting
-// "# " would become a heading, "> " a block quote, "1. " a list (issue
-// #844), and "|-|" under a line with a pipe a table. No line but the
-// last may end in "\", a hard line break. The first line must keep the
-// start of first, the paragraph's first line as written (keepsStart);
-// nil stands for plain text. Lines are as full as that allows; see
+// No line after the first may be unsafe (unsafeContinuation): a line
+// starting "# " would become a heading, "> " a block quote, "1. " a list
+// (issue #844), and "|-|" under a line with a pipe a table. No line but
+// the last may end in "\" (see breaks). The first line must keep the
+// start of first, the paragraph's first line as written (keepsStart),
+// and open no link reference definition (opensDefinition); nil stands
+// for plain text. Lines are as full as that allows; see
 // linePlanner. Returns nil for an empty token list, when every layout
 // has a line that breaks these rules, or when every layout that keeps
 // them has a line more than maxOverflowUnits units past width.
@@ -235,8 +236,10 @@ func (p *linePlanner) fitEnd(s int) int {
 // later line that unsafeContinuation rejects, a first line that does not
 // keep the paragraph's own start (keepsStart) or that opens a link
 // reference definition (opensDefinition), or a line other than the last
-// that ends in "\", which CommonMark reads as a hard line break. plans
-// holds the lines picked for every start after s.
+// that ends in "\". CommonMark reads a single trailing "\" as a hard
+// line break. A trailing "\\" is an escaped backslash and no break, but
+// the check does not tell the two apart: moving that word down as well
+// costs nothing. plans holds the lines picked for every start after s.
 func (p *linePlanner) breaks(s, e int, plans []linePlan) bool {
 	line := p.render(s, e)
 	if e < len(p.units) && line[len(line)-1] == '\\' {

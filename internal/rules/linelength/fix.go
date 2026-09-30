@@ -22,20 +22,23 @@ func (r *Rule) FixTitle() string { return "Reflow long lines" }
 // parent is the document (not list items or block quotes), and skips any
 // paragraph that is a table, sits inside a generated section, carries a
 // hard line break, contains inline raw HTML, or already has a line after
-// its first that opens a block for other renderers, such as a
-// definition under its term (hasUnsafeContinuation). Inline code spans are
-// preserved verbatim as atomic tokens. A word wider than Max — a long URL
-// or link — is left on its own over-long line.
+// its first that opens a block for other renderers, such as a definition
+// under its term (hasUnsafeContinuation). Inline code spans are
+// preserved verbatim as atomic tokens. A word wider than Max — a long
+// URL or link — is left on its own over-long line.
 //
-// No rewrapped line may start a block that would end the paragraph, such
-// as "# " (a heading) or "> " (a block quote); see unsafeLine. The first
-// line keeps the start it had, so a paragraph that opens with "[^1]:"
-// still wraps (keepsStart). The wrap moves an earlier word down to lead such a line instead. A line
-// runs past Max for this only when no layout within Max exists. A
-// paragraph is left as written when it has no safe layout, or when one
-// would need a line more than maxOverflowUnits units past Max. The output
-// is therefore the same paragraph, and the fixer is a true fixpoint:
-// re-running it produces identical bytes.
+// No rewrapped line after the first may start a block that would end
+// the paragraph, such as "# " (a heading) or "> " (a block quote); see
+// unsafeContinuation. Where a plain wrap would start a line with one,
+// the wrap moves the word before it down to lead that line instead. The
+// first line keeps the start it had, so a paragraph that opens with
+// "[^1]:" still wraps, and it never opens a link reference definition
+// (keepsStart, opensDefinition). A line runs past Max for this only when
+// no layout within Max exists. A paragraph is left as written when it
+// has no safe layout, or when one would need a line more than
+// maxOverflowUnits units past Max. The output is therefore the same
+// paragraph, and the fixer is a true fixpoint: re-running it produces
+// identical bytes.
 func (r *Rule) Fix(f *lint.File) []byte {
 	if !r.Reflow || f.AST == nil {
 		return cloneBytes(f.Source)
