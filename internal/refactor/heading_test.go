@@ -858,16 +858,25 @@ func TestHeading_SelfLinkRenameAppliesCleanly(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ws := newMemWorkspace(tt.files)
-			plan, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], tt.line, tt.oldName, "Install")
-			require.NoError(t, err)
-			got := make(map[string]string, len(plan.Edits))
-			for key, edits := range plan.Edits {
-				got[key] = applyEditsToSource(t, tt.files[key], edits)
-			}
-			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.want, renameHeadingAndApply(t, tt.files, tt.line, tt.oldName, "Install"))
 		})
 	}
+}
+
+// renameHeadingAndApply renames the heading on line of a.md in a
+// workspace holding files, splices each file's planned edits through
+// ApplyEdits, and returns the rewritten bytes of every file the plan
+// edits.
+func renameHeadingAndApply(t *testing.T, files map[string]string, line int, oldName, newName string) map[string]string {
+	t.Helper()
+	ws := newMemWorkspace(files)
+	plan, err := Heading(ws, "a.md", "a.md", ws.files["a.md"], line, oldName, newName)
+	require.NoError(t, err)
+	got := make(map[string]string, len(plan.Edits))
+	for key, edits := range plan.Edits {
+		got[key] = applyEditsToSource(t, files[key], edits)
+	}
+	return got
 }
 
 // TestDropEditsInside pins which edits the heading-text edit swallows:
