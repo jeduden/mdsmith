@@ -309,14 +309,14 @@ func Stringify(v any) string {
 // RFC 3339 with fractional seconds only when the value has them. That
 // is a normalised form, not the source text: a space-separated or
 // zone-less `2026-01-02 10:00:00` renders `2026-01-02T10:00:00Z`.
+// Go's `%v` form (`2026-01-02 00:00:00 +0000 UTC`) would otherwise
+// leak into catalog rows, heading sync, and `fmvar(...)` globs, where
+// it matches nothing.
 //
 // The symbol index (internal/index) formats a timestamp differently:
 // always time.RFC3339, so a date renders `2026-01-02T00:00:00Z` there
 // and fractional seconds are dropped. The two agree only on a time
 // off midnight UTC with whole seconds.
-// Go's `%v` form (`2026-01-02 00:00:00 +0000 UTC`) would otherwise
-// leak into catalog rows, heading sync, and `fmvar(...)` globs, where
-// it matches nothing.
 //
 // A timestamp written as exactly midnight UTC (`2026-01-02T00:00:00Z`)
 // decodes to the same value as the bare date and renders date-only too.
