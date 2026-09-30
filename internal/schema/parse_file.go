@@ -58,7 +58,9 @@ func ParseFile(r *FileReader, path string) (*Schema, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot read schema %q: %w", path, err)
 	}
-	sch, err := parseFileBytes(r, path, data, map[string]bool{filepath.Clean(path): true}, []string{filepath.Clean(path)})
+	clean := filepath.Clean(path)
+	sch, err := parseFileBytes(r, path, data,
+		map[string]bool{clean: true}, []string{clean})
 	if err != nil {
 		return nil, err
 	}
