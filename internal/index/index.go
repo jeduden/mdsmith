@@ -857,8 +857,11 @@ func nameMatches(name, q string) bool {
 // allocation; otherwise it takes the strings.ToLower path, because
 // lower-casing can change byte length for non-ASCII runes.
 func containsFold(name, q string) bool {
-	if !isASCII(name) || !isASCII(q) {
+	if !isASCII(name) {
 		return strings.Contains(strings.ToLower(name), q)
+	}
+	if !isASCII(q) {
+		return false // ASCII text lower-cases to ASCII and cannot contain q
 	}
 	for i := 0; i+len(q) <= len(name); i++ {
 		j := 0

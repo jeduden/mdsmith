@@ -634,3 +634,19 @@ func TestNameMatches_Semantics(t *testing.T) {
 	assert.True(t, nameMatches("\u023ax", "\u2c65x"))
 	assert.False(t, nameMatches("日本", "\ufffd"))
 }
+
+func TestContainsFold(t *testing.T) {
+	t.Parallel()
+	assert.True(t, containsFold("Apple Pie", "e p"))
+	assert.False(t, containsFold("Apple", "pie"))
+	assert.False(t, containsFold("ap", "apple"))
+	assert.False(t, containsFold("Apple", "\u00e9"), "ASCII name cannot contain non-ASCII query")
+	assert.True(t, containsFold("\u212a", "k"), "non-ASCII name takes the ToLower path")
+}
+
+func TestIsASCII(t *testing.T) {
+	t.Parallel()
+	assert.True(t, isASCII(""))
+	assert.True(t, isASCII("Apple Pie"))
+	assert.False(t, isASCII("caf\u00e9"))
+}

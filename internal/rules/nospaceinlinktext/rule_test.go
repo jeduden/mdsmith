@@ -667,7 +667,7 @@ func TestFixSpans_SingleAllocWithoutNesting(t *testing.T) {
 	assert.Equal(t, "a [x] b [y] c\n", string(fixSpans(src, spans, 0, len(src))))
 }
 
-func TestFix_DoesNotAliasSource(t *testing.T) {
+func TestFix_RewrittenOutputDoesNotAliasSource(t *testing.T) {
 	for _, src := range []string{"a [ x ](u) b\n"} {
 		f, err := lint.NewFile("t.md", []byte(src))
 		require.NoError(t, err)

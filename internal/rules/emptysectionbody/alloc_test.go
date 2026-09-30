@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/require"
 )
 
@@ -119,4 +120,18 @@ func TestHasMeaningfulContent_CommentOnlyHTMLBlock(t *testing.T) {
 	f, err = lint.NewFile("h.md", []byte("# A\n\n<!-- a -->\n<div>x</div>\n"))
 	require.NoError(t, err)
 	require.True(t, hasMeaningfulContent(topLevelNodes(f.AST)[1:], f.Source))
+}
+
+func TestHtmlBlockMeaningful(t *testing.T) {
+	cases := map[string]bool{
+		"<div>x</div>\n": true,
+		"<!-- a -->\n":   false,
+	}
+	for body, want := range cases {
+		f, err := lint.NewFile("h.md", []byte("# A\n\n"+body))
+		require.NoError(t, err)
+		n, ok := topLevelNodes(f.AST)[1].(*ast.HTMLBlock)
+		require.True(t, ok, body)
+		require.Equal(t, want, htmlBlockMeaningful(n, f.Source), body)
+	}
 }
