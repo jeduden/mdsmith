@@ -23,12 +23,13 @@ test" rule.
 The 2026-09-06 architecture audit of the `internal/refactor`
 rename/move engine flagged these functions. That audit was in
 closed PR #839 and never reached main. These 21 functions have
-no test named after them on main:
+no test named after them on main. They are listed by name, not
+line, since the files keep moving:
 
-- [internal/refactor/fileop_exec.go][fileop-exec]:54,65 —
+- [internal/refactor/fileop_exec.go][fileop-exec] —
   `gitTracked`, `gitMove`. Only the `TestFileOpExecute_*`
   tests reach them, through `FileOp.Execute`.
-- [internal/refactor/rename.go][rename]:146,169,254,300,329,393,472 —
+- [internal/refactor/rename.go][rename] —
   `invalidLinkRefRune`, `labelConflict`, `linkRefEdits`,
   `refUseEditsInBody`, `refUseEdit`, `linkTextBounds`, and
   `bodyNewlineCount`. `TestLinkRef_InvalidRune`,
@@ -39,12 +40,12 @@ no test named after them on main:
   `internal/lsp` and drive a `textDocument/rename` request
   through a server harness. They are integration tests, not
   unit tests next to the source.
-- [cmd/mdsmith/move.go][cmd-move]:179 — `applyEditsToFile`.
-- [cmd/mdsmith/rename.go][cmd-rename]:219,276,304,324,341,350,448 —
+- [cmd/mdsmith/move.go][cmd-move] — `applyEditsToFile`.
+- [cmd/mdsmith/rename.go][cmd-rename] —
   `buildWorkspace`, `detectRenameMode`, `headingPlan`,
   `linkRefPlan`, `looksLikePath`, `firstPathish`,
   `resolveWriteMode`.
-- [pkg/mdsmith/refactor.go][pkg-refactor]:104,122,168,184 —
+- [pkg/mdsmith/refactor.go][pkg-refactor] —
   `detectRenameKind`, `toRefactorPlan`,
   `(*sessionRefactorWorkspace).Resolve`, and
   `(*Session).buildRefactorWorkspace`.
@@ -64,8 +65,9 @@ A few caller tests are unit tests next to the source:
 - The `TestApplyPlan_*` tests in
   [move_unit_test.go][cmd-move-test] call `buildWorkspace`
   directly, but only as setup.
-- `TestComputeRenamePlan` reaches `headingPlan` and
-  `linkRefPlan`.
+- `TestComputeRenamePlan` reaches `headingPlan`. It passes
+  `--as heading` every time. Only `TestRunRename_LinkRefSuccess`
+  and `TestE2E_Rename_LinkRef_JSON` reach `linkRefPlan`.
 - `TestWriteFilePreservingMode*` reaches `resolveWriteMode`.
 
 None of the 21 is a public surface by itself, so all are
@@ -86,10 +88,9 @@ Left out, with the reason:
   `countFilesWithStem` in [move.go][move]:
   [plan 2609131913][plan-2609131913] gives these four their
   own tests.
-- `sortEdgesBySource` in [index.go][index]: open PR #838 adds
+- `sortEdgesBySource` in [index.go][index]: PR #838 added
   `TestSortEdgesBySource_NoReflectSort` and
-  `TestSortEdgesBySource_DeterministicAcrossInputOrders`. If
-  #838 closes without merging, add it back here.
+  `TestSortEdgesBySource_DeterministicAcrossInputOrders`.
 - `allStrings` in [cmd/mdsmith-wasm/main.go][wasm-main]:
   [plan 2609201914][plan-0920] covers it, with the other WASM
   bridge helpers.
@@ -152,7 +153,8 @@ Two overlaps remain:
    than assert the same exits twice. Keep "missing config
    exits 2" and "unreadable target exits 2" in the
    `buildRenameWorkspace` test. It still needs one
-   `buildWorkspace` failure to cover its early return.
+   `buildWorkspace` failure to cover its early return, so
+   "missing config" is asserted in both tests on purpose.
 6. Add `TestDetectRenameKind`, `TestToRefactorPlan`,
    `TestSessionRefactorWorkspace_Resolve`, and
    `TestSession_BuildRefactorWorkspace` to
