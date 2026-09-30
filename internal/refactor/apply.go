@@ -2,7 +2,6 @@ package refactor
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -20,7 +19,7 @@ import (
 // [Start, End).
 //
 //   - An edit is single-line (heading text, label, or fragment); a
-//     range spanning lines is an error.
+//     range that ends on another line than it starts is an error.
 //   - Line must name a line of src, and 0 <= Start <= End <= the
 //     line's UTF-16 length. A Character outside the line is an error,
 //     not clamped to the nearer end: every planner derives Characters
@@ -42,30 +41,56 @@ import (
 //
 // The overlap and same-offset rules are LSP's TextEdit rules, so a Plan
 // lands the same here as when an editor applies it; only the position
-// check is stricter than LSP's clamp. Lines are checked in document
-// order, so a plan with several bad lines always names the first.
+// check is stricter than LSP's clamp.
+//
+// Every error names the line it found (one-based, except a negative
+// line index, which has no one-based form). Edits are grouped by the
+// line they start on, and lines are checked in document order, each
+// line's checks all running before the next line's, so a plan with
+// several bad lines always names the first. ApplyEdits writes neither
+// src nor edits.
 func ApplyEdits(src []byte, edits []Edit) ([]byte, error) {
 	segs := splitKeepCR(src)
+	// byLine holds copies, so sorting a line's edits leaves the
+	// caller's slice in its given order.
 	byLine := map[int][]Edit{}
 	for _, e := range edits {
-		if e.Range.Start.Line != e.Range.End.Line {
-			return nil, errors.New("multi-line edit is not supported")
-		}
 		byLine[e.Range.Start.Line] = append(byLine[e.Range.Start.Line], e)
 	}
 	// Visit lines in document order, not map order, so a plan with
 	// several bad lines always reports the same (first) one.
 	for _, line := range slices.Sorted(maps.Keys(byLine)) {
-		if line < 0 || line >= len(segs) {
-			return nil, fmt.Errorf("edit line %d out of range", line+1)
+		if err := checkEditLine(line, len(segs), byLine[line]); err != nil {
+			return nil, err
 		}
 		out, err := spliceLine(segs[line], byLine[line], line)
 		if err != nil {
 			return nil, err
 		}
+		// Replace the segment; the bytes of src are never written.
 		segs[line] = out
 	}
 	return joinLF(segs), nil
+}
+
+// checkEditLine reports an error when zero-based line is not a line of
+// a file split into nLines segments, or when one of es — the edits
+// that start on line — ends on another line. The error names the line
+// one-based; a negative line index has no one-based form, so it is
+// named as given.
+func checkEditLine(line, nLines int, es []Edit) error {
+	if line < 0 {
+		return fmt.Errorf("edit line index %d is negative", line)
+	}
+	if line >= nLines {
+		return fmt.Errorf("edit on line %d is past the end of the file", line+1)
+	}
+	for _, e := range es {
+		if e.Range.End.Line != line {
+			return fmt.Errorf("edit on line %d ends on another line; multi-line edits are not supported", line+1)
+		}
+	}
+	return nil
 }
 
 // spliceLine applies es — every edit on zero-based line — to seg, that

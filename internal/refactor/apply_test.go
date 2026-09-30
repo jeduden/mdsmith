@@ -43,11 +43,24 @@ func TestApplyEdits(t *testing.T) {
 		_, err := ApplyEdits([]byte("a\nb\n"), []Edit{{
 			Range: Range{Start: Position{Line: 0}, End: Position{Line: 1}},
 		}})
-		require.Error(t, err)
+		require.EqualError(t, err, "edit on line 1 ends on another line; multi-line edits are not supported")
 	})
-	t.Run("line out of range", func(t *testing.T) {
+	t.Run("line past the end of the file", func(t *testing.T) {
 		_, err := ApplyEdits([]byte("a\n"), []Edit{mkEdit(9, 0, 0, "")})
-		require.Error(t, err)
+		require.EqualError(t, err, "edit on line 10 is past the end of the file")
+	})
+	t.Run("leaves src and the caller's edits unchanged", func(t *testing.T) {
+		src := []byte("abcdef\n")
+		edits := []Edit{mkEdit(0, 4, 5, "E"), mkEdit(0, 1, 2, "B")}
+		out, err := ApplyEdits(src, edits)
+		require.NoError(t, err)
+		assert.Equal(t, "aBcdEf\n", string(out))
+		assert.Equal(t, "abcdef\n", string(src))
+		assert.Equal(t, []Edit{mkEdit(0, 4, 5, "E"), mkEdit(0, 1, 2, "B")}, edits)
+	})
+	t.Run("negative line", func(t *testing.T) {
+		_, err := ApplyEdits([]byte("a\n"), []Edit{mkEdit(-1, 0, 0, "")})
+		require.EqualError(t, err, "edit line index -1 is negative")
 	})
 }
 
@@ -279,21 +292,52 @@ func TestSplitKeepCRAndJoinLF(t *testing.T) {
 
 // TestApplyEdits_ReportsFirstBadLineDeterministically pins that a plan
 // with several bad lines always names the same one — the first in
-// document order — rather than whichever line map iteration reached
-// first. Lines 2, 4, 6 and 8 each carry an invalid edit, given out of
-// order; every run must report line 2.
+// document order — whatever kind of error each line holds and in
+// whatever order the edits arrive. Every case runs 100 times so a
+// check that followed map iteration order would flake.
 func TestApplyEdits_ReportsFirstBadLineDeterministically(t *testing.T) {
 	src := []byte("l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\n")
-	for i := range 100 {
-		edits := []Edit{
-			mkEdit(7, 2, 1, "x"),
-			mkEdit(1, 2, 1, "x"),
-			mkEdit(5, 2, 1, "x"),
-			mkEdit(3, 2, 1, "x"),
-		}
-		_, err := ApplyEdits(src, edits)
-		require.Error(t, err)
-		require.Containsf(t, err.Error(), "line 2", "run %d: %v", i, err)
+	multiLine := func(line int) Edit {
+		return Edit{Range: Range{Start: Position{Line: line}, End: Position{Line: line + 1}}}
+	}
+	tests := []struct {
+		name    string
+		edits   []Edit
+		wantErr string
+	}{
+		{
+			name:    "four inverted ranges given out of order",
+			edits:   []Edit{mkEdit(7, 2, 1, "x"), mkEdit(1, 2, 1, "x"), mkEdit(5, 2, 1, "x"), mkEdit(3, 2, 1, "x")},
+			wantErr: "edit [2,1) on line 2 ends before it starts",
+		},
+		{
+			name:    "a multi-line edit given first on a later line",
+			edits:   []Edit{multiLine(8), mkEdit(1, 0, 2, "x"), mkEdit(1, 1, 2, "y")},
+			wantErr: "edits [0,2) and [1,2) on line 2 overlap",
+		},
+		{
+			name:    "a multi-line edit given last on an earlier line",
+			edits:   []Edit{mkEdit(5, 0, 9, "x"), mkEdit(3, 2, 1, "x"), multiLine(1)},
+			wantErr: "edit on line 2 ends on another line; multi-line edits are not supported",
+		},
+		{
+			name:    "a line past the end given first",
+			edits:   []Edit{mkEdit(40, 0, 0, "x"), mkEdit(2, 0, 9, "x")},
+			wantErr: "edit [0,9) on line 3 is outside the line (length 2)",
+		},
+		{
+			name:    "a negative line sorts before every other line",
+			edits:   []Edit{mkEdit(0, 2, 1, "x"), mkEdit(-3, 0, 0, "x")},
+			wantErr: "edit line index -3 is negative",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i := range 100 {
+				_, err := ApplyEdits(src, tt.edits)
+				require.EqualErrorf(t, err, tt.wantErr, "run %d", i)
+			}
+		})
 	}
 }
 
@@ -339,6 +383,41 @@ func TestCheckEditRange(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := checkEditRange(mkEdit(1, tt.start, tt.end, "x"), 4, 1)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.EqualError(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestCheckEditLine(t *testing.T) {
+	multiLine := Edit{Range: Range{Start: Position{Line: 1}, End: Position{Line: 2}}}
+	tests := []struct {
+		name    string
+		line    int
+		es      []Edit
+		wantErr string
+	}{
+		{"first line", 0, []Edit{mkEdit(0, 0, 1, "x")}, ""},
+		{"last segment", 2, []Edit{mkEdit(2, 0, 0, "x")}, ""},
+		{"negative line index", -1, []Edit{mkEdit(-1, 0, 0, "x")}, "edit line index -1 is negative"},
+		{"one past the last segment", 3, []Edit{mkEdit(3, 0, 0, "x")}, "edit on line 4 is past the end of the file"},
+		{
+			"an edit ending on the next line",
+			1, []Edit{mkEdit(1, 0, 1, "x"), multiLine},
+			"edit on line 2 ends on another line; multi-line edits are not supported",
+		},
+		{
+			"an edit ending on an earlier line",
+			1, []Edit{{Range: Range{Start: Position{Line: 1}, End: Position{Line: 0}}}},
+			"edit on line 2 ends on another line; multi-line edits are not supported",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkEditLine(tt.line, 3, tt.es)
 			if tt.wantErr == "" {
 				assert.NoError(t, err)
 				return
