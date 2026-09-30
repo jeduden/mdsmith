@@ -114,6 +114,7 @@ func TestResolvePath_CompositeLeafMap(t *testing.T) {
 	_, err := ResolvePath(data, []string{"a"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "composite value")
+	assert.ErrorIs(t, err, ErrCompositeValue)
 }
 
 func TestResolvePath_CompositeLeafSlice(t *testing.T) {
@@ -121,6 +122,7 @@ func TestResolvePath_CompositeLeafSlice(t *testing.T) {
 	_, err := ResolvePath(data, []string{"a"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "composite value")
+	assert.ErrorIs(t, err, ErrCompositeValue)
 }
 
 func TestResolvePath_BoolValue(t *testing.T) {

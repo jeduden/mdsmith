@@ -32,9 +32,9 @@ func BenchmarkCheckPathPatterns(b *testing.B) {
 	f.SetRootDir(root)
 
 	r := &Rule{PathPatterns: []PathPattern{
-		{Kind: "plan", Pattern: "plan/[0-9][0-9]*_*.md"},
-		{Kind: "rfc", Pattern: "docs/rfc/RFC-*.md"},
-		{Kind: "adr", Pattern: "docs/adr/*.md"},
+		newPathPattern("plan", "plan/[0-9][0-9]*_*.md"),
+		newPathPattern("rfc", "docs/rfc/RFC-*.md"),
+		newPathPattern("adr", "docs/adr/*.md"),
 	}}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {

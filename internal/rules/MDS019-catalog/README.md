@@ -104,9 +104,9 @@ The `row` section uses `{fieldname}` placeholder syntax.
 - Missing field -> empty string.
 - Case-mismatched field (e.g., `{Title}` when
   front matter has `title`) -> "did you mean?" hint.
-- Non-string scalar (number, bool) -> formatted to
-  string. Composite values (maps, slices) -> empty
-  string.
+- Non-string scalar (number, bool) -> formatted to string; an
+  unquoted timestamp -> `YYYY-MM-DD` at midnight UTC, else RFC 3339.
+  Composite values (maps, slices) -> empty string.
 - Literal `{` is written as `{{`, literal `}` as `}}`.
 
 ### Column constraints
@@ -132,9 +132,9 @@ columns:
 
 Format: `[-]KEY`. A `-` prefix means descending order.
 
-Built-in keys: `path` (default), `filename`. Any other
-key is looked up in front matter. Missing values sort as
-empty string. Sorting ignores case; ties break by path.
+Built-in keys: `path` (default), `filename`. Any other key is looked up in
+front matter; a missing value sorts as empty. A date or timestamp, quoted or
+not, sorts by UTC instant. Sorting ignores case; ties break by path.
 
 ### Filtering with `where`
 

@@ -437,7 +437,50 @@ appear but are overwritten by the outer generator on
 - Case mismatch — "did you mean?" hint.
 - Non-string scalar — formatted to string. Composite
   values (maps, slices) — empty string.
+- Unquoted YAML timestamp — see below.
 - Literal `{` — write `{{`. Literal `}` — write `}}`.
 
 CUE paths provide nested access for structured front
 matter values.
+
+### Dates and timestamps
+
+YAML reads an unquoted date or timestamp as a time,
+not as text. mdsmith renders that time in one of two
+forms, so the output is not always the source text:
+
+| Front matter (unquoted)     | Renders as                  |
+| --------------------------- | --------------------------- |
+| `2026-01-02`                | `2026-01-02`                |
+| `2026-01-02T00:00:00Z`      | `2026-01-02`                |
+| `2026-01-02T00:00:00+05:00` | `2026-01-02T00:00:00+05:00` |
+| `2026-01-02 10:00:00`       | `2026-01-02T10:00:00Z`      |
+| `2026-01-02T10:00:00.500Z`  | `2026-01-02T10:00:00.5Z`    |
+
+- A time at midnight with a zero UTC offset renders
+  as the date alone, `YYYY-MM-DD`. A bare date is
+  such a time, and so is midnight written with `Z`,
+  `+00:00`, or no zone.
+- Any other time renders as RFC 3339. It keeps its
+  own UTC offset (`Z` for zero), and it shows
+  fractional seconds only when they are not zero,
+  with trailing zeros dropped.
+- A time written with no zone counts as UTC, so it
+  gains a `Z`.
+
+A quoted value (`date: "2026-01-02T00:00:00Z"`) is a
+string and renders exactly as written.
+
+A catalog `sort:` on such a field orders by time, not
+by the rendered text. A value sorts by its UTC instant
+when it is an unquoted time or a quoted string in one
+of these forms:
+
+- `YYYY-MM-DD`
+- `YYYY-MM-DDTHH:MM`, optionally with seconds
+  (`:SS`), which may carry a fraction (`.sss`)
+- `YYYY-MM-DD HH:MM:SS`, optionally with a fraction
+
+Either time form may end in a zone, `Z` or `±HH:MM`.
+A value with no zone counts as UTC. Any other text
+sorts as text.

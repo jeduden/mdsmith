@@ -743,3 +743,35 @@ func loadFromString(t *testing.T, yml string) *Config {
 	require.NoError(t, err)
 	return cfg
 }
+
+// A `path-pattern:` may interpolate a front-matter value with
+// `\#(fmvar(name))`. Only a well-formed reference interpolates: a
+// pattern that loaded before interpolation existed — any other `\#(`
+// is an escaped `#` followed by `(` — must still load.
+func TestValidateKindsAcceptsLiteralOpenerPathPattern(t *testing.T) {
+	for _, pat := range []string{
+		`notes/\#(draft)*.md`,
+		`.apm/skills/\#(fmvar(my-key))/SKILL.md`,
+	} {
+		cfg := &Config{Kinds: map[string]KindBody{
+			"note": {PathPattern: pat},
+		}}
+		require.NoError(t, ValidateKinds(cfg), pat)
+	}
+}
+
+// The bytes of a reference are not glob syntax, so a quoted CUE key
+// holding `[` must not fail the doublestar check.
+func TestValidateKindsAcceptsQuotedBracketKeyInPathPattern(t *testing.T) {
+	cfg := &Config{Kinds: map[string]KindBody{
+		"doc": {PathPattern: `sub/\#(fmvar("a[b"))/x.md`},
+	}}
+	require.NoError(t, ValidateKinds(cfg))
+}
+
+func TestValidateKindsAcceptsWellFormedPathPatternInterp(t *testing.T) {
+	cfg := &Config{Kinds: map[string]KindBody{
+		"apm-skill": {PathPattern: `.apm/skills/\#(fmvar(name))/SKILL.md`},
+	}}
+	require.NoError(t, ValidateKinds(cfg))
+}

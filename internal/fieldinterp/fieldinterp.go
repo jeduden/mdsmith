@@ -8,10 +8,12 @@
 package fieldinterp
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jeduden/mdsmith/cue/cuelite"
 )
@@ -146,40 +148,137 @@ func ParseCUEPath(expr string) []string {
 	return p.Segments()
 }
 
+// ErrCompositeValue is wrapped by ResolvePath's error when the path
+// resolves to a list or map rather than a scalar.
+var ErrCompositeValue = errors.New("composite value")
+
+// ErrNotMap is wrapped by ResolvePath's error when the path walks
+// into a key whose value is not a map, so it cannot hold the rest.
+var ErrNotMap = errors.New("not a map")
+
 // ResolvePath walks data using the given path segments and returns
 // the string value at the resolved location.
 func ResolvePath(data map[string]any, path []string) (string, error) {
+	v, err := resolveScalar(data, path)
+	if err != nil {
+		return "", err
+	}
+	return Stringify(v), nil
+}
+
+// ResolveSortKey is ResolvePath for ordering. It returns the same
+// string and error for every value except a date or timestamp, which
+// it keys on the instant rather than on its rendered form (see
+// timeSortKey). Stringify keeps each timestamp's own offset and
+// precision — `2026-01-02`, `...T10:00:00-05:00`, `...T12:00:00Z` —
+// and those strings do not compare chronologically, so a caller that
+// sorts must use this.
+//
+// A date or timestamp is a time.Time (an unquoted YAML timestamp) or
+// a string that parseSortTime reads, so one sort column may mix
+// quoted and unquoted values in any of those forms. Any other string
+// keys as its text.
+func ResolveSortKey(data map[string]any, path []string) (string, error) {
+	v, err := resolveScalar(data, path)
+	if err != nil {
+		return "", err
+	}
+	switch x := v.(type) {
+	case time.Time:
+		return timeSortKey(x), nil
+	case string:
+		if t, ok := parseSortTime(x); ok {
+			return timeSortKey(t), nil
+		}
+	}
+	return Stringify(v), nil
+}
+
+// Layouts parseSortTime tries, grouped by the byte after the date. A
+// layout with no zone parses as UTC, as YAML reads a zone-less
+// timestamp. time.Parse accepts a fractional second after the seconds
+// field whether or not the layout shows one.
+var (
+	sortTimeLayoutsDate = []string{time.DateOnly} // 2026-01-02
+	sortTimeLayoutsT    = []string{
+		time.RFC3339,             // 2026-01-02T10:00:00-05:00
+		"2006-01-02T15:04:05",    // 2026-01-02T10:00:00
+		"2006-01-02T15:04Z07:00", // 2026-01-02T10:00Z
+		"2006-01-02T15:04",       // 2026-01-02T10:00
+	}
+	sortTimeLayoutsSpace = []string{
+		time.DateTime,               // 2026-01-02 10:00:00, YAML's spaced form
+		"2006-01-02 15:04:05Z07:00", // 2026-01-02 10:00:00-05:00
+	}
+)
+
+// parseSortTime reads s as a date or timestamp: `YYYY-MM-DD`, RFC 3339
+// (`2026-01-02T10:00:00-05:00`), RFC 3339 without seconds or without
+// a zone (`2026-01-02T10:00`), or YAML's `2026-01-02 10:00:00`, with
+// or without a zone. The byte checks before the parse keep plain
+// text, which is nearly every sort value, off time.Parse.
+func parseSortTime(s string) (time.Time, bool) {
+	n := len(time.DateOnly)
+	if len(s) < n || s[4] != '-' || s[7] != '-' {
+		return time.Time{}, false
+	}
+	var layouts []string
+	switch {
+	case len(s) == n:
+		layouts = sortTimeLayoutsDate
+	case s[n] == 'T':
+		layouts = sortTimeLayoutsT
+	case s[n] == ' ':
+		layouts = sortTimeLayoutsSpace
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// resolveScalar walks data along path and returns the scalar leaf,
+// rejecting an empty path, an absent key, a non-map intermediate and
+// a composite leaf.
+func resolveScalar(data map[string]any, path []string) (any, error) {
 	if len(path) == 0 {
-		return "", fmt.Errorf("empty path")
+		return nil, fmt.Errorf("empty path")
 	}
 	if data == nil {
-		return "", fmt.Errorf("front-matter key %q not found", strings.Join(path, "."))
+		return nil, fmt.Errorf("front-matter key %q not found", strings.Join(path, "."))
 	}
 
 	current := any(data)
 	for i, seg := range path {
 		m, ok := current.(map[string]any)
 		if !ok {
-			return "", fmt.Errorf("front-matter key %q is not a map", strings.Join(path[:i], "."))
+			return nil, fmt.Errorf("front-matter key %q is %w", strings.Join(path[:i], "."), ErrNotMap)
 		}
 		val, exists := m[seg]
 		if !exists {
-			return "", fmt.Errorf("front-matter key %q not found", strings.Join(path[:i+1], "."))
+			return nil, fmt.Errorf("front-matter key %q not found", strings.Join(path[:i+1], "."))
 		}
 		current = val
 	}
 
-	// Reject composite leaf values so callers can treat them as invalid paths.
+	// Reject composite leaf values so callers can treat them as invalid
+	// paths. The error wraps ErrCompositeValue so a caller can tell a
+	// present list or map apart from an absent key.
 	switch current.(type) {
 	case map[string]any, []any:
-		return "", fmt.Errorf("front-matter key %q is a composite value", strings.Join(path, "."))
+		return nil, fmt.Errorf("front-matter key %q is a %w",
+			strings.Join(path, "."), ErrCompositeValue)
 	}
 
-	return Stringify(current), nil
+	return current, nil
 }
 
 // Stringify converts a scalar value to a string representation.
 // Maps and slices return empty string to avoid nondeterministic output.
+// A time.Time — what yaml.v3 decodes an unquoted YAML timestamp into —
+// renders through formatTime, as a date or as RFC 3339.
 func Stringify(v any) string {
 	switch x := v.(type) {
 	case string:
@@ -194,11 +293,51 @@ func Stringify(v any) string {
 		return strconv.FormatInt(x, 10)
 	case float64:
 		return strconv.FormatFloat(x, 'g', -1, 64)
+	case time.Time:
+		return formatTime(x)
 	case map[string]any, []any:
 		return "" // composite types produce nondeterministic output
 	default:
 		return fmt.Sprintf("%v", x)
 	}
+}
+
+// formatTime renders a decoded YAML timestamp in one of two canonical
+// forms. yaml.v3 turns an unquoted `date: 2026-01-02` into midnight
+// UTC, so a value with no clock part and a zero UTC offset renders
+// date-only (YYYY-MM-DD), as written. Any other value renders as
+// RFC 3339 with fractional seconds only when the value has them. That
+// is a normalised form, not the source text: a space-separated or
+// zone-less `2026-01-02 10:00:00` renders `2026-01-02T10:00:00Z`.
+// Go's `%v` form (`2026-01-02 00:00:00 +0000 UTC`) would otherwise
+// leak into catalog rows, heading sync, and `fmvar(...)` globs, where
+// it matches nothing.
+//
+// The symbol index (internal/index) formats a timestamp differently:
+// always time.RFC3339, so a date renders `2026-01-02T00:00:00Z` there
+// and fractional seconds are dropped. The two agree only on a time
+// off midnight UTC with whole seconds.
+//
+// A timestamp written as exactly midnight UTC (`2026-01-02T00:00:00Z`)
+// decodes to the same value as the bare date and renders date-only too.
+func formatTime(t time.Time) string {
+	if _, off := t.Zone(); off == 0 && t.Hour() == 0 &&
+		t.Minute() == 0 && t.Second() == 0 && t.Nanosecond() == 0 {
+		return t.Format(time.DateOnly)
+	}
+	return t.Format(time.RFC3339Nano)
+}
+
+// timeSortKeyLayout is the UTC instant with a fixed-width, nine-digit
+// fraction and no zone suffix. Every key has the same length and
+// layout, so a byte compare is a chronological one, and it holds no
+// letter, so the catalog's case-folding leaves it unchanged.
+const timeSortKeyLayout = "2006-01-02 15:04:05.000000000"
+
+// timeSortKey keys t for a string sort: its UTC instant in
+// timeSortKeyLayout, whatever offset or precision the author wrote.
+func timeSortKey(t time.Time) string {
+	return t.UTC().Format(timeSortKeyLayout)
 }
 
 // DiagnoseYAMLQuoting checks whether a raw YAML value that was expected

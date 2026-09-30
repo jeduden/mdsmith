@@ -58,9 +58,9 @@ file's leading comment for the vocabulary.
 Use `<?require?>` in the schema body to declare
 constraints on files validated against this schema:
 
-| Field      | Type           | Description                                       |
-| ---------- | -------------- | ------------------------------------------------- |
-| `filename` | string or list | Glob(s) the document basename must match (any of) |
+| Field      | Type           | Description                                                                                                                     |
+| ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `filename` | string or list | Glob(s) the document basename must match (any of); may use [`\#(fmvar(...))`](../../../docs/reference/frontmatter-agreement.md) |
 
 ```markdown
 <?require
@@ -109,10 +109,10 @@ Schema body controls section strictness:
 
 ### Inline schemas on kinds
 
-A kind body may declare its schema directly in
-`.mdsmith.yml` rather than referencing a `proto.md`
-file. The two forms are equivalent — both parse to the
-same in-memory scope tree — and a kind may use only one.
+A kind body may declare its schema directly in `.mdsmith.yml` rather than
+referencing a `proto.md` file. Both forms parse to the same scope tree, and a
+kind may use only one. A `proto.md` cannot set `frontmatter-closed:`; see
+[front-matter agreement](../../../docs/reference/frontmatter-agreement.md).
 
 ```yaml
 kinds:
