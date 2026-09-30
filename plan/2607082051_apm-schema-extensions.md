@@ -145,7 +145,13 @@ not a config error; the mismatch hint names it.
 An unquoted YAML date substitutes as written,
 `YYYY-MM-DD`, and a timestamp as RFC 3339. The fix
 sits in `fieldinterp.Stringify`, so catalog rows and
-heading sync render dates the same way.
+heading sync render dates the same way. A catalog
+`sort:` keys a timestamp on its instant
+(`fieldinterp.ResolveSortKey`), not on that text, so
+mixed offsets still order chronologically.
+
+The mismatch hint shows each value as written, not
+in the escaped form the matcher sees.
 
 Under the `cue-frontmatter` placeholder the
 front-matter values are CUE constraints, not data.
