@@ -126,7 +126,8 @@ The resolved value's glob metacharacters are
 escaped, so it matches literally. A `name` of `a*b`
 matches the directory `a*b` and not `axxb` — the
 glob analogue of the regex matcher's
-`regexp.QuoteMeta`.
+`regexp.QuoteMeta`. The mismatch hint shows the
+value as written (`a*b`), not in its escaped form.
 
 A non-string value is substituted in the form YAML
 decoded it to. An unquoted date such as

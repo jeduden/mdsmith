@@ -93,17 +93,10 @@ func MatchFilename(patterns []string, base string) (matched bool, badPattern str
 }
 
 // resolveFilenamePatterns resolves every entry's `\#(...)` references
-// against fm, returning the matchable list, the substituted forms of
-// just the entries that carried a reference, and the first reference
+// against fm, returning the matchable list and the first reference
 // that could not be resolved. A list with no reference — every list
-// authored before this feature — is returned as-is with a nil
-// interpolated list, unresolved=nil and no allocation, so the common
-// path pays nothing.
-//
-// interpolated is deliberately narrower than resolved: it feeds the
-// "with front matter applied" hint, and a plain sibling glob was
-// never substituted, so listing it there would claim a substitution
-// that never happened.
+// authored before this feature — is returned as-is with
+// unresolved=nil and no allocation, so the common path pays nothing.
 //
 // An entry whose reference cannot be resolved is DROPPED from the
 // returned list rather than aborting the whole call: `filename:` is
@@ -114,12 +107,12 @@ func MatchFilename(patterns []string, base string) (matched bool, badPattern str
 //
 // When fmIsCUE is set the front-matter values are CUE constraints,
 // not data, so every reference becomes a non-empty `?*` wildcard
-// (WildcardGlobRefs) and nothing counts as interpolated.
+// (WildcardGlobRefs).
 func resolveFilenamePatterns(
 	patterns []string, fm map[string]any, fmIsCUE bool,
-) (resolved, interpolated []string, unresolved error) {
+) (resolved []string, unresolved error) {
 	if !slices.ContainsFunc(patterns, PatternHasInterp) {
-		return patterns, nil, nil
+		return patterns, nil
 	}
 	out := make([]string, 0, len(patterns))
 	for _, p := range patterns {
@@ -141,10 +134,34 @@ func resolveFilenamePatterns(
 			}
 			continue
 		}
-		interpolated = append(interpolated, r)
 		out = append(out, r)
 	}
-	return out, interpolated, unresolved
+	return out, unresolved
+}
+
+// filenameHintForms returns, for the "with front matter applied"
+// hint, each entry that carried a reference and resolved, with the
+// values as the author wrote them (GlobHintForm). A plain sibling
+// glob was never substituted, so listing it would claim a
+// substitution that never happened; under fmIsCUE nothing was
+// substituted at all. It runs only once a basename has missed, so
+// the match path pays nothing for it.
+func filenameHintForms(
+	patterns []string, fm map[string]any, fmIsCUE bool,
+) []string {
+	if fmIsCUE {
+		return nil
+	}
+	var out []string
+	for _, p := range patterns {
+		if !PatternHasInterp(p) {
+			continue
+		}
+		if h, err := resolveGlobPattern(p, fm, nil); err == nil {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // FilenameDiagnostic reports the `filename:` verdict for base against
@@ -168,8 +185,7 @@ func FilenameDiagnostic(
 	if len(patterns) == 0 {
 		return nil
 	}
-	resolved, interpolated, unresolved := resolveFilenamePatterns(
-		patterns, fm, fmIsCUE)
+	resolved, unresolved := resolveFilenamePatterns(patterns, fm, fmIsCUE)
 	matched, badPattern, err := MatchFilename(resolved, base)
 	if err != nil {
 		// Malformed glob in the schema. Surface it via the same
@@ -198,10 +214,11 @@ func FilenameDiagnostic(
 	// surfaces. With several globs configured the "expected" clause
 	// lists them all so the OR nature is visible.
 	return &SchemaDiagnostic{
-		Field:     "filename",
-		Actual:    strconv.Quote(base),
-		Expected:  FilenameExpected(patterns),
-		Hint:      GlobMismatchHint(unresolved, patterns, interpolated...),
+		Field:    "filename",
+		Actual:   strconv.Quote(base),
+		Expected: FilenameExpected(patterns),
+		Hint: GlobMismatchHint(unresolved, patterns,
+			filenameHintForms(patterns, fm, fmIsCUE)...),
 		SchemaRef: ref,
 	}
 }

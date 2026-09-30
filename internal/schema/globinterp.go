@@ -229,7 +229,8 @@ func ResolveGlobPattern(pattern string, fm map[string]any) (string, error) {
 
 // resolveGlobPattern is ResolveGlobPattern with the value escaper as
 // a parameter, so the `filename:` surface can pass
-// filenameMetaEscaper, which its filepath.Match backend needs.
+// filenameMetaEscaper, which its filepath.Match backend needs. A nil
+// esc substitutes each value as written, for GlobHintForm.
 func resolveGlobPattern(
 	pattern string, fm map[string]any, esc *strings.Replacer,
 ) (string, error) {
@@ -248,8 +249,26 @@ func resolveGlobPattern(
 					"separator; an interpolated value must name a "+
 					"single path segment", name, val)
 		}
+		if esc == nil {
+			return val, nil
+		}
 		return esc.Replace(val), nil
 	})
+}
+
+// GlobHintForm returns pattern with every reference replaced by its
+// front-matter value as the author wrote it — the text the "with
+// front matter applied" hint shows. The matcher sees each value
+// escaped (`a\*b` for doublestar, `a[*]b` for filepath.Match), which
+// the author never wrote and which reads as a different value.
+// Callers pass only patterns that resolved; one that does not is
+// returned as written.
+func GlobHintForm(pattern string, fm map[string]any) string {
+	out, err := resolveGlobPattern(pattern, fm, nil)
+	if err != nil {
+		return pattern
+	}
+	return out
 }
 
 // WildcardGlobRefs replaces every well-formed reference in pattern

@@ -2623,7 +2623,8 @@ func (r *Rule) checkPathPatterns(f *lint.File) []lint.Diagnostic {
 		if mErr == nil && ok {
 			continue
 		}
-		hint := schema.GlobMismatchHint(nil, []string{pp.Pattern}, resolved)
+		hint := schema.GlobMismatchHint(nil, []string{pp.Pattern},
+			schema.GlobHintForm(pp.Pattern, docFM))
 		if mErr != nil {
 			// The escaped value keeps the glob valid everywhere but
 			// inside a character class, where a reference is not

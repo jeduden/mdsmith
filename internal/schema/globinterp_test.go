@@ -163,7 +163,7 @@ func TestResolveGlobPattern_RejectsPathSeparatorInValue(t *testing.T) {
 // and filepath.Match reads `\?` as a literal backslash plus a
 // wildcard on Windows.
 func TestResolveFilenamePatterns_EscapedQuestionMarkMatchesLiterally(t *testing.T) {
-	resolved, _, unresolved := resolveFilenamePatterns(
+	resolved, unresolved := resolveFilenamePatterns(
 		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a?b"}, false)
 	require.NoError(t, unresolved)
 	require.Len(t, resolved, 1)
@@ -179,7 +179,7 @@ func TestResolveFilenamePatterns_EscapedQuestionMarkMatchesLiterally(t *testing.
 // surface: on POSIX it is filepath.Match's escape character, so the
 // doubled form matches one literal backslash.
 func TestResolveFilenamePatterns_EscapesBackslash(t *testing.T) {
-	resolved, _, unresolved := resolveFilenamePatterns(
+	resolved, unresolved := resolveFilenamePatterns(
 		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": `a\b`}, false)
 	require.NoError(t, unresolved)
 	assert.Equal(t, []string{`a\\b.md`}, resolved)
@@ -369,11 +369,10 @@ func TestValidateFilename_HintListsOnlyInterpolatedGlobs(t *testing.T) {
 // basename `a,b`. The `filename:` surface must therefore leave both
 // bytes alone.
 func TestResolveFilenamePatterns_LeavesBraceAndCommaUnescaped(t *testing.T) {
-	resolved, interpolated, unresolved := resolveFilenamePatterns(
+	resolved, unresolved := resolveFilenamePatterns(
 		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a,b{c"}, false)
 	require.NoError(t, unresolved)
 	assert.Equal(t, []string{"a,b{c.md"}, resolved)
-	assert.Equal(t, []string{"a,b{c.md"}, interpolated)
 	ok, err := filepath.Match(resolved[0], "a,b{c.md")
 	require.NoError(t, err)
 	assert.True(t, ok)
@@ -382,7 +381,7 @@ func TestResolveFilenamePatterns_LeavesBraceAndCommaUnescaped(t *testing.T) {
 // The bytes filepath.Match itself treats as special are still
 // escaped, so a value carrying one matches literally.
 func TestResolveFilenamePatterns_EscapesFilepathMatchMetacharacters(t *testing.T) {
-	resolved, _, unresolved := resolveFilenamePatterns(
+	resolved, unresolved := resolveFilenamePatterns(
 		[]string{`\#(fmvar(id)).md`}, map[string]any{"id": "a*b"}, false)
 	require.NoError(t, unresolved)
 	ok, err := filepath.Match(resolved[0], "a*b.md")
@@ -398,7 +397,7 @@ func TestResolveFilenamePatterns_EscapesFilepathMatchMetacharacters(t *testing.T
 // class instead. The resolved pattern then carries no backslash and
 // means the same thing on every platform.
 func TestResolveFilenamePatterns_QuotesMetaWithoutBackslash(t *testing.T) {
-	resolved, _, unresolved := resolveFilenamePatterns(
+	resolved, unresolved := resolveFilenamePatterns(
 		[]string{`\#(fmvar(id))-*.md`}, map[string]any{"id": "[draft]*?"}, false)
 	require.NoError(t, unresolved)
 	require.Len(t, resolved, 1)
@@ -564,7 +563,7 @@ func TestResolveGlobPattern_ClosingBraceOutsideAlternativeMatches(t *testing.T) 
 // the value still matches literally.
 func TestResolveFilenamePatterns_ClassOnlyBytesMatchLiterally(t *testing.T) {
 	for _, v := range []string{"a]b", "!x", "^x", "a-b"} {
-		resolved, _, unresolved := resolveFilenamePatterns(
+		resolved, unresolved := resolveFilenamePatterns(
 			[]string{`\#(fmvar(id)).md`}, map[string]any{"id": v}, false)
 		require.NoError(t, unresolved, v)
 		ok, err := filepath.Match(resolved[0], v+".md")

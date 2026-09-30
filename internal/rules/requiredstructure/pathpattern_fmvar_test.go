@@ -267,3 +267,17 @@ func TestCheck_FileSchemaFilenameFmvar_UnresolvableEntryKeepsOR(t *testing.T) {
 	r := &Rule{Schema: "proto.md", Sources: []SchemaSource{{File: "proto.md"}}}
 	expectDiags(t, r.Check(f), 0)
 }
+
+// The mismatch hint shows the front-matter value as the author wrote
+// it, not the backslash-escaped form doublestar matched (`a\*b`).
+func TestCheck_PathPatternFmvar_HintShowsValueAsWritten(t *testing.T) {
+	root := t.TempDir()
+	f := newRootedFile(t, root, "docs/c/x.md", "---\nname: a*b\n---\n# X\n")
+	r := &Rule{PathPatterns: []PathPattern{
+		{Kind: "doc", Pattern: `docs/\#(fmvar(name))/x.md`},
+	}}
+	diags := r.Check(f)
+	expectDiags(t, diags, 1)
+	assert.Contains(t, diags[0].Message,
+		"(with front matter applied: docs/a*b/x.md)")
+}
