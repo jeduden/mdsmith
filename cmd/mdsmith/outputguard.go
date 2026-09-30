@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -70,7 +71,7 @@ func printInputRefusal(cmd, output string) {
 // An existing output is compared with each resolved input by file
 // identity (os.SameFile), so a relative spelling, a symlink, a hard
 // link, or a case-insensitive file system cannot hide a match. A
-// missing output is checked by wouldBeInput.
+// missing output, or a dangling symlink, is checked by wouldBeInput.
 func outputIsInput(output string, in runInputs) bool {
 	info, err := os.Stat(output)
 	if err != nil {
@@ -93,27 +94,19 @@ func outputIsInput(output string, in runInputs) bool {
 // creates it, is a file the same run would pick up: a Markdown name
 // inside a directory argument, one matching a glob argument, or, on a
 // discovery run, one matching a files: pattern under the working
-// directory. Directories are compared by identity after resolving
-// symlinks in the output's parent. Names are matched without regard
-// to case, so the check also holds on a case-insensitive file system.
-// Ignore rules are not consulted, so a Markdown output name in the
-// linted tree is refused even where .gitignore would skip it. A parent
-// directory that does not exist makes the report fail to open anyway.
+// directory. The name checked is the one the open creates (see
+// createTarget), so a dangling symlink is judged by its final target,
+// not its own name. Directories are compared by identity. Names are
+// matched without regard to case, so the check also holds on a
+// case-insensitive file system. Ignore rules are not consulted, so a
+// Markdown output name in the linted tree is refused even where
+// .gitignore would skip it. A path the open cannot create at all, as
+// under a missing directory, is left to preflightOutput.
 func wouldBeInput(output string, in runInputs) bool {
-	if !mdpath.HasMarkdownExt(filepath.Ext(output)) {
+	target, err := createTarget(output)
+	if err != nil || !mdpath.HasMarkdownExt(filepath.Ext(target)) {
 		return false
 	}
-	parent, err := filepath.EvalSymlinks(filepath.Dir(output))
-	if err != nil {
-		return false
-	}
-	// Absolute, so relUnder can walk every ancestor. Abs fails only
-	// without a working directory; the relative path then still
-	// covers arguments at or below ".".
-	if abs, err := filepath.Abs(parent); err == nil {
-		parent = abs
-	}
-	target := filepath.Join(parent, filepath.Base(output))
 	for _, arg := range in.args {
 		if argWouldTake(arg, target) {
 			return true
@@ -124,6 +117,50 @@ func wouldBeInput(output string, in runInputs) bool {
 	}
 	rel, ok := relUnder(target, ".")
 	return ok && matchesFolded(in.patterns, rel)
+}
+
+// maxLinkHops caps the symlinks createTarget follows, as the kernel
+// caps a path lookup (40 on Linux).
+const maxLinkHops = 40
+
+// errTooManyLinks is createTarget's error for a symlink chain longer
+// than maxLinkHops, such as a loop; the open fails on it too.
+var errTooManyLinks = errors.New("too many levels of symbolic links")
+
+// createTarget returns the absolute path, with no symlink in its
+// directory part, of the file that opening the missing path output
+// with O_CREATE creates. A dangling symlink at output is followed,
+// hop by hop, to its final target, which is the file the open
+// creates; a relative link target is read from the link's own
+// directory. It fails when the open would fail too: on a missing
+// directory, or on more than maxLinkHops links.
+func createTarget(output string) (string, error) {
+	p := output
+	for hops := 0; ; hops++ {
+		parent, err := filepath.EvalSymlinks(filepath.Dir(p))
+		if err != nil {
+			return "", err
+		}
+		// Absolute, so relUnder can walk every ancestor. Abs fails only
+		// without a working directory; the relative path then still
+		// covers arguments at or below ".".
+		if abs, err := filepath.Abs(parent); err == nil {
+			parent = abs
+		}
+		p = filepath.Join(parent, filepath.Base(p))
+		dest, err := os.Readlink(p)
+		if err != nil {
+			// Not a symlink: the open creates p itself.
+			return p, nil
+		}
+		if hops == maxLinkHops {
+			return "", errTooManyLinks
+		}
+		if !filepath.IsAbs(dest) {
+			dest = filepath.Join(parent, dest)
+		}
+		p = dest
+	}
 }
 
 // argWouldTake reports whether the explicit argument arg would take

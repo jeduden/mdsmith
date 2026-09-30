@@ -80,6 +80,17 @@ func TestOutputGuard_E2E(t *testing.T) {
 		assert.Equal(t, refusal("check", "long.md"), stderr.String())
 		assert.Equal(t, before, readReport(t, src), "refused before stdin is read")
 	})
+	t.Run("check -o a dangling symlink into the linted directory", func(t *testing.T) {
+		dir := outputWorkspace(t)
+		require.NoError(t, os.Mkdir(filepath.Join(dir, "docs"), 0o755))
+		if err := os.Symlink(filepath.Join("docs", "new.md"), filepath.Join(dir, "report.txt")); err != nil {
+			t.Skipf("cannot create symlinks here: %v", err)
+		}
+		_, stderr, code := runBinaryInDir(t, dir, "", "check", "-o", "report.txt", "docs")
+		assert.Equal(t, 2, code)
+		assert.Equal(t, refusal("check", "report.txt"), stderr)
+		assert.NoFileExists(t, filepath.Join(dir, "docs", "new.md"))
+	})
 	t.Run("a non-Markdown report beside the inputs is fine", func(t *testing.T) {
 		dir := outputWorkspace(t)
 		_, stderr, code := runBinaryInDir(t, dir, "", "check", "-o", "report.txt", ".")

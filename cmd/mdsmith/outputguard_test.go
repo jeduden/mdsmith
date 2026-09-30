@@ -134,6 +134,53 @@ func TestOutputIsInput_SymlinkedParent(t *testing.T) {
 	assert.False(t, outputIsInput(filepath.Join("docs", "report.md"), runInputs{args: []string{"alias"}}))
 }
 
+// A dangling symlink at the -o path is followed: opening it with
+// O_CREATE creates its final target, so that target is what the
+// would-be-input check sees, whatever the link's own name.
+func TestOutputIsInput_DanglingSymlink(t *testing.T) {
+	dir := guardWorkspace(t)
+	docs := runInputs{args: []string{"docs"}}
+	symlinkOrSkip(t, filepath.Join("docs", "new.md"), "report.txt")
+	assert.True(t, outputIsInput("report.txt", docs), "a link into a directory argument")
+
+	require.NoError(t, os.Symlink("report.txt", "hop.txt"))
+	assert.True(t, outputIsInput("hop.txt", docs), "a chain of links")
+
+	require.NoError(t, os.Symlink(filepath.Join(dir, "docs", "abs.md"), "abs.txt"))
+	assert.True(t, outputIsInput("abs.txt", docs), "an absolute target")
+
+	// A relative target is read from the link's own directory, here
+	// docs/ reached through the symlinked alias/.
+	require.NoError(t, os.Symlink("docs", "alias"))
+	require.NoError(t, os.Symlink("rel.md", filepath.Join("docs", "rel.txt")))
+	assert.True(t, outputIsInput(filepath.Join("alias", "rel.txt"), docs), "a relative target")
+
+	require.NoError(t, os.Symlink(filepath.Join("other", "new.md"), "away.txt"))
+	assert.False(t, outputIsInput("away.txt", docs), "a target outside the arguments")
+
+	require.NoError(t, os.Symlink(filepath.Join("missing", "new.md"), "nodir.txt"))
+	assert.False(t, outputIsInput("nodir.txt", docs), "a target whose directory is missing")
+
+	require.NoError(t, os.Symlink("loop-b.md", "loop-a.md"))
+	require.NoError(t, os.Symlink("loop-a.md", "loop-b.md"))
+	assert.False(t, outputIsInput("loop-a.md", runInputs{args: []string{"."}}), "a link loop")
+}
+
+func TestCreateTarget(t *testing.T) {
+	dir := guardWorkspace(t)
+	got, err := createTarget(filepath.Join("docs", "new.md"))
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(dir, "docs", "new.md"), got, "a missing name is its own target")
+
+	_, err = createTarget(filepath.Join("missing", "new.md"))
+	assert.Error(t, err, "a missing directory")
+
+	symlinkOrSkip(t, "loop-b.md", "loop-a.md")
+	require.NoError(t, os.Symlink("loop-a.md", "loop-b.md"))
+	_, err = createTarget("loop-a.md")
+	assert.ErrorIs(t, err, errTooManyLinks)
+}
+
 func TestRefuseOutputOverInput(t *testing.T) {
 	guardWorkspace(t)
 	in := runInputs{files: []string{"notes.md"}, args: []string{"notes.md"}}

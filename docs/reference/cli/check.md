@@ -103,10 +103,11 @@ report created it:
 
 An existing path is compared with each input by file
 identity, so another spelling, a symlink, or a hard link
-still counts. Names are compared without regard to case.
-Ignore rules are not consulted, so give a report inside
-the linted tree a non-Markdown name such as
-`report.txt`.
+still counts. A dangling symlink is judged by the file
+the report would create at its final target. Names are
+compared without regard to case. Ignore rules are not
+consulted, so give a report inside the linted tree a
+non-Markdown name such as `report.txt`.
 
 On stdin, `-o` is compared with the file stdin reads
 from, so `check - -o a.md < a.md` is refused too. A pipe
