@@ -45,7 +45,7 @@ row: "| [`{command}`]({filename}) | {summary} |"
 The `check`, `fix`, and `query` commands accept file
 paths, directories, and glob patterns as positional
 arguments. `check` and `query` also accept `-` to read
-from stdin.
+from stdin; `check` refuses `-` next to file arguments.
 
 With no file arguments:
 
@@ -130,7 +130,24 @@ Per-command exits may vary; see the per-command pages.
 
 ## Output
 
-Lint output goes to **stderr**. Format:
+Lint output goes to **stderr** by default. `check` and
+`fix` take `-o <path>` to write their report (diagnostics
+and the stats line) to a file, or `-o -` to write it to
+**stdout**. Runtime errors stay on stderr on every route;
+see [`mdsmith check`](cli/check.md#report-output). A clean
+`json` run prints `[]`. `-q` silences the terminal, but
+an `-o <path>` file still gets the full report. An `-o`
+path that is, or would be, one of the inputs is
+refused with exit `2`.
+
+Text output is colored only when it goes to a terminal.
+On `check` and `fix`, `--color=always` or
+`--color=never` (`--no-color`) overrides that. With no
+color flag, a non-empty `NO_COLOR` turns color off, and
+otherwise a non-empty `FORCE_COLOR` other than `0`
+turns it on, except in an `-o <path>` file.
+See [Color](cli/check.md#color) for the full order.
+Format:
 
 **text** (default):
 

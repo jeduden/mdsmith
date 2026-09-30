@@ -206,36 +206,31 @@ func TestResolveOpts_ExplicitFalseFlag_OverridesConfigOptIn(t *testing.T) {
 		"--follow-symlinks=false must force deny over a config opt-in")
 }
 
-// --- printRunStats ---
+// --- printRunStatsTo ---
+
+// runStatsLine returns the stats line printRunStatsTo writes for
+// format and stats.
+func runStatsLine(format string, stats runStats) string {
+	var buf bytes.Buffer
+	printRunStatsTo(&buf, format, stats)
+	return buf.String()
+}
 
 func TestPrintRunStats_NormalOutputContainsAllFields(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("text", false, runStats{Checked: 10, Fixed: 2, Failures: 3, Unfixed: 1})
-	})
+	got := runStatsLine("text", runStats{Checked: 10, Fixed: 2, Failures: 3, Unfixed: 1})
 	assert.Contains(t, got, "checked=10")
 	assert.Contains(t, got, "fixed=2")
 	assert.Contains(t, got, "failures=3")
 	assert.Contains(t, got, "unfixed=1")
 }
 
-func TestPrintRunStats_QuietSuppressesOutput(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("text", true, runStats{Checked: 5})
-	})
-	assert.Empty(t, got)
-}
-
-func TestPrintRunStats_JSONFormatSuppressesOutput(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("json", false, runStats{Checked: 5})
-	})
-	assert.Empty(t, got)
+func TestPrintRunStats_StructuredFormatsSuppressOutput(t *testing.T) {
+	assert.Empty(t, runStatsLine("json", runStats{Checked: 5}))
+	assert.Empty(t, runStatsLine("sarif", runStats{Checked: 5}))
 }
 
 func TestPrintRunStats_ZeroValues(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("text", false, runStats{})
-	})
+	got := runStatsLine("text", runStats{})
 	assert.Contains(t, got, "checked=0")
 	assert.Contains(t, got, "fixed=0")
 	assert.Contains(t, got, "failures=0")
@@ -243,15 +238,13 @@ func TestPrintRunStats_ZeroValues(t *testing.T) {
 }
 
 func TestPrintRunStats_DryRunIncludesWouldFix(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("text", false, runStats{
-			Checked:  12,
-			Fixed:    0,
-			Failures: 4,
-			Unfixed:  0,
-			WouldFix: 8,
-			DryRun:   true,
-		})
+	got := runStatsLine("text", runStats{
+		Checked:  12,
+		Fixed:    0,
+		Failures: 4,
+		Unfixed:  0,
+		WouldFix: 8,
+		DryRun:   true,
 	})
 	assert.Contains(t, got, "checked=12")
 	assert.Contains(t, got, "fixed=0")
@@ -261,10 +254,8 @@ func TestPrintRunStats_DryRunIncludesWouldFix(t *testing.T) {
 }
 
 func TestPrintRunStats_NonDryRunOmitsWouldFix(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("text", false, runStats{
-			Checked: 1, Fixed: 1, Failures: 1, Unfixed: 0,
-		})
+	got := runStatsLine("text", runStats{
+		Checked: 1, Fixed: 1, Failures: 1, Unfixed: 0,
 	})
 	assert.NotContains(t, got, "would-fix",
 		"would-fix field must be hidden on non-dry-run; got: %s", got)
@@ -339,7 +330,7 @@ func TestPrintDryRunPreview_MultipleFiles(t *testing.T) {
 
 func TestWriteDryRunJSON_EmitsPerFileRecords(t *testing.T) {
 	var buf bytes.Buffer
-	code := writeDryRunJSON(&buf, &fixpkg.Result{
+	err := writeDryRunJSON(&buf, &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{
 			{
 				Path:  "a.md",
@@ -356,7 +347,7 @@ func TestWriteDryRunJSON_EmitsPerFileRecords(t *testing.T) {
 				Severity: lint.Warning, Message: "trailing punctuation"},
 		},
 	})
-	assert.Equal(t, 0, code)
+	require.NoError(t, err)
 
 	var records []map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &records),
@@ -377,8 +368,7 @@ func TestWriteDryRunJSON_EmitsPerFileRecords(t *testing.T) {
 
 func TestWriteDryRunJSON_EmptyResultEmitsEmptyArray(t *testing.T) {
 	var buf bytes.Buffer
-	code := writeDryRunJSON(&buf, &fixpkg.Result{})
-	assert.Equal(t, 0, code)
+	require.NoError(t, writeDryRunJSON(&buf, &fixpkg.Result{}))
 	assert.Equal(t, "[]\n", buf.String())
 }
 
@@ -419,10 +409,10 @@ func manyDiagnostics(n int) []lint.Diagnostic {
 }
 
 func TestReportCheckResultTo_BuffersDiagnosticWrites(t *testing.T) {
-	opts := checkCLIOpts{format: "text", noColor: true}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text", color: colorNever}}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
 	w := &countingWriter{}
-	code := reportCheckResultTo(result, opts, &vlog.Logger{}, w)
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, io.Discard, w))
 	assert.Equal(t, 1, code)
 	assert.Contains(t, w.buf.String(), "line too long")
 	// 100 diagnostics × (header + snippet + caret) lines must not become
@@ -431,28 +421,25 @@ func TestReportCheckResultTo_BuffersDiagnosticWrites(t *testing.T) {
 }
 
 func TestReportFixResultTo_BuffersDiagnosticWrites(t *testing.T) {
-	opts := fixCLIOpts{format: "text", noColor: true}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text", color: colorNever}}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(100)}
 	w := &countingWriter{}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, w)
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, w))
 	assert.Equal(t, 1, code)
 	assert.Contains(t, w.buf.String(), "line too long")
 	assert.LessOrEqual(t, w.calls, 4)
 }
 
-func TestWriteDryRunJSON_WriteErrorReturns2(t *testing.T) {
-	var code int
-	captureStderr(func() {
-		code = writeDryRunJSON(&alwaysErrorWriter{}, &fixpkg.Result{
-			WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
-		})
+func TestWriteDryRunJSON_ReturnsWriteError(t *testing.T) {
+	err := writeDryRunJSON(&alwaysErrorWriter{}, &fixpkg.Result{
+		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
 	})
-	assert.Equal(t, 2, code)
+	assert.EqualError(t, err, "write failed")
 }
 
 func TestWriteDryRunJSON_PopulatesSourceLinesAndExplanation(t *testing.T) {
 	var buf bytes.Buffer
-	code := writeDryRunJSON(&buf, &fixpkg.Result{
+	err := writeDryRunJSON(&buf, &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{
 			{Path: "a.md", Count: 1, Rules: []fixpkg.RuleFixCount{{RuleID: "MDS001", Count: 1}}},
 		},
@@ -472,7 +459,7 @@ func TestWriteDryRunJSON_PopulatesSourceLinesAndExplanation(t *testing.T) {
 			},
 		},
 	})
-	require.Equal(t, 0, code)
+	require.NoError(t, err)
 
 	var records []map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &records))
@@ -492,14 +479,14 @@ func TestWriteDryRunJSON_PopulatesSourceLinesAndExplanation(t *testing.T) {
 
 func TestWriteDryRunJSON_IncludesUnfixableDiagFiles(t *testing.T) {
 	var buf bytes.Buffer
-	code := writeDryRunJSON(&buf, &fixpkg.Result{
+	err := writeDryRunJSON(&buf, &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{},
 		Diagnostics: []lint.Diagnostic{
 			{File: "b.md", Line: 3, Column: 1, RuleID: "MDS099",
 				RuleName: "unfixable-rule", Severity: lint.Error, Message: "unfixable"},
 		},
 	})
-	assert.Equal(t, 0, code)
+	require.NoError(t, err)
 
 	var records []map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &records),
@@ -521,7 +508,7 @@ func TestWriteDryRunJSON_IncludesUnfixableDiagFiles(t *testing.T) {
 // --- reportFixResult ---
 
 func TestReportFixResult_DryRunTextPreview(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "text"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text"}, dryRun: true}
 	result := &fixpkg.Result{
 		FilesChecked: 2,
 		Failures:     1,
@@ -540,7 +527,7 @@ func TestReportFixResult_DryRunTextPreview(t *testing.T) {
 }
 
 func TestReportFixResult_DryRunJSONOutput(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "json"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "json"}, dryRun: true}
 	result := &fixpkg.Result{
 		FilesChecked: 1,
 		WouldFix:     1,
@@ -566,7 +553,7 @@ func TestReportFixResult_DryRunJSONOutput(t *testing.T) {
 }
 
 func TestReportFixResult_DryRunSARIFOutput(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "sarif"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "sarif"}, dryRun: true}
 	result := &fixpkg.Result{
 		FilesChecked: 1,
 		WouldFix:     1,
@@ -600,7 +587,7 @@ func TestReportFixResult_DryRunSARIFOutput(t *testing.T) {
 }
 
 func TestReportFixResult_DryRunSARIFQuietSuppressesOutput(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "sarif", quiet: true}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "sarif", quiet: true}, dryRun: true}
 	result := &fixpkg.Result{
 		WouldFix: 1,
 		WouldFixFiles: []fixpkg.WouldFixFile{
@@ -623,7 +610,7 @@ func TestReportFixResult_DryRunSARIFQuietSuppressesOutput(t *testing.T) {
 }
 
 func TestReportFixResult_DryRunJSONQuietSuppressesOutput(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "json", quiet: true}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "json", quiet: true}, dryRun: true}
 	result := &fixpkg.Result{
 		WouldFix: 1,
 		WouldFixFiles: []fixpkg.WouldFixFile{
@@ -645,7 +632,7 @@ func TestReportFixResult_DryRunJSONQuietSuppressesOutput(t *testing.T) {
 func TestReportCheckResult_SARIFEmittedWhenNoDiagnostics(t *testing.T) {
 	// SARIF must always be emitted so github/codeql-action/upload-sarif
 	// receives a valid document (not an empty file) on a clean codebase.
-	opts := checkCLIOpts{format: "sarif"}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "sarif"}}
 	result := &engine.Result{FilesChecked: 3}
 	var code int
 	var stdout string
@@ -669,7 +656,7 @@ func TestReportCheckResult_SARIFEmittedWhenNoDiagnostics(t *testing.T) {
 func TestReportFixResult_SARIFEmittedWhenNoDiagnostics(t *testing.T) {
 	// Same invariant as check: fix -f sarif must produce a valid SARIF
 	// document even when fixing resolved all issues (Diagnostics empty).
-	opts := fixCLIOpts{format: "sarif"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "sarif"}}
 	result := &fixpkg.Result{FilesChecked: 2, Modified: []string{"f.md"}}
 	var code int
 	var stdout string
@@ -688,7 +675,7 @@ func TestReportFixResult_SARIFEmittedWhenNoDiagnostics(t *testing.T) {
 }
 
 func TestReportFixResult_DiagnosticsReturnsCode1(t *testing.T) {
-	opts := fixCLIOpts{format: "text"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text"}}
 	result := &fixpkg.Result{
 		FilesChecked: 1,
 		Failures:     1,
@@ -705,7 +692,7 @@ func TestReportFixResult_DiagnosticsReturnsCode1(t *testing.T) {
 }
 
 func TestReportFixResult_ErrorsOnlyReturnsCode2(t *testing.T) {
-	opts := fixCLIOpts{format: "text"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text"}}
 	result := &fixpkg.Result{
 		FilesChecked: 1,
 		Errors:       []error{fmt.Errorf("disk error")},
@@ -719,16 +706,16 @@ func TestReportFixResult_ErrorsOnlyReturnsCode2(t *testing.T) {
 }
 
 func TestReportFixResultTo_DryRunJSONWriteErrorReturns2(t *testing.T) {
-	opts := fixCLIOpts{dryRun: true, format: "json"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "json"}, dryRun: true}
 	result := &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
 	}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
 func TestReportFixResultTo_DiagWriteErrorReturns2(t *testing.T) {
-	opts := fixCLIOpts{format: "text"}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text"}}
 	result := &fixpkg.Result{
 		FilesChecked: 1,
 		Failures:     1,
@@ -737,14 +724,14 @@ func TestReportFixResultTo_DiagWriteErrorReturns2(t *testing.T) {
 				RuleName: "test-rule", Severity: lint.Warning, Message: "issue"},
 		},
 	}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
 // --- reportCheckResultTo ---
 
 func TestReportCheckResultTo_DiagWriteErrorReturns2(t *testing.T) {
-	opts := checkCLIOpts{format: "text"}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text"}}
 	result := &engine.Result{
 		FilesChecked: 1,
 		Diagnostics: []lint.Diagnostic{
@@ -752,7 +739,7 @@ func TestReportCheckResultTo_DiagWriteErrorReturns2(t *testing.T) {
 				RuleName: "test-rule", Severity: lint.Warning, Message: "issue"},
 		},
 	}
-	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
@@ -993,7 +980,7 @@ func TestParseCheckFlags_Defaults(t *testing.T) {
 	assert.False(t, hasStdin)
 	assert.Empty(t, files)
 	assert.Equal(t, "text", opts.format)
-	assert.False(t, opts.noColor)
+	assert.Equal(t, colorUnset, opts.color)
 	assert.False(t, opts.quiet)
 	assert.False(t, opts.verbose)
 	assert.False(t, opts.explain)
@@ -1003,12 +990,17 @@ func TestParseCheckFlags_Defaults(t *testing.T) {
 	assert.False(t, opts.walk.noGitignore)
 }
 
+// `-` next to file arguments is a usage error rather than stdin
+// silently winning over the files (see
+// TestParseCheckFlags_StdinWithFilesIsUsageError).
 func TestParseCheckFlags_FilesAndStdin(t *testing.T) {
-	opts, files, hasStdin, code := parseCheckFlags([]string{"a.md", "-", "b.md"})
-	assert.Equal(t, -1, code)
-	assert.True(t, hasStdin)
-	assert.Equal(t, []string{"a.md", "b.md"}, files)
-	assert.Empty(t, opts.configPath)
+	stderr := captureStderr(func() {
+		_, files, hasStdin, code := parseCheckFlags([]string{"a.md", "-", "b.md"})
+		assert.Equal(t, 2, code)
+		assert.False(t, hasStdin)
+		assert.Nil(t, files)
+	})
+	assert.Contains(t, stderr, "cannot be combined with file arguments")
 }
 
 func TestParseCheckFlags_QuietSuppressesVerbose(t *testing.T) {
@@ -1518,36 +1510,37 @@ func (w *failAfterWriter) Write(p []byte) (int, error) {
 func TestReportCheckResultTo_FlushErrorReturns2(t *testing.T) {
 	// No diagnostics: only the run-stats line sits in the buffer, so
 	// the first underlying write happens at the final Flush.
-	code := reportCheckResultTo(&engine.Result{FilesChecked: 1},
-		checkCLIOpts{format: "text"}, &vlog.Logger{}, &failAfterWriter{n: 0})
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text"}}
+	code := reportCheckResultTo(&engine.Result{FilesChecked: 1}, opts,
+		&vlog.Logger{}, testIO(t, io.Discard, &failAfterWriter{n: 0}))
 	assert.Equal(t, 2, code)
 }
 
 func TestReportFixResultTo_FlushErrorReturns2(t *testing.T) {
-	code := reportFixResultTo(fixCLIOpts{format: "text"},
-		&fixpkg.Result{FilesChecked: 1}, &vlog.Logger{}, &failAfterWriter{n: 0})
+	code := reportFixResultTo(fixCLIOpts{reportFlags: reportFlags{format: "text"}},
+		&fixpkg.Result{FilesChecked: 1}, &vlog.Logger{}, testIO(t, io.Discard, &failAfterWriter{n: 0}))
 	assert.Equal(t, 2, code)
 }
 
 func TestReportFixResultTo_DryRunJSONWriteErrorFlushes(t *testing.T) {
 	// The dry-run JSON path returns the formatter's error code after
 	// flushing what it can; the underlying writer rejects everything.
-	opts := fixCLIOpts{format: "json", dryRun: true}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "json"}, dryRun: true}
 	result := &fixpkg.Result{
 		WouldFixFiles: []fixpkg.WouldFixFile{{Path: "f.md", Count: 1}},
 		Diagnostics:   manyDiagnostics(2000),
 	}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
 func TestReportFixResultTo_DryRunSARIFWriteErrorReturns2(t *testing.T) {
-	// Drive lines 369-370 in fix.go: enough diagnostics to overflow the
-	// 64 KiB buffer during SARIF JSON encoding so formatDiagnosticsTo
-	// returns non-zero and the early-return branch is taken.
-	opts := fixCLIOpts{dryRun: true, format: "sarif"}
+	// Enough diagnostics to overflow the 64 KiB buffer during SARIF
+	// JSON encoding, so writeDiagnostics itself sees the failure and
+	// the report exits 2.
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "sarif"}, dryRun: true}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
@@ -1555,22 +1548,22 @@ func TestReportCheckResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
 	// Enough diagnostics to overflow the 64 KiB stderr buffer, so the
 	// formatter itself observes the write failure mid-stream and the
 	// report path takes its early-return branch.
-	opts := checkCLIOpts{format: "text", noColor: true}
+	opts := checkCLIOpts{reportFlags: reportFlags{format: "text", color: colorNever}}
 	result := &engine.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
-	code := reportCheckResultTo(result, opts, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportCheckResultTo(result, opts, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
 func TestReportFixResultTo_LargeDiagWriteErrorReturns2(t *testing.T) {
-	opts := fixCLIOpts{format: "text", noColor: true}
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text", color: colorNever}}
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(2000)}
-	code := reportFixResultTo(opts, result, &vlog.Logger{}, &alwaysErrorWriter{})
+	code := reportFixResultTo(opts, result, &vlog.Logger{}, testIO(t, io.Discard, &alwaysErrorWriter{}))
 	assert.Equal(t, 2, code)
 }
 
 func TestNonMarkdownSkipWarner_TextEmitsAndDedupes(t *testing.T) {
 	var buf bytes.Buffer
-	warn := nonMarkdownSkipWarner(&buf, "text", false)
+	warn := nonMarkdownSkipWarner(&buf, reportFlags{format: "text"})
 	require.NotNil(t, warn, "text, non-quiet should produce an active warner")
 
 	warn(".gitattributes")
@@ -1586,19 +1579,27 @@ func TestNonMarkdownSkipWarner_TextEmitsAndDedupes(t *testing.T) {
 	assert.Contains(t, out, ".md, .markdown")
 }
 
-func TestNonMarkdownSkipWarner_SuppressedForQuietAndNonText(t *testing.T) {
+func TestNonMarkdownSkipWarner_SuppressedForQuietAndStructuredStderr(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		format string
-		quiet  bool
+		name  string
+		flags reportFlags
 	}{
-		{"quiet", "text", true},
-		{"json", "json", false},
-		{"sarif", "sarif", false},
+		{"quiet", reportFlags{format: "text", quiet: true}},
+		{"quiet json on stdout", reportFlags{format: "json", output: "-", quiet: true}},
+		{"json on stderr", reportFlags{format: "json"}},
+		{"sarif on stderr", reportFlags{format: "sarif"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Nil(t, nonMarkdownSkipWarner(io.Discard, tc.format, tc.quiet),
+			assert.Nil(t, nonMarkdownSkipWarner(io.Discard, tc.flags),
 				"warner must be disabled to avoid non-error output / corrupting structured formats")
 		})
+	}
+}
+
+// Once -o moves a json or sarif report off stderr, a prose warning
+// there can no longer corrupt it, so the warning shows.
+func TestNonMarkdownSkipWarner_ActiveWhenStructuredReportIsRouted(t *testing.T) {
+	for _, output := range []string{"-", "report.json"} {
+		assert.NotNil(t, nonMarkdownSkipWarner(io.Discard, reportFlags{format: "json", output: output}), output)
 	}
 }

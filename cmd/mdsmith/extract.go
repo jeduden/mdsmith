@@ -95,8 +95,7 @@ func runExtract(args []string) int {
 	mt := schema.BuildMatchTree(f, sch, docFM)
 	data, diags := extract.Extract(f, sch, mt)
 	if len(diags) > 0 {
-		formatDiagnostics(diags, "text", false)
-		return 1
+		return failWithDiagnostics(diags)
 	}
 
 	return emit(extractStdout, fmtEnum, data)
@@ -197,8 +196,7 @@ func gateResultCode(result *engine.Result) int {
 		printErrors(result.Errors)
 	}
 	if len(result.Diagnostics) > 0 {
-		formatDiagnostics(result.Diagnostics, "text", false)
-		return 1
+		return failWithDiagnostics(result.Diagnostics)
 	}
 	if len(result.Errors) > 0 {
 		return 2

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"math"
@@ -17,13 +16,13 @@ import (
 
 // checkCLIOpts bundles the runtime knobs threaded through the check
 // command path. Grouped because runCheck splits between explicit-file,
-// stdin, and config-discovery entry points and the same eight values
-// flow to all three.
+// stdin, and config-discovery entry points and the same values flow
+// to all three.
 type checkCLIOpts struct {
+	// reportFlags holds -f, -o, the color flags, and -q, shared with
+	// fix. Runtime errors always stay on stderr.
+	reportFlags
 	configPath   string
-	format       string
-	noColor      bool
-	quiet        bool
 	verbose      bool
 	walk         walkCLI
 	maxInputSize string
@@ -47,6 +46,21 @@ func runCheck(args []string) int {
 	return checkDiscovered(opts)
 }
 
+// setCheckUsage wires the usage message for the check subcommand onto fs.
+func setCheckUsage(fs *flag.FlagSet) {
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith check [flags] [files...]\n\n"+
+			"Lint Markdown files for style issues.\n\n"+
+			"Files can be paths, directories (walked recursively for *.md), or glob patterns.\n"+
+			"Pass - alone to read from stdin; it cannot be combined with file arguments.\n"+
+			"With no file arguments, discovers files using the files patterns from config\n"+
+			"(default: **/*.md, **/*.markdown).\n\n"+
+			reportRoutingHelp+
+			"Flags:\n")
+		fs.PrintDefaults()
+	}
+}
+
 // parseCheckFlags configures the `check` flag set, parses args, and
 // returns the resolved opts plus positional arguments. The bool
 // `hasStdin` is true when the caller passed `-` as a positional
@@ -55,14 +69,16 @@ func runCheck(args []string) int {
 func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	var (
-		configPath, format, maxInputSize                              string
-		noColor, quiet, verbose, noGitignore, followSymlinks, explain bool
+		configPath, format, maxInputSize, output             string
+		quiet, verbose, noGitignore, followSymlinks, explain bool
+		color                                                colorMode
 	)
 
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
 	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json, sarif")
-	fs.BoolVar(&noColor, "no-color", false, "Disable ANSI colors")
-	fs.BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
+	registerColorFlags(fs, &color)
+	fs.BoolVarP(&quiet, "quiet", "q", false,
+		"Suppress non-error terminal output; an -o file still gets the report")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&followSymlinks, "follow-symlinks", false,
@@ -71,20 +87,16 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	fs.StringVar(&maxInputSize, "max-input-size", "", "Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 	fs.BoolVar(&explain, "explain", false, "Attach per-leaf rule provenance to each diagnostic")
 
-	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: mdsmith check [flags] [files...]\n\n"+
-			"Lint Markdown files for style issues.\n\n"+
-			"Files can be paths, directories (walked recursively for *.md), or glob patterns.\n"+
-			"Pass - to read from stdin. With no file arguments, discovers files using the\n"+
-			"files patterns from config (default: **/*.md, **/*.markdown).\n\n"+
-			"Flags:\n")
-		fs.PrintDefaults()
-	}
+	registerOutputFlag(fs, &output)
+	setCheckUsage(fs)
 
 	if err := fs.Parse(args); err != nil {
 		if code := reportFlagParseErr(err, os.Stderr, "mdsmith: check"); code >= 0 {
 			return checkCLIOpts{}, nil, false, code
 		}
+	}
+	if code := checkOutputFlag(fs, output, "check"); code >= 0 {
+		return checkCLIOpts{}, nil, false, code
 	}
 
 	// --quiet suppresses verbose
@@ -93,13 +105,14 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	}
 
 	hasStdin, fileArgs := splitStdinArg(fs.Args())
+	if code := refuseStdinWithFiles("check", hasStdin, fileArgs); code >= 0 {
+		return checkCLIOpts{}, nil, false, code
+	}
 
 	return checkCLIOpts{
-		configPath: configPath,
-		format:     format,
-		noColor:    noColor,
-		quiet:      quiet,
-		verbose:    verbose,
+		reportFlags: reportFlags{format: format, output: output, color: color, quiet: quiet},
+		configPath:  configPath,
+		verbose:     verbose,
 		walk: walkCLI{
 			noGitignore:    noGitignore,
 			followSymlinks: followSymlinksOverride(fs, followSymlinks),
@@ -113,10 +126,16 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 func checkFiles(fileArgs []string, opts checkCLIOpts) int {
 	cfg, cfgPath, logger, files, maxBytes, code := loadAndResolve(
 		fileArgs, opts.configPath, opts.verbose, opts.walk, opts.maxInputSize,
-		nonMarkdownSkipWarner(os.Stderr, opts.format, opts.quiet),
+		nonMarkdownSkipWarner(os.Stderr, opts.reportFlags),
 	)
-	if code >= 0 {
+	if code > 0 {
 		return code
+	}
+	if c := guardOutput("check", opts.output, runInputs{files: files, args: fileArgs}); c >= 0 {
+		return c
+	}
+	if code == 0 {
+		return reportNoFiles(opts.reportFlags, processIO())
 	}
 
 	sess := sessionForCLI(cfg, cfgPath)
@@ -152,6 +171,9 @@ func batchMaxBytes(resolved int64) int64 {
 // checkStdin reads from stdin, lints the content, and returns the appropriate
 // exit code. Uses runner.RunSource to ensure Configurable settings are applied.
 func checkStdin(opts checkCLIOpts) int {
+	if c := guardOutput("check", opts.output, runInputs{stdin: os.Stdin}); c >= 0 {
+		return c
+	}
 	logger := &vlog.Logger{Enabled: opts.verbose, W: os.Stderr}
 
 	cfg, cfgPath, err := loadConfig(opts.configPath)
@@ -185,8 +207,14 @@ func checkStdin(opts checkCLIOpts) int {
 // and lints them. Returns the appropriate exit code.
 func checkDiscovered(opts checkCLIOpts) int {
 	cfg, cfgPath, logger, files, code := discoverFiles(opts.configPath, opts.verbose, opts.walk)
-	if code >= 0 {
+	if code > 0 {
 		return code
+	}
+	if c := guardOutput("check", opts.output, runInputs{files: files, patterns: cfg.Files}); c >= 0 {
+		return c
+	}
+	if code == 0 {
+		return reportNoFiles(opts.reportFlags, processIO())
 	}
 
 	maxBytes, err := resolveMaxInputBytes(cfg, opts.maxInputSize)
@@ -201,45 +229,24 @@ func checkDiscovered(opts checkCLIOpts) int {
 	return reportCheckResult(result, opts, logger)
 }
 
-// reportCheckResult writes diagnostics + the run-stats line and
+// reportCheckResult writes the report (diagnostics + the run-stats
+// line) to the -o destination and the runtime errors to stderr, and
 // computes the exit code shared by checkFiles, checkStdin, and
 // checkDiscovered.
 func reportCheckResult(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger) int {
-	return reportCheckResultTo(result, opts, logger, os.Stderr)
+	return reportCheckResultTo(result, opts, logger, processIO())
 }
 
 // reportCheckResultTo is the injectable form of reportCheckResult.
-// Tests pass an alternate stderr writer to exercise the write-error
-// branches without leaking to the real stderr; the formatter and the
-// run-stats helper both route their own write-error messages through
-// the same writer (see formatDiagnosticsTo, printRunStatsTo) so a
-// fault-injecting writer captures the full stderr surface.
-//
-// All report output goes through one buffered writer: the text
-// formatter emits several small writes per diagnostic, and issuing
-// each as its own syscall on an unbuffered stderr dominated wall time
-// on diagnostic-heavy runs. The buffer is flushed before the verbose
-// logger line so output ordering on a shared fd is preserved.
-func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, stderrW io.Writer) int {
-	bw := bufio.NewWriterSize(stderrW, stderrBufSize)
-	printErrorsTo(bw, result.Errors)
-
-	// SARIF must be emitted even with zero diagnostics so the file is valid
-	// SARIF 2.1.0 (not an empty byte stream) when uploaded to Code Scanning.
-	if !opts.quiet && (len(result.Diagnostics) > 0 || opts.format == "sarif") {
-		if code := formatDiagnosticsTo(bw, result.Diagnostics, opts.format, opts.noColor); code != 0 {
-			_ = bw.Flush()
-			return code
-		}
-	}
-	printRunStatsTo(bw, opts.format, opts.quiet, runStats{
-		Checked:  result.FilesChecked,
-		Fixed:    0,
-		Failures: len(result.Diagnostics),
-		Unfixed:  len(result.Diagnostics),
+// Tests pass a reportIO over their own writers. A report that cannot
+// be written exits 2 (see reportIO.deliverReport). The verbose logger
+// line follows the flushed report, so ordering on a shared fd holds.
+func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.Logger, rio reportIO) int {
+	code := rio.deliverReport(opts.output, opts.color, result.Errors, func(w io.Writer, color bool) error {
+		return writeCheckReport(w, result, opts, color)
 	})
-	if err := bw.Flush(); err != nil {
-		return 2
+	if code != 0 {
+		return code
 	}
 	logger.Printf("checked %d files, %d issues found", result.FilesChecked, len(result.Diagnostics))
 
@@ -250,6 +257,28 @@ func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.
 		return 1
 	}
 	return 0
+}
+
+// writeCheckReport writes the diagnostics and the run-stats line to w
+// and returns the first write error. -q writes nothing to the terminal
+// but still fills an -o file (see reportFlags.silenced). json and
+// sarif write their document even with no diagnostics, so a clean run
+// leaves `[]` or a SARIF log with no results rather than an empty
+// stream, wherever the report goes.
+func writeCheckReport(w io.Writer, result *engine.Result, opts checkCLIOpts, color bool) error {
+	if opts.silenced() {
+		return nil
+	}
+	if err := writeDiagnostics(w, result.Diagnostics, opts.format, color); err != nil {
+		return err
+	}
+	printRunStatsTo(w, opts.format, runStats{
+		Checked:  result.FilesChecked,
+		Fixed:    0,
+		Failures: len(result.Diagnostics),
+		Unfixed:  len(result.Diagnostics),
+	})
+	return nil
 }
 
 // readStdinLimited reads stdin with an optional size limit.

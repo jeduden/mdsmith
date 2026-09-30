@@ -20,8 +20,9 @@ Only Markdown files are fixed. A non-Markdown path (such
 as `.gitattributes`) is skipped whether the walk reaches
 it or you name it explicitly, so `fix` never rewrites it.
 Naming one explicitly prints a `skipping …: not a
-Markdown file` warning on stderr; `--quiet` and the
-`json`/`sarif` formats suppress it.
+Markdown file` warning on stderr. `--quiet` suppresses
+it, and so do the `json`/`sarif` formats while their
+report goes to stderr.
 
 ## Flags
 
@@ -30,16 +31,44 @@ Markdown file` warning on stderr; `--quiet` and the
 | `-c`, `--config`    | auto    | Override config path (auto-discovers)  |
 | `-f`, `--format`    | `text`  | `text`, `json`, or `sarif`             |
 | `--max-input-size`  | `2MB`   | Max file size (e.g. `2MB`, `0`=none)   |
-| `--no-color`        | false   | Plain output                           |
+| `--color`           | unset   | `auto`, `always`, or `never`           |
+| `--no-color`        | false   | Same as `--color=never`                |
 | `--follow-symlinks` | config  | Follow symlinks; tri-state — see below |
 | `--no-gitignore`    | false   | Skip gitignore filtering               |
-| `-q`, `--quiet`     | false   | Suppress non-error output              |
+| `-q`, `--quiet`     | false   | Quiet the terminal; see below          |
 | `-v`, `--verbose`   | false   | Show config, files, and rules          |
 | `--explain`         | false   | Attach per-leaf rule provenance        |
 | `--dry-run`         | false   | Preview changes; write nothing         |
+| `-o`, `--output`    | stderr  | Report to a file; `-` is stdout        |
 
 `--follow-symlinks` semantics match
 [`mdsmith check`](check.md#flags).
+
+## Report output
+
+`-o` routes the report as it does for
+[`mdsmith check`](check.md#report-output): a file for
+`-o <path>`, stdout for `-o -`, stderr by default. The
+same [color rules](check.md#color) apply. Here the report is the
+remaining diagnostics, the `--dry-run` preview or JSON,
+and the stats line. A clean `json` run writes `[]`. `-q`
+silences the terminal, as for `check`: an explicit
+`-o <path>` file still gets the full report.
+
+Runtime errors and all build-pass output stay on stderr.
+An `-o` path that is a directory, or whose directory is
+missing, is a usage error (exit `2`) reported before any
+file is fixed. Fixes are still written before the
+report, so a write that fails later, as on a full disk
+or a read-only file, exits `2` with the files already
+fixed. `--build-only` has no lint report, so it ignores
+`-o`: no file is created, and the path is not checked.
+An empty `-o` value is still a usage error (exit `2`).
+
+As for [`check`](check.md#report-output), an `-o` path
+that is, or would be, one of the run's inputs is a usage
+error (exit `2`), and no file is fixed. For example,
+`fix -o notes.md notes.md` is refused.
 
 ## Examples
 
@@ -90,8 +119,9 @@ or diagnostic counts would change:
 ```
 
 The `diagnostics` array carries the same per-diagnostic
-fields `check --format json` returns. Like every other
-lint output, the JSON goes to **stderr**. The text-mode
+fields `check --format json` returns. The JSON goes where
+the report goes: **stderr** by default, or the `-o`
+destination. The text-mode
 `stats:` summary is suppressed in JSON mode; the
 machine-readable counts live inside each record's
 `would_fix` field.
@@ -119,11 +149,11 @@ pre-commit:
 
 ## Exit codes
 
-| Code | Meaning                        |
-| ---- | ------------------------------ |
-| 0    | No remaining issues            |
-| 1    | Issues remain after fixing     |
-| 2    | Runtime or configuration error |
+| Code | Meaning                                                    |
+| ---- | ---------------------------------------------------------- |
+| 0    | No remaining issues                                        |
+| 1    | Issues remain after fixing                                 |
+| 2    | Runtime or configuration error, or the report write failed |
 
 ## See also
 
