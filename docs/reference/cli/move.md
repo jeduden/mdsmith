@@ -108,7 +108,10 @@ cross-directory move, check them by hand.
   such as `a\_b.md` or `a&amp;b.md`, is left as written, in the
   moved file and in the files that point at it. A renderer reads
   it as `a_b.md` or `a&b.md`, which the move does not decode.
-  Write the name out, or percent-escape it as in `a%26b.md`.
+  Write the name out, or percent-escape it as in `a%26b.md`. A
+  `\` just before the `#` or `?` that ends the path, as in
+  `a.md\#x`, only escapes that byte, so such a link is repointed
+  and keeps its `\`.
 - **Ambiguous wikilinks.** When another file shares the old or
   the new basename stem, no `[[stem]]` is rewritten, because the
   rewrite could point it at the wrong file.

@@ -294,7 +294,9 @@ type destResolver struct {
 // ok is also false when the path token holds a backslash escape or an
 // entity (see markupEscaped): a renderer reads `a\_b.md` as `a_b.md`
 // and `a&amp;b.md` as `a&b.md`, which neither the index nor a rewrite
-// decodes, so the token is left as written.
+// decodes, so the token is left as written. A `\` just before the `#`
+// or `?` that ends the path is the one escape read: it only escapes
+// that byte, so the path token stops before it.
 func (r *destResolver) target(refFile string, dest []byte) (destRef, bool) {
 	t, ok := linkgraph.ParseTargetBytes(dest)
 	if !ok || t.LocalAnchor {
@@ -312,6 +314,14 @@ func (r *destResolver) target(refFile string, dest []byte) (destRef, bool) {
 		} else {
 			tokLen = q
 		}
+	}
+	if tokLen > 1 && tokLen < len(dest) && dest[tokLen-1] == '\\' {
+		// `a.md\#x` renders as `a.md#x`: the `\` escapes the `#` or
+		// `?` after it and is not part of the path. The rewrite
+		// leaves it in place. A lone `\#x` is an anchor, not read.
+		tokLen--
+		p = strings.TrimSuffix(p, `\`)
+		tgt = linkgraph.ResolveRelTarget(refFile, p)
 	}
 	if tgt == "" || markupEscaped(dest[:tokLen], tokLen < len(dest)) {
 		return destRef{}, false

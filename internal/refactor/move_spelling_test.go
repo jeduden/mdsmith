@@ -148,3 +148,18 @@ func TestMove_SelfRefDefFollowsRenamedFile(t *testing.T) {
 	got := moveAndApply(t, map[string]string{"a.md": "[s][self]\n\n[self]: ./a.md#top\n"}, "a.md", "d/b.md")
 	assert.Equal(t, "[s][self]\n\n[self]: ./b.md#top\n", got["a.md"])
 }
+
+// TestMove_EscapedDelimiterKept pins that a `\` just before the `#` or
+// `?` that ends the path only escapes that byte: a renderer reads
+// `a.md\#x` as `a.md#x`, a link to a.md. The path is repointed, in a
+// referrer and in the moved file, and the `\` stays in place. An
+// escaped `\\` before the `#` makes the path `a.md\`, so it is left.
+func TestMove_EscapedDelimiterKept(t *testing.T) {
+	got := moveAndApply(t, map[string]string{
+		"a.md": "[b](b.md\\#x) [s](a.md\\?v=1)\n",
+		"b.md": "# B\n",
+		"r.md": "[t](a.md\\#x) [u](a.md\\?v=1) [w](a.md\\\\#x)\n",
+	}, "a.md", "d/a.md")
+	assert.Equal(t, "[t](d/a.md\\#x) [u](d/a.md\\?v=1) [w](a.md\\\\#x)\n", got["r.md"])
+	assert.Equal(t, "[b](../b.md\\#x) [s](a.md\\?v=1)\n", got["a.md"])
+}
