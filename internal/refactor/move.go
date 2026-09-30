@@ -52,12 +52,10 @@ func (e SourceNotFoundError) Error() string {
 //
 // The Plan rewrites, keyed per output target:
 //
-//   - incoming destinations — every inline link and reference
-//     definition in another file whose destination names src, its
-//     path token rewritten to name dst, any `?query` and `#fragment`
-//     kept. An image naming src is repointed only in a file that also
-//     holds such a link or a `]:`: the index records no image edge,
-//     so no other file is parsed for one;
+//   - incoming destinations — every inline link, image, and
+//     reference definition in another file whose destination names
+//     src, its path token rewritten to name dst, any `?query` and
+//     `#fragment` kept;
 //   - wikilink stems — `[[old-stem]]` → `[[new-stem]]`, but only when
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
@@ -156,35 +154,20 @@ var (
 // definitions — so it names dst. A self-reference inside src is left
 // to the outbound pass, so no token is edited twice.
 //
-// Every file is read, but only a candidate is parsed: a file the index
-// records a file link from, or one holding a `]:` that may open a
-// reference definition (the index keeps no edge for those). A src with
-// a `?` in its name makes every file holding a `](` a candidate too:
-// the index reads a literal `what?.md` link as `what`, so its edge
-// never names src, while destResolver does match it.
+// Every file is read, but only one mayName admits is parsed. The
+// index is not consulted: it records no edge for an image or a
+// ref-def, and it reads a literal `what?.md` as `what`.
 func appendReferrerEdits(
 	changes map[string][]Edit, ws Workspace, p parser.Parser, r *destResolver, src, dst string,
 ) {
-	linkers := map[string]bool{}
-	for _, e := range ws.IncomingPathEdges(src) {
-		// Directive paths (include/build) are a tracked follow-up; only
-		// regular file links mark a candidate.
-		if e.Kind == index.EdgeFileLink {
-			linkers[index.NormalizePath(e.SourceFile)] = true
-		}
-	}
-	anyLinker := strings.Contains(src, "?")
+	base := []byte(path.Base(src))
 	for _, rel := range ws.Files() {
 		rel = index.NormalizePath(rel)
 		if rel == src {
 			continue
 		}
 		key, source, ok := ws.Resolve(rel)
-		if !ok {
-			continue
-		}
-		if !linkers[rel] && !bytes.Contains(source, refDefMark) &&
-			(!anyLinker || !bytes.Contains(source, linkMark)) {
+		if !ok || !mayName(source, base) {
 			continue
 		}
 		for _, d := range locateDests(p, rel, source, true) {
@@ -197,6 +180,18 @@ func appendReferrerEdits(
 			}
 		}
 	}
+}
+
+// mayName reports whether source may hold a destination that names a
+// file with the base name base. It needs a `](` or `]:` to open one,
+// and base written out or a `%` that may escape it: a destination's
+// path, once decoded and cleaned, ends in the base name it names, and
+// cleaning only drops path segments.
+func mayName(source, base []byte) bool {
+	if !bytes.Contains(source, linkMark) && !bytes.Contains(source, refDefMark) {
+		return false
+	}
+	return bytes.Contains(source, base) || bytes.IndexByte(source, '%') >= 0
 }
 
 // appendOutboundEdits recomputes every relative inline link and image

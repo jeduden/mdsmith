@@ -218,28 +218,39 @@ func TestMove_SameDirOutboundIsNoOp(t *testing.T) {
 func TestAppendReferrerEdits_DefensiveBranches(t *testing.T) {
 	changes := map[string][]Edit{}
 	ws := stubWorkspace{
-		pathEdges: []index.Edge{
-			// An include edge does not make its file a candidate.
-			{Kind: index.EdgeInclude, SourceFile: "inc.md", TargetFile: "a.md", SourceLine: 1, SourceCol: 1},
-			// A file-link edge from a file that cannot be read.
-			{Kind: index.EdgeFileLink, SourceFile: "gone.md", TargetFile: "a.md", SourceLine: 1, SourceCol: 1},
-			// A stale edge: the file no longer links to a.md.
-			{Kind: index.EdgeFileLink, SourceFile: "c.md", TargetFile: "a.md", SourceLine: 1, SourceCol: 3},
-		},
-		files: []string{"a.md", "inc.md", "gone.md", "c.md", "plain.md"},
+		files: []string{"a.md", "gone.md", "c.md", "prose.md"},
 		sources: map[string][]byte{
 			// src itself is left to the outbound pass.
-			"a.md":   []byte("[self](a.md)\n"),
-			"inc.md": []byte("[x](a.md)\n"),
-			"c.md":   []byte("[o](other.md)\n"),
-			// A file with no edge and no `]:` is never parsed.
-			"plain.md": []byte("[p](a.md)\n"),
+			"a.md": []byte("[self](a.md)\n"),
+			// A link to another file.
+			"c.md": []byte("[o](other.md) [p](100%25.md)\n"),
+			// The name with no `](` or `]:` to open a destination.
+			"prose.md": []byte("See a.md.\n"),
 		},
 		unresolvable: map[string]bool{"gone.md": true},
 	}
 	r := &destResolver{ws: ws, src: "a.md"}
 	appendReferrerEdits(changes, ws, lint.NewParser(), r, "a.md", "docs/a.md")
 	assert.Empty(t, changes, "every file hits a skip branch")
+}
+
+func TestMayName(t *testing.T) {
+	base := []byte("a.md")
+	for name, tc := range map[string]struct {
+		source string
+		want   bool
+	}{
+		"inline link":              {"[x](a.md)", true},
+		"ref-def":                  {"[r]: ./a.md", true},
+		"escaped name":             {"[x](%61.md)", true},
+		"link to another file":     {"[x](b.md)", false},
+		"name with no link mark":   {"See a.md.", false},
+		"escape with no link mark": {"100% a.md", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, mayName([]byte(tc.source), base))
+		})
+	}
 }
 
 func TestAppendWikilinkStemEdits_DefensiveBranches(t *testing.T) {

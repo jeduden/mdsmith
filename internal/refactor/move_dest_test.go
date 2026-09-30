@@ -86,6 +86,19 @@ func TestMove_NestedTitleOrDestinationHoldingLabelEnd(t *testing.T) {
 		got["b.md"])
 }
 
+// TestMove_IncomingImageOnlyReferrer pins that a file whose only
+// reference to the moved file is an image is still read: the index
+// records no edge for an image, so no edge may gate the pass.
+func TestMove_IncomingImageOnlyReferrer(t *testing.T) {
+	got := moveAndApply(t, map[string]string{
+		"my file.md": "# M\n",
+		"b.md":       "![x](my%20file.md)\n",
+		"c.md":       "![y](<my file.md>)\n",
+	}, "my file.md", "docs/my file.md")
+	assert.Equal(t, "![x](docs/my%20file.md)\n", got["b.md"])
+	assert.Equal(t, "![y](<docs/my file.md>)\n", got["c.md"])
+}
+
 // TestMove_IncomingPercentEncodedAndAngleForms pins the percent-escape
 // repro: an escaped `my%20file.md` is decoded before it is compared, a
 // bare `my file.md` is not a link at all, and the angle form keeps its
@@ -220,9 +233,9 @@ func TestMove_QuestionMarkFilenameNotTruncated(t *testing.T) {
 }
 
 // TestMove_QuestionMarkLiteralOnlyReferrer pins that a file whose only
-// reference is the literal `what?.md` is still read: the index takes
-// that link for the file `what`, so it records no edge to the moved
-// file, and the file holds no `]:` either.
+// reference is the literal `what?.md` is repointed, though the index
+// takes that link for the file `what` and records no edge to the
+// moved file.
 func TestMove_QuestionMarkLiteralOnlyReferrer(t *testing.T) {
 	got := moveAndApply(t, map[string]string{
 		"what?.md": "# W\n",
