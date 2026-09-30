@@ -115,7 +115,6 @@ func Move(ws Workspace, src, dst string) (Plan, error) {
 	appendReferrerEdits(changes, ws, p, r, src, dst)
 	appendWikilinkStemEdits(changes, ws, src, dst)
 	appendOutboundEdits(changes, p, r, srcKey, src, dst, srcSource)
-	dedupeEdits(changes)
 	stableSortEdits(changes)
 	return Plan{Edits: changes, FileOp: &FileOp{From: src, To: dst}}, nil
 }
@@ -259,25 +258,6 @@ func destEdit(d inlineDest, ref destRef, spellFrom, target string) (Edit, bool) 
 		},
 		NewText: encodeLike(newPath, string(d.row[d.ps:pe]), d.angle),
 	}, true
-}
-
-// dedupeEdits drops an edit identical to one already kept for the same
-// file: the same range and the same new text. The locator reports each
-// destination once; this is the safety net that keeps a duplicate from
-// splicing the same bytes twice.
-func dedupeEdits(changes map[string][]Edit) {
-	for key, edits := range changes {
-		seen := make(map[Edit]struct{}, len(edits))
-		kept := edits[:0]
-		for _, e := range edits {
-			if _, dup := seen[e]; dup {
-				continue
-			}
-			seen[e] = struct{}{}
-			kept = append(kept, e)
-		}
-		changes[key] = kept
-	}
 }
 
 // destRef is one destination read the way the index reads it.

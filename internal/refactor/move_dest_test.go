@@ -281,22 +281,28 @@ func TestDestLocator_CursorNeverMovesBack(t *testing.T) {
 	assert.Equal(t, 9, d.cursor)
 }
 
-// TestDedupeEdits pins the safety net: an identical edit reported
-// twice for one file is kept once, while distinct edits all stay.
-func TestDedupeEdits(t *testing.T) {
-	e := func(line, s, en int, txt string) Edit {
-		return Edit{Range: Range{
-			Start: Position{Line: line, Character: s},
-			End:   Position{Line: line, Character: en},
-		}, NewText: txt}
+// TestMove_EveryDestinationEditedOnce pins that the locator reports each
+// destination once, with no safety net behind it: repeated and nested
+// destinations, split labels and ref-defs each get exactly one edit,
+// at their own bytes.
+func TestMove_EveryDestinationEditedOnce(t *testing.T) {
+	b := "[x](a.md) [x](a.md) [](a.md) [![a](a.md)](a.md)\n" +
+		"[a\nb](a.md) [c](\n  <a.md> \"t](a.md)\")\n\n" +
+		"> [q]: a.md\n\n[r]: a.md\n[r]: a.md\n"
+	plan, err := Move(newMemWorkspace(map[string]string{"a.md": "# A\n", "b.md": b}), "a.md", "docs/a.md")
+	require.NoError(t, err)
+	edits := plan.Edits["b.md"]
+	starts := map[Position]bool{}
+	for _, e := range edits {
+		assert.False(t, starts[e.Range.Start], "two edits start at %+v", e.Range.Start)
+		starts[e.Range.Start] = true
 	}
-	changes := map[string][]Edit{
-		"b.md": {e(0, 4, 8, "docs/a.md"), e(0, 4, 8, "docs/a.md"), e(0, 4, 8, "x.md"), e(1, 4, 8, "docs/a.md")},
-		"c.md": {e(2, 0, 1, "y")},
-	}
-	dedupeEdits(changes)
-	assert.Equal(t, []Edit{e(0, 4, 8, "docs/a.md"), e(0, 4, 8, "x.md"), e(1, 4, 8, "docs/a.md")}, changes["b.md"])
-	assert.Equal(t, []Edit{e(2, 0, 1, "y")}, changes["c.md"])
+	assert.Len(t, edits, 10)
+	out, err := ApplyEdits([]byte(b), edits)
+	require.NoError(t, err)
+	assert.Equal(t, "[x](docs/a.md) [x](docs/a.md) [](docs/a.md) [![a](docs/a.md)](docs/a.md)\n"+
+		"[a\nb](docs/a.md) [c](\n  <docs/a.md> \"t](a.md)\")\n\n"+
+		"> [q]: docs/a.md\n\n[r]: docs/a.md\n[r]: docs/a.md\n", string(out))
 }
 
 func TestLabelEnd(t *testing.T) {
