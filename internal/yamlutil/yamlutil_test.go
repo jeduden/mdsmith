@@ -51,6 +51,17 @@ func TestRejectYAMLAliases(t *testing.T) {
 }
 
 func TestUnmarshalSafe(t *testing.T) {
+	// yaml.v3 panics with "hash of unhashable type" when a mapping
+	// holds both a complex key and a merge key and the target is a
+	// struct or map. UnmarshalSafe must turn that into an error.
+	t.Run("decode panic becomes error", func(t *testing.T) {
+		in := []byte("? [a, b]\n: c\n<<: {x: y}\nkinds: [a]\n")
+		var m map[string]any
+		var err error
+		require.NotPanics(t, func() { err = yamlutil.UnmarshalSafe(in, &m) })
+		assert.ErrorContains(t, err, "unhashable")
+	})
+
 	t.Run("unmarshals clean YAML into struct", func(t *testing.T) {
 		var out struct {
 			Title string `yaml:"title"`

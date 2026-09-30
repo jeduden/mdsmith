@@ -50,6 +50,7 @@ func TestFrontMatterAll_UnusableInput(t *testing.T) {
 		{"nil input", ""},
 		{"invalid yaml", "---\nthis: is\n  not: valid yaml\nxx: [\n---\n"},
 		{"tagged scalar document", "---\n!!invalid\n---\n"},
+		{"sequence document", "---\n- item\n- another\n---\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -83,8 +84,11 @@ func TestFrontMatterAll_Kinds(t *testing.T) {
 		{"non-list value", "kinds: hello", nil},
 		{"typed scalars kept as text", "kinds:\n  - a\n  - 42\n  - b", []string{"a", "42", "b"}},
 		{"mapping entry rejects the list", "kinds:\n  - a\n  - {x: y}", nil},
-		{"quoted key", "\"kinds\": [a]", []string{"a"}},
 		{"merge key", "<<: {kinds: [m]}", []string{"m"}},
+		// lint.ParseFrontMatterKinds reads only the bytes `kinds:`;
+		// the index must not report kinds the engine never applies.
+		{"quoted key not read", "\"kinds\": [a]", nil},
+		{"escaped key not read", "\"kind\\x73\": [a]", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -119,27 +123,42 @@ func TestFrontMatterAll_Title(t *testing.T) {
 	}
 }
 
-// TestFrontMatterAll_DuplicateKeys: the engine's decoders reject a
-// duplicate top-level key, so the index derives no title or kinds
-// from such a block but still outlines every non-empty key.
+// TestFrontMatterAll_DuplicateKeys: a duplicated title key has no
+// single value, so the index shows no title. Other duplicates leave
+// the title alone. Kinds follow lint.ParseFrontMatterKinds, which
+// rejects a duplicate key only when the block declares kinds.
 func TestFrontMatterAll_DuplicateKeys(t *testing.T) {
 	t.Parallel()
-	t.Run("named keys", func(t *testing.T) {
-		t.Parallel()
-		syms, title, kinds := frontMatterAll("a.md",
-			[]byte("---\ntitle: hi\ntitle: bye\nkinds: [a]\nkinds: [b]\n---\n"))
-		assert.Len(t, syms, 4)
-		assert.Empty(t, title)
-		assert.Nil(t, kinds)
-	})
-	t.Run("empty keys", func(t *testing.T) {
-		t.Parallel()
-		syms, title, kinds := frontMatterAll("a.md",
-			[]byte("---\n\"\": x\n\"\": y\ntitle: t\nkinds: [a]\n---\n"))
-		assert.Len(t, syms, 2)
-		assert.Empty(t, title)
-		assert.Nil(t, kinds)
-	})
+	for _, tc := range []struct {
+		name, src string
+		nSyms     int
+		title     string
+		kinds     []string
+	}{
+		{"title and kinds", "title: hi\ntitle: bye\nkinds: [a]\nkinds: [b]", 4, "", nil},
+		{"unrelated key keeps title", "title: Notes\ntags: a\ntags: b", 3, "Notes", nil},
+		{"empty keys with kinds", "\"\": x\n\"\": y\ntitle: t\nkinds: [a]", 2, "t", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			syms, title, kinds := frontMatterAll("a.md", []byte("---\n"+tc.src+"\n---\n"))
+			assert.Len(t, syms, tc.nSyms)
+			assert.Equal(t, tc.title, title)
+			assert.Equal(t, tc.kinds, kinds)
+		})
+	}
+}
+
+// TestFrontMatterAll_DecodePanicInput: a complex key next to a merge
+// key makes yaml.v3's struct decode panic; the index must survive.
+func TestFrontMatterAll_DecodePanicInput(t *testing.T) {
+	t.Parallel()
+	src := []byte("---\n? [a, b]\n: c\n<<: {x: y}\ntitle: T\nkinds: [a]\n---\n")
+	var title string
+	var kinds []string
+	require.NotPanics(t, func() { _, title, kinds = frontMatterAll("a.md", src) })
+	assert.Equal(t, "T", title)
+	assert.Nil(t, kinds)
 }
 
 // TestFrontMatterTitle covers the display-text rules for a title
@@ -346,7 +365,7 @@ func TestNeedsSpaceCollapse(t *testing.T) {
 		{"trail ", true},
 		{"a  b", true},
 		{"a\tb", true},
-		{"a b", true},
+		{"a\u2028b", true},
 	} {
 		assert.Equal(t, tc.want, needsSpaceCollapse(tc.in), "%q", tc.in)
 	}

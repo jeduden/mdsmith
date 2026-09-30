@@ -272,19 +272,19 @@ func lineOfOffset(source []byte, offset int) int {
 
 // frontMatterAll walks the front-matter YAML once and returns the
 // per-key outline symbols, the title scalar, and the kinds list.
-// It parses the YAML body only one time, which removed a measurable
-// bottleneck under parallel Build.
+// The outline and the title come from one linear walk of the parsed
+// node, which removed a measurable bottleneck under parallel Build.
 //
 // Parsing goes through yamlutil so the index never expands a YAML
 // alias on user-controlled content — the rest of mdsmith treats
 // every front-matter parse as a potential alias-bomb vector and the
 // symbol index has to match.
 //
-// Title and kinds come from lint.DecodeFrontMatterHead, the decoder
-// behind lint.ParseFrontMatterKinds, so the index and the engine
-// agree on every spelling: a duplicate top-level key yields neither,
-// a merge key contributes its values, and kinds entries keep their
-// source text.
+// A title key that appears twice has no single value, so it yields
+// no title. Kinds come from lint.ParseFrontMatterKinds, the engine's
+// own parser, so the index never reports a kind the engine would
+// not apply. It runs only when the walk saw a `kinds` or merge
+// (`<<`) key, the only keys that can carry kinds.
 func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, kinds []string) {
 	if len(fm) == 0 {
 		return nil, "", nil
@@ -298,21 +298,28 @@ func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, ki
 		return nil, "", nil
 	}
 	syms = make([]Symbol, 0, len(mapping.Content)/2)
+	titles, mayHaveKinds := 0, false
 	for i := 0; i < len(mapping.Content); i += 2 {
 		k := mapping.Content[i]
 		if k.Kind != yaml.ScalarNode || k.Value == "" {
 			continue
 		}
 		syms = append(syms, frontMatterKeySymbol(filePath, k))
+		switch k.Value {
+		case "title":
+			titles++
+			title = frontMatterTitle(mapping.Content[i+1])
+		case "kinds", "<<":
+			mayHaveKinds = true
+		}
 	}
-	head, err := lint.DecodeFrontMatterHead(&node)
-	if err != nil {
-		// The engine rejects this block (e.g. a duplicate key), so
-		// no title or kinds take effect. Keep the outline symbols.
-		return syms, "", nil
+	if titles > 1 {
+		title = ""
 	}
-	kinds, _ = head.KindList()
-	return syms, frontMatterTitle(&head.Title), kinds
+	if mayHaveKinds {
+		kinds, _ = lint.ParseFrontMatterKinds(fm)
+	}
+	return syms, title, kinds
 }
 
 // frontMatterTitle returns the display text of a `title:` value

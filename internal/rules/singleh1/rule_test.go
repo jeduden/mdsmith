@@ -298,12 +298,6 @@ func TestFrontMatterHasTitle_NonStringValue(t *testing.T) {
 	assert.False(t, r.frontMatterHasTitle(f))
 }
 
-// TestExtractYAMLBody strips delimiters correctly.
-func TestExtractYAMLBody(t *testing.T) {
-	got := extractYAMLBody([]byte("---\ntitle: Foo\n---\n"))
-	assert.Equal(t, "title: Foo\n", string(got))
-}
-
 // TestFrontMatterHasTitle_SourceFallback covers the path where f.FrontMatter is
 // empty (lint.NewFile called) but the source itself contains front matter.
 func TestFrontMatterHasTitle_SourceFallback(t *testing.T) {
@@ -321,7 +315,7 @@ func TestFrontMatterHasTitle_YAMLAliasRejected(t *testing.T) {
 	assert.False(t, r.frontMatterHasTitle(f))
 }
 
-// TestFrontMatterHasTitle_EmptyBody covers the extractYAMLBody→empty path.
+// TestFrontMatterHasTitle_EmptyBody covers the empty-YAML-body path.
 func TestFrontMatterHasTitle_EmptyBody(t *testing.T) {
 	// Front matter with just delimiters and no YAML fields.
 	f := newFileStrip(t, "---\n---\n\n# Title\n")

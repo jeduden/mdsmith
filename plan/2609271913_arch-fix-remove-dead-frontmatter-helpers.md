@@ -79,28 +79,28 @@ decoders. The port fixes the drift:
   Before, `frontMatterAll` returned the text `null` or `~`.
 - A title collapses runs of Unicode whitespace to one
   space and trims its ends, so a workspace symbol name has
-  no newlines.
+  no newlines. A `title` key that appears twice yields no
+  title; other duplicate keys leave it alone.
 - Typed scalar titles (int, float, uint64, bool, date) keep
   their source text. The deleted `frontMatterScalar` wrote
   a date in RFC 3339 form; the index never used that path.
-- Title and kinds now come from one shared decoder,
-  `lint.DecodeFrontMatterHead`, which
-  `lint.ParseFrontMatterKinds` also uses. So `- 42` is kept
-  as `"42"`, a mapping entry drops the whole list, a merge
-  key adds its values, and any duplicate top-level key
-  yields no title and no kinds. Every key still gets an
-  outline symbol.
-- `ParseFrontMatterKinds` skipped the decode unless the body
-  held the bytes `kinds:`. It now looks for `kinds`, so
-  `"kinds":` and `kinds :` are no longer missed.
+- Kinds now come from `lint.ParseFrontMatterKinds`, the
+  engine's own parser, when the walk sees a `kinds` or `<<`
+  key. So `- 42` is `"42"`, a mapping entry or duplicate
+  key drops the list, and only the bytes `kinds:` are read.
+  Before, the index kept kinds the engine never applied.
+- `yamlutil.UnmarshalSafe` now turns a yaml.v3 decode panic
+  into an error. A complex key next to a merge key made
+  yaml.v3 panic, so one crafted file crashed the process.
 - The index's `stripDelimiters` had a fallback for a closing
   `---` with no newline, which `StripFrontMatter` never
-  produces. It and the other copies of the fence trim that
-  take a `StripFrontMatter` prefix now call one helper,
-  `lint.FrontMatterYAML`. That fixed the catalog reader,
-  which cut the YAML at a `---` line inside a block scalar.
-  The trims in `requiredfrontmatter` and `requiredstructure`
-  also accept a block with no fences, so they stay.
+  produces. It and the other exact copies of the fence
+  trim now call one helper, `lint.FrontMatterYAML`. That
+  fixed the catalog reader, which cut the YAML at a `---`
+  line inside a block scalar. The trims in
+  `requiredfrontmatter` and `requiredstructure` also accept
+  a bare `---` close, and the latter returns nil without a
+  fence, so they stay.
 
 ## Acceptance Criteria
 

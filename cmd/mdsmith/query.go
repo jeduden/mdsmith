@@ -9,7 +9,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/query"
-	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
 // runQuery implements the "query" subcommand: select files by CUE
@@ -135,14 +134,12 @@ func readFrontMatterRaw(path string, maxBytes int64) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	prefix, _ := lint.StripFrontMatter(data)
-	if prefix == nil {
+	var raw map[string]any
+	_, hadFrontMatter, err := lint.UnmarshalFrontMatter(data, &raw)
+	if !hadFrontMatter {
 		return nil, nil
 	}
-	yamlBytes := lint.FrontMatterYAML(prefix)
-
-	var raw map[string]any
-	if err := yamlutil.UnmarshalSafe(yamlBytes, &raw); err != nil {
+	if err != nil {
 		return nil, fmt.Errorf("parsing front matter: %w", err)
 	}
 	// Distinguish empty front matter (---\n---\n) from absent front matter.

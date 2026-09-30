@@ -6,7 +6,6 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/jeduden/mdsmith/pkg/markdown"
-	"gopkg.in/yaml.v3"
 )
 
 // StripFrontMatter removes YAML front matter delimited by "---\n"
@@ -22,8 +21,9 @@ func StripFrontMatter(source []byte) (prefix, content []byte) {
 // (as returned by StripFrontMatter) with its opening and closing
 // "---\n" fences removed. The closing fence is removed with a
 // suffix trim, not a search, so a "---" line inside a block-scalar
-// value is never mistaken for the fence. It is the one home for the
-// delimiter trim every front-matter decoder needs.
+// value is never mistaken for the fence. Input without fences
+// passes through unchanged. Decoders that take a StripFrontMatter
+// prefix call this instead of repeating the trim.
 func FrontMatterYAML(fm []byte) []byte {
 	delim := []byte("---\n")
 	return bytes.TrimSuffix(bytes.TrimPrefix(fm, delim), delim)
@@ -59,70 +59,32 @@ func CountLines(b []byte) int {
 // block (including its --- delimiters). Returns nil kinds and nil error if
 // the block is nil or the kinds key is absent. Returns an error if the
 // YAML contains anchors/aliases, has a duplicate top-level key, or
-// cannot be parsed, or if kinds: is not a list of scalars.
+// cannot be parsed, or if kinds: is not a list of scalars. Entries
+// decode as yaml.v3 decodes a []string: `- 42` becomes "42".
+//
+// The key is read only when the block contains the bytes `kinds:`.
+// This fast path is part of the contract: a block that merely
+// mentions the word elsewhere is never decoded, so its YAML errors
+// do not abort the file. Spellings without those bytes (`"kinds":`,
+// `kinds :`, escapes) are not read. The workspace index calls this
+// function, so it applies the same rule.
 func ParseFrontMatterKinds(fm []byte) ([]string, error) {
 	if len(fm) == 0 {
 		return nil, nil
 	}
 	body := FrontMatterYAML(fm)
 
-	// Fast path: skip the YAML decode when the word "kinds" appears
-	// nowhere. Any spelling of the key ("kinds":, kinds :, a merge
-	// key's value) contains it, so the check never drops a real key.
-	if !bytes.Contains(body, []byte("kinds")) {
+	if !bytes.Contains(body, []byte("kinds:")) {
 		return nil, nil
 	}
 
-	doc, err := yamlutil.UnmarshalNodeSafe(body)
-	if err != nil {
+	var parsed struct {
+		Kinds []string `yaml:"kinds"`
+	}
+	if err := yamlutil.UnmarshalSafe(body, &parsed); err != nil {
 		return nil, err
 	}
-	head, err := DecodeFrontMatterHead(&doc)
-	if err != nil {
-		return nil, err
-	}
-	return head.KindList()
-}
-
-// FrontMatterHead holds the raw value nodes of the top-level
-// `title:` and `kinds:` front-matter keys. A key that is absent
-// leaves its node at the zero value (Kind 0).
-type FrontMatterHead struct {
-	Title yaml.Node `yaml:"title"`
-	Kinds yaml.Node `yaml:"kinds"`
-}
-
-// DecodeFrontMatterHead decodes the title and kinds nodes from a
-// parsed front-matter document (as returned by
-// yamlutil.UnmarshalNodeSafe). yaml.v3 applies its usual rules: a
-// duplicate top-level key or a non-mapping document is an error, and
-// merge keys contribute their values. The engine's kinds parser and
-// the workspace index both decode through here, so they agree on
-// every spelling. An empty document yields a zero head.
-func DecodeFrontMatterHead(doc *yaml.Node) (FrontMatterHead, error) {
-	var head FrontMatterHead
-	if doc.Kind == 0 {
-		return head, nil
-	}
-	if err := doc.Decode(&head); err != nil {
-		return FrontMatterHead{}, err
-	}
-	return head, nil
-}
-
-// KindList decodes the kinds node into a []string. An absent or
-// null value yields nil. Scalars of any type keep their source text
-// (`- 42` is "42"). A scalar or mapping value, or a list with a
-// non-scalar entry, is an error.
-func (h *FrontMatterHead) KindList() ([]string, error) {
-	if h.Kinds.Kind == 0 {
-		return nil, nil
-	}
-	var kinds []string
-	if err := h.Kinds.Decode(&kinds); err != nil {
-		return nil, err
-	}
-	return kinds, nil
+	return parsed.Kinds, nil
 }
 
 // ParseFrontMatterFields decodes a YAML front-matter block (including its

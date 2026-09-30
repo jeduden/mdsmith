@@ -111,6 +111,7 @@ func parseSafeDocuments(data []byte) (*yaml.Node, error) {
 }
 
 // UnmarshalSafe rejects YAML anchors/aliases then unmarshals data into v.
+// A panic inside the yaml.v3 decoder is returned as an error.
 // Use this for all user-supplied YAML content (config files, front matter,
 // directive parameters).
 func UnmarshalSafe(data []byte, v any) error {
@@ -122,7 +123,21 @@ func UnmarshalSafe(data []byte, v any) error {
 		// No document: leave v at its zero value, like yaml.Unmarshal.
 		return nil
 	}
-	return first.Decode(v)
+	return decodeNoPanic(first, v)
+}
+
+// decodeNoPanic decodes n into v and turns a runtime panic inside
+// yaml.v3 into an error. yaml.v3 re-panics non-yaml errors; a
+// mapping with both a complex key (`? [a, b]`) and a merge key
+// (`<<:`) makes it hash an unhashable slice when the target is a
+// struct or map. User front matter must never crash the process.
+func decodeNoPanic(n *yaml.Node, v any) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("yaml: decode failed: %v", r)
+		}
+	}()
+	return n.Decode(v)
 }
 
 // UnmarshalNodeSafe rejects YAML anchors/aliases then unmarshals data into a
