@@ -97,6 +97,18 @@ around a heading nobody wrote. This covers lazy continuation lines in list
 items and block quotes too. A `#48` line that opens a paragraph is still
 flagged.
 
+This holds for heading syntax too. `#Heading` right under a paragraph line,
+with no blank line between them, is paragraph text in CommonMark. MDS064 does
+not flag it, and the fix does not touch it:
+
+```markdown
+Before
+#Heading
+```
+
+To make that line a heading, put a blank line before it and a space after the
+`#`.
+
 ## Config
 
 Enable:

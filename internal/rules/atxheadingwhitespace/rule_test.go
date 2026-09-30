@@ -287,6 +287,7 @@ var continuationCases = map[string]string{
 	"link text wrapped before #48": "# Title\n\n" +
 		"Diagnostics stopped in [Issue\n#48](https://example.com/48), and more.\n",
 	"hashtag on continuation":            "# Title\n\nTagged with\n#release notes.\n",
+	"heading syntax under a paragraph":   "# Title\n\nBefore\n#Heading\n",
 	"indented heading-like continuation": "# Title\n\nSome text\n    # not a heading\n",
 	"lazy list item continuation":        "# Title\n\n- item text\n#48 more text\n",
 	"lazy block quote continuation":      "# Title\n\n> quoted text\n#48 more text\n",
