@@ -44,6 +44,14 @@ func TestParseFixFlags_EmptyOutputIsUsageError(t *testing.T) {
 		assert.Equal(t, 2, code)
 	})
 	assert.Equal(t, "mdsmith: fix: --output needs a path, or - for stdout\n", stderr)
+
+	// --build-only ignores a usable -o, but an empty one still signals
+	// an unset variable, so it stays a usage error there too.
+	stderr = captureStderr(func() {
+		_, _, _, code := parseFixFlags([]string{"--build-only", "-o", "", "a.md"})
+		assert.Equal(t, 2, code)
+	})
+	assert.Equal(t, "mdsmith: fix: --output needs a path, or - for stdout\n", stderr)
 }
 
 // fix routes its report (remaining diagnostics, the dry-run preview,
