@@ -163,18 +163,17 @@ func ResolvePath(data map[string]any, path []string) (string, error) {
 }
 
 // ResolveSortKey is ResolvePath for ordering. It returns the same
-// string and error for every value except a timestamp, which it keys
-// on the instant rather than on its rendered form (see timeSortKey).
-// Stringify keeps each timestamp's own offset and precision —
-// `2026-01-02`, `...T10:00:00-05:00`, `...T12:00:00Z` — and those
-// strings do not compare chronologically, so a caller that sorts
-// must use this.
+// string and error for every value except a date or timestamp, which
+// it keys on the instant rather than on its rendered form (see
+// timeSortKey). Stringify keeps each timestamp's own offset and
+// precision — `2026-01-02`, `...T10:00:00-05:00`, `...T12:00:00Z` —
+// and those strings do not compare chronologically, so a caller that
+// sorts must use this.
 //
-// A timestamp is a time.Time (an unquoted YAML timestamp) or a string
-// that parses as RFC 3339 with a clock part (a quoted one), so one
-// sort column may mix the two. Any other string keys as its text;
-// that includes a quoted `YYYY-MM-DD`, whose text already is the key
-// timeSortKey gives the same date.
+// A date or timestamp is a time.Time (an unquoted YAML timestamp) or
+// a string that parseSortTime reads, so one sort column may mix
+// quoted and unquoted values in any of those forms. Any other string
+// keys as its text.
 func ResolveSortKey(data map[string]any, path []string) (string, error) {
 	v, err := resolveScalar(data, path)
 	if err != nil {
@@ -184,23 +183,54 @@ func ResolveSortKey(data map[string]any, path []string) (string, error) {
 	case time.Time:
 		return timeSortKey(x), nil
 	case string:
-		if t, ok := parseRFC3339(x); ok {
+		if t, ok := parseSortTime(x); ok {
 			return timeSortKey(t), nil
 		}
 	}
 	return Stringify(v), nil
 }
 
-// parseRFC3339 reads s as an RFC 3339 timestamp with a clock part,
-// e.g. `2026-01-02T10:00:00-05:00` or `2026-01-02T09:00:00.5Z`. The
-// byte check before the parse keeps plain text, which is nearly every
+// Layouts parseSortTime tries, grouped by the byte after the date. A
+// layout with no zone parses as UTC, as YAML reads a zone-less
+// timestamp. time.Parse accepts a fractional second after the seconds
+// field whether or not the layout shows one.
+var (
+	sortTimeLayoutsT = []string{
+		time.RFC3339,             // 2026-01-02T10:00:00-05:00
+		"2006-01-02T15:04:05",    // 2026-01-02T10:00:00
+		"2006-01-02T15:04Z07:00", // 2026-01-02T10:00Z
+		"2006-01-02T15:04",       // 2026-01-02T10:00
+	}
+	sortTimeLayoutsSpace = []string{
+		time.DateTime, // 2026-01-02 10:00:00, YAML's spaced form
+	}
+)
+
+// parseSortTime reads s as a date or timestamp: `YYYY-MM-DD`, RFC 3339
+// (`2026-01-02T10:00:00-05:00`), RFC 3339 without seconds or without
+// a zone (`2026-01-02T10:00`), or YAML's `2026-01-02 10:00:00`. The
+// byte checks before the parse keep plain text, which is nearly every
 // sort value, off time.Parse.
-func parseRFC3339(s string) (time.Time, bool) {
-	if len(s) <= len(time.DateOnly) || s[len(time.DateOnly)] != 'T' {
+func parseSortTime(s string) (time.Time, bool) {
+	n := len(time.DateOnly)
+	if len(s) < n || s[4] != '-' || s[7] != '-' {
 		return time.Time{}, false
 	}
-	t, err := time.Parse(time.RFC3339, s)
-	return t, err == nil
+	var layouts []string
+	switch {
+	case len(s) == n:
+		layouts = []string{time.DateOnly}
+	case s[n] == 'T':
+		layouts = sortTimeLayoutsT
+	case s[n] == ' ':
+		layouts = sortTimeLayoutsSpace
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // resolveScalar walks data along path and returns the scalar leaf,
@@ -288,24 +318,16 @@ func formatTime(t time.Time) string {
 	return t.Format(time.RFC3339Nano)
 }
 
-// timeSortKeyLayout is RFC 3339 with a fixed-width, nine-digit
-// fraction. On a UTC time `Z07:00` prints `Z`, so every key has the
-// same length and layout, and a byte compare is a chronological one.
-const timeSortKeyLayout = "2006-01-02T15:04:05.000000000Z07:00"
+// timeSortKeyLayout is the UTC instant with a fixed-width, nine-digit
+// fraction and no zone suffix. Every key has the same length and
+// layout, so a byte compare is a chronological one, and it holds no
+// letter, so the catalog's case-folding leaves it unchanged.
+const timeSortKeyLayout = "2006-01-02 15:04:05.000000000"
 
-// timeSortKey keys t for a string sort: its UTC form, fixed width, so
-// keys compare in chronological order whatever offset or precision
-// the author wrote. An instant at exactly midnight UTC keys as the
-// bare date, the prefix of every other key on that date, so it still
-// sorts before them and ties with a quoted `"2026-01-02"` string on
-// the same text.
+// timeSortKey keys t for a string sort: its UTC instant in
+// timeSortKeyLayout, whatever offset or precision the author wrote.
 func timeSortKey(t time.Time) string {
-	u := t.UTC()
-	if u.Hour() == 0 && u.Minute() == 0 && u.Second() == 0 &&
-		u.Nanosecond() == 0 {
-		return u.Format(time.DateOnly)
-	}
-	return u.Format(timeSortKeyLayout)
+	return t.UTC().Format(timeSortKeyLayout)
 }
 
 // DiagnoseYAMLQuoting checks whether a raw YAML value that was expected

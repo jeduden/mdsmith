@@ -88,3 +88,29 @@ func TestSort_QuotedTimestampInterleavesWithUnquoted(t *testing.T) {
 	r := &Rule{}
 	expectDiags(t, r.Check(f), 0)
 }
+
+// A quoted `YYYY-MM-DDTHH:MM` or `YYYY-MM-DD HH:MM:SS` names an
+// instant too. As text, `2026-01-02 09:00:00` sorts before an
+// unquoted 08:00 UTC, since a space sorts before the `T` of a time
+// key; each value keys on its UTC instant instead, a zone-less value
+// counting as UTC.
+func TestSort_QuotedClockFormsInterleaveByInstant(t *testing.T) {
+	mapFS := fstest.MapFS{
+		"posts/a.md": {Data: []byte("---\ndate: \"2026-01-02T10:00\"\n---\n# A\n")},
+		"posts/b.md": {Data: []byte("---\ndate: \"2026-01-02 09:00:00\"\n---\n# B\n")},
+		"posts/c.md": {Data: []byte("---\ndate: 2026-01-02T08:00:00Z\n---\n# C\n")},
+		"posts/d.md": {Data: []byte("---\ndate: 2026-01-02\n---\n# D\n")},
+		"posts/e.md": {Data: []byte("---\ndate: 2026-01-02T12:00:00Z\n---\n# E\n")},
+	}
+	src := "<?catalog\nglob: \"posts/*.md\"\nsort: date\n" +
+		"row: \"- {date} {filename}\"\n?>\n" +
+		"- 2026-01-02 posts/d.md\n" +
+		"- 2026-01-02T08:00:00Z posts/c.md\n" +
+		"- 2026-01-02 09:00:00 posts/b.md\n" +
+		"- 2026-01-02T10:00 posts/a.md\n" +
+		"- 2026-01-02T12:00:00Z posts/e.md\n" +
+		"<?/catalog?>\n"
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	expectDiags(t, r.Check(f), 0)
+}

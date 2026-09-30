@@ -155,12 +155,16 @@ An unquoted YAML date substitutes as written,
 RFC 3339, a normalised form: midnight UTC renders as
 the date, and a zone-less time gains `Z`. The fix sits
 in `fieldinterp.Stringify`, so catalog rows, heading
-sync and `regex:` fmvar render dates the same way. A
-catalog `sort:` keys a timestamp on its instant
-(`fieldinterp.ResolveSortKey`), not on that text, so
-mixed offsets still order chronologically. A quoted
-RFC 3339 string with a clock part is keyed the same
-way; other strings sort as text.
+sync and `regex:` fmvar render dates the same way.
+
+A catalog `sort:` keys a date or timestamp on its UTC
+instant (`fieldinterp.ResolveSortKey`), not on that
+text, so mixed offsets still order chronologically.
+A quoted value keys the same way when it reads as
+`YYYY-MM-DD`, RFC 3339, RFC 3339 without seconds or
+zone, or `YYYY-MM-DD HH:MM:SS`; no zone means UTC.
+The key has no letters, so case-folding keeps it.
+Other strings sort as text.
 
 On Windows a `path-pattern:` may use `\` separators.
 Each is read as `/`, except the `\` that opens a

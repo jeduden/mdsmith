@@ -2,6 +2,7 @@ package fieldinterp
 
 import (
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,19 +39,69 @@ func TestResolveSortKey_TimestampsOrderChronologically(t *testing.T) {
 	assert.True(t, sort.StringsAreSorted(keys), "keys: %q", keys)
 }
 
-// Midnight UTC keys date-only, so an unquoted `date: 2026-01-02` ties
-// with a quoted `"2026-01-02"` on the same text, as it did when both
-// sorted on their rendered form.
-func TestResolveSortKey_MidnightUTCKeysAsTheDate(t *testing.T) {
+// Every form of one instant keys the same: an unquoted date, a quoted
+// one, midnight written with an offset, and the quoted clock forms.
+func TestResolveSortKey_SameInstantKeysTheSame(t *testing.T) {
 	for _, v := range []any{
 		time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
 		time.Date(2026, 1, 2, 5, 0, 0, 0, time.FixedZone("", 5*3600)),
 		"2026-01-02",
+		"2026-01-02T00:00",
+		"2026-01-02T00:00:00",
+		"2026-01-02 00:00:00",
+		"2026-01-02T00:00:00Z",
+		"2026-01-02T05:00:00+05:00",
 	} {
 		k, err := ResolveSortKey(map[string]any{"v": v}, []string{"v"})
 		require.NoError(t, err)
-		assert.Equal(t, "2026-01-02", k, "%v", v)
+		assert.Equal(t, "2026-01-02 00:00:00.000000000", k, "%v", v)
 	}
+}
+
+// One sort column may mix every date form: unquoted YAML timestamps,
+// quoted RFC 3339, a quoted `YYYY-MM-DDTHH:MM`, a quoted YAML-style
+// `YYYY-MM-DD HH:MM:SS` and bare dates. Each keys on its UTC instant,
+// a zone-less value counting as UTC as YAML and time.Parse read it.
+// The catalog lowercases every key before it compares, so the keys
+// must still order after strings.ToLower.
+func TestResolveSortKey_MixedDateFormsOrderChronologically(t *testing.T) {
+	// Listed in chronological order.
+	docs := []string{
+		`v: "2026-01-01"`,
+		"v: 2026-01-02T01:00:00+05:00", // 2026-01-01T20:00Z
+		"v: 2026-01-02",
+		`v: "2026-01-02 09:00:00"`,
+		"v: 2026-01-02T09:30:00Z",
+		`v: "2026-01-02T10:00"`,
+		"v: 2026-01-02 10:30:00",
+		`v: "2026-01-02T11:00:00+00:00"`,
+		"v: 2026-01-02T11:15", // not a YAML timestamp: a string
+		`v: "2026-01-02T10:00:00-05:00"`, // 15:00Z
+		`v: "2026-01-02T15:00:00.5"`,
+		"v: 2026-01-03T00:00:00.000000001Z",
+	}
+	keys := make([]string, len(docs))
+	for i, d := range docs {
+		var m map[string]any
+		require.NoError(t, yaml.Unmarshal([]byte(d), &m))
+		k, err := ResolveSortKey(m, []string{"v"})
+		require.NoError(t, err)
+		assert.Equal(t, k, strings.ToLower(k), "ToLower must not change a time key")
+		keys[i] = strings.ToLower(k)
+	}
+	assert.True(t, sort.StringsAreSorted(keys), "keys: %q", keys)
+}
+
+// A time key is the UTC instant in one fixed-width form with no
+// letter, so lowercasing leaves it as is and a byte compare is a
+// chronological one.
+func TestTimeSortKey(t *testing.T) {
+	assert.Equal(t, "2026-01-02 15:00:00.000000000", timeSortKey(
+		time.Date(2026, 1, 2, 10, 0, 0, 0, time.FixedZone("", -5*3600))))
+	assert.Equal(t, "2026-01-02 00:00:00.000000000",
+		timeSortKey(time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)))
+	assert.Equal(t, "0999-12-31 23:59:59.500000000",
+		timeSortKey(time.Date(999, 12, 31, 23, 59, 59, 5e8, time.UTC)))
 }
 
 // Every other value keys exactly as ResolvePath renders it, and the
@@ -106,15 +157,15 @@ func TestResolveSortKey_QuotedTimestampsInterleaveWithUnquoted(t *testing.T) {
 	assert.Equal(t, unquoted, quoted, "the same instant keys the same either way")
 }
 
-// Only a string that parses as RFC 3339 with a clock part is keyed
-// as a time. Every other string keys as the text ResolvePath returns,
-// so a plain-text sort column orders exactly as before — including a
-// quoted `YYYY-MM-DD`, whose text is already its chronological key.
+// Only a string that parses as a date or timestamp is keyed as a
+// time. Every other string keys as the text ResolvePath returns, so a
+// plain-text sort column orders exactly as before.
 func TestResolveSortKey_PlainTextKeysAsWritten(t *testing.T) {
 	for _, s := range []string{
 		"Alpha", "beta", "", "12:00", "2026", "2026 roadmap",
-		"2026-01-02", "2026-01-02 notes", "2026-01-02T", "2026-01-02Tnope",
-		"2026-01-02T10:00", "2026-01-02t10:00:00Z",
+		"2026-01-02 notes", "2026-01-02T", "2026-01-02Tnope",
+		"2026-01-02t10:00:00Z", "2026-01-02 10:00", "2026-13-45",
+		"2026/01/02", "20260102", "2026-01-02x",
 	} {
 		data := map[string]any{"v": s}
 		want, err := ResolvePath(data, []string{"v"})
@@ -125,12 +176,30 @@ func TestResolveSortKey_PlainTextKeysAsWritten(t *testing.T) {
 	}
 }
 
-func TestParseRFC3339(t *testing.T) {
-	got, ok := parseRFC3339("2026-01-02T10:00:00-05:00")
-	require.True(t, ok)
-	assert.True(t, got.Equal(time.Date(2026, 1, 2, 15, 0, 0, 0, time.UTC)))
-	for _, s := range []string{"2026-01-02", "2026-01-02 10:00:00", "2026-01-02Tx", "Alpha"} {
-		_, ok := parseRFC3339(s)
+func TestParseSortTime(t *testing.T) {
+	utc := func(h, m, sec, ns int) time.Time {
+		return time.Date(2026, 1, 2, h, m, sec, ns, time.UTC)
+	}
+	for in, want := range map[string]time.Time{
+		"2026-01-02":                utc(0, 0, 0, 0),
+		"2026-01-02T10:00:00-05:00": utc(15, 0, 0, 0),
+		"2026-01-02T10:00:00.5Z":    utc(10, 0, 0, 5e8),
+		"2026-01-02T10:00:00":       utc(10, 0, 0, 0),
+		"2026-01-02T10:00":          utc(10, 0, 0, 0),
+		"2026-01-02T10:00+01:00":    utc(9, 0, 0, 0),
+		"2026-01-02 10:00:00":       utc(10, 0, 0, 0),
+		"2026-01-02 10:00:00.25":    utc(10, 0, 0, 25e7),
+	} {
+		got, ok := parseSortTime(in)
+		require.True(t, ok, in)
+		assert.True(t, got.Equal(want), "%s: got %v", in, got)
+	}
+	for _, s := range []string{
+		"", "Alpha", "2026", "2026-01-0", "2026/01/02", "2026-13-02",
+		"2026-01-02Tx", "2026-01-02 10:00", "2026-01-02_10:00:00",
+		"2026-01-02t10:00:00Z", "2026-01-02T10:00+",
+	} {
+		_, ok := parseSortTime(s)
 		assert.False(t, ok, s)
 	}
 }
