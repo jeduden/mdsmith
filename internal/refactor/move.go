@@ -339,7 +339,8 @@ func (r *destResolver) exists(p string) bool {
 //   - bytes the author escaped in oldTok, so `my%20file.md` stays
 //     escaped and `caf%C3%A9.md` keeps its escaped UTF-8. One escaped
 //     non-ASCII byte escapes them all, so no character is split
-//     between the two styles.
+//     between the two styles. An escaped letter, digit or `-._~` is
+//     not carried over.
 //
 // A `/` is never escaped: it separates the path's segments. The index
 // decodes destinations when it resolves them, so the escaped form
@@ -400,7 +401,8 @@ func parensPair(p string, esc *escapeSet) bool {
 
 // escapeSetFor builds encodeLike's escape set for a token written like
 // oldTok. A `%` not followed by two hex digits is not an escape and
-// adds nothing.
+// adds nothing, and neither does an escaped unreserved byte: one `%2E`
+// must not escape every `.` in the new path.
 func escapeSetFor(oldTok string, angle bool) escapeSet {
 	var s escapeSet
 	for c := 0; c < 0x20; c++ {
@@ -421,7 +423,9 @@ func escapeSetFor(oldTok string, angle bool) escapeSet {
 			continue
 		}
 		c := hi<<4 | lo
-		s[c] = true
+		if !unreserved(c) {
+			s[c] = true
+		}
 		if c >= 0x80 {
 			for h := 0x80; h < 0x100; h++ {
 				s[h] = true
@@ -431,6 +435,13 @@ func escapeSetFor(oldTok string, angle bool) escapeSet {
 	}
 	s['/'] = false
 	return s
+}
+
+// unreserved reports whether c is a letter, a digit, or one of `-._~`,
+// the bytes a URL never needs to escape.
+func unreserved(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' ||
+		strings.IndexByte("-._~", c) >= 0
 }
 
 // unhex returns the value of the hex digit c, in either case. ok is

@@ -477,6 +477,15 @@ func TestEscapeSetFor(t *testing.T) {
 	}
 }
 
+func TestUnreserved(t *testing.T) {
+	for _, c := range []byte("azAZ09-._~") {
+		assert.True(t, unreserved(c), "%q", c)
+	}
+	for _, c := range []byte(" %()/?#\x80\xff`@[{") {
+		assert.False(t, unreserved(c), "%q", c)
+	}
+}
+
 func TestUnhex(t *testing.T) {
 	for c, want := range map[byte]byte{'0': 0, '9': 9, 'a': 10, 'F': 15} {
 		got, ok := unhex(c)
@@ -521,6 +530,7 @@ func TestEncodeLike(t *testing.T) {
 		"entity, escape and quote":    {"a&amp;b\\c\"d.md", "x.md", true, "a%26amp;b%5Cc%22d.md"},
 		"angle keeps a space":         {"docs/my file.md", "my file.md", true, "docs/my file.md"},
 		"author escaped a byte":       {"docs/(a).md", "%28a%29.md", false, "docs/%28a%29.md"},
+		"unreserved escape stays put": {"d/x.y-A~_1.md", "a%2Eb%2D%41%7E%5F%31.md", false, "d/x.y-A~_1.md"},
 		"unbalanced parens":           {"docs/a)(.md", "a.md", false, "docs/a%29%28.md"},
 		"one escaped paren unpairs":   {"docs/(a).md", "%28a).md", false, "docs/%28a%29.md"},
 		"angle keeps unpaired parens": {"docs/a).md", "a.md", true, "docs/a).md"},
