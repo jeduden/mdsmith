@@ -157,7 +157,7 @@ Failure modes:
 - Front matter is missing the referenced field -> file
   is excluded.
 - Field exists but its type does not match -> file is
-  excluded.
+  excluded. An unquoted date matches as its `{field}` text.
 
 ### CUE-expression rows via `row-expr`
 
@@ -180,8 +180,8 @@ row-expr: |
 The `strings` package is preimported. CUE has no
 infix ternary; the `[if cond {a}, if !cond {b}][0]`
 idiom selects between two strings on a boolean.
-`row` and `row-expr` are mutually exclusive;
-`columns:` applies to `row` only.
+`row` and `row-expr` are mutually exclusive; `columns:` applies to
+`row` only. An unquoted date binds as the text `{date}` renders.
 
 ### Minimal mode
 

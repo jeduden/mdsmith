@@ -471,6 +471,14 @@ forms, so the output is not always the source text:
 A quoted value (`date: "2026-01-02T00:00:00Z"`) is a
 string and renders exactly as written.
 
+CUE sees the same text. A schema's `frontmatter:`
+constraint, a `mdsmith list query` or catalog
+`where:` filter, and a catalog `row-expr:` all read
+an unquoted time as the string in the table. So
+`date: string` accepts an unquoted `2026-01-02`,
+`date: =~"^2026-"` matches it, and `date: int`
+rejects it as the string `"2026-01-02"`.
+
 A catalog `sort:` on such a field orders by time, not
 by the rendered text. A value sorts by its UTC instant
 when it is an unquoted time or a quoted string in one
