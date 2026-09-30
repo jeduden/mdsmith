@@ -218,7 +218,7 @@ func resolveScalar(data map[string]any, path []string) (any, error) {
 // Stringify converts a scalar value to a string representation.
 // Maps and slices return empty string to avoid nondeterministic output.
 // A time.Time — what yaml.v3 decodes an unquoted YAML timestamp into —
-// renders through formatTime, in the form the author wrote.
+// renders through formatTime, as a date or as RFC 3339.
 func Stringify(v any) string {
 	switch x := v.(type) {
 	case string:
@@ -242,12 +242,14 @@ func Stringify(v any) string {
 	}
 }
 
-// formatTime renders a decoded YAML timestamp the way it was written.
-// yaml.v3 turns an unquoted `date: 2026-01-02` into midnight UTC, so a
-// value with no clock part and a zero UTC offset renders date-only
-// (YYYY-MM-DD). Any other value renders as RFC 3339 — the form the
-// symbol index already uses for timestamps — with fractional seconds
-// only when the value has them. Go's `%v` form
+// formatTime renders a decoded YAML timestamp in one of two canonical
+// forms. yaml.v3 turns an unquoted `date: 2026-01-02` into midnight
+// UTC, so a value with no clock part and a zero UTC offset renders
+// date-only (YYYY-MM-DD), as written. Any other value renders as
+// RFC 3339 — the form the symbol index already uses for timestamps —
+// with fractional seconds only when the value has them. That is a
+// normalised form, not the source text: a space-separated or
+// zone-less `2026-01-02 10:00:00` renders `2026-01-02T10:00:00Z`. Go's `%v` form
 // (`2026-01-02 00:00:00 +0000 UTC`) would otherwise leak into catalog
 // rows, heading sync, and `fmvar(...)` globs, where it matches nothing.
 //

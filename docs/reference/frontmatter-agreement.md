@@ -135,7 +135,11 @@ decoded it to. An unquoted date such as
 `\#(fmvar(date))-*.md` accepts
 `2026-01-02-release.md`. A timestamp with a clock
 part substitutes as RFC 3339, e.g.
-`2026-01-02T15:04:05Z`. YAML reads `0012` as the
+`2026-01-02T15:04:05Z`. A schema that declares
+`frontmatter:` rejects an unquoted date as a value
+it cannot represent, so under such a schema quote
+the date (`date: "2026-01-02"`); the quoted string
+substitutes the same way. YAML reads `0012` as the
 number 10 and `1.10` as 1.1, so quote such a value
 (`id: "0012"`) to keep the digits as written.
 
