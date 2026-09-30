@@ -126,18 +126,14 @@ func TestDiscoverWordlists_CollisionNamesSortedPair(t *testing.T) {
 	require.ErrorContains(t, err, "banned.yaml and banned.yml")
 }
 
-// BenchmarkDiscoverKinds is a manual regression-detection tool for the
-// removed sort.Slice call, not a CI-enforced gate: the win is a small,
-// mostly-constant handful of allocations (reflect.Swapper's own
-// overhead, not something that scales with entry count) against a much
-// larger, YAML-parse-dominated total, so a hard per-op budget here would
-// be too sensitive to unrelated allocation drift elsewhere in
-// discoverKinds or its dependencies (yaml.v3, os.ReadDir) to stay
-// meaningful — see TestDiscoverKinds_CollisionNamesSortedPair and the
-// other tests in this file for the actual correctness/regression net on
-// this change. Run manually with `-bench` and compare via benchstat
-// before/after a change to discoverKinds. Measured locally with 20 kind
-// files: ~1801 allocs/op before the sort.Slice removal, ~1798 after.
+// BenchmarkDiscoverKinds times discoverKinds over real kind files. It
+// is a manual tool, not a CI gate: YAML parsing dominates its
+// allocations, so the removed sort.Slice call barely shows (measured
+// locally with 20 kind files: ~1801 allocs/op before the removal, ~1798
+// after). TestDiscover_NoReSortOfReadDir is the CI gate; it isolates
+// the sort by using files the extension filter skips. Run this with
+// -bench and compare via benchstat before/after a change to
+// discoverKinds.
 func BenchmarkDiscoverKinds(b *testing.B) {
 	dir := b.TempDir()
 	kindsDir := filepath.Join(dir, ".mdsmith", "kinds")
@@ -153,5 +149,60 @@ func BenchmarkDiscoverKinds(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, err := discoverKinds(dir)
 		require.NoError(b, err)
+	}
+}
+
+// TestDiscover_NoReSortOfReadDir pins that no discover* function
+// re-sorts os.ReadDir's entries, which already arrive sorted by
+// filename. The removed re-sort was a sort.Slice call, which allocates
+// for reflect.Swapper even when nothing moves. Every entry here is a
+// .txt file that the extension filter skips, so all a discover* call
+// allocates beyond os.ReadDir is its directory path and its two maps;
+// a re-sort would add its own allocations on top.
+func TestDiscover_NoReSortOfReadDir(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	cases := []struct {
+		name     string
+		dir      string
+		discover func(string) error
+	}{
+		{"kinds", kindFilesDir, func(ws string) error { _, err := discoverKinds(ws); return err }},
+		{"schemas", schemaFilesDir, func(ws string) error { _, err := discoverSchemas(ws); return err }},
+		{"conventions", conventionFilesDir, func(ws string) error { _, err := discoverConventions(ws); return err }},
+		{"wordlists", wordlistFilesDir, func(ws string) error { _, err := discoverWordlists(ws); return err }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ws := t.TempDir()
+			dir := filepath.Join(ws, filepath.FromSlash(tc.dir))
+			require.NoError(t, os.MkdirAll(dir, 0o755))
+			for i := 15; i >= 0; i-- {
+				require.NoError(t, os.WriteFile(
+					filepath.Join(dir, fmt.Sprintf("note-%02d.txt", i)), nil, 0o644))
+			}
+
+			var err error
+			readDir := testing.AllocsPerRun(50, func() {
+				_, err = os.ReadDir(dir)
+			})
+			require.NoError(t, err)
+			discover := testing.AllocsPerRun(50, func() {
+				err = tc.discover(ws)
+			})
+			require.NoError(t, err)
+
+			const allocBudget = 8 // measured: the path join plus two maps sized for 16 entries
+			delta := discover - readDir
+			t.Logf("discover allocs/op = %.0f, os.ReadDir allocs/op = %.0f, delta = %.0f",
+				discover, readDir, delta)
+			require.LessOrEqualf(t, delta, float64(allocBudget),
+				"discover %s allocates %.0f more than os.ReadDir; did a re-sort come back?",
+				tc.name, delta)
+		})
 	}
 }

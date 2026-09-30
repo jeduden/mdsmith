@@ -64,12 +64,9 @@ func discoverConventions(workspaceDir string) (map[string]discoveredConvention, 
 		return nil, fmt.Errorf("reading %s: %w", conventionFilesDir, err)
 	}
 
-	// entries is already ordered by filename: os.ReadDir "returns the
-	// entries sorted by filename" per its doc, so a second sort here
-	// (docs/development/high-performance-go.md's "skip work you don't
-	// need") is both a reflect-driven sort.Slice call and pure dead
-	// work — error messages and map iteration order below get the
-	// deterministic order for free.
+	// No re-sort: os.ReadDir already returns the entries sorted by
+	// filename, so the loop below reports the first offending file, and
+	// names both files of a .yaml/.yml collision, in a fixed order.
 	result := make(map[string]discoveredConvention, len(entries))
 	// Track which extension supplied each basename so a later `.yml`
 	// colliding with an earlier `.yaml` (or vice versa) can be
