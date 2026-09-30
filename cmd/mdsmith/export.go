@@ -61,7 +61,7 @@ func parseExportFlags(args []string) (exportFlags, []string, int) {
 	var flags exportFlags
 	fs.StringVarP(&flags.configPath, "config", "c", "", "Override config file path")
 	fs.StringVarP(&flags.output, "output", "o", "",
-		"Write output to <path> instead of stdout")
+		"Write output to `path` instead of stdout; - is stdout")
 	fs.StringVar(&flags.maxInputSize, "max-input-size", "",
 		"Maximum file size to process (e.g. 2MB, 500KB, 0=unlimited)")
 	fs.BoolVar(&flags.fixStale, "fix", false,
@@ -267,11 +267,12 @@ func exportMode(flags exportFlags) export.Mode {
 }
 
 // writeExportOutput writes data to a file at path, or to stdout when
-// path is empty. A stdout write failure is treated as fatal because
-// the caller has no other channel to surface it; an os.Stdout.Write
+// path is empty or "-" (the -o value that means stdout for check and
+// fix too). A stdout write failure is treated as fatal because the
+// caller has no other channel to surface it; an os.Stdout.Write
 // failure is theoretical and not exercised by tests.
 func writeExportOutput(path string, data []byte) error {
-	if path == "" {
+	if path == "" || path == "-" {
 		_, err := os.Stdout.Write(data)
 		return err
 	}

@@ -137,6 +137,19 @@ func TestWriteExportOutput_Stdout(t *testing.T) {
 	assert.Equal(t, "via stdout\n", stdout)
 }
 
+// `-o -` means stdout, as it does for check and fix, not a file
+// named "-".
+func TestWriteExportOutput_DashIsStdout(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	stdout := captureStdout(func() {
+		require.NoError(t, writeExportOutput("-", []byte("via dash\n")))
+	})
+	assert.Equal(t, "via dash\n", stdout)
+	_, err := os.Stat(filepath.Join(dir, "-"))
+	assert.True(t, os.IsNotExist(err), "no file named - may be created")
+}
+
 // minimalConfig builds a config.Config with frontMatter enabled and
 // the named ignore patterns, suitable for prepareExportFile.
 func minimalConfig() *config.Config {

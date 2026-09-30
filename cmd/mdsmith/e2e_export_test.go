@@ -130,6 +130,21 @@ func TestE2E_Export_OutputFlag_WritesFile(t *testing.T) {
 	assert.Contains(t, string(written), "- [Section](#section)")
 }
 
+// `export -o -` writes to stdout, so `-` means the same in export,
+// check, and fix; no file named "-" appears.
+func TestE2E_Export_OutputDashIsStdout(t *testing.T) {
+	dir := t.TempDir()
+	isolateDir(t, dir)
+	writeFixture(t, dir, "doc.md", freshTOCFile)
+
+	stdout, stderr, code := runBinaryInDir(t, dir, "", "export", "-o", "-", "doc.md")
+	require.Equal(t, 0, code, "expected exit 0, got %d (stderr=%s)", code, stderr)
+	assert.Contains(t, stdout, "- [Section](#section)")
+	assert.NotContains(t, stdout, "<?toc")
+	_, err := os.Stat(filepath.Join(dir, "-"))
+	assert.True(t, os.IsNotExist(err), "no file named - may be created")
+}
+
 func TestE2E_Export_NoArgs_ExitsTwo(t *testing.T) {
 	_, stderr, code := runBinary(t, "", "export")
 	assert.Equal(t, 2, code)
