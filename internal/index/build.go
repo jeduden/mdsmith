@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -278,6 +279,12 @@ func lineOfOffset(source []byte, offset int) int {
 // alias on user-controlled content — the rest of mdsmith treats
 // every front-matter parse as a potential alias-bomb vector and the
 // symbol index has to match.
+//
+// Title and kinds come from lint.DecodeFrontMatterHead, the decoder
+// behind lint.ParseFrontMatterKinds, so the index and the engine
+// agree on every spelling: a duplicate top-level key yields neither,
+// a merge key contributes its values, and kinds entries keep their
+// source text.
 func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, kinds []string) {
 	if len(fm) == 0 {
 		return nil, "", nil
@@ -291,48 +298,53 @@ func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, ki
 		return nil, "", nil
 	}
 	syms = make([]Symbol, 0, len(mapping.Content)/2)
-	seen := make(map[string]struct{}, len(mapping.Content)/2)
-	duplicate := false
 	for i := 0; i < len(mapping.Content); i += 2 {
 		k := mapping.Content[i]
-		v := mapping.Content[i+1]
 		if k.Kind != yaml.ScalarNode || k.Value == "" {
 			continue
 		}
-		if _, dup := seen[k.Value]; dup {
-			duplicate = true
-		}
-		seen[k.Value] = struct{}{}
 		syms = append(syms, frontMatterKeySymbol(filePath, k))
-		switch k.Value {
-		case "title":
-			title = frontMatterTitle(v)
-		case "kinds":
-			kinds = frontMatterKindsList(v)
-		}
 	}
-	if duplicate {
-		// The engine's front-matter decoders reject a block with a
-		// duplicate key, so no title or kinds take effect there.
-		// Keep the outline symbols; drop the derived values.
+	head, err := lint.DecodeFrontMatterHead(&node)
+	if err != nil {
+		// The engine rejects this block (e.g. a duplicate key), so
+		// no title or kinds take effect. Keep the outline symbols.
 		return syms, "", nil
 	}
-	return syms, title, kinds
+	kinds, _ = head.KindList()
+	return syms, frontMatterTitle(&head.Title), kinds
 }
 
 // frontMatterTitle returns the display text of a `title:` value
-// node. A null or non-scalar value has no title. Runs of whitespace,
-// including the newlines a block scalar carries, collapse to one
-// space so the title fits on a single workspace-symbol row. Typed
-// scalars (numbers, booleans, dates) keep their source spelling.
+// node. An absent, null, or non-scalar value has no title. Runs of
+// Unicode whitespace, including the newlines a block scalar
+// carries, collapse to one space and the ends are trimmed, so the
+// title fits on a single workspace-symbol row. Typed scalars
+// (numbers, booleans, dates) keep their source spelling.
 func frontMatterTitle(v *yaml.Node) string {
 	if v.Kind != yaml.ScalarNode || v.Tag == "!!null" {
 		return ""
 	}
-	if !strings.ContainsAny(v.Value, " \t\r\n") {
+	if !needsSpaceCollapse(v.Value) {
 		return v.Value
 	}
 	return strings.Join(strings.Fields(v.Value), " ")
+}
+
+// needsSpaceCollapse reports whether s has leading or trailing
+// whitespace, two whitespace runes in a row, or any whitespace rune
+// other than an ASCII space. Most titles need none of these, so
+// frontMatterTitle skips the Fields/Join allocations for them.
+func needsSpaceCollapse(s string) bool {
+	prevSpace := true // a leading space counts as a run
+	for _, r := range s {
+		sp := unicode.IsSpace(r)
+		if sp && (r != ' ' || prevSpace) {
+			return true
+		}
+		prevSpace = sp
+	}
+	return prevSpace && s != ""
 }
 
 // frontMatterKeySymbol builds the SymbolFrontMatter entry for a YAML
@@ -349,22 +361,6 @@ func frontMatterKeySymbol(filePath string, k *yaml.Node) Symbol {
 		SelectionLine: k.Line + 1,
 		SelectionCol:  k.Column,
 	}
-}
-
-// frontMatterKindsList decodes a `kinds:` value node exactly as
-// lint.ParseFrontMatterKinds decodes the key: into a []string.
-// Scalar entries of any type keep their source text (`- 42` is
-// "42"); a non-sequence value or a non-scalar entry makes the
-// decode fail, and then no kinds apply, as in the engine.
-func frontMatterKindsList(v *yaml.Node) []string {
-	if v == nil || v.Kind != yaml.SequenceNode {
-		return nil
-	}
-	var out []string
-	if err := v.Decode(&out); err != nil {
-		return nil
-	}
-	return out
 }
 
 // refDefRE matches a CommonMark reference definition at the start of

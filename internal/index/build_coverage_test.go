@@ -83,6 +83,8 @@ func TestFrontMatterAll_Kinds(t *testing.T) {
 		{"non-list value", "kinds: hello", nil},
 		{"typed scalars kept as text", "kinds:\n  - a\n  - 42\n  - b", []string{"a", "42", "b"}},
 		{"mapping entry rejects the list", "kinds:\n  - a\n  - {x: y}", nil},
+		{"quoted key", "\"kinds\": [a]", []string{"a"}},
+		{"merge key", "<<: {kinds: [m]}", []string{"m"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -118,40 +120,56 @@ func TestFrontMatterAll_Title(t *testing.T) {
 }
 
 // TestFrontMatterAll_DuplicateKeys: the engine's decoders reject a
-// duplicate mapping key, so the index derives no title or kinds
-// from such a block but still outlines every key.
+// duplicate top-level key, so the index derives no title or kinds
+// from such a block but still outlines every non-empty key.
 func TestFrontMatterAll_DuplicateKeys(t *testing.T) {
 	t.Parallel()
-	syms, title, kinds := frontMatterAll("a.md",
-		[]byte("---\ntitle: hi\ntitle: bye\nkinds: [a]\nkinds: [b]\n---\n"))
-	assert.Len(t, syms, 4)
-	assert.Empty(t, title)
-	assert.Nil(t, kinds)
+	t.Run("named keys", func(t *testing.T) {
+		t.Parallel()
+		syms, title, kinds := frontMatterAll("a.md",
+			[]byte("---\ntitle: hi\ntitle: bye\nkinds: [a]\nkinds: [b]\n---\n"))
+		assert.Len(t, syms, 4)
+		assert.Empty(t, title)
+		assert.Nil(t, kinds)
+	})
+	t.Run("empty keys", func(t *testing.T) {
+		t.Parallel()
+		syms, title, kinds := frontMatterAll("a.md",
+			[]byte("---\n\"\": x\n\"\": y\ntitle: t\nkinds: [a]\n---\n"))
+		assert.Len(t, syms, 2)
+		assert.Empty(t, title)
+		assert.Nil(t, kinds)
+	})
 }
 
-// TestFrontMatterKindsList_NonSequence covers the
-// `v.Kind != SequenceNode` early-return branch. A scalar `kinds:
-// guide` value yields no list entries.
-func TestFrontMatterKindsList_NonSequence(t *testing.T) {
+// TestFrontMatterTitle covers the display-text rules for a title
+// value node directly.
+func TestFrontMatterTitle(t *testing.T) {
 	t.Parallel()
-	assert.Nil(t, frontMatterKindsList(nil),
-		"nil value node short-circuits to nil")
-	assert.Nil(t, frontMatterKindsList(&yaml.Node{Kind: yaml.ScalarNode, Value: "x"}),
-		"scalar value short-circuits to nil — the front-matter walk")
-}
-
-// TestFrontMatterKindsList_NonScalarItem covers the decode-error
-// branch: a mapping entry in a kinds: list fails the []string
-// decode, so no kinds apply (lint.ParseFrontMatterKinds errors).
-func TestFrontMatterKindsList_NonScalarItem(t *testing.T) {
-	t.Parallel()
-	mapping := &yaml.Node{Kind: yaml.MappingNode}
-	str := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "ok"}
-	seq := &yaml.Node{
-		Kind:    yaml.SequenceNode,
-		Content: []*yaml.Node{mapping, str},
+	scalar := func(tag, v string) *yaml.Node {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: v}
 	}
-	assert.Nil(t, frontMatterKindsList(seq))
+	for _, tc := range []struct {
+		name string
+		node *yaml.Node
+		want string
+	}{
+		{"absent", &yaml.Node{}, ""},
+		{"sequence", &yaml.Node{Kind: yaml.SequenceNode}, ""},
+		{"null", scalar("!!null", "null"), ""},
+		{"plain", scalar("!!str", "Hello world"), "Hello world"},
+		{"newlines", scalar("!!str", "multi\nline\n"), "multi line"},
+		{"double space", scalar("!!str", "a  b"), "a b"},
+		{"edge spaces", scalar("!!str", " a b "), "a b"},
+		{"line separator", scalar("!!str", "a\u2028b"), "a b"},
+		{"next line", scalar("!!str", "a\u0085b"), "a b"},
+		{"no-break space", scalar("!!str", "a\u00a0b"), "a b"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, frontMatterTitle(tc.node))
+		})
+	}
 }
 
 // TestRefDefRegexpMatches covers the exported wrapper that lets the
@@ -311,4 +329,25 @@ func TestCollectDirectiveEdges_BuildInputs(t *testing.T) {
 	require.NotNil(t, resolved, "expected a resolved build edge for src.svg")
 	assert.Equal(t, "dir/doc.md", resolved.SourceFile)
 	assert.Equal(t, "dir/src.svg", resolved.TargetFile)
+}
+
+// TestNeedsSpaceCollapse covers each whitespace shape that forces a
+// collapse and the common single-spaced title that does not.
+func TestNeedsSpaceCollapse(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"", false},
+		{"word", false},
+		{"two words", false},
+		{" lead", true},
+		{"trail ", true},
+		{"a  b", true},
+		{"a\tb", true},
+		{"a b", true},
+	} {
+		assert.Equal(t, tc.want, needsSpaceCollapse(tc.in), "%q", tc.in)
+	}
 }

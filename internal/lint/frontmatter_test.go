@@ -3,8 +3,10 @@ package lint
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // StripFrontMatter / CountLines are thin forwards to pkg/markdown;
@@ -94,6 +96,98 @@ func TestParseFrontMatterKinds(t *testing.T) {
 				fm = prefix
 			}
 			got, err := ParseFrontMatterKinds(fm)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestParseFrontMatterKinds_KeySpellings: every YAML spelling of
+// the kinds key reaches the decoder (the fast path must not skip
+// them), and typed entries keep their source text.
+func TestParseFrontMatterKinds_KeySpellings(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name, input string
+		want        []string
+	}{
+		{"quoted key", "---\n\"kinds\": [a]\n---\n", []string{"a"}},
+		{"space before colon", "---\nkinds : [a]\n---\n", []string{"a"}},
+		{"merge key", "---\n<<: {kinds: [m]}\n---\n", []string{"m"}},
+		{"typed scalars kept as text", "---\nkinds: [a, 42]\n---\n", []string{"a", "42"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ParseFrontMatterKinds([]byte(tt.input))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestDecodeFrontMatterHead(t *testing.T) {
+	t.Parallel()
+	decode := func(t *testing.T, src string) (FrontMatterHead, error) {
+		t.Helper()
+		doc, err := yamlutil.UnmarshalNodeSafe([]byte(src))
+		require.NoError(t, err)
+		return DecodeFrontMatterHead(&doc)
+	}
+
+	t.Run("empty document", func(t *testing.T) {
+		t.Parallel()
+		head, err := DecodeFrontMatterHead(&yaml.Node{})
+		require.NoError(t, err)
+		assert.Zero(t, head.Title.Kind)
+		assert.Zero(t, head.Kinds.Kind)
+	})
+
+	t.Run("title and kinds", func(t *testing.T) {
+		t.Parallel()
+		head, err := decode(t, "title: T\nkinds: [a]\nother: 1\n")
+		require.NoError(t, err)
+		assert.Equal(t, "T", head.Title.Value)
+		assert.Equal(t, yaml.SequenceNode, head.Kinds.Kind)
+	})
+
+	t.Run("duplicate top-level key errors", func(t *testing.T) {
+		t.Parallel()
+		_, err := decode(t, "\"\": x\n\"\": y\ntitle: T\n")
+		assert.Error(t, err)
+	})
+
+	t.Run("non-mapping document errors", func(t *testing.T) {
+		t.Parallel()
+		_, err := decode(t, "- a\n")
+		assert.Error(t, err)
+	})
+}
+
+func TestFrontMatterHead_KindList(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name, src string
+		want      []string
+		wantErr   bool
+	}{
+		{"absent", "title: T\n", nil, false},
+		{"null", "kinds: ~\n", nil, false},
+		{"list", "kinds: [a, 42]\n", []string{"a", "42"}, false},
+		{"scalar errors", "kinds: a\n", nil, true},
+		{"mapping entry errors", "kinds: [a, {x: y}]\n", nil, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			doc, err := yamlutil.UnmarshalNodeSafe([]byte(tt.src))
+			require.NoError(t, err)
+			head, err := DecodeFrontMatterHead(&doc)
+			require.NoError(t, err)
+			got, err := head.KindList()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, got)
+				return
+			}
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, got)
 		})

@@ -1072,15 +1072,6 @@ func TestFrontMatterScalarKindNonString(t *testing.T) {
 	assert.Empty(t, v)
 }
 
-func TestStripFrontMatterDelimitersNoTrailingNewline(t *testing.T) {
-	t.Parallel()
-	// FM without a trailing newline after "---" exercises the TrimSuffix("---")
-	// branch (L146) of stripFrontMatterDelimiters.
-	fm := []byte("---\ntitle: foo\n---")
-	result := stripFrontMatterDelimiters(fm)
-	assert.Equal(t, []byte("title: foo\n"), result)
-}
-
 func TestRefLabelItemsNotInIndex(t *testing.T) {
 	t.Parallel()
 	// refLabelItems with a file absent from the index hits the !ok guard

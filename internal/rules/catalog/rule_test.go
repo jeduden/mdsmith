@@ -2348,6 +2348,22 @@ func TestReadFrontMatter_Valid(t *testing.T) {
 	}
 }
 
+// TestReadFrontMatter_BlockScalarFenceLine: a "---" line inside a
+// block-scalar value is not the closing fence, so keys after it
+// must survive.
+func TestReadFrontMatter_BlockScalarFenceLine(t *testing.T) {
+	fs := fstest.MapFS{
+		"a.md": {Data: []byte("---\nnotes: |\n  a\n  ---\n  b\ntitle: Hello\n---\n# C\n")},
+	}
+	fm, err := readFrontMatter(fs, "a.md", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fm["title"] != "Hello" {
+		t.Errorf("expected title Hello, got %q", fm["title"])
+	}
+}
+
 func TestReadFrontMatter_NoFrontMatter(t *testing.T) {
 	fs := fstest.MapFS{
 		"a.md": {Data: []byte("# No front matter\n")},

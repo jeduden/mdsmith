@@ -6,6 +6,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/jeduden/mdsmith/pkg/markdown"
+	"gopkg.in/yaml.v3"
 )
 
 // StripFrontMatter removes YAML front matter delimited by "---\n"
@@ -57,25 +58,71 @@ func CountLines(b []byte) int {
 // ParseFrontMatterKinds extracts the kinds: list from a YAML front-matter
 // block (including its --- delimiters). Returns nil kinds and nil error if
 // the block is nil or the kinds key is absent. Returns an error if the
-// YAML contains anchors/aliases or cannot be parsed.
+// YAML contains anchors/aliases, has a duplicate top-level key, or
+// cannot be parsed, or if kinds: is not a list of scalars.
 func ParseFrontMatterKinds(fm []byte) ([]string, error) {
 	if len(fm) == 0 {
 		return nil, nil
 	}
 	body := FrontMatterYAML(fm)
 
-	// Fast path: skip full YAML decode when no "kinds:" key is present.
-	if !bytes.Contains(body, []byte("kinds:")) {
+	// Fast path: skip the YAML decode when the word "kinds" appears
+	// nowhere. Any spelling of the key ("kinds":, kinds :, a merge
+	// key's value) contains it, so the check never drops a real key.
+	if !bytes.Contains(body, []byte("kinds")) {
 		return nil, nil
 	}
 
-	var parsed struct {
-		Kinds []string `yaml:"kinds"`
-	}
-	if err := yamlutil.UnmarshalSafe(body, &parsed); err != nil {
+	doc, err := yamlutil.UnmarshalNodeSafe(body)
+	if err != nil {
 		return nil, err
 	}
-	return parsed.Kinds, nil
+	head, err := DecodeFrontMatterHead(&doc)
+	if err != nil {
+		return nil, err
+	}
+	return head.KindList()
+}
+
+// FrontMatterHead holds the raw value nodes of the top-level
+// `title:` and `kinds:` front-matter keys. A key that is absent
+// leaves its node at the zero value (Kind 0).
+type FrontMatterHead struct {
+	Title yaml.Node `yaml:"title"`
+	Kinds yaml.Node `yaml:"kinds"`
+}
+
+// DecodeFrontMatterHead decodes the title and kinds nodes from a
+// parsed front-matter document (as returned by
+// yamlutil.UnmarshalNodeSafe). yaml.v3 applies its usual rules: a
+// duplicate top-level key or a non-mapping document is an error, and
+// merge keys contribute their values. The engine's kinds parser and
+// the workspace index both decode through here, so they agree on
+// every spelling. An empty document yields a zero head.
+func DecodeFrontMatterHead(doc *yaml.Node) (FrontMatterHead, error) {
+	var head FrontMatterHead
+	if doc.Kind == 0 {
+		return head, nil
+	}
+	if err := doc.Decode(&head); err != nil {
+		return FrontMatterHead{}, err
+	}
+	return head, nil
+}
+
+// KindList decodes the kinds node into a []string. An absent or
+// null value yields nil. Scalars of any type keep their source text
+// (`- 42` is "42"). A scalar or mapping value, or a list with a
+// non-scalar entry, is an error.
+func (h *FrontMatterHead) KindList() ([]string, error) {
+	if h.Kinds.Kind == 0 {
+		return nil, nil
+	}
+	var kinds []string
+	if err := h.Kinds.Decode(&kinds); err != nil {
+		return nil, err
+	}
+	return kinds, nil
 }
 
 // ParseFrontMatterFields decodes a YAML front-matter block (including its

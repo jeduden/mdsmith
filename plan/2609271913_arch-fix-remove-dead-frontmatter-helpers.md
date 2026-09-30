@@ -77,22 +77,30 @@ decoders. The port fixes the drift:
 
 - A null `title:` (`null`, `~`, empty) yields no title.
   Before, `frontMatterAll` returned the text `null` or `~`.
-- A block-scalar title collapses runs of whitespace to one
-  space, so a workspace symbol name has no newlines.
+- A title collapses runs of Unicode whitespace to one
+  space and trims its ends, so a workspace symbol name has
+  no newlines.
 - Typed scalar titles (int, float, uint64, bool, date) keep
   their source text. The deleted `frontMatterScalar` wrote
   a date in RFC 3339 form; the index never used that path.
-- `kinds:` decodes into `[]string`, the same way as
-  `lint.ParseFrontMatterKinds`: `- 42` is kept as `"42"`,
-  and a mapping entry drops the whole list.
-- A block with a duplicate key yields no title and no
-  kinds, since the engine rejects that block. Every key
-  still gets an outline symbol.
+- Title and kinds now come from one shared decoder,
+  `lint.DecodeFrontMatterHead`, which
+  `lint.ParseFrontMatterKinds` also uses. So `- 42` is kept
+  as `"42"`, a mapping entry drops the whole list, a merge
+  key adds its values, and any duplicate top-level key
+  yields no title and no kinds. Every key still gets an
+  outline symbol.
+- `ParseFrontMatterKinds` skipped the decode unless the body
+  held the bytes `kinds:`. It now looks for `kinds`, so
+  `"kinds":` and `kinds :` are no longer missed.
 - The index's `stripDelimiters` had a fallback for a closing
   `---` with no newline, which `StripFrontMatter` never
-  produces. It and the schema package's copy were replaced
-  by one `lint.FrontMatterYAML` helper, which the three
-  `internal/lint` decoders now use too.
+  produces. It and the other copies of the fence trim that
+  take a `StripFrontMatter` prefix now call one helper,
+  `lint.FrontMatterYAML`. That fixed the catalog reader,
+  which cut the YAML at a `---` line inside a block scalar.
+  The trims in `requiredfrontmatter` and `requiredstructure`
+  also accept a block with no fences, so they stay.
 
 ## Acceptance Criteria
 

@@ -367,8 +367,8 @@ func TestParseFile_RequireBadFilenameType(t *testing.T) {
 
 func TestParseFile_FrontmatterPropagatesToSchema(t *testing.T) {
 	// Frontmatter CUE constraints declared in the proto.md surface
-	// on the parsed Schema. lint.StripFrontMatter consumes the
-	// "---\n…---\n" delimiters before lint.FrontMatterYAML runs.
+	// on the parsed Schema. lint.StripFrontMatter returns the block
+	// with its "---\n" fences; lint.FrontMatterYAML removes them.
 	dir := t.TempDir()
 	p := writeFile(t, dir, "proto.md",
 		"---\nid: 'string'\n---\n# ?\n")

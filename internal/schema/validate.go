@@ -492,8 +492,7 @@ func docFrontmatterKeyLines(f *lint.File) map[string]int {
 // block scalar legitimately contained the `---\n` sequence as a
 // value.
 func parseFMBlockKeyLines(fm []byte) map[string]int {
-	body := bytes.TrimPrefix(fm, []byte("---\n"))
-	body = bytes.TrimSuffix(body, []byte("---\n"))
+	body := lint.FrontMatterYAML(fm)
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil
 	}

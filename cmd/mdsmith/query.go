@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 
@@ -140,9 +139,7 @@ func readFrontMatterRaw(path string, maxBytes int64) (map[string]any, error) {
 	if prefix == nil {
 		return nil, nil
 	}
-	// Strip the --- delimiters to get the YAML body.
-	delim := []byte("---\n")
-	yamlBytes := bytes.TrimSuffix(bytes.TrimPrefix(prefix, delim), delim)
+	yamlBytes := lint.FrontMatterYAML(prefix)
 
 	var raw map[string]any
 	if err := yamlutil.UnmarshalSafe(yamlBytes, &raw); err != nil {
