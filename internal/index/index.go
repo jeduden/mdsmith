@@ -21,6 +21,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 )
 
 // SymbolKind enumerates the four symbol shapes the index recognizes.
@@ -849,7 +851,36 @@ func nameMatches(name, q string) bool {
 	if q == "" {
 		return true
 	}
-	return strings.Contains(strings.ToLower(name), q)
+	return containsFold(name, q)
+}
+
+// containsFold reports whether lower-cased q is a substring of name under
+// simple case folding, without allocating a lower-cased copy of name.
+// q must already be lower-cased.
+func containsFold(name, q string) bool {
+	if len(q) > len(name) {
+		return false
+	}
+	for i := 0; i+len(q) <= len(name); i++ {
+		if hasPrefixFoldAt(name[i:], q) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPrefixFoldAt(s, q string) bool {
+	for _, qr := range q {
+		if s == "" {
+			return false
+		}
+		r, size := utf8.DecodeRuneInString(s)
+		if unicode.ToLower(r) != qr {
+			return false
+		}
+		s = s[size:]
+	}
+	return true
 }
 
 // SymbolMatch pairs a Symbol with the file that contains it. Returned

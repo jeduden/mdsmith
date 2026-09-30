@@ -604,3 +604,28 @@ func TestFrontMatterAliasRejected(t *testing.T) {
 			"alias-bearing front matter must not produce front-matter symbols: %+v", s)
 	}
 }
+
+// TestNameMatches_NoAllocOnMixedCase pins the case-insensitive substring
+// test used by SearchSymbols (run per symbol per keystroke) to zero
+// allocations; strings.ToLower allocates for any name with uppercase.
+func TestNameMatches_NoAllocOnMixedCase(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	allocs := testing.AllocsPerRun(100, func() {
+		if !nameMatches("Apple Pie", "pie") {
+			t.Fatal("expected match")
+		}
+	})
+	assert.Zero(t, allocs)
+}
+
+func TestNameMatches_Semantics(t *testing.T) {
+	t.Parallel()
+	assert.True(t, nameMatches("anything", ""))
+	assert.True(t, nameMatches("Apple Pie", "apple"))
+	assert.True(t, nameMatches("Apple Pie", "e p"))
+	assert.False(t, nameMatches("Apple", "pie"))
+	assert.False(t, nameMatches("ap", "apple"))
+	assert.True(t, nameMatches("Überblick", "überblick"))
+}

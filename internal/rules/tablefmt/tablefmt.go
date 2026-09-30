@@ -7,7 +7,6 @@ package tablefmt
 import (
 	"bytes"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/jeduden/mdsmith/pkg/runewidth"
@@ -201,8 +200,28 @@ const (
 	alignRight        // ---:
 )
 
-// separatorRe matches a table separator row cell content.
-var separatorRe = regexp.MustCompile(`^:?-+:?$`)
+// isSeparatorCell reports whether cell is a delimiter-row cell: an optional
+// ':', one or more '-', then an optional ':'. It replaces a regexp of the
+// same shape so the per-cell check runs without the regexp engine
+// (docs/development/high-performance-go.md, "regexp for a literal").
+func isSeparatorCell[T ~string | ~[]byte](cell T) bool {
+	i, n := 0, len(cell)
+	if i < n && cell[i] == ':' {
+		i++
+	}
+	dashes := 0
+	for i < n && cell[i] == '-' {
+		i++
+		dashes++
+	}
+	if dashes == 0 {
+		return false
+	}
+	if i < n && cell[i] == ':' {
+		i++
+	}
+	return i == n
+}
 
 // ScanTableBoundaries returns the 0-based [start, end] line-index pairs
 // (both inclusive) for each table block found in lines, without parsing
@@ -281,7 +300,7 @@ func isSeparatorLine(line []byte) bool {
 		if len(cell) == 0 {
 			continue
 		}
-		if !separatorRe.Match(cell) {
+		if !isSeparatorCell(cell) {
 			return false
 		}
 		hasCells = true
@@ -568,7 +587,7 @@ func isSeparatorRow(cells []string) bool {
 	}
 	for _, cell := range cells {
 		cell = strings.TrimSpace(cell)
-		if !separatorRe.MatchString(cell) {
+		if !isSeparatorCell(cell) {
 			return false
 		}
 	}

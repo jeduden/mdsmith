@@ -92,3 +92,31 @@ func TestCheckAllocBudget(t *testing.T) {
 			"new allocations were added to the hot path",
 		delta, allocBudgetMDS030)
 }
+
+// TestHasMeaningfulContent_CommentFreeHTMLBlockNoAlloc pins the HTML-block
+// branch to zero allocations when the block holds no `<!--`: the comment
+// regexp and the string copy of the block are skipped (see
+// docs/development/high-performance-go.md, "Gate expensive analyzers
+// behind a cheap pre-check").
+func TestHasMeaningfulContent_CommentFreeHTMLBlockNoAlloc(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	f, err := lint.NewFile("h.md", []byte("# A\n\n<div>\nx\n</div>\n"))
+	require.NoError(t, err)
+	nodes := topLevelNodes(f.AST)
+	require.True(t, hasMeaningfulContent(nodes, f.Source))
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = hasMeaningfulContent(nodes, f.Source)
+	})
+	require.Zero(t, allocs)
+}
+
+func TestHasMeaningfulContent_CommentOnlyHTMLBlock(t *testing.T) {
+	f, err := lint.NewFile("h.md", []byte("# A\n\n<!-- a -->\n"))
+	require.NoError(t, err)
+	require.False(t, hasMeaningfulContent(topLevelNodes(f.AST)[1:], f.Source))
+	f, err = lint.NewFile("h.md", []byte("# A\n\n<!-- a -->\n<div>x</div>\n"))
+	require.NoError(t, err)
+	require.True(t, hasMeaningfulContent(topLevelNodes(f.AST)[1:], f.Source))
+}

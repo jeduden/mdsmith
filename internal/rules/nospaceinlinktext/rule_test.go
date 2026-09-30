@@ -652,3 +652,14 @@ func TestInlineCapable(t *testing.T) {
 	r := &Rule{}
 	assert.True(t, r.InlineCapable())
 }
+
+func TestFixSpans_SingleAllocWithoutNesting(t *testing.T) {
+	src := []byte("a [ x ] b [ y ] c\n")
+	spans := []span{{open: 2, close: 6}, {open: 10, close: 14}}
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = fixSpans(src, spans, 0, len(src))
+	})
+	// One pre-sized result; nested calls with no inner span return a sub-slice.
+	assert.LessOrEqual(t, allocs, 1.0)
+	assert.Equal(t, "a [x] b [y] c\n", string(fixSpans(src, spans, 0, len(src))))
+}
