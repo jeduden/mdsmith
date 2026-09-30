@@ -60,35 +60,31 @@ func TestFindByPathNoMatch(t *testing.T) {
 // document in that case; findByPath must do the same instead of
 // reporting a miss while another candidate is still open.
 //
-// The first match invocation (order is unspecified — map iteration)
-// deletes its own candidate's document right before findByPath's
-// get() call would run, simulating a concurrent close in that exact
-// window, then still reports a match. The second candidate is left
-// alone and must be the one findByPath returns.
+// findByPath tries matches in URI order, so the test closes
+// file:///a.md, the smallest URI, from inside the first match call:
+// the document goes away after the snapshot and before get() runs,
+// simulating a concurrent close in that exact window. get() then
+// misses a.md on every run, whatever order the map yields, and
+// findByPath must fall through to file:///b.md.
 func TestFindByPathContinuesAfterMatchedCandidateCloses(t *testing.T) {
 	s := newDocumentStore()
 	s.set("file:///a.md", &document{uri: "file:///a.md", path: "/a.md", text: []byte("a")})
 	s.set("file:///b.md", &document{uri: "file:///b.md", path: "/b.md", text: []byte("b")})
 
-	var deletedURI string
-	first := true
-	uri, doc, ok := s.findByPath(func(path string) bool {
-		if first {
-			first = false
-			deletedURI = "file://" + path
-			s.delete(deletedURI)
+	closed := false
+	uri, doc, ok := s.findByPath(func(string) bool {
+		if !closed {
+			closed = true
+			s.delete("file:///a.md")
 		}
 		return true
 	})
 	if !ok {
-		t.Fatal("findByPath reported a miss even though one candidate was still open")
+		t.Fatal("findByPath reported a miss even though file:///b.md was still open")
 	}
-	if uri == "" || doc == nil {
-		t.Fatalf("findByPath returned ok=true with an empty result: uri=%q doc=%v", uri, doc)
-	}
-	if uri == deletedURI {
-		t.Fatalf("findByPath returned the deleted candidate %q instead of falling through "+
-			"to the one still open", uri)
+	if uri != "file:///b.md" || doc == nil || string(doc.text) != "b" {
+		t.Fatalf("findByPath = (%q, %v), want file:///b.md after file:///a.md closed mid-scan",
+			uri, doc)
 	}
 }
 

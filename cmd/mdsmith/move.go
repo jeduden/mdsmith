@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 
 	flag "github.com/spf13/pflag"
 
@@ -121,78 +120,51 @@ type fileMoveReport struct {
 	To   string `json:"to"`
 }
 
-// applyPlan is the shared apply layer for refactor plans. It writes
-// every keyed file's edits, then runs any FileOp (a git mv or plain
-// rename) — text edits before the move, so the relocated file carries
-// its rewritten body. With dryRun set it changes nothing and only
-// reports what it would do. Returns 0 on success, 2 on a write or move
-// failure.
+// applyPlan is the shared apply layer for refactor plans, and it is
+// all-or-nothing (see planapply.go). It refuses an existing
+// destination, splices every file's edits in memory, and aborts with
+// nothing written if any file fails. With dryRun set it stops there
+// and reports what it would do, so a dry run surfaces the same errors.
+// Otherwise commitPlan writes the files and runs any FileOp (a git mv
+// or plain rename) last, so the relocated file carries its rewritten
+// body; a failure there rolls back and names any file left rewritten.
+// Returns 0 on success, 2 on any failure.
 func applyPlan(w io.Writer, ws cliRenameWorkspace, plan refactor.Plan, format string, dryRun bool) int {
-	rels := make([]string, 0, len(plan.Edits))
-	for rel, edits := range plan.Edits {
-		if len(edits) == 0 {
-			continue
-		}
-		rels = append(rels, rel)
+	if code := preflightDestination(ws.rootDir, plan.FileOp); code != 0 {
+		return code
 	}
-	sort.Strings(rels)
-
-	// Pre-flight the file move before writing any reference edits.
-	// Execute refuses an existing destination (git mv does; the
-	// plain-rename path mirrors it with an Lstat guard), but by then
-	// every reference edit is already on disk, pointing at a file the
-	// move never created — corrupting the workspace with no rollback.
-	// Checking here keeps the operation all-or-nothing for the common
-	// collision the planner's read-based check cannot see (a destination
-	// over the max-input-size limit, which ws.Resolve reports as absent).
-	if !dryRun && plan.FileOp != nil {
-		dst := filepath.Join(ws.rootDir, filepath.FromSlash(plan.FileOp.To))
-		if _, err := os.Lstat(dst); err == nil {
-			fmt.Fprintf(os.Stderr,
-				"mdsmith: destination already exists: %s\n", plan.FileOp.To)
+	writes, code := computePlanWrites(ws, plan.Edits)
+	if code != 0 {
+		return code
+	}
+	if !dryRun {
+		if f := commitPlan(ws.rootDir, writes, plan.FileOp); f != nil {
+			fmt.Fprint(os.Stderr, f.message())
 			return 2
 		}
 	}
-
-	summaries := make([]renameSummary, 0, len(rels))
-	for _, rel := range rels {
-		edits := plan.Edits[rel]
-		if !dryRun {
-			if code := applyEditsToFile(ws, rel, edits); code != 0 {
-				return code
-			}
-		}
-		summaries = append(summaries, renameSummary{File: rel, Edits: len(edits)})
-	}
-	if !dryRun && plan.FileOp != nil {
-		if err := plan.FileOp.Execute(ws.rootDir); err != nil {
-			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-			return 2
-		}
+	summaries := make([]renameSummary, 0, len(writes))
+	for _, pw := range writes {
+		summaries = append(summaries, renameSummary{File: pw.rel, Edits: pw.edits})
 	}
 	return emitPlanReport(w, summaries, plan.FileOp, format, dryRun)
 }
 
-// applyEditsToFile splices one file's edits and writes the result back,
-// preserving the file's mode. Returns 0 on success, 2 on a read, apply,
-// or write failure.
-func applyEditsToFile(ws cliRenameWorkspace, rel string, edits []refactor.Edit) int {
-	_, src, ok := ws.Resolve(rel)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "mdsmith: cannot read %q to apply edits\n", rel)
-		return 2
+// preflightDestination refuses a file move whose destination already
+// exists, before anything is written. Execute refuses one too (git mv
+// does; the plain-rename path mirrors it with an Lstat guard), but only
+// after the reference edits are written, so this check keeps the
+// common collision from costing a rollback. It covers the case the
+// planner's read-based check cannot see: a destination over the
+// max-input-size limit, which ws.Resolve reports as absent. Returns 0
+// when op is nil or its destination is free, 2 otherwise.
+func preflightDestination(rootDir string, op *refactor.FileOp) int {
+	if op == nil {
+		return 0
 	}
-	out, err := refactor.ApplyEdits(src, edits)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %s: %v\n", rel, err)
-		return 2
-	}
-	abs, ok := ws.relToAbs[rel]
-	if !ok {
-		abs = filepath.Join(ws.rootDir, filepath.FromSlash(rel))
-	}
-	if err := writeFilePreservingMode(abs, out); err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: writing %s: %v\n", rel, err)
+	dst := filepath.Join(rootDir, filepath.FromSlash(op.To))
+	if _, err := os.Lstat(dst); err == nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: destination already exists: %s\n", op.To)
 		return 2
 	}
 	return 0
