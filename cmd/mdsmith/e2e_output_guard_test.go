@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,8 +13,8 @@ import (
 // refusal is the usage error check and fix print for an -o path that
 // is, or would be, one of their inputs.
 func refusal(cmd, output string) string {
-	return "mdsmith: " + cmd + ": refusing --output \"" + output +
-		"\": it is an input of this run, or would be once written\n"
+	return fmt.Sprintf("mdsmith: %s: refusing --output %q: it is an input of this run, or would be once written\n",
+		cmd, output)
 }
 
 // TestOutputGuard_E2E pins that check and fix refuse, with exit 2 and
