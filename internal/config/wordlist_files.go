@@ -48,10 +48,9 @@ func discoverWordlists(workspaceDir string) (map[string]discoveredWordlist, erro
 		return nil, fmt.Errorf("reading %s: %w", wordlistFilesDir, err)
 	}
 
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() < entries[j].Name()
-	})
-
+	// No re-sort: os.ReadDir already returns the entries sorted by
+	// filename, so the loop below reports the first offending file, and
+	// names both files of a .yaml/.yml collision, in a fixed order.
 	result := make(map[string]discoveredWordlist, len(entries))
 	seenExt := make(map[string]string, len(entries))
 

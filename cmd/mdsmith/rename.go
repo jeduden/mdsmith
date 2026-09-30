@@ -52,6 +52,13 @@ var writeFileCloseFn func(*os.File) error = (*os.File).Close
 // writeFileCloseFnMu guards reads and writes of writeFileCloseFn.
 var writeFileCloseFnMu sync.Mutex
 
+// writeFileRenameFn renames a staged temp file over its target; exposed as a
+// variable so tests can inject failures without OS tricks.
+var writeFileRenameFn func(string, string) error = os.Rename
+
+// writeFileRenameFnMu guards reads and writes of writeFileRenameFn.
+var writeFileRenameFnMu sync.Mutex
+
 // renameOptions bundles the parsed CLI flags for `rename`.
 type renameOptions struct {
 	configPath   string
@@ -370,28 +377,48 @@ func resolveWriteMode(path string) os.FileMode {
 // writeFilePreservingMode overwrites path with data, keeping the file's
 // existing permission bits.
 //
-// The write uses a temp-file-then-rename pattern: a temporary file is created
-// in the same directory as path, written, then atomically renamed over path.
-// On POSIX, os.Rename replaces the directory entry (symlink) itself rather
-// than following the symlink to its target, so a workspace symlink is replaced
-// with a regular file instead of overwriting the external target. This mirrors
-// the atomicWriteFile pattern used by the fix command.
+// The write uses a temp-file-then-rename pattern: stageFile writes a
+// temporary file in the same directory as path, and replaceWithStaged
+// atomically renames it over path. On POSIX, os.Rename replaces the
+// directory entry (symlink) itself rather than following the symlink to
+// its target, so a workspace symlink is replaced with a regular file
+// instead of overwriting the external target. This mirrors the
+// atomicWriteFile pattern used by the fix command.
 func writeFilePreservingMode(path string, data []byte) error {
+	tmp, err := stageFile(path, data)
+	if err != nil {
+		return err
+	}
+	return replaceWithStaged(tmp, path)
+}
+
+// stageFile writes data to a new temp file beside path, carrying path's
+// permission bits, synced and closed, and returns the temp file's name.
+// path itself is not touched: the caller renames the temp over it
+// (replaceWithStaged) or removes it. On error no temp file is left.
+func stageFile(path string, data []byte) (string, error) {
 	mode := resolveWriteMode(path)
-	dir := filepath.Dir(path)
 	writeFileTempFnMu.Lock()
 	createTemp := writeFileTempFn
 	writeFileTempFnMu.Unlock()
-	tmp, err := createTemp(dir, filepath.Base(path)+".*.tmp")
+	tmp, err := createTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
-		return fmt.Errorf("creating temp file: %w", err)
+		return "", fmt.Errorf("creating temp file: %w", err)
 	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName) //nolint:errcheck // best-effort cleanup; harmless once rename succeeds
+	if err := fillTemp(tmp, mode, data); err != nil {
+		_ = os.Remove(tmp.Name())
+		return "", err
+	}
+	return tmp.Name(), nil
+}
+
+// fillTemp sets tmp's permission bits to mode, writes data, syncs, and
+// closes it. tmp is closed on every path.
+func fillTemp(tmp *os.File, mode os.FileMode, data []byte) error {
 	writeFileChmodFnMu.Lock()
 	chmodFn := writeFileChmodFn
 	writeFileChmodFnMu.Unlock()
-	if err := chmodFn(tmpName, mode); err != nil {
+	if err := chmodFn(tmp.Name(), mode); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("setting temp file mode: %w", err)
 	}
@@ -415,7 +442,17 @@ func writeFilePreservingMode(path string, data []byte) error {
 	if err := closeFn(tmp); err != nil {
 		return fmt.Errorf("closing temp file: %w", err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	return nil
+}
+
+// replaceWithStaged renames the temp file tmp (from stageFile) over
+// path, and removes tmp if the rename fails.
+func replaceWithStaged(tmp, path string) error {
+	writeFileRenameFnMu.Lock()
+	rename := writeFileRenameFn
+	writeFileRenameFnMu.Unlock()
+	if err := rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("committing %s: %w", filepath.Base(path), err)
 	}
 	return nil

@@ -143,19 +143,19 @@ func printVersion() {
 	fmt.Printf("mdsmith %s\n", v)
 }
 
-// stderrBufSize is the buffer the report paths put in front of stderr.
-// The text formatter emits a handful of small writes per diagnostic;
-// batching them into 64 KiB chunks keeps a diagnostic-heavy run from
-// paying one write syscall per formatted line.
-const stderrBufSize = 64 << 10
+// reportBufSize is the buffer the report paths put in front of the
+// report's destination (see reportIO.deliverReport). The text
+// formatter emits a handful of small writes per diagnostic; batching
+// them into 64 KiB chunks keeps a diagnostic-heavy run from paying one
+// write syscall per formatted line.
+const reportBufSize = 64 << 10
 
-// formatDiagnosticsTo writes diagnostics to w using the specified format.
-// Returns a non-zero exit code on write error, or 0 on success. The
-// write-error message is best-effort routed to the same w so callers
-// that pass an alternate writer (production: os.Stderr; tests: a
-// fault-injecting writer or a buffer) keep all formatter output
-// confined to one destination.
-func formatDiagnosticsTo(w io.Writer, diags []lint.Diagnostic, format string, noColor bool) int {
+// writeDiagnostics writes diagnostics to w in format ("json",
+// "sarif", or text for any other value) and returns the formatter's
+// error without reporting it. color turns on ANSI color in text
+// output. With no diagnostics, json writes `[]`, sarif a log with no
+// results, and text nothing.
+func writeDiagnostics(w io.Writer, diags []lint.Diagnostic, format string, color bool) error {
 	var formatter output.Formatter
 	switch format {
 	case "json":
@@ -163,18 +163,26 @@ func formatDiagnosticsTo(w io.Writer, diags []lint.Diagnostic, format string, no
 	case "sarif":
 		formatter = &output.SARIFFormatter{ToolVersion: version}
 	default:
-		formatter = &output.TextFormatter{Color: !noColor}
+		formatter = &output.TextFormatter{Color: color}
 	}
-	if err := formatter.Format(w, diags); err != nil {
-		_, _ = fmt.Fprintf(w, "mdsmith: error writing output: %v\n", err)
-		return 2
-	}
-	return 0
+	return formatter.Format(w, diags)
 }
 
-// formatDiagnostics writes diagnostics to stderr using the specified format.
-func formatDiagnostics(diags []lint.Diagnostic, format string, noColor bool) int {
-	return formatDiagnosticsTo(os.Stderr, diags, format, noColor)
+// printWriteErrorTo reports a failed output write on w. Its own
+// write error is swallowed: see printErrorsTo.
+func printWriteErrorTo(w io.Writer, err error) {
+	_, _ = fmt.Fprintf(w, "mdsmith: error writing output: %v\n", err)
+}
+
+// failWithDiagnostics prints diags as text on stderr, for export's
+// stale bodies and extract's conformance failures, and returns exit
+// code 1. A write that fails is exit 2 instead, so the failure is not
+// mistaken for a plain lint result.
+func failWithDiagnostics(diags []lint.Diagnostic) int {
+	if code := processIO().writeStderrDiagnostics(diags); code != 0 {
+		return code
+	}
+	return 1
 }
 
 // printErrors writes runtime errors to stderr.
@@ -206,13 +214,10 @@ type runStats struct {
 	DryRun bool
 }
 
-func printRunStats(format string, quiet bool, stats runStats) {
-	printRunStatsTo(os.Stderr, format, quiet, stats)
-}
-
-// printRunStatsTo writes the stats line to the supplied writer.
-func printRunStatsTo(w io.Writer, format string, quiet bool, stats runStats) {
-	if quiet || format == "json" || format == "sarif" {
+// printRunStatsTo writes the stats line to the supplied writer. json
+// and sarif get none: a prose line would corrupt the document.
+func printRunStatsTo(w io.Writer, format string, stats runStats) {
+	if format == "json" || format == "sarif" {
 		return
 	}
 	if stats.DryRun {
@@ -239,8 +244,8 @@ func printRunStatsTo(w io.Writer, format string, quiet bool, stats runStats) {
 }
 
 // loadAndResolve loads config, resolves file paths, and parses the max
-// input size. Returns exit code >= 0 on error (caller should return it)
-// or -1 on success.
+// input size. Returns exit code 2 on error (caller should return it), 0
+// when no Markdown file resolved, or -1 on success.
 func loadAndResolve(
 	fileArgs []string, configPath string,
 	verbose bool, walk walkCLI,
@@ -283,14 +288,13 @@ func loadAndResolve(
 // a visible no-op instead of a silent one (issue #759).
 //
 // It returns nil — disabling the notification entirely — when the run is
-// --quiet (a skipped file is non-error output) or the format is not
-// text. check and fix emit their diagnostics, including `--format json`
-// and `--format sarif`, on stderr; a prose warning on the same stream
-// would corrupt that structured output, so the human notice is limited
-// to the text format. Repeated names are de-duplicated so a doubled
-// argument does not double the warning.
-func nonMarkdownSkipWarner(w io.Writer, format string, quiet bool) func(string) {
-	if quiet || format != "text" {
+// --quiet (a skipped file is non-error output) or a json or sarif
+// report goes to stderr: a prose warning on the same stream would
+// corrupt that structured output. Once -o moves the report off stderr
+// the warning is safe there again. Repeated names are de-duplicated so
+// a doubled argument does not double the warning.
+func nonMarkdownSkipWarner(w io.Writer, f reportFlags) func(string) {
+	if f.quiet || f.structuredOnStderr() {
 		return nil
 	}
 	exts := strings.Join(mdpath.Extensions(), ", ")
@@ -318,11 +322,24 @@ func splitStdinArg(args []string) (hasStdin bool, fileArgs []string) {
 	return hasStdin, fileArgs
 }
 
+// refuseStdinWithFiles rejects `-` next to file arguments with a usage
+// error and returns 2: reading stdin would silently drop the files, and
+// an -o naming one of them would overwrite it. It returns -1 when `-`
+// stands alone or is absent.
+func refuseStdinWithFiles(cmd string, hasStdin bool, fileArgs []string) int {
+	if !hasStdin || len(fileArgs) == 0 {
+		return -1
+	}
+	fmt.Fprintf(os.Stderr, "mdsmith: %s: - (stdin) cannot be combined with file arguments\n", cmd)
+	return 2
+}
+
 // discoverFiles loads config, discovers files from config patterns, and
 // returns the config, config path, logger, and discovered file list. On
-// error or empty results it prints a message and returns a non-negative
-// exit code; the caller should return it directly. A negative code means
-// "continue with the returned values".
+// error it prints a message and returns 2; when no file is found it
+// returns 0 silently, still with the config, whose files: patterns the
+// -o guard reads. A negative code means "continue with the returned
+// values".
 func discoverFiles(
 	configPath string, verbose bool, walk walkCLI,
 ) (*config.Config, string, *vlog.Logger, []string, int) {
@@ -337,7 +354,7 @@ func discoverFiles(
 		logger.Printf("config: %s", cfgPath)
 	}
 	if len(cfg.Files) == 0 {
-		return nil, "", nil, nil, 0
+		return cfg, cfgPath, logger, nil, 0
 	}
 
 	files, err := discovery.Discover(discovery.Options{
@@ -350,7 +367,7 @@ func discoverFiles(
 		return nil, "", nil, nil, 2
 	}
 	if len(files) == 0 {
-		return nil, "", nil, nil, 0
+		return cfg, cfgPath, logger, nil, 0
 	}
 	return cfg, cfgPath, logger, files, -1
 }

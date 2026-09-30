@@ -7,8 +7,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jeduden/mdsmith/cue/cuelite"
+	"github.com/jeduden/mdsmith/cue/cuelite/yamltime"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -106,20 +108,39 @@ type MakeDiag func(file string, line int, msg string) lint.Diagnostic
 // docFM is the document's parsed front matter (nil when absent).
 // When fmIsCUE is true, the front-matter values are themselves CUE
 // expressions (the `cue-frontmatter` placeholder); the CUE check is
-// skipped because the values are not concrete data.
+// skipped because the values are not concrete data, and a
+// `\#(fmvar(...))` reference in `filename:` matches any non-empty
+// value.
 func Validate(
 	f *lint.File, sch *Schema, docFM map[string]any, fmIsCUE bool,
 	mkDiag MakeDiag,
+) []lint.Diagnostic {
+	return ValidateWithParseErr(f, sch, docFM, nil, fmIsCUE, mkDiag)
+}
+
+// ValidateWithParseErr is Validate for a document whose front matter
+// may have failed to parse. fmErr is that failure, or nil; the caller
+// reports it as its own diagnostic. A failed parse leaves docFM empty,
+// so every field reads as absent: the CUE field check against the
+// document is skipped rather than reporting each required field as
+// "<missing>", and the `filename:` hint names fmErr for a reference it
+// could not resolve. The schema's own CUE is still compiled, since a
+// compile failure there does not depend on the document.
+func ValidateWithParseErr(
+	f *lint.File, sch *Schema, docFM map[string]any, fmErr error,
+	fmIsCUE bool, mkDiag MakeDiag,
 ) []lint.Diagnostic {
 	if sch == nil || sch.IsEmpty() {
 		return nil
 	}
 	var diags []lint.Diagnostic
 
-	diags = append(diags, validateFilename(f, sch, mkDiag)...)
+	diags = append(diags,
+		validateFilename(f, sch, docFM, fmErr, fmIsCUE, mkDiag)...)
 
 	if !fmIsCUE {
-		diags = append(diags, validateFrontmatterDiags(f, sch, docFM, mkDiag)...)
+		diags = append(diags,
+			validateFrontmatterDiags(f, sch, docFM, fmErr, mkDiag)...)
 	}
 
 	rootLevel := sch.EffectiveRootLevel()
@@ -147,8 +168,14 @@ func Validate(
 // without needing to chase the underlying CUE error. The
 // formerly-flat "front matter does not satisfy schema CUE
 // constraints" message is intentionally retired; see plan 147.
+//
+// fmErr is why the document's front matter failed to parse, or nil.
+// With a parse failure only the schema-side compile runs: its error
+// does not depend on the document, while unifying the empty docFM
+// would report every required field as "<missing>".
 func validateFrontmatterDiags(
-	f *lint.File, sch *Schema, docFM map[string]any, mkDiag MakeDiag,
+	f *lint.File, sch *Schema, docFM map[string]any, fmErr error,
+	mkDiag MakeDiag,
 ) []lint.Diagnostic {
 	expr := sch.FrontmatterCUE()
 	if strings.TrimSpace(expr) == "" {
@@ -172,6 +199,9 @@ func validateFrontmatterDiags(
 		return []lint.Diagnostic{
 			compileFailureDiag(sch, "schema", "valid schema CUE", err).
 				Emit(mkDiag, f.Path, anchor)}
+	}
+	if fmErr != nil {
+		return nil
 	}
 	if docFM == nil {
 		docFM = map[string]any{}
@@ -507,6 +537,12 @@ func schemaDiagFromCUEError(
 		SchemaRef: schemaRef(sch, schemaKeyForPath(sch, path)),
 	}
 	actualVal, hasActual := lookupFM(docFM, path)
+	// An unquoted YAML timestamp decodes to time.Time, and cuelite lifts
+	// it as yamltime.Format's text. Show and hint on that text — the value
+	// the constraint checked — not JSON's RFC 3339 form of the time.
+	if tm, ok := actualVal.(time.Time); ok {
+		actualVal = yamltime.Format(tm)
+	}
 	if hasActual {
 		d.Actual = formatActual(actualVal)
 	}
@@ -535,8 +571,29 @@ func schemaDiagFromCUEError(
 			d.Actual = "<extra field>"
 		}
 		d.Expected = "not declared in schema"
+		if sch.frontmatterClosedOverruled {
+			d.Hint = frontmatterStaysClosedHint(sch)
+		}
 	}
 	return d
+}
+
+// frontmatterStaysClosedHint explains an undeclared-key report on a
+// file whose composed kinds disagree on `frontmatter-closed:`. One
+// kind opened its front matter, but composition keeps the strictest
+// setting, and a kind that declares `frontmatter:` without the key is
+// closed by default. A proto.md that declares front matter cannot set
+// the key at all, so when one kept the composite closed the hint
+// names it rather than asking for a `false` it cannot carry.
+func frontmatterStaysClosedHint(sch *Schema) string {
+	if p := sch.frontmatterClosedByProto; p != "" {
+		return "front matter stays closed: proto.md schema " +
+			strconv.Quote(p) + " declares front matter and cannot set " +
+			"`frontmatter-closed:`, so it counts as closed; declare " +
+			"this key in it"
+	}
+	return "front matter stays closed: every kind composed for this " +
+		"file must set `frontmatter-closed: false` to open it"
 }
 
 // schemaKeyForPath finds the Frontmatter map key (with the
@@ -662,7 +719,7 @@ func compileFailureDiag(sch *Schema, field, expected string, err error) SchemaDi
 func ValidateFrontmatterDiags(
 	f *lint.File, sch *Schema, docFM map[string]any, mkDiag MakeDiag,
 ) []lint.Diagnostic {
-	return validateFrontmatterDiags(f, sch, docFM, mkDiag)
+	return validateFrontmatterDiags(f, sch, docFM, nil, mkDiag)
 }
 
 // FormatSchemaRef builds the "source:line" suffix used by every
@@ -1664,51 +1721,19 @@ func formatHeading(level int, text string) string {
 // the "expected" is the glob spelled out as a pattern-matching
 // constraint.
 func validateFilename(
-	f *lint.File, sch *Schema, mkDiag MakeDiag,
+	f *lint.File, sch *Schema, docFM map[string]any, fmErr error,
+	fmIsCUE bool, mkDiag MakeDiag,
 ) []lint.Diagnostic {
-	patterns := sch.Filename
-	if len(patterns) == 0 {
+	d := FilenameDiagnostic(sch.Filename, filepath.Base(f.Path), docFM,
+		fmErr, fmIsCUE, schemaRef(sch, ""))
+	if d == nil {
 		return nil
 	}
 	// Filename and path diagnostics describe the document as a
 	// whole, not a body line; use the non-body anchor so the
 	// checker.FilterGeneratedDiags can't drop them when the
 	// document body starts with a generated section.
-	anchor := nonBodyDiagLine(f)
-	base := filepath.Base(f.Path)
-	matched, badPattern, err := MatchFilename(patterns, base)
-	if err != nil {
-		// Malformed glob in the schema. Surface it via the same
-		// SchemaDiagnostic shape so the message carries a
-		// schema reference and the user can jump to the
-		// offending pattern.
-		d := SchemaDiagnostic{
-			Field:     "filename pattern",
-			Actual:    strconv.Quote(badPattern),
-			Expected:  "valid glob",
-			Hint:      err.Error(),
-			SchemaRef: schemaRef(sch, ""),
-		}
-		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
-	}
-	if !matched {
-		// `glob` makes the constraint syntax explicit: users
-		// occasionally read `string matching <pattern>` as a regex
-		// requirement, which filepath.Match does not accept. The
-		// wording also lines up with the kind-level `path-pattern`
-		// diagnostic ("path matching glob ...") so the user
-		// vocabulary is consistent across both surfaces. With
-		// several globs configured the "expected" clause lists them
-		// all so the OR nature is visible.
-		d := SchemaDiagnostic{
-			Field:     "filename",
-			Actual:    strconv.Quote(base),
-			Expected:  FilenameExpected(patterns),
-			SchemaRef: schemaRef(sch, ""),
-		}
-		return []lint.Diagnostic{d.Emit(mkDiag, f.Path, anchor)}
-	}
-	return nil
+	return []lint.Diagnostic{d.Emit(mkDiag, f.Path, nonBodyDiagLine(f))}
 }
 
 // ValidateFrontmatter compiles sch.Frontmatter into a CUE schema and

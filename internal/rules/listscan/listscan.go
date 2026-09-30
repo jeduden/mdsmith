@@ -30,6 +30,7 @@ package listscan
 import (
 	"bytes"
 
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 )
 
@@ -186,7 +187,8 @@ func (p *parser) scanLine(i int, line []byte) int {
 	lineNo := i + 1
 	indent := astutil.CountLeadingSpaces(line)
 	markerToken := hasMarkerToken(line, indent)
-	interrupts := interruptsParagraph(line, indent)
+	interrupts := lint.StartsInterruptingBlock(line)
+	setext := p.isSetextUnderline(line, indent)
 
 	// Close any open item whose content column the line's indent does not
 	// reach, so the surviving stack top is the item this line belongs to.
@@ -226,13 +228,51 @@ func (p *parser) scanLine(i int, line []byte) int {
 		return i
 	}
 	p.handleContinuation(lineNo, indent)
-	// Track top-level paragraph state for the next line's interruption test:
-	// when this line lands at the document root, a plain-text line opens or
-	// continues a paragraph while a heading or thematic break does not.
-	if len(p.stack) == 0 {
+	switch {
+	case setext:
+		// The underline turns the open paragraph into a heading, which
+		// ends it, so a marker on the next line interrupts nothing.
+		if n := len(p.stack); n > 0 {
+			p.stack[n-1].inParagraph = false
+		} else {
+			p.topInParagraph = false
+		}
+	case len(p.stack) == 0:
+		// Track top-level paragraph state for the next line's interruption
+		// test: when this line lands at the document root, a plain-text line
+		// opens or continues a paragraph, while a line that opens another
+		// block (a heading, a thematic break, a block quote) does not.
 		p.topInParagraph = !interrupts
 	}
 	return i
+}
+
+// isSetextUnderline reports whether line, at indent, is a setext heading
+// underline: a paragraph is open in the line's own container (the
+// document root, or the innermost open item when the indent reaches its
+// content column), and the line is a run of '=' or of '-' within three
+// columns of that container, with only spaces or tabs after it. A lazy
+// line at lower indent cannot be one.
+func (p *parser) isSetextUnderline(line []byte, indent int) bool {
+	if p.blankRun > 0 {
+		return false
+	}
+	baseCol, open := 0, p.topInParagraph
+	if n := len(p.stack); n > 0 {
+		top := p.stack[n-1]
+		if indent < top.contentCol {
+			return false
+		}
+		baseCol, open = top.contentCol, top.inParagraph
+	}
+	if !open || indent-baseCol >= 4 {
+		return false
+	}
+	// scanLine sees only non-blank lines, so a non-space byte sits at
+	// indent and run is not empty.
+	run := bytes.TrimRight(line[indent:], " \t\r")
+	c := run[0]
+	return (c == '=' || c == '-') && len(bytes.Trim(run, string(c))) == 0
 }
 
 // consumeFence handles a fenced code block opening at 0-based index open.
@@ -275,14 +315,15 @@ func (p *parser) consumeFence(open int, fence fenceInfo) int {
 }
 
 // markerIsLazyText reports whether a recognized marker must be absorbed
-// as paragraph text rather than open a list item. Per CommonMark an
-// ordered list whose first number is not 1 cannot interrupt a paragraph:
-// when the marker would nest inside (or continue) an item whose current
-// block is an open paragraph with no intervening blank line, an ordered
-// marker numbered other than 1 is lazy text, not a new sublist. Bullets
-// and ordered markers numbered 1 always interrupt.
+// as paragraph text rather than open a list item. Per CommonMark a list
+// item interrupts a paragraph only when it has content and, if ordered,
+// its number is 1: when the marker would nest inside (or continue) an
+// item whose current block is an open paragraph with no intervening
+// blank line, an empty item or an ordered marker numbered other than 1
+// is lazy text, not a new sublist. (A lone "-" there is a setext
+// underline, which is not a list either.) Other markers interrupt.
 func (p *parser) markerIsLazyText(indent int, mi markerInfo) bool {
-	if !mi.ordered || mi.number == 1 {
+	if !mi.empty && (!mi.ordered || mi.number == 1) {
 		return false
 	}
 	if p.blankRun > 0 {
@@ -302,42 +343,6 @@ func (p *parser) markerIsLazyText(indent int, mi markerInfo) bool {
 	// reaches the item's content column; a shallower marker is a sibling
 	// or closes the item and does interrupt.
 	return indent >= top.contentCol
-}
-
-// interruptsParagraph reports whether line begins a block that interrupts
-// an open paragraph, so it cannot be a lazy continuation. It covers the
-// constructs CommonMark lets interrupt a paragraph and that the list
-// rules' corpus exercises: ATX headings, fenced-code openers, and
-// thematic breaks. (Blank lines are handled by the caller; HTML blocks
-// and block quotes are out of scope for the list corpus.)
-func interruptsParagraph(line []byte, indent int) bool {
-	if indent >= 4 || indent >= len(line) {
-		return false
-	}
-	if isThematicBreak(line) {
-		return true
-	}
-	if line[indent] == '#' {
-		j := indent
-		for j < len(line) && line[j] == '#' {
-			j++
-		}
-		level := j - indent
-		if level >= 1 && level <= 6 &&
-			(j >= len(line) || line[j] == ' ' || line[j] == '\t' || line[j] == '\r') {
-			return true
-		}
-	}
-	if c := line[indent]; c == '`' || c == '~' {
-		j := indent
-		for j < len(line) && line[j] == c {
-			j++
-		}
-		if j-indent >= 3 {
-			return true
-		}
-	}
-	return false
 }
 
 // hasMarkerToken reports whether the line carries a bullet or ordered

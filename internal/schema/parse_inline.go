@@ -43,6 +43,9 @@ func ParseInline(raw map[string]any, source string) (*Schema, error) {
 		"`require:` removed; see plan 2606022124 (use top-level `filename:`)"); err != nil {
 		return nil, err
 	}
+	if err := parseInlineFrontmatterClosed(raw, sch); err != nil {
+		return nil, err
+	}
 	if err := parseInlineFilename(raw, sch); err != nil {
 		return nil, err
 	}
@@ -86,15 +89,16 @@ func ParseInline(raw map[string]any, source string) (*Schema, error) {
 }
 
 var inlineTopKeys = map[string]bool{
-	"frontmatter":      true,
-	"filename":         true,
-	"closed":           true,
-	"sections":         true,
-	"cross-references": true,
-	"acronyms":         true,
-	"index":            true,
-	"projection":       true,
-	"block-paragraphs": true,
+	"frontmatter":        true,
+	"frontmatter-closed": true,
+	"filename":           true,
+	"closed":             true,
+	"sections":           true,
+	"cross-references":   true,
+	"acronyms":           true,
+	"index":              true,
+	"projection":         true,
+	"block-paragraphs":   true,
 }
 
 var validIndexIncludes = map[string]bool{
@@ -192,6 +196,32 @@ func frontmatterExpr(v any) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported value type %T", v)
 	}
+}
+
+// parseInlineFrontmatterClosed reads the optional schema-level
+// `frontmatter-closed:` key. It only makes sense alongside a
+// non-empty `frontmatter:` map: FrontmatterCUE emits no constraint
+// at all without one, so the setting would have nothing to close or
+// open. Rejecting the pairing at parse time mirrors the
+// `closed:` / `sections:` guard in ParseInline.
+func parseInlineFrontmatterClosed(raw map[string]any, sch *Schema) error {
+	v, ok := raw["frontmatter-closed"]
+	if !ok {
+		return nil
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return fmt.Errorf(
+			"schema.frontmatter-closed must be a boolean, got %T", v)
+	}
+	if len(sch.Frontmatter) == 0 {
+		return fmt.Errorf(
+			"schema.frontmatter-closed: only valid on schemas that " +
+				"declare a non-empty `frontmatter:` map — drop the key " +
+				"or declare the fields the document may carry")
+	}
+	sch.FrontmatterClosed = &b
+	return nil
 }
 
 func parseInlineFilename(raw map[string]any, sch *Schema) error {
@@ -835,6 +865,12 @@ func setScopeRules(sc *Scope, v any, path string) error {
 // compiling with cuelang and unifying against a JSON-encoded document
 // front matter. Keys with a trailing "?" are emitted as optional CUE
 // fields with the marker stripped from the label.
+//
+// The struct is wrapped in `close(...)` unless the schema set
+// `frontmatter-closed: false`, so a key the schema does not declare
+// fails unification and surfaces as "not declared in schema". The
+// open form emits a bare struct literal, which CUE unifies with any
+// superset of the declared keys.
 func (s *Schema) FrontmatterCUE() string {
 	if len(s.Frontmatter) == 0 {
 		return ""
@@ -845,8 +881,12 @@ func (s *Schema) FrontmatterCUE() string {
 	}
 	sort.Strings(keys)
 
+	closed := s.FrontmatterIsClosed()
 	var b strings.Builder
-	b.WriteString("close({\n")
+	if closed {
+		b.WriteString("close(")
+	}
+	b.WriteString("{\n")
 	for _, k := range keys {
 		label, optional := strings.CutSuffix(k, "?")
 		b.WriteString("  ")
@@ -858,7 +898,10 @@ func (s *Schema) FrontmatterCUE() string {
 		b.WriteString(s.Frontmatter[k])
 		b.WriteString("\n")
 	}
-	b.WriteString("})")
+	b.WriteString("}")
+	if closed {
+		b.WriteString(")")
+	}
 	return b.String()
 }
 

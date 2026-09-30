@@ -66,6 +66,27 @@ The regex bodies are shape-only. `date` accepts
 `2024-02-30` even though February never has 30 days;
 semantic validation is out of scope.
 
+### Unquoted dates and timestamps
+
+The table's examples are quoted strings. YAML reads
+an unquoted date or timestamp as a time, and the
+shortcut checks the text mdsmith renders for it: the
+date alone at midnight UTC, RFC 3339 otherwise (see
+[dates and timestamps][dates]). That text is not
+always the source text:
+
+| Front matter (unquoted)            | Checked as               | `date` | `datetime` |
+| ---------------------------------- | ------------------------ | ------ | ---------- |
+| `created: 2024-05-01`              | `2024-05-01`             | pass   | fail       |
+| `created: 2024-5-1`                | `2024-05-01`             | pass   | fail       |
+| `modified: 2024-05-01 12:30:00`    | `2024-05-01T12:30:00Z`   | fail   | pass       |
+| `modified: 2024-05-01T00:00:00Z`   | `2024-05-01`             | pass   | fail       |
+| `modified: 2024-05-01T12:30:00.5Z` | `2024-05-01T12:30:00.5Z` | fail   | fail       |
+
+Quote a value to check it exactly as written.
+
+[dates]: ../guides/directives/generating-content.md#dates-and-timestamps
+
 ## Inline schema example
 
 ```yaml

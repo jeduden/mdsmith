@@ -60,12 +60,9 @@ func discoverKinds(workspaceDir string) (map[string]discoveredKind, error) {
 		return nil, fmt.Errorf("reading %s: %w", kindFilesDir, err)
 	}
 
-	// Sort so error messages and the resulting map iteration
-	// produce a deterministic order across runs and platforms.
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() < entries[j].Name()
-	})
-
+	// No re-sort: os.ReadDir already returns the entries sorted by
+	// filename, so the loop below reports the first offending file, and
+	// names both files of a .yaml/.yml collision, in a fixed order.
 	result := make(map[string]discoveredKind, len(entries))
 	// Track which extension supplied each basename so a later
 	// `.yml` colliding with an earlier `.yaml` (or vice versa)

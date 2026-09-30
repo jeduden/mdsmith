@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -164,109 +165,225 @@ func TestApplyPlan_PreflightAbortsBeforeWritingEdits(t *testing.T) {
 	assert.Equal(t, before, after, "no reference edit is written when the pre-flight aborts")
 }
 
-// badSecondFilePlan edits a.md validly and b.md with two overlapping
-// edits, which refactor.ApplyEdits rejects. Keys apply in sorted order,
-// so a.md is the file a non-atomic apply would already have rewritten
-// when b.md fails.
-func badSecondFilePlan() refactor.Plan {
-	edit := func(start, end int, text string) refactor.Edit {
-		return refactor.Edit{
-			Range: refactor.Range{
-				Start: refactor.Position{Line: 0, Character: start},
-				End:   refactor.Position{Line: 0, Character: end},
-			},
-			NewText: text,
-		}
+// lineEdit is a single-line edit replacing UTF-16 units [start, end) on
+// line (0-based) with text.
+func lineEdit(line, start, end int, text string) refactor.Edit {
+	return refactor.Edit{
+		Range: refactor.Range{
+			Start: refactor.Position{Line: line, Character: start},
+			End:   refactor.Position{Line: line, Character: end},
+		},
+		NewText: text,
 	}
+}
+
+// snapshotFiles reads each rel under dir and returns rel → contents, so
+// a test can assert a failed apply left every file byte-identical.
+func snapshotFiles(t *testing.T, dir string, rels ...string) map[string]string {
+	t.Helper()
+	out := make(map[string]string, len(rels))
+	for _, rel := range rels {
+		b, err := os.ReadFile(filepath.Join(dir, rel))
+		require.NoError(t, err)
+		out[rel] = string(b)
+	}
+	return out
+}
+
+// assertNoTempFiles fails when a staged `*.tmp` sibling is left in dir.
+func assertNoTempFiles(t *testing.T, dir string) {
+	t.Helper()
+	left, err := filepath.Glob(filepath.Join(dir, "*.tmp"))
+	require.NoError(t, err)
+	assert.Empty(t, left, "no staged temp file may be left behind")
+}
+
+// twoFilePlan rewrites a.md's heading and b.md's first word; a.md sorts
+// first, so it is the file a half-applied refactor would leave changed.
+func twoFilePlan() refactor.Plan {
 	return refactor.Plan{Edits: map[string][]refactor.Edit{
-		"a.md": {edit(2, 7, "Install")},
-		"b.md": {edit(0, 3, "X"), edit(1, 4, "Y")},
+		"a.md": {lineEdit(0, 2, 7, "Install")},
+		"b.md": {lineEdit(0, 0, 3, "Read")},
 	}}
 }
 
-// TestApplyPlan_RejectedEditWritesNothing pins that applyPlan splices
-// every file before writing any: when ApplyEdits rejects one file's
-// edits, the command exits 2 and no file — not even one that sorts
-// before the bad one — is rewritten.
-func TestApplyPlan_RejectedEditWritesNothing(t *testing.T) {
+// TestApplyPlan_LaterSpliceFailureWritesNothing pins phase one of the
+// all-or-nothing apply: every file's edits are spliced in memory before
+// any write, so a splice error in a later file (b.md sorts after a.md)
+// leaves the earlier file byte-identical instead of half-applying the
+// refactor.
+func TestApplyPlan_LaterSpliceFailureWritesNothing(t *testing.T) {
 	dir := renameWorkspace(t)
 	ws, code := buildWorkspace(renameOptions{})
 	require.Equal(t, -1, code)
-	beforeA, err := os.ReadFile(filepath.Join(dir, "a.md"))
-	require.NoError(t, err)
-	beforeB, err := os.ReadFile(filepath.Join(dir, "b.md"))
-	require.NoError(t, err)
+	before := snapshotFiles(t, dir, "a.md", "b.md")
 
-	assert.Equal(t, 2, applyPlan(io.Discard, ws, badSecondFilePlan(), "text", false))
-
-	afterA, err := os.ReadFile(filepath.Join(dir, "a.md"))
-	require.NoError(t, err)
-	afterB, err := os.ReadFile(filepath.Join(dir, "b.md"))
-	require.NoError(t, err)
-	assert.Equal(t, beforeA, afterA, "a.md is not rewritten when b.md's edits are rejected")
-	assert.Equal(t, beforeB, afterB)
+	plan := twoFilePlan()
+	// Line 99 is past b.md's end, so ApplyEdits rejects the edit.
+	plan.Edits["b.md"] = []refactor.Edit{lineEdit(99, 0, 0, "x")}
+	assert.Equal(t, 2, applyPlan(io.Discard, ws, plan, "text", false))
+	assert.Equal(t, before, snapshotFiles(t, dir, "a.md", "b.md"))
+	assertNoTempFiles(t, dir)
 }
 
-// TestApplyPlan_DryRunReportsRejectedEdit pins that --dry-run splices
-// the edits too, so it fails on a plan the real run would reject
-// instead of reporting edits that could never be written.
-func TestApplyPlan_DryRunReportsRejectedEdit(t *testing.T) {
+// TestApplyPlan_DryRunReportsSpliceFailure pins that --dry-run runs the
+// same in-memory splice phase as a real run, so a plan that would fail
+// fails the dry run too instead of reporting success.
+func TestApplyPlan_DryRunReportsSpliceFailure(t *testing.T) {
 	renameWorkspace(t)
 	ws, code := buildWorkspace(renameOptions{})
 	require.Equal(t, -1, code)
+
+	plan := twoFilePlan()
+	plan.Edits["b.md"] = []refactor.Edit{lineEdit(99, 0, 0, "x")}
 	var out bytes.Buffer
-	assert.Equal(t, 2, applyPlan(&out, ws, badSecondFilePlan(), "text", true))
-	assert.Empty(t, out.String(), "no edit summary is printed for a rejected plan")
+	assert.Equal(t, 2, applyPlan(&out, ws, plan, "text", true))
+	assert.Empty(t, out.String(), "a failed dry run prints no plan")
 }
 
-func TestSpliceFileEdits(t *testing.T) {
-	renameWorkspace(t)
+// TestApplyPlan_DryRunRunsDestinationPreflight pins that --dry-run also
+// runs the existing-destination pre-flight, so it reports the collision
+// a real run would abort on.
+func TestApplyPlan_DryRunRunsDestinationPreflight(t *testing.T) {
+	dir := renameWorkspace(t)
 	ws, code := buildWorkspace(renameOptions{})
 	require.Equal(t, -1, code)
-	plan := badSecondFilePlan()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "occupied.md"), []byte("# Keep\n"), 0o644))
 
-	t.Run("splices the edits into the file bytes", func(t *testing.T) {
-		out, code := spliceFileEdits(ws, "a.md", plan.Edits["a.md"])
-		require.Equal(t, 0, code)
-		assert.Equal(t, "# Install\n\nBody.\n", string(out))
-	})
-	t.Run("unreadable file exits 2", func(t *testing.T) {
-		out, code := spliceFileEdits(ws, "missing.md", plan.Edits["a.md"])
-		assert.Equal(t, 2, code)
-		assert.Nil(t, out)
-	})
-	t.Run("rejected edits exit 2", func(t *testing.T) {
-		out, code := spliceFileEdits(ws, "b.md", plan.Edits["b.md"])
-		assert.Equal(t, 2, code)
-		assert.Nil(t, out)
-	})
+	plan := refactor.Plan{FileOp: &refactor.FileOp{From: "a.md", To: "occupied.md"}}
+	assert.Equal(t, 2, applyPlan(io.Discard, ws, plan, "text", true))
 }
 
-func TestWriteRelFile(t *testing.T) {
-	dir := t.TempDir()
-	abs := filepath.Join(dir, "mapped.md")
-	require.NoError(t, os.WriteFile(abs, []byte("old\n"), 0o640))
-	ws := cliRenameWorkspace{relToAbs: map[string]string{"a.md": abs}, rootDir: dir}
+// TestApplyPlan_StageFailureWritesNothing pins the write phase's first
+// half: every file's new bytes are staged to a temp sibling before any
+// original is replaced, so a write error on a later file (a full disk,
+// say) leaves every file byte-identical and removes the staged temps.
+func TestApplyPlan_StageFailureWritesNothing(t *testing.T) {
+	dir := renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	before := snapshotFiles(t, dir, "a.md", "b.md")
 
-	t.Run("writes through relToAbs keeping the mode", func(t *testing.T) {
-		require.Equal(t, 0, writeRelFile(ws, "a.md", []byte("new\n")))
-		got, err := os.ReadFile(abs)
-		require.NoError(t, err)
-		assert.Equal(t, "new\n", string(got))
-		info, err := os.Stat(abs)
-		require.NoError(t, err)
-		assert.Equal(t, os.FileMode(0o640), info.Mode().Perm())
+	calls := 0
+	injectWriteFileFn(t, &writeFileWriteFnMu, &writeFileWriteFn,
+		func(f *os.File, b []byte) (int, error) {
+			calls++
+			if calls == 2 {
+				return 0, errors.New("no space left on device")
+			}
+			return f.Write(b)
+		})
+	var got int
+	stderr := captureStderr(func() {
+		got = applyPlan(io.Discard, ws, twoFilePlan(), "text", false)
 	})
-	t.Run("unmapped rel falls back to rootDir", func(t *testing.T) {
-		require.Equal(t, 0, writeRelFile(ws, "b.md", []byte("b\n")))
-		got, err := os.ReadFile(filepath.Join(dir, "b.md"))
-		require.NoError(t, err)
-		assert.Equal(t, "b\n", string(got))
+	assert.Equal(t, 2, got)
+	assert.Contains(t, stderr, "b.md")
+	assert.Contains(t, stderr, "no space left on device")
+	assert.Contains(t, stderr, "no file was changed")
+	assert.Equal(t, before, snapshotFiles(t, dir, "a.md", "b.md"))
+	assertNoTempFiles(t, dir)
+}
+
+// TestApplyPlan_FileOpFailureRollsBackEdits pins the move ordering: the
+// file moves only after every text edit is in place, and a failed move
+// restores the rewritten files, so no link is left pointing at a file
+// that never moved.
+func TestApplyPlan_FileOpFailureRollsBackEdits(t *testing.T) {
+	dir := renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	before := snapshotFiles(t, dir, "a.md", "b.md")
+
+	// ghost.md does not exist, so the pre-flight passes but the move's
+	// os.Rename fails after both edits were written.
+	plan := twoFilePlan()
+	plan.FileOp = &refactor.FileOp{From: "ghost.md", To: "moved.md"}
+	var got int
+	stderr := captureStderr(func() {
+		got = applyPlan(io.Discard, ws, plan, "text", false)
 	})
-	t.Run("write failure exits 2", func(t *testing.T) {
-		// The rootDir fallback names a directory, so the rename over it
-		// fails without relying on permission bits (tests run as root).
-		require.NoError(t, os.Mkdir(filepath.Join(dir, "adir"), 0o755))
-		assert.Equal(t, 2, writeRelFile(ws, "adir", []byte("x\n")))
+	assert.Equal(t, 2, got)
+	assert.Contains(t, stderr, "ghost.md")
+	assert.Contains(t, stderr, "restored 2 file(s)")
+	assert.Equal(t, before, snapshotFiles(t, dir, "a.md", "b.md"))
+	assertNoTempFiles(t, dir)
+}
+
+// TestApplyPlan_SwapFailureRollsBack pins the rollback: when renaming a
+// later file's staged temp into place fails, the files already replaced
+// get their original bytes back and stderr says so.
+func TestApplyPlan_SwapFailureRollsBack(t *testing.T) {
+	dir := renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	before := snapshotFiles(t, dir, "a.md", "b.md")
+
+	failed := false
+	injectWriteFileFn(t, &writeFileRenameFnMu, &writeFileRenameFn,
+		func(from, to string) error {
+			if filepath.Base(to) == "b.md" && !failed {
+				failed = true
+				return errors.New("sharing violation")
+			}
+			return os.Rename(from, to)
+		})
+	var got int
+	stderr := captureStderr(func() {
+		got = applyPlan(io.Discard, ws, twoFilePlan(), "text", false)
 	})
+	assert.Equal(t, 2, got)
+	assert.Contains(t, stderr, "writing b.md")
+	assert.Contains(t, stderr, "sharing violation")
+	assert.Contains(t, stderr, "restored 1 file(s)")
+	assert.Equal(t, before, snapshotFiles(t, dir, "a.md", "b.md"))
+	assertNoTempFiles(t, dir)
+}
+
+// TestApplyPlan_RollbackFailureNamesRewrittenFiles pins the last-resort
+// report: when the rollback cannot restore a file either, stderr names
+// every file that keeps its rewritten content, and those are exactly
+// the files left changed on disk.
+func TestApplyPlan_RollbackFailureNamesRewrittenFiles(t *testing.T) {
+	dir := renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	before := snapshotFiles(t, dir, "a.md", "b.md")
+
+	// Rename 1 puts a.md in place, rename 2 (b.md) fails, and rename 3
+	// (restoring a.md) fails too.
+	calls := 0
+	injectWriteFileFn(t, &writeFileRenameFnMu, &writeFileRenameFn,
+		func(from, to string) error {
+			calls++
+			if calls > 1 {
+				return errors.New("read-only file system")
+			}
+			return os.Rename(from, to)
+		})
+	var got int
+	stderr := captureStderr(func() {
+		got = applyPlan(io.Discard, ws, twoFilePlan(), "text", false)
+	})
+	assert.Equal(t, 2, got)
+	assert.Contains(t, stderr, "writing b.md")
+	assert.Contains(t, stderr, "restoring a.md")
+	assert.Contains(t, stderr, "1 file(s) keep the rewritten content: a.md")
+	after := snapshotFiles(t, dir, "a.md", "b.md")
+	assert.Equal(t, "# Install\n\nBody.\n", after["a.md"], "a.md keeps the rewrite stderr names")
+	assert.Equal(t, before["b.md"], after["b.md"])
+	assertNoTempFiles(t, dir)
+}
+
+func TestPreflightDestination(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "taken.md"), []byte("x"), 0o644))
+	assert.Equal(t, 0, preflightDestination(dir, nil), "no file move → nothing to check")
+	assert.Equal(t, 0, preflightDestination(dir, &refactor.FileOp{From: "a.md", To: "free.md"}))
+	var got int
+	stderr := captureStderr(func() {
+		got = preflightDestination(dir, &refactor.FileOp{From: "a.md", To: "taken.md"})
+	})
+	assert.Equal(t, 2, got)
+	assert.Contains(t, stderr, "destination already exists: taken.md")
 }

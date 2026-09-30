@@ -51,9 +51,10 @@ required to close this plan.
 
 The finding also named `applyEditsToFile` in
 [cmd/mdsmith/move.go][cli-move]. That part is closed.
-Its code now lives in `spliceFileEdits` and
-`writeRelFile`. Each has a named test in
-`cmd/mdsmith/move_unit_test.go`.
+Its code now lives in `computePlanWrite` and
+`commitPlan` in [cmd/mdsmith/planapply.go][cli-planapply].
+Each has a named test in
+`cmd/mdsmith/planapply_unit_test.go`.
 
 ## Tasks
 
@@ -88,4 +89,5 @@ Its code now lives in `spliceFileEdits` and
 [move-test]: ../internal/refactor/move_test.go
 [move-coverage-test]: ../internal/refactor/move_coverage_test.go
 [cli-move]: ../cmd/mdsmith/move.go
+[cli-planapply]: ../cmd/mdsmith/planapply.go
 [cli-rename]: ../cmd/mdsmith/rename.go

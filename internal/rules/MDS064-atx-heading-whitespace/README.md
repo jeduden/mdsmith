@@ -89,6 +89,26 @@ after the content.
 A trailing `#` run is only treated as a closing marker when preceded by
 whitespace; a `#` with no preceding space is kept as content.
 
+A line that continues a paragraph is never checked. In CommonMark that line is
+paragraph text: `#48` there is not a heading, and a real ATX heading would have
+ended the paragraph. So a wrapped `[Issue #48](url)` link that puts `#48` at
+the start of a line is left alone, and the fix never splits the paragraph
+around a heading nobody wrote. This covers lazy continuation lines in list
+items and block quotes too. A `#48` line that opens a paragraph is still
+flagged.
+
+This holds for heading syntax too. `#Heading` right under a paragraph line,
+with no blank line between them, is paragraph text in CommonMark. MDS064 does
+not flag it, and the fix does not touch it:
+
+```markdown
+Before
+#Heading
+```
+
+To make that line a heading, put a blank line before it and a space after the
+`#`.
+
 ## Config
 
 Enable:
@@ -153,6 +173,13 @@ Tab after opening `#`:
 ## Section
 
 ### Subsection
+```
+
+A `#` on a paragraph continuation line is paragraph text:
+
+```markdown
+The fix landed in [Issue
+#48](https://example.com/issues/48).
 ```
 
 ## Meta-Information

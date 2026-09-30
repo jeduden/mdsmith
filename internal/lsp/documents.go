@@ -1,6 +1,10 @@
 package lsp
 
-import "sync"
+import (
+	"slices"
+	"strings"
+	"sync"
+)
 
 // document is one open buffer in the editor.
 type document struct {
@@ -66,4 +70,54 @@ func (s *documentStore) openURIs() []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// findByPath returns (uri, doc, true) for the open document whose path
+// satisfies match, or ("", nil, false) if none does. When several open
+// URIs satisfy match (one file opened under two URI spellings, say),
+// the smallest URI wins, so repeated calls agree on one URI rather
+// than following the map's random iteration order.
+//
+// It snapshots (uri, path) pairs under a single read lock, then runs
+// match against that snapshot after releasing the lock, so a
+// caller-supplied match callback never holds the store's lock (and so
+// can never block a concurrent set()/delete() for its own duration).
+// The snapshot costs one slice allocation per call, sized to the
+// number of open documents, on a hit or a miss; its strings share
+// their bytes with the stored documents. What it avoids is the
+// openURIs()+get() pattern's per-document lock and struct copy: get()
+// runs only for a candidate whose path matches.
+//
+// A document can close in the gap between the snapshot and its
+// candidate's get() call, turning a real match into a miss for that
+// one candidate; the loop then tries the next-smallest matching URI
+// instead of reporting an overall miss, matching the old
+// openURIs()+get() loop's behavior. Only if every matching candidate
+// closes this way does findByPath itself report a miss.
+func (s *documentStore) findByPath(match func(path string) bool) (string, *document, bool) {
+	type candidate struct{ uri, path string }
+	s.mu.RLock()
+	candidates := make([]candidate, 0, len(s.m))
+	for uri, d := range s.m {
+		candidates = append(candidates, candidate{uri, d.path})
+	}
+	s.mu.RUnlock()
+
+	// Filter the snapshot down to the matches in place, then order them
+	// by URI so the winner never depends on map iteration order.
+	matches := candidates[:0]
+	for _, c := range candidates {
+		if match(c.path) {
+			matches = append(matches, c)
+		}
+	}
+	slices.SortFunc(matches, func(a, b candidate) int {
+		return strings.Compare(a.uri, b.uri)
+	})
+	for _, c := range matches {
+		if d, ok := s.get(c.uri); ok {
+			return c.uri, d, true
+		}
+	}
+	return "", nil, false
 }

@@ -43,6 +43,7 @@ the same matcher engine an inline `schema:` block on
 a kind uses. The allowed top-level keys are:
 
 - `frontmatter`
+- `frontmatter-closed`
 - `filename`
 - `closed`
 - `sections`

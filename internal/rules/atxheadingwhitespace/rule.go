@@ -42,9 +42,23 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if lint.InCodeOrPI(codeLines, piLines, lineNum) {
 			continue
 		}
-		diags = append(diags, r.checkLine(f.Path, lineNum, rawLine)...)
+		if d := r.checkLine(f.Path, lineNum, rawLine); len(d) > 0 && !continuesParagraph(f, lineNum) {
+			diags = append(diags, d...)
+		}
 	}
 	return diags
+}
+
+// continuesParagraph reports whether line continues a paragraph. Such a
+// line is paragraph text in CommonMark, never a heading: `#48` there is
+// not ATX syntax, and a real ATX heading would have ended the paragraph
+// instead. Flagging it, or letting Fix add a space after the '#', would
+// split the paragraph around a heading nobody wrote (issue #844). It is
+// consulted only for a line checkLine already flags, so the paragraph
+// walk runs only on files that have such a line.
+func continuesParagraph(f *lint.File, line int) bool {
+	_, ok := lint.ParagraphContinuationLines(f)[line]
+	return ok
 }
 
 func (r *Rule) checkLine(path string, lineNum int, line []byte) []lint.Diagnostic {
@@ -155,7 +169,7 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			result = append(result, rawLine)
 			continue
 		}
-		if diags := r.checkLine("", lineNum, rawLine); len(diags) > 0 {
+		if diags := r.checkLine("", lineNum, rawLine); len(diags) > 0 && !continuesParagraph(f, lineNum) {
 			result = append(result, normalizeLine(rawLine))
 		} else {
 			// Unchanged line: append slice header only, no string copy.

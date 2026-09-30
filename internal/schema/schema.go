@@ -60,6 +60,54 @@ type Schema struct {
 	// metadata.
 	FrontmatterMeta map[string]FieldMeta
 
+	// FrontmatterClosed reports whether the front-matter struct
+	// rejects keys the schema does not declare. Authors set it as a
+	// top-level `frontmatter-closed:` key on the schema.
+	//
+	// A nil pointer means the key was absent, which keeps mdsmith's
+	// historical behavior: the struct IS closed, so an undeclared
+	// key reports "not declared in schema". An explicit `true`
+	// states that intent in the config so a reader of the kind does
+	// not have to know the default; an explicit `false` opens the
+	// struct so undeclared keys pass while the declared keys keep
+	// their constraints.
+	//
+	// The pointer (rather than a plain bool) keeps an absent key
+	// apart from an explicit one: composition counts only the
+	// sources that declare front matter, and an absent key there
+	// votes closed. Read the effective value through
+	// FrontmatterIsClosed.
+	//
+	// Only the inline parser sets it (inline kind schemas and named
+	// schema files). A kind's `extends:` is layered on the raw map
+	// before parsing (config.MergeRawMap), so a child's explicit
+	// value wins and an absent one inherits. A proto.md cannot set
+	// it: every front-matter key there is a document field
+	// (RejectProtoFrontmatterClosed).
+	//
+	// Only meaningful on a schema that declares a non-empty
+	// `frontmatter:` map — FrontmatterCUE emits nothing without
+	// one, so the setting would be silently dead. The inline parser
+	// rejects that pairing, mirroring the `closed:` / `sections:`
+	// guard.
+	FrontmatterClosed *bool
+
+	// frontmatterClosedOverruled is set by Compose when a source
+	// opened its front matter (`frontmatter-closed: false`) but
+	// another source that declares front matter kept the composite
+	// closed. The undeclared-key diagnostic then says why, since the
+	// kind the reader opened is not the one that closed it.
+	frontmatterClosedOverruled bool
+
+	// frontmatterClosedByProto is the Source of the first proto.md
+	// that voted closed in that composition, or empty when only
+	// kinds did. A proto.md cannot set `frontmatter-closed:`, so the
+	// hint names it instead of asking every kind to open.
+	frontmatterClosedByProto string
+
+	// fromProto marks a schema that ParseFile read from a proto.md.
+	fromProto bool
+
 	// Filename is a list of globs the document basename must match —
 	// the basename passes when it matches any one of them (OR
 	// semantics). A nil or empty slice means no filename constraint.
@@ -476,6 +524,18 @@ func (s *Schema) IsEmpty() bool {
 		len(s.CrossReferences) == 0 &&
 		s.Acronyms == nil &&
 		s.Index == nil
+}
+
+// FrontmatterIsClosed reports the effective front-matter
+// closedness: true unless the schema explicitly set
+// `frontmatter-closed: false`. A nil schema is closed by the same
+// default, which costs nothing because a nil schema declares no
+// front-matter constraints for the setting to apply to.
+func (s *Schema) FrontmatterIsClosed() bool {
+	if s == nil || s.FrontmatterClosed == nil {
+		return true
+	}
+	return *s.FrontmatterClosed
 }
 
 // EffectiveRootLevel returns the heading level of the root scope

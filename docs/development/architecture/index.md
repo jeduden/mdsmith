@@ -144,6 +144,12 @@ cmd/mdsmith              internal/lsp
                          remaining consumers are
                          schema, requiredstructure,
                          and query)
+                        └─> cue/cuelite/yamltime
+                            (renders a decoded
+                             YAML timestamp as
+                             text; stdlib only;
+                             fieldinterp and
+                             schema read it too)
 ```
 
 `pkg/markdown` sits at the bottom. It
@@ -210,7 +216,22 @@ tests inside `cue/cuelite`.
 `schema`, `requiredstructure`, and `query`
 packages read the validate surface.
 `cue/cuelite` imports none of them. It
-imports nothing else in the tree.
+imports nothing else in the tree beyond
+its own sub-packages.
+
+`cue/cuelite/yamltime` is one of them. It
+renders the `time.Time` that yaml.v3
+decodes an unquoted date into: the date
+alone at midnight UTC, RFC 3339
+otherwise. `cuelite` lifts the time into
+CUE as that string, and `fieldinterp`
+renders it the same way for `{field}`
+rows and `fmvar` globs. So a schema
+check and a catalog row see one text. It
+lives under `cue/cuelite`, not
+`internal/`, because `cuelite` imports
+no internal package, and `fieldinterp`
+already imports `cuelite`.
 
 These packages are public surfaces.
 For details see

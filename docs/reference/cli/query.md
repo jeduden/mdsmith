@@ -35,6 +35,14 @@ mdsmith list query -0 'kinds: [..."plan"...]' . | xargs -0 wc -l
 The expression is full CUE — match scalars, regex, list
 membership, optional fields, and structural shapes.
 
+An unquoted YAML date or timestamp matches as the text
+mdsmith renders for it: `2026-01-02` at midnight UTC,
+RFC 3339 otherwise. So `'date: =~"^2026-"'` selects
+files dated in 2026, quoted or not. See
+[dates and timestamps][dates].
+
+[dates]: ../../guides/directives/generating-content.md#dates-and-timestamps
+
 ## Exit codes
 
 | Code | Meaning             |

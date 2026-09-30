@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"time"
 	"unicode/utf8"
+
+	"github.com/jeduden/mdsmith/cue/cuelite/yamltime"
 )
 
 // liftJSON parses a strict-JSON document into a concrete engine value. It
@@ -131,8 +134,15 @@ func liftSlice(s []any) (*engineValue, error) {
 // parse round-trip — the hot path plan 218 mandates. It accepts the value
 // shapes a YAML/JSON front-matter decoder produces: map[string]any,
 // []any, string, bool, the integer and float numeric kinds, json.Number,
-// and nil. An unrecognized concrete type (a time.Time, say) is an error
-// so a silent mis-validation cannot slip through.
+// time.Time, and nil. An unrecognized concrete type (a channel, say) is an
+// error so a silent mis-validation cannot slip through.
+//
+// A time.Time is what yaml.v3 decodes an unquoted timestamp
+// (`date: 2026-01-02`) into. CUE has no time kind, so it lifts to a
+// concrete string rendered by yamltime.Format — `2026-01-02` for midnight
+// UTC, RFC 3339 otherwise. That is the text mdsmith shows for the value
+// in catalog rows and fmvar globs, so `date: string` accepts it and
+// `date: =~"^2026-"` matches what the reader sees.
 func liftMapValue(x any) (*engineValue, error) {
 	switch t := x.(type) {
 	case nil:
@@ -141,6 +151,8 @@ func liftMapValue(x any) (*engineValue, error) {
 		return &engineValue{kind: kBool, b: t}, nil
 	case string:
 		return &engineValue{kind: kString, str: t}, nil
+	case time.Time:
+		return &engineValue{kind: kString, str: yamltime.Format(t)}, nil
 	case int:
 		return &engineValue{kind: kInt, i: int64(t)}, nil
 	case int64:

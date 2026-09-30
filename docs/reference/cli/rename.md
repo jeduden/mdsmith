@@ -60,13 +60,24 @@ collides with another definition, or when the text slugifies to
 nothing or carries a newline or a stray bracket. Each failure
 exits 2 and names the conflict. No partial edit is written.
 
-Every file's edits are spliced in memory before any file is
-written. Two edits that claim the same bytes of a line, or an
-edit that falls outside its line, exit 2 with the file and
-line named, and no file is written.
+Writing is all-or-nothing too. `rename` uses the same two
+phases as [`mdsmith move`](move.md#safety), without the file
+move:
 
-`--dry-run` prints the edits and changes nothing. It splices
-the edits too, so it fails where the real rename would.
+1. It computes the new bytes of every file in memory. An edit
+   that does not apply exits 2 here, and nothing is written.
+   [`mdsmith move`](move.md#safety) lists when an edit does
+   not apply.
+   `--dry-run` runs this phase, prints the edits, and changes
+   nothing.
+2. It writes each file to a temp file beside it, then renames
+   each temp file over its original. A failed temp write
+   changes no file. A failed rename puts the original bytes
+   back into the files already replaced.
+
+The last line on stderr gives the state after a failed write:
+`no file was changed`, `restored N file(s)`, or the files that
+keep the rewritten content.
 
 ## Flags
 

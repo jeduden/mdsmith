@@ -1,10 +1,11 @@
 package refactor
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/url"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -850,20 +851,29 @@ func refDefParseTarget(dest string) (refDefDestTarget, bool) {
 	return refDefDestTarget{path: u.Path, fragment: u.Fragment}, true
 }
 
+// ComparePositionsBottomUp orders two positions in reverse document
+// order — later line first, then later character first within a
+// shared line — the order a consumer applying edits sequentially must
+// walk so an earlier (later-positioned) edit's insertion never shifts
+// the offset a later edit relies on. Exported so internal/lsp's
+// sortTextEditsBottomUp, which sorts its own (structurally identical)
+// Position type, can share this comparator instead of duplicating it.
+func ComparePositionsBottomUp(a, b Position) int {
+	return cmp.Or(
+		cmp.Compare(b.Line, a.Line),
+		cmp.Compare(b.Character, a.Character),
+	)
+}
+
 // stableSortEdits sorts each key's Edit slice in reverse document
 // order so a consumer applying edits sequentially ends up with the
 // right buffer state: earlier (later-positioned) edits don't shift
 // the offsets the next edit relies on, particularly when two edits
 // share a line.
 func stableSortEdits(changes map[string][]Edit) {
-	for key, edits := range changes {
-		sort.SliceStable(edits, func(i, j int) bool {
-			a, b := edits[i].Range.Start, edits[j].Range.Start
-			if a.Line != b.Line {
-				return a.Line > b.Line
-			}
-			return a.Character > b.Character
+	for _, edits := range changes {
+		slices.SortStableFunc(edits, func(a, b Edit) int {
+			return ComparePositionsBottomUp(a.Range.Start, b.Range.Start)
 		})
-		changes[key] = edits
 	}
 }
