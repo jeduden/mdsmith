@@ -70,3 +70,67 @@ func TestResolveSortKey_NonTimeMatchesResolvePath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "v", got)
 }
+
+// A quoted RFC 3339 string names an instant just as an unquoted YAML
+// timestamp does, so one catalog sort column that holds both must
+// interleave them chronologically. As plain text the quoted value
+// would sort by its own offset and precision: `...10:00:00-05:00`
+// (15:00 UTC) before an unquoted 14:00 UTC.
+func TestResolveSortKey_QuotedTimestampsInterleaveWithUnquoted(t *testing.T) {
+	// Listed in chronological order.
+	docs := []string{
+		"v: 2026-01-02T09:00:00Z",
+		`v: "2026-01-02T09:00:00.5Z"`,
+		"v: 2026-01-02T09:00:01Z",
+		"v: 2026-01-02T14:00:00Z",
+		`v: "2026-01-02T10:00:00-05:00"`,
+		"v: 2026-01-02T16:00:00Z",
+	}
+	keys := make([]string, len(docs))
+	for i, d := range docs {
+		var m map[string]any
+		require.NoError(t, yaml.Unmarshal([]byte(d), &m))
+		k, err := ResolveSortKey(m, []string{"v"})
+		require.NoError(t, err)
+		keys[i] = k
+	}
+	assert.True(t, sort.StringsAreSorted(keys), "keys: %q", keys)
+
+	quoted, err := ResolveSortKey(
+		map[string]any{"v": "2026-01-02T15:00:00Z"}, []string{"v"})
+	require.NoError(t, err)
+	unquoted, err := ResolveSortKey(map[string]any{
+		"v": time.Date(2026, 1, 2, 10, 0, 0, 0, time.FixedZone("", -5*3600)),
+	}, []string{"v"})
+	require.NoError(t, err)
+	assert.Equal(t, unquoted, quoted, "the same instant keys the same either way")
+}
+
+// Only a string that parses as RFC 3339 with a clock part is keyed
+// as a time. Every other string keys as the text ResolvePath returns,
+// so a plain-text sort column orders exactly as before — including a
+// quoted `YYYY-MM-DD`, whose text is already its chronological key.
+func TestResolveSortKey_PlainTextKeysAsWritten(t *testing.T) {
+	for _, s := range []string{
+		"Alpha", "beta", "", "12:00", "2026", "2026 roadmap",
+		"2026-01-02", "2026-01-02 notes", "2026-01-02T", "2026-01-02Tnope",
+		"2026-01-02T10:00", "2026-01-02t10:00:00Z",
+	} {
+		data := map[string]any{"v": s}
+		want, err := ResolvePath(data, []string{"v"})
+		require.NoError(t, err)
+		got, err := ResolveSortKey(data, []string{"v"})
+		require.NoError(t, err)
+		assert.Equal(t, want, got, "%q", s)
+	}
+}
+
+func TestParseRFC3339(t *testing.T) {
+	got, ok := parseRFC3339("2026-01-02T10:00:00-05:00")
+	require.True(t, ok)
+	assert.True(t, got.Equal(time.Date(2026, 1, 2, 15, 0, 0, 0, time.UTC)))
+	for _, s := range []string{"2026-01-02", "2026-01-02 10:00:00", "2026-01-02Tx", "Alpha"} {
+		_, ok := parseRFC3339(s)
+		assert.False(t, ok, s)
+	}
+}

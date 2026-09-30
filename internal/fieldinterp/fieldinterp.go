@@ -163,21 +163,44 @@ func ResolvePath(data map[string]any, path []string) (string, error) {
 }
 
 // ResolveSortKey is ResolvePath for ordering. It returns the same
-// string and error for every value except a time.Time, which it keys
+// string and error for every value except a timestamp, which it keys
 // on the instant rather than on its rendered form (see timeSortKey).
 // Stringify keeps each timestamp's own offset and precision —
 // `2026-01-02`, `...T10:00:00-05:00`, `...T12:00:00Z` — and those
 // strings do not compare chronologically, so a caller that sorts
 // must use this.
+//
+// A timestamp is a time.Time (an unquoted YAML timestamp) or a string
+// that parses as RFC 3339 with a clock part (a quoted one), so one
+// sort column may mix the two. Any other string keys as its text;
+// that includes a quoted `YYYY-MM-DD`, whose text already is the key
+// timeSortKey gives the same date.
 func ResolveSortKey(data map[string]any, path []string) (string, error) {
 	v, err := resolveScalar(data, path)
 	if err != nil {
 		return "", err
 	}
-	if t, ok := v.(time.Time); ok {
-		return timeSortKey(t), nil
+	switch x := v.(type) {
+	case time.Time:
+		return timeSortKey(x), nil
+	case string:
+		if t, ok := parseRFC3339(x); ok {
+			return timeSortKey(t), nil
+		}
 	}
 	return Stringify(v), nil
+}
+
+// parseRFC3339 reads s as an RFC 3339 timestamp with a clock part,
+// e.g. `2026-01-02T10:00:00-05:00` or `2026-01-02T09:00:00.5Z`. The
+// byte check before the parse keeps plain text, which is nearly every
+// sort value, off time.Parse.
+func parseRFC3339(s string) (time.Time, bool) {
+	if len(s) <= len(time.DateOnly) || s[len(time.DateOnly)] != 'T' {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	return t, err == nil
 }
 
 // resolveScalar walks data along path and returns the scalar leaf,

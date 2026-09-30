@@ -67,3 +67,24 @@ func TestSort_TimestampsOrderChronologically(t *testing.T) {
 		})
 	}
 }
+
+// A quoted RFC 3339 string in the same `sort:` column interleaves
+// with unquoted timestamps by instant: `"...10:00:00-05:00"` is 15:00
+// UTC, after an unquoted 14:00 UTC, though its text sorts first. The
+// row keeps the quoted text as written.
+func TestSort_QuotedTimestampInterleavesWithUnquoted(t *testing.T) {
+	mapFS := fstest.MapFS{
+		"posts/a.md": {Data: []byte("---\ndate: \"2026-01-02T10:00:00-05:00\"\n---\n# A\n")},
+		"posts/b.md": {Data: []byte("---\ndate: 2026-01-02T14:00:00Z\n---\n# B\n")},
+		"posts/c.md": {Data: []byte("---\ndate: 2026-01-02T16:00:00Z\n---\n# C\n")},
+	}
+	src := "<?catalog\nglob: \"posts/*.md\"\nsort: date\n" +
+		"row: \"- {date} {filename}\"\n?>\n" +
+		"- 2026-01-02T14:00:00Z posts/b.md\n" +
+		"- 2026-01-02T10:00:00-05:00 posts/a.md\n" +
+		"- 2026-01-02T16:00:00Z posts/c.md\n" +
+		"<?/catalog?>\n"
+	f := newTestFile(t, "index.md", src, mapFS)
+	r := &Rule{}
+	expectDiags(t, r.Check(f), 0)
+}
