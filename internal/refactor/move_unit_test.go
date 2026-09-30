@@ -207,3 +207,11 @@ func TestDestLocator_Record(t *testing.T) {
 		dest: []byte("b.md"), row: []byte("[a](b.md)"), line: 4, ps: 4, angle: true,
 	}, d.dests[0])
 }
+
+func TestDestLocator_Visit(t *testing.T) {
+	d := newDestLocator(t, "[^1]: a.md\n[r]: b.md\n")
+	_ = ast.Walk(d.lf.AST, d.visit)
+	require.Len(t, d.dests, 1, "a footnote definition is not a destination")
+	assert.Equal(t, "b.md", string(d.dests[0].dest))
+	assert.Equal(t, 1, d.dests[0].line)
+}

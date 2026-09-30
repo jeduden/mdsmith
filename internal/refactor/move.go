@@ -548,7 +548,9 @@ func (d *destLocator) visit(n ast.Node, entering bool) (ast.WalkStatus, error) {
 	case *ast.Image:
 		d.linkNode(entering, t.Pos(), t.Destination, t.Reference == nil)
 	case *ast.LinkReferenceDefinition:
-		if entering {
+		// A `^` label is a footnote definition: its text is not a
+		// destination, though the parser stores it as one.
+		if entering && (len(t.Label) == 0 || t.Label[0] != '^') {
 			d.locateRefDef(t)
 		}
 	}

@@ -92,3 +92,20 @@ func TestMove_OutboundAboveRootLeftAsWritten(t *testing.T) {
 	}, "a.md", "guide/a.md")
 	assert.Equal(t, "[p](../README.md)\n", got["a.md"])
 }
+
+// TestMove_FootnoteDefinitionsLeftAsWritten pins that a footnote
+// definition, which the parser reads as a reference definition with a
+// `^` label, is never rewritten: its text is not a destination. Only a
+// link inside longer footnote text is repointed, in the moved file and
+// in a file that points at it.
+func TestMove_FootnoteDefinitionsLeftAsWritten(t *testing.T) {
+	got := moveAndApply(t, map[string]string{
+		"docs/a.md": "T[^1][^2][^3].\n\n[^1]: Ibid.\n[^2]: [z](x.md)\n[r]: x.md\n\n[^3]: See [y](x.md).\n",
+		"docs/x.md": "# X\n",
+		"b.md":      "T[^n] [a][r].\n\n[^n]: docs/a.md\n[r]: docs/a.md\n",
+	}, "docs/a.md", "guide/a.md")
+	assert.Equal(t,
+		"T[^1][^2][^3].\n\n[^1]: Ibid.\n[^2]: [z](x.md)\n[r]: ../docs/x.md\n\n[^3]: See [y](../docs/x.md).\n",
+		got["docs/a.md"])
+	assert.Equal(t, "T[^n] [a][r].\n\n[^n]: docs/a.md\n[r]: guide/a.md\n", got["b.md"])
+}

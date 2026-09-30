@@ -110,8 +110,8 @@ cross-directory move, check them by hand.
   the new basename stem, no `[[stem]]` is rewritten, because the
   rewrite could point it at the wrong file.
 - **Footnote text that is a lone link.** mdsmith reads
-  `[^1]: [z](a.md)` as a reference definition whose destination
-  is `[z](a.md)`, so the link inside it is not repointed. Longer
+  `[^1]: [z](a.md)` as a footnote definition and leaves its text
+  as written, so the link inside it is not repointed. Longer
   footnote text, such as `[^1]: See [z](a.md).`, is repointed.
 - **Embeds of a renamed non-Markdown file.** Moving an image
   repoints the links and images that name it. A wikilink embed
