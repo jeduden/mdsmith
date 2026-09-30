@@ -159,6 +159,13 @@ two phases.
    rewritten file that was a symlink becomes a regular file,
    and a rollback puts the old bytes in that file, not the link.
 
+An edit does not apply when another edit on its line
+claims some of the same bytes, or when it falls outside
+its line. It also fails when it ends on another line than
+it starts, or when it starts or ends between the two
+UTF-16 units of a character such as 😀. The error names
+the file and the line.
+
 A plan failure prints only its cause. Nothing was written.
 After a failed write, stderr names the cause. Its last line
 gives the state of the workspace:

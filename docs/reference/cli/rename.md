@@ -66,6 +66,8 @@ move:
 
 1. It computes the new bytes of every file in memory. An edit
    that does not apply exits 2 here, and nothing is written.
+   [`mdsmith move`](move.md#safety) lists when an edit does
+   not apply.
    `--dry-run` runs this phase, prints the edits, and changes
    nothing.
 2. It writes each file to a temp file beside it, then renames
@@ -140,11 +142,11 @@ mdsmith rename --format json docs/guide.md --as heading "Setup" "Install"
 
 ## Exit codes
 
-| Code | Meaning                                                         |
-| ---- | --------------------------------------------------------------- |
-| 0    | Rewritten                                                       |
-| 1    | No matching heading or label (with an explicit `--as`)          |
-| 2    | Conflict, invalid input, ambiguous kind, or move-shaped request |
+| Code | Meaning                                                                        |
+| ---- | ------------------------------------------------------------------------------ |
+| 0    | Rewritten                                                                      |
+| 1    | No matching heading or label (with an explicit `--as`)                         |
+| 2    | Conflict, invalid input, ambiguous kind, rejected edit, or move-shaped request |
 
 ## See also
 

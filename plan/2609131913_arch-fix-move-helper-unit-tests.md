@@ -39,17 +39,22 @@ A related, smaller finding on `cmd/mdsmith` was scoped out
 of this plan on review.
 
 `looksLikePath`, `firstPathish`, and `resolveWriteMode`
-([cmd/mdsmith/rename.go][cli-rename]) also lack a test
-symbol by name. A fourth one, `applyEditsToFile` in
-[cmd/mdsmith/move.go][cli-move], is gone. A new helper
-took its place, and it has a test.
+([cmd/mdsmith/rename.go][cli-rename]) lack a test
+symbol by name.
 
-Each is small, low-risk, and already covered indirectly
-by `TestRunMove_Success`, `TestRunRename_MoveIntentGuard`,
-and `TestWriteFilePreservingMode_*`.
+Each is small and low-risk. Each is also covered
+indirectly by `TestRunRename_MoveIntentGuard` and
+`TestWriteFilePreservingMode_*`.
 
 Adding named tests for them is optional cleanup, not
 required to close this plan.
+
+The finding also named `applyEditsToFile` in
+[cmd/mdsmith/move.go][cli-move]. That part is closed.
+Its code now lives in `computePlanWrite` and
+`commitPlan` in [cmd/mdsmith/planapply.go][cli-planapply].
+Each has a named test in
+`cmd/mdsmith/planapply_unit_test.go`.
 
 ## Tasks
 
@@ -65,8 +70,7 @@ required to close this plan.
 5. `go tool -modfile=tools/go.mod golangci-lint run` reports
    no issues.
 6. Optional stretch, not required to close this plan: add
-   `TestApplyEditsToFile` in `cmd/mdsmith/move_unit_test.go`
-   and `TestLooksLikePath`, `TestFirstPathish`, and
+   `TestLooksLikePath`, `TestFirstPathish`, and
    `TestResolveWriteMode` in `cmd/mdsmith/rename_unit_test.go`.
 
 ## Acceptance Criteria
@@ -85,4 +89,5 @@ required to close this plan.
 [move-test]: ../internal/refactor/move_test.go
 [move-coverage-test]: ../internal/refactor/move_coverage_test.go
 [cli-move]: ../cmd/mdsmith/move.go
+[cli-planapply]: ../cmd/mdsmith/planapply.go
 [cli-rename]: ../cmd/mdsmith/rename.go
