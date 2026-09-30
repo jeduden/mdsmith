@@ -409,7 +409,7 @@ func writeFixReport(w io.Writer, fixResult *fixpkg.Result, opts fixCLIOpts, colo
 	if err := writeDiagnostics(w, fixResult.Diagnostics, opts.format, color); err != nil {
 		return err
 	}
-	printRunStatsTo(w, opts.format, false, runStats{
+	printRunStatsTo(w, opts.format, runStats{
 		Checked:  fixResult.FilesChecked,
 		Fixed:    len(fixResult.Modified),
 		Failures: fixResult.Failures,

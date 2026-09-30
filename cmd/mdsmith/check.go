@@ -263,7 +263,7 @@ func writeCheckReport(w io.Writer, result *engine.Result, opts checkCLIOpts, col
 	if err := writeDiagnostics(w, result.Diagnostics, opts.format, color); err != nil {
 		return err
 	}
-	printRunStatsTo(w, opts.format, false, runStats{
+	printRunStatsTo(w, opts.format, runStats{
 		Checked:  result.FilesChecked,
 		Fixed:    0,
 		Failures: len(result.Diagnostics),

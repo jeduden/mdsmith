@@ -213,13 +213,10 @@ type runStats struct {
 	DryRun bool
 }
 
-func printRunStats(format string, quiet bool, stats runStats) {
-	printRunStatsTo(os.Stderr, format, quiet, stats)
-}
-
-// printRunStatsTo writes the stats line to the supplied writer.
-func printRunStatsTo(w io.Writer, format string, quiet bool, stats runStats) {
-	if quiet || format == "json" || format == "sarif" {
+// printRunStatsTo writes the stats line to the supplied writer. json
+// and sarif get none: a prose line would corrupt the document.
+func printRunStatsTo(w io.Writer, format string, stats runStats) {
+	if format == "json" || format == "sarif" {
 		return
 	}
 	if stats.DryRun {

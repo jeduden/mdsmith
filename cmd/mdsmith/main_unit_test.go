@@ -206,36 +206,31 @@ func TestResolveOpts_ExplicitFalseFlag_OverridesConfigOptIn(t *testing.T) {
 		"--follow-symlinks=false must force deny over a config opt-in")
 }
 
-// --- printRunStats ---
+// --- printRunStatsTo ---
+
+// runStatsLine returns the stats line printRunStatsTo writes for
+// format and stats.
+func runStatsLine(format string, stats runStats) string {
+	var buf bytes.Buffer
+	printRunStatsTo(&buf, format, stats)
+	return buf.String()
+}
 
 func TestPrintRunStats_NormalOutputContainsAllFields(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("text", false, runStats{Checked: 10, Fixed: 2, Failures: 3, Unfixed: 1})
-	})
+	got := runStatsLine("text", runStats{Checked: 10, Fixed: 2, Failures: 3, Unfixed: 1})
 	assert.Contains(t, got, "checked=10")
 	assert.Contains(t, got, "fixed=2")
 	assert.Contains(t, got, "failures=3")
 	assert.Contains(t, got, "unfixed=1")
 }
 
-func TestPrintRunStats_QuietSuppressesOutput(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("text", true, runStats{Checked: 5})
-	})
-	assert.Empty(t, got)
-}
-
-func TestPrintRunStats_JSONFormatSuppressesOutput(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("json", false, runStats{Checked: 5})
-	})
-	assert.Empty(t, got)
+func TestPrintRunStats_StructuredFormatsSuppressOutput(t *testing.T) {
+	assert.Empty(t, runStatsLine("json", runStats{Checked: 5}))
+	assert.Empty(t, runStatsLine("sarif", runStats{Checked: 5}))
 }
 
 func TestPrintRunStats_ZeroValues(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("text", false, runStats{})
-	})
+	got := runStatsLine("text", runStats{})
 	assert.Contains(t, got, "checked=0")
 	assert.Contains(t, got, "fixed=0")
 	assert.Contains(t, got, "failures=0")
@@ -243,15 +238,13 @@ func TestPrintRunStats_ZeroValues(t *testing.T) {
 }
 
 func TestPrintRunStats_DryRunIncludesWouldFix(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("text", false, runStats{
-			Checked:  12,
-			Fixed:    0,
-			Failures: 4,
-			Unfixed:  0,
-			WouldFix: 8,
-			DryRun:   true,
-		})
+	got := runStatsLine("text", runStats{
+		Checked:  12,
+		Fixed:    0,
+		Failures: 4,
+		Unfixed:  0,
+		WouldFix: 8,
+		DryRun:   true,
 	})
 	assert.Contains(t, got, "checked=12")
 	assert.Contains(t, got, "fixed=0")
@@ -261,10 +254,8 @@ func TestPrintRunStats_DryRunIncludesWouldFix(t *testing.T) {
 }
 
 func TestPrintRunStats_NonDryRunOmitsWouldFix(t *testing.T) {
-	got := captureStderr(func() {
-		printRunStats("text", false, runStats{
-			Checked: 1, Fixed: 1, Failures: 1, Unfixed: 0,
-		})
+	got := runStatsLine("text", runStats{
+		Checked: 1, Fixed: 1, Failures: 1, Unfixed: 0,
 	})
 	assert.NotContains(t, got, "would-fix",
 		"would-fix field must be hidden on non-dry-run; got: %s", got)
