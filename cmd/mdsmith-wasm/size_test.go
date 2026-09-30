@@ -24,16 +24,16 @@ const mib = 1024 * 1024
 //
 // Measured (Go 1.25, stripped, BestSpeed — the pessimistic level this
 // test uses; DefaultCompression runs smaller, see engine-api.md) when
-// the gzip ceiling was last raised: 13,754,337 bytes raw (~13.1 MiB) /
-// 4,203,242 bytes (~4.0 MiB) gzipped. Cumulative rule-engine growth on
+// the gzip ceiling was last raised: 13,762,953 bytes raw (~13.1 MiB) /
+// 4,200,397 bytes (~4.0 MiB) gzipped. Cumulative rule-engine growth on
 // main had worn the previous 4 MiB (4,194,304-byte) gzip ceiling down
-// to about 2 KiB of headroom (4,192,120 bytes), and the generic sort
+// to about 2 KiB of headroom (4,192,019 bytes), and the generic sort
 // instantiations this change added in internal/index and
-// internal/refactor (~11 KiB gzipped, ~37 KiB raw) took it past it.
+// internal/refactor (~8 KiB gzipped, ~37 KiB raw) took it past it.
 // Widened to 4.25 MiB — a real reduction in how much bloat this guard
 // catches, accepted deliberately to restore working headroom rather
 // than trim otherwise-fine code to fit an exhausted margin — leaving
-// ~247 KiB above that measurement. The raw ceiling has real headroom
+// ~250 KiB above that measurement. The raw ceiling has real headroom
 // by comparison: ~13.1 MiB measured against the 14 MiB limit, about
 // 0.9 MiB to spare.
 const (
