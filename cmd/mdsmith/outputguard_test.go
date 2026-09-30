@@ -256,3 +256,12 @@ func TestOutputCreatable(t *testing.T) {
 	require.NoError(t, os.Symlink("loop-a.txt", "loop-b.txt"))
 	assert.ErrorIs(t, outputCreatable("loop-a.txt"), errTooManyLinks)
 }
+
+// matchesFolded ignores case in the path as well as in the pattern.
+func TestMatchesFolded(t *testing.T) {
+	assert.True(t, matchesFolded([]string{"docs/*.md"}, "DOCS/Report.MD"), "the path is folded")
+	assert.True(t, matchesFolded([]string{"DOCS/*.MD"}, "docs/report.md"), "the pattern is folded")
+	assert.True(t, matchesFolded([]string{"other/**", "docs/*.md"}, "docs/a.md"), "any pattern")
+	assert.False(t, matchesFolded([]string{"docs/*.md"}, "other/a.md"))
+	assert.False(t, matchesFolded([]string{"[bad"}, "[bad"), "a malformed pattern matches nothing")
+}

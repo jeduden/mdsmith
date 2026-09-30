@@ -368,6 +368,8 @@ func TestCreateReportFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "out.json")
 	require.NoError(t, os.WriteFile(path, []byte("stale report, longer than the new one\n"), 0o600))
+	before, err := os.Stat(path)
+	require.NoError(t, err)
 
 	f, err := createReportFile(path)
 	require.NoError(t, err)
@@ -378,13 +380,23 @@ func TestCreateReportFile(t *testing.T) {
 	got, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, "[]\n", string(got), "an existing file is truncated")
+	after, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, before.Mode().Perm(), after.Mode().Perm(), "an existing file keeps its mode")
 
 	fresh := filepath.Join(dir, "fresh.json")
 	f, err = createReportFile(fresh)
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
-	_, err = os.Stat(fresh)
-	assert.NoError(t, err, "a missing file is created")
+	created, err := os.Stat(fresh)
+	require.NoError(t, err, "a missing file is created")
+	// Mode 0644 before the umask: compare with a file created with
+	// 0644 under the same umask.
+	ref := filepath.Join(dir, "ref.json")
+	require.NoError(t, os.WriteFile(ref, nil, 0o644))
+	want, err := os.Stat(ref)
+	require.NoError(t, err)
+	assert.Equal(t, want.Mode().Perm(), created.Mode().Perm(), "a missing file is created with mode 0644")
 
 	_, err = createReportFile(filepath.Join(dir, "missing", "out.json"))
 	assert.Error(t, err, "a missing parent directory is an error")

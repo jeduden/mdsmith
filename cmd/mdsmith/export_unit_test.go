@@ -476,7 +476,7 @@ func TestDoExport_InvalidFrontMatterKinds_ExitsTwo(t *testing.T) {
 }
 
 func TestDoExport_StaleFile_PrintsDiagnostics(t *testing.T) {
-	// Stale-body refusal in Check mode goes through formatDiagnostics
+	// Stale-body refusal in Check mode goes through failWithDiagnostics
 	// and exits 1 with the diagnostic on stderr.
 	dir := t.TempDir()
 	src := "# Title\n\n<?toc?>\n\n- [Wrong](#wrong)\n\n<?/toc?>\n\n## Section\n\nbody\n"
