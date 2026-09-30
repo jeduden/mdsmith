@@ -61,7 +61,8 @@ func parseCheckFlags(args []string) (checkCLIOpts, []string, bool, int) {
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
 	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json, sarif")
 	fs.BoolVar(&noColor, "no-color", false, "Disable ANSI colors")
-	fs.BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
+	fs.BoolVarP(&quiet, "quiet", "q", false,
+		"Suppress non-error terminal output; an -o file still gets the report")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&followSymlinks, "follow-symlinks", false,
@@ -241,12 +242,13 @@ func reportCheckResultTo(result *engine.Result, opts checkCLIOpts, logger *vlog.
 }
 
 // writeCheckReport writes the diagnostics and the run-stats line to w
-// and returns the first write error. -q writes nothing. json and sarif
-// write their document even with no diagnostics, so a clean run leaves
-// `[]` or a SARIF log with no results rather than an empty stream,
-// wherever the report goes.
+// and returns the first write error. -q writes nothing to the terminal
+// but still fills an -o file (see reportFlags.silenced). json and
+// sarif write their document even with no diagnostics, so a clean run
+// leaves `[]` or a SARIF log with no results rather than an empty
+// stream, wherever the report goes.
 func writeCheckReport(w io.Writer, result *engine.Result, opts checkCLIOpts, color bool) error {
-	if opts.quiet {
+	if opts.silenced() {
 		return nil
 	}
 	if err := writeDiagnostics(w, result.Diagnostics, opts.format, color); err != nil {

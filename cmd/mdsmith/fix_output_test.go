@@ -166,10 +166,24 @@ func TestReportFixResultTo_WriteErrorGoesToStderr(t *testing.T) {
 }
 
 func TestWriteFixReport_Quiet(t *testing.T) {
-	var buf bytes.Buffer
 	result := &fixpkg.Result{FilesChecked: 1, Diagnostics: manyDiagnostics(1)}
-	require.NoError(t, writeFixReport(&buf, result, fixCLIOpts{reportFlags: reportFlags{format: "text", quiet: true}, dryRun: true}, false))
-	assert.Empty(t, buf.String())
+	for _, output := range []string{"", "-"} {
+		var buf bytes.Buffer
+		opts := fixCLIOpts{reportFlags: reportFlags{format: "text", output: output, quiet: true}, dryRun: true}
+		require.NoError(t, writeFixReport(&buf, result, opts, false))
+		assert.Empty(t, buf.String(), "-o %q", output)
+	}
+}
+
+// -q silences the terminal only: an explicit -o file still gets the
+// full report, here the remaining diagnostics and the stats line.
+func TestWriteFixReport_QuietStillFillsFile(t *testing.T) {
+	result := &fixpkg.Result{FilesChecked: 1, Failures: 1, Diagnostics: manyDiagnostics(1)}
+	var buf bytes.Buffer
+	opts := fixCLIOpts{reportFlags: reportFlags{format: "text", output: "fix.txt", quiet: true}}
+	require.NoError(t, writeFixReport(&buf, result, opts, false))
+	assert.Regexp(t, `(?s)^f\.md:1:1 MDS001 line too long\n.*stats: checked=1 fixed=0 failures=1 unfixed=1\n$`,
+		buf.String())
 }
 
 // --build-only has no lint report, so a run that resolved no Markdown

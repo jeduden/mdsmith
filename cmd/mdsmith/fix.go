@@ -158,7 +158,8 @@ func parseFixFlags(args []string) (fixCLIOpts, []string, bool, int) {
 	fs.StringVarP(&configPath, "config", "c", "", "Override config file path")
 	fs.StringVarP(&format, "format", "f", "text", "Output format: text, json, sarif")
 	fs.BoolVar(&noColor, "no-color", false, "Disable ANSI colors")
-	fs.BoolVarP(&quiet, "quiet", "q", false, "Suppress non-error output")
+	fs.BoolVarP(&quiet, "quiet", "q", false,
+		"Suppress non-error terminal output; an -o file still gets the report")
 	fs.BoolVarP(&verbose, "verbose", "v", false, "Show config, files, and rules on stderr")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&followSymlinks, "follow-symlinks", false,
@@ -388,13 +389,14 @@ func reportFixResultTo(opts fixCLIOpts, fixResult *fixpkg.Result, logger *vlog.L
 }
 
 // writeFixReport writes the fix report to w and returns the first
-// write error. -q writes nothing. A dry run in json writes only its
+// write error. -q writes nothing to the terminal but still fills an
+// -o file (see reportFlags.silenced). A dry run in json writes only its
 // per-file records, and in sarif only the SARIF log: prose would
 // corrupt either document. Otherwise the report is the dry-run preview
 // (on a dry run), the remaining diagnostics, and the stats line. As in
 // check, json and sarif write their document even with no diagnostics.
 func writeFixReport(w io.Writer, fixResult *fixpkg.Result, opts fixCLIOpts, color bool) error {
-	if opts.quiet {
+	if opts.silenced() {
 		return nil
 	}
 	if opts.dryRun {

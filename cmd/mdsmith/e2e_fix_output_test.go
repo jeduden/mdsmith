@@ -45,6 +45,15 @@ func TestFixOutput_E2E(t *testing.T) {
 		assert.Contains(t, stdout, `"path": "ws.md"`)
 		assert.Equal(t, "# Hi  \n", readReport(t, filepath.Join(dir, "ws.md")), "a dry run writes nothing")
 	})
+	t.Run("-q still fills an -o file", func(t *testing.T) {
+		dir := outputWorkspace(t)
+		stdout, stderr, code := runBinaryInDir(t, dir, "",
+			"fix", "-q", "-o", "fix.json", "-f", "json", "long.md")
+		assert.Equal(t, 1, code)
+		assert.Empty(t, stdout)
+		assert.Empty(t, stderr)
+		assert.Equal(t, []string{"MDS001"}, jsonRules(t, readReport(t, filepath.Join(dir, "fix.json"))))
+	})
 	t.Run("default is stderr", func(t *testing.T) {
 		stdout, stderr, code := runBinaryInDir(t, outputWorkspace(t), "",
 			"fix", "-f", "json", "long.md")

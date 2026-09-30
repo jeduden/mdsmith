@@ -216,9 +216,18 @@ func TestWriteCheckReport(t *testing.T) {
 		assert.Regexp(t, `(?s)line too long.*stats: checked=1 fixed=0 failures=1 unfixed=1\n$`, buf.String())
 	})
 	t.Run("quiet writes nothing", func(t *testing.T) {
+		for _, output := range []string{"", "-"} {
+			var buf bytes.Buffer
+			opts := checkCLIOpts{reportFlags: reportFlags{format: "json", output: output, quiet: true}}
+			require.NoError(t, writeCheckReport(&buf, result, opts, false))
+			assert.Empty(t, buf.String(), "-o %q", output)
+		}
+	})
+	t.Run("quiet still fills an -o file", func(t *testing.T) {
 		var buf bytes.Buffer
-		require.NoError(t, writeCheckReport(&buf, result, checkCLIOpts{reportFlags: reportFlags{format: "json", quiet: true}}, false))
-		assert.Empty(t, buf.String())
+		opts := checkCLIOpts{reportFlags: reportFlags{format: "text", output: "r.txt", quiet: true}}
+		require.NoError(t, writeCheckReport(&buf, result, opts, false))
+		assert.Regexp(t, `(?s)line too long.*stats: checked=1 fixed=0 failures=1 unfixed=1\n$`, buf.String())
 	})
 	t.Run("returns formatter error", func(t *testing.T) {
 		assert.EqualError(t,
@@ -296,6 +305,20 @@ func TestReportNoFiles(t *testing.T) {
 			})
 		}
 	}
+}
+
+// -q silences the terminal only: an -o file still gets the report,
+// here the empty json document, and nothing reaches the streams.
+func TestReportNoFiles_QuietStillFillsFile(t *testing.T) {
+	f := &fakeReportFile{}
+	var created string
+	var out, errOut bytes.Buffer
+	code := reportNoFiles(reportFlags{format: "json", output: "r.json", quiet: true},
+		fileIO(t, &out, &errOut, f, &created))
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "[]\n", f.String())
+	assert.Empty(t, out.String())
+	assert.Empty(t, errOut.String())
 }
 
 // With -o <path> a no-files run still creates the file, even when

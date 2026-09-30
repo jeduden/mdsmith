@@ -44,6 +44,13 @@ type reportFlags struct {
 	quiet   bool
 }
 
+// silenced reports whether -q drops the report. -q silences the
+// terminal routes only: stderr, and stdout under -o -. An explicit
+// -o <path> file still gets the full report.
+func (f reportFlags) silenced() bool {
+	return f.quiet && (f.output == "" || f.output == "-")
+}
+
 // structuredOnStderr reports whether a json or sarif report shares
 // stderr with the run's prose lines, where one of those lines would
 // corrupt the document. Any other -f value renders as text (see
@@ -172,10 +179,10 @@ func (r reportIO) deliverReport(output string, noColor bool, errs []error, body 
 // run is clean and exits 0, but a json or sarif report still gets its
 // empty document, so every clean run leaves a valid one. Text writes
 // no stats line here, as before. An -o file is still created. -q
-// writes nothing.
+// writes nothing to the terminal (see reportFlags.silenced).
 func reportNoFiles(f reportFlags, rio reportIO) int {
 	return rio.deliverReport(f.output, f.noColor, nil, func(w io.Writer, color bool) error {
-		if f.quiet {
+		if f.silenced() {
 			return nil
 		}
 		return writeDiagnostics(w, nil, f.format, color)

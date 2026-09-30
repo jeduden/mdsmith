@@ -335,3 +335,21 @@ func TestReportFlags_StructuredOnStderr(t *testing.T) {
 		assert.Equal(t, tc.want, got, fmt.Sprintf("%s -o %q", tc.format, tc.output))
 	}
 }
+
+// -q silences the terminal routes only; an -o file keeps its report.
+func TestReportFlags_Silenced(t *testing.T) {
+	for _, tc := range []struct {
+		output string
+		quiet  bool
+		want   bool
+	}{
+		{"", true, true},
+		{"-", true, true},
+		{"r.json", true, false},
+		{"", false, false},
+		{"r.json", false, false},
+	} {
+		got := reportFlags{output: tc.output, quiet: tc.quiet}.silenced()
+		assert.Equal(t, tc.want, got, "-q=%v -o %q", tc.quiet, tc.output)
+	}
+}

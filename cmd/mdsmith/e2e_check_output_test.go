@@ -166,17 +166,24 @@ func TestCheckOutput_E2EStreams(t *testing.T) {
 		assert.Equal(t, 0, code)
 		assert.Contains(t, stderr, `mdsmith: skipping "notes.txt": not a Markdown file`)
 	})
-	t.Run("quiet writes nothing", func(t *testing.T) {
+	t.Run("quiet silences the terminal, not an -o file", func(t *testing.T) {
 		dir := outputWorkspace(t)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x\n"), 0o644))
 		stdout, stderr, code := runBinaryInDir(t, dir, "",
 			"check", "-o", "-", "-q", "-f", "json", "long.md")
 		assert.Equal(t, 1, code)
 		assert.Empty(t, stdout)
 		assert.Empty(t, stderr)
 
-		_, _, code = runBinaryInDir(t, dir, "", "check", "-o", "report.json", "-q", "-f", "json", "long.md")
+		stdout, stderr, code = runBinaryInDir(t, dir, "",
+			"check", "-o", "report.txt", "-q", "long.md", "notes.txt")
 		assert.Equal(t, 1, code)
-		assert.Empty(t, readReport(t, filepath.Join(dir, "report.json")), "-q leaves the -o file empty")
+		assert.Empty(t, stdout)
+		assert.Empty(t, stderr, "-q still drops the skip warning")
+		report := readReport(t, filepath.Join(dir, "report.txt"))
+		assert.Contains(t, report, "long.md:3:31 MDS001 line too long")
+		assert.True(t, strings.HasSuffix(report,
+			"stats: checked=1 fixed=0 failures=1 unfixed=1\n"), "report=%q", report)
 	})
 }
 

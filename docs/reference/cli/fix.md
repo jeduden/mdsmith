@@ -34,7 +34,7 @@ report goes to stderr.
 | `--no-color`        | false   | Plain output                           |
 | `--follow-symlinks` | config  | Follow symlinks; tri-state — see below |
 | `--no-gitignore`    | false   | Skip gitignore filtering               |
-| `-q`, `--quiet`     | false   | Suppress non-error output              |
+| `-q`, `--quiet`     | false   | Quiet the terminal; see below          |
 | `-v`, `--verbose`   | false   | Show config, files, and rules          |
 | `--explain`         | false   | Attach per-leaf rule provenance        |
 | `--dry-run`         | false   | Preview changes; write nothing         |
@@ -50,7 +50,9 @@ report goes to stderr.
 `-o <path>`, stdout for `-o -`, stderr by default. The
 same color rule applies. Here the report is the
 remaining diagnostics, the `--dry-run` preview or JSON,
-and the stats line. A clean `json` run writes `[]`.
+and the stats line. A clean `json` run writes `[]`. `-q`
+silences the terminal, as for `check`: an explicit
+`-o <path>` file still gets the full report.
 
 Runtime errors and all build-pass output stay on stderr.
 Fixes are written before the report, so a report that

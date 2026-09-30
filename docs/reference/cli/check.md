@@ -39,7 +39,7 @@ the warning shows.
 | `--no-color`        | false   | Plain output                           |
 | `--follow-symlinks` | config  | Follow symlinks; tri-state — see below |
 | `--no-gitignore`    | false   | Skip gitignore filtering               |
-| `-q`, `--quiet`     | false   | Suppress non-error output              |
+| `-q`, `--quiet`     | false   | Quiet the terminal; see below          |
 | `-v`, `--verbose`   | false   | Show config, files, and rules          |
 | `--explain`         | false   | Attach per-leaf rule provenance        |
 | `-o`, `--output`    | stderr  | Report to a file; `-` is stdout        |
@@ -92,8 +92,13 @@ A clean run still writes a valid document on every route:
 `[]` for `json`, and a SARIF log with one run and no
 results for `sarif`. This holds even when no Markdown
 file is found. Text writes only the stats line, and
-nothing when no file is found. `-q` writes no report at
-all; with `-o <path>` the file is left empty.
+nothing when no file is found.
+
+`-q` silences the terminal. It drops the report on
+stderr and on `-o -`, and the verbose log and the skip
+warning. An explicit `-o <path>` file still gets the
+full report, so `-q -o report.json` runs quietly and
+keeps the result. Runtime errors still print.
 
 A report that cannot be written is a runtime error. The
 file may fail to open, or a write or close may fail.
