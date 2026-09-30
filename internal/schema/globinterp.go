@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 )
@@ -395,9 +397,24 @@ func GlobMismatchHint(
 // pattern and has to do the substitution in their head. Pass only the
 // patterns that actually carried a reference; an empty list yields no
 // hint, so plain globs keep their historical one-line diagnostic.
+//
+// An expansion that carries a control character — a newline in a
+// front-matter value, say — is Go-quoted so it cannot break the
+// one-line hint in text output.
 func InterpolatedGlobHint(interpolated ...string) string {
 	if len(interpolated) == 0 {
 		return ""
 	}
-	return "with front matter applied: " + strings.Join(interpolated, ", ")
+	var b strings.Builder
+	b.WriteString("with front matter applied: ")
+	for i, p := range interpolated {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		if strings.ContainsFunc(p, unicode.IsControl) {
+			p = strconv.Quote(p)
+		}
+		b.WriteString(p)
+	}
+	return b.String()
 }

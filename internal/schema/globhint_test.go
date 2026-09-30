@@ -28,3 +28,11 @@ func TestGlobHintForm(t *testing.T) {
 	const p = `docs/\#(fmvar(id)).md`
 	assert.Equal(t, p, GlobHintForm(p, nil))
 }
+
+// A value is shown as written, but a control character would break
+// the one-line hint in text output, so an expansion carrying one is
+// quoted.
+func TestInterpolatedGlobHint_QuotesControlCharacters(t *testing.T) {
+	assert.Equal(t, `with front matter applied: "docs/a\nb.md", c.md`,
+		InterpolatedGlobHint("docs/a\nb.md", "c.md"))
+}
