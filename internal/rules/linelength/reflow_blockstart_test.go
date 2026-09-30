@@ -654,3 +654,48 @@ func TestKeepsStart(t *testing.T) {
 		assert.Equal(t, tc.want, keepsStart([]byte(tc.first), []byte(tc.line)), "first %q, line %q", tc.first, tc.line)
 	}
 }
+
+// TestFix_LeavesExistingBlockStartsAlone covers paragraphs whose source
+// already has a line after the first that unsafeLine rejects. The
+// canonical parser reads such a line as paragraph text, so the
+// paragraph reaches reflow, but joining it would change the document:
+// the flavor parser and GFM renderers see a definition list, a table or
+// a footnote there. Fix leaves the paragraph as written, the reverse of
+// the guard that keeps reflow from starting such a line.
+func TestFix_LeavesExistingBlockStartsAlone(t *testing.T) {
+	cases := []struct{ name, text string }{
+		{"definition list", "Term\n: Definition text that runs well past the thirty column limit."},
+		{"table without outer pipes", "Name | Value that is long enough\n--- | ---\na | b"},
+		{"table with CRLF", "Name | Value that is long enough\r\n--- | ---\r\na | b"},
+		{"footnote definition", "The claim in this sentence is backed by a source, yes.[^1]\n[^1]: The footnote."},
+		{"bare list marker", "Some text that is long enough to be flagged at thirty\n*\nmore"},
+		{"spec-only html start", "Some text that is long enough to be flagged at thirty\n<!doctype html>"},
+	}
+	r := &Rule{Max: 30, Reflow: true}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			nl := "\n"
+			if strings.Contains(tc.text, "\r\n") {
+				nl = "\r\n"
+			}
+			src := "# T" + nl + nl + tc.text + nl
+			f, err := lint.NewFile("test.md", []byte(src))
+			require.NoError(t, err)
+			para := f.AST.FirstChild().NextSibling()
+			require.Equal(t, ast.KindParagraph, para.Kind())
+			require.Equal(t, strings.Count(tc.text, "\n")+1, para.Lines().Len(),
+				"the canonical parser must read every line as paragraph text")
+			require.NotEmpty(t, r.Check(f), "the paragraph must have a flagged line")
+			assert.Equal(t, src, string(r.Fix(f)))
+		})
+	}
+}
+
+func TestHasUnsafeContinuation(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte(": a\nb\n: c\nd\r\n|-|\r\n"))
+	require.NoError(t, err)
+	assert.False(t, hasUnsafeContinuation(f, 1, 2), "the first line is not checked")
+	assert.True(t, hasUnsafeContinuation(f, 1, 3), `": c" is a definition`)
+	assert.False(t, hasUnsafeContinuation(f, 3, 4))
+	assert.True(t, hasUnsafeContinuation(f, 4, 5), "a CRLF line ending is ignored")
+}

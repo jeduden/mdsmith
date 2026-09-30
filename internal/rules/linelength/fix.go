@@ -21,7 +21,9 @@ func (r *Rule) FixTitle() string { return "Reflow long lines" }
 // Reflow is deliberately conservative. It touches only paragraphs whose
 // parent is the document (not list items or block quotes), and skips any
 // paragraph that is a table, sits inside a generated section, carries a
-// hard line break, or contains inline raw HTML. Inline code spans are
+// hard line break, contains inline raw HTML, or already has a line after
+// its first that opens a block for other renderers, such as a
+// definition under its term (hasUnsafeContinuation). Inline code spans are
 // preserved verbatim as atomic tokens. A word wider than Max — a long URL
 // or link — is left on its own over-long line.
 //
@@ -100,9 +102,10 @@ func (r *Rule) Fix(f *lint.File) []byte {
 // returns the paragraph's 1-based start and end source lines, the
 // rewrapped lines, and whether a reflow should be applied. reflowed is
 // false when the paragraph is out of scope (not top-level, a table,
-// generated, hard-broken, raw-HTML-bearing), has no line that the rule
-// would actually flag as too long, or has no layout that keeps it one
-// paragraph (see wrapTokens).
+// generated, hard-broken, raw-HTML-bearing), already has a line after
+// its first that the guard rejects (hasUnsafeContinuation), has no line
+// that the rule would actually flag as too long, or has no layout that
+// keeps it one paragraph (see wrapTokens).
 func (r *Rule) reflowParagraph(
 	f *lint.File, para *ast.Paragraph, width int, spans []lint.Range,
 ) (startLine, endLine int, out []string, reflowed bool) {
@@ -128,6 +131,9 @@ func (r *Rule) reflowParagraph(
 	if paragraphHasRawHTML(para) {
 		return 0, 0, nil, false
 	}
+	if hasUnsafeContinuation(f, startLine, endLine) {
+		return 0, 0, nil, false
+	}
 	if !r.paragraphHasFlaggedLine(f, startLine, endLine, width) {
 		return 0, 0, nil, false
 	}
@@ -144,6 +150,23 @@ func (r *Rule) reflowParagraph(
 		return 0, 0, nil, false
 	}
 	return startLine, endLine, out, true
+}
+
+// hasUnsafeContinuation reports whether a source line after the first
+// of the paragraph spanning [startLine, endLine] (1-based) is one that
+// unsafeLine rejects. The canonical parser read that line as paragraph
+// text, but the flavor parser or another renderer reads a block there,
+// such as a definition under its term, the delimiter row of a table
+// without outer pipes, or a footnote definition. Reflow would join that
+// block into the paragraph, so the paragraph is left as written. This is
+// the reverse of the guard, which keeps reflow from starting such a line.
+func hasUnsafeContinuation(f *lint.File, startLine, endLine int) bool {
+	for i := startLine; i < endLine; i++ {
+		if unsafeLine(trimTrailingCR(f.Lines[i], true)) {
+			return true
+		}
+	}
+	return false
 }
 
 // paragraphHasFlaggedLine reports whether any source line of the

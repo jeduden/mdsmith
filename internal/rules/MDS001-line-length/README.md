@@ -156,7 +156,10 @@ such as when the word before a marker already fills the line. That line then
 takes as few extra words as it can. A run that reflow keeps together, such as
 `U. S. A.`, counts as one word. A paragraph is left as written when one of its
 lines would need more than eight extra words, or when every layout starts a line
-with block syntax.
+with block syntax. It is also left as written when a line after its first
+already starts with one, such as a definition under its term or the delimiter
+row of a table without outer pipes. mdsmith's parser reads that line as
+paragraph text, but other renderers read a block there.
 
 ## Config
 
