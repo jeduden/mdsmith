@@ -61,10 +61,14 @@ inside a link's own label.
 A percent-escaped destination such as `my%20file.md` is decoded
 before it is compared. The new path is escaped the way the old
 one was. `my%20file.md` stays escaped, and `<my file.md>` keeps
-its literal space. A character that would break the link is
-always escaped: a space in a bare destination, and `%`, `?`,
-`#`, `<`, or `>`. So a move to `what?.md` writes `what%3F.md`. A
-bare `?` would start a query string and name the file `what`.
+its literal space.
+
+A character that would break the link is always escaped: a space
+in a bare destination, and `%`, `?`, `#`, `<`, or `>`. So a move
+to `what?.md` writes `what%3F.md`. A bare `?` would start a query
+string and name the file `what`. A bare destination also escapes
+its parens when one has no partner. A move to `a).md` writes
+`a%29.md`, while `a(1).md` stays as written.
 
 A literal `?` is read as the start of a query unless the whole
 path names a Markdown file in the workspace and the part before

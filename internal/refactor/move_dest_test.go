@@ -170,6 +170,18 @@ func TestMove_QuestionMarkDestinationIsEscaped(t *testing.T) {
 	assert.Equal(t, "[a](what%3F.md#s)\n\n[r]: what%3F.md\n", got["b.md"])
 }
 
+// TestMove_UnbalancedParenDestinationIsEscaped pins that a `(` or `)`
+// without a partner in the new path is escaped in a bare destination,
+// where it would end the destination early, while balanced parens and
+// the angle form stay literal.
+func TestMove_UnbalancedParenDestinationIsEscaped(t *testing.T) {
+	b := "[a](a.md) [b](<a.md>)\n\n[r]: a.md\n"
+	got := moveAndApply(t, map[string]string{"a.md": "# A\n", "b.md": b}, "a.md", "docs/a).md")
+	assert.Equal(t, "[a](docs/a%29.md) [b](<docs/a).md>)\n\n[r]: docs/a%29.md\n", got["b.md"])
+	got = moveAndApply(t, map[string]string{"a.md": "# A\n", "b.md": b}, "a.md", "docs/a(1).md")
+	assert.Equal(t, "[a](docs/a(1).md) [b](<docs/a(1).md>)\n\n[r]: docs/a(1).md\n", got["b.md"])
+}
+
 // TestMove_QuestionMarkFilenameNotTruncated pins that a destination
 // naming an existing file with `?` in its name is matched whole, not
 // cut at the `?`: the literal and the escaped spelling both follow the
@@ -385,6 +397,27 @@ func TestDestResolverTarget(t *testing.T) {
 	}
 }
 
+func TestParensPair(t *testing.T) {
+	var none, open escapeSet
+	open['('] = true
+	for name, tc := range map[string]struct {
+		p    string
+		esc  *escapeSet
+		want bool
+	}{
+		"no parens":            {"a.md", &none, true},
+		"nested pairs":         {"a((b)c).md", &none, true},
+		"close before open":    {"a)(.md", &none, false},
+		"left open":            {"a(.md", &none, false},
+		"escaped open unpairs": {"(a).md", &open, false},
+		"escaped open is moot": {"(a.md", &open, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, parensPair(tc.p, tc.esc))
+		})
+	}
+}
+
 func TestEncodeLike(t *testing.T) {
 	for name, tc := range map[string]struct {
 		path, oldTok string
@@ -392,9 +425,12 @@ func TestEncodeLike(t *testing.T) {
 		want         string
 	}{
 		"nothing to escape":           {"docs/a.md", "a.md", false, "docs/a.md"},
-		"reserved bytes":              {"a b/c?d#e%f<g>\t.md", "x.md", false, "a%20b/c%3Fd%23e%25f%3Cg%3E%09.md"},
+		"reserved bytes":              {"a b/c?d#e%f<g>\t\x7f.md", "x.md", false, "a%20b/c%3Fd%23e%25f%3Cg%3E%09%7F.md"},
 		"angle keeps a space":         {"docs/my file.md", "my file.md", true, "docs/my file.md"},
-		"author escaped a letter":     {"docs/(a).md", "%28a).md", false, "docs/%28a).md"},
+		"author escaped a byte":       {"docs/(a).md", "%28a%29.md", false, "docs/%28a%29.md"},
+		"unbalanced parens":           {"docs/a)(.md", "a.md", false, "docs/a%29%28.md"},
+		"one escaped paren unpairs":   {"docs/(a).md", "%28a).md", false, "docs/%28a%29.md"},
+		"angle keeps unpaired parens": {"docs/a).md", "a.md", true, "docs/a).md"},
 		"lowercase escape":            {"docs/café.md", "caf%c3%a9.md", false, "docs/caf%C3%A9.md"},
 		"escaped UTF-8 escapes all":   {"naïve/café.md", "caf%C3%A9.md", false, "na%C3%AFve/caf%C3%A9.md"},
 		"a slash is never escaped":    {"docs/a.md", "x%2Fa.md", false, "docs/a.md"},

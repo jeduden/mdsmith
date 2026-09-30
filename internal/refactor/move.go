@@ -357,7 +357,9 @@ func (r *destResolver) exists(p string) bool {
 //   - bytes that would end the destination or change what it names:
 //     `%`, `?`, `#`, `<`, `>`, and control bytes, plus a space unless
 //     the destination is angle-bracketed (`<my file.md>`), where a
-//     space is literal;
+//     space is literal. A bare destination also escapes every `(` and
+//     `)` when its literal parens would not pair up, since an
+//     unpaired one ends it early;
 //   - bytes the author escaped in oldTok, so `my%20file.md` stays
 //     escaped and `caf%C3%A9.md` keeps its escaped UTF-8. One escaped
 //     non-ASCII byte escapes them all, so no character is split
@@ -369,6 +371,9 @@ func (r *destResolver) exists(p string) bool {
 // common case) is returned unchanged.
 func encodeLike(p, oldTok string, angle bool) string {
 	esc := escapeSetFor(oldTok, angle)
+	if !angle && !parensPair(p, &esc) {
+		esc['('], esc[')'] = true, true
+	}
 	n := 0
 	for i := 0; i < len(p); i++ {
 		if esc[p[i]] {
@@ -396,6 +401,26 @@ func encodeLike(p, oldTok string, angle bool) string {
 
 // escapeSet marks the bytes encodeLike escapes.
 type escapeSet [256]bool
+
+// parensPair reports whether the `(` and `)` that p keeps literal under
+// esc pair up, each `)` closing an earlier `(`, as a bare CommonMark
+// destination requires.
+func parensPair(p string, esc *escapeSet) bool {
+	depth := 0
+	for i := 0; i < len(p); i++ {
+		switch c := p[i]; {
+		case esc[c]:
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+			if depth < 0 {
+				return false
+			}
+		}
+	}
+	return depth == 0
+}
 
 // escapeSetFor builds encodeLike's escape set for a token written like
 // oldTok. oldTok decoded cleanly, so every `%` in it starts a two-digit
