@@ -272,8 +272,11 @@ func TestWrapTokens_NoSafeLayout(t *testing.T) {
 // lead a line (alone it is a setext underline, with more it is a bullet),
 // so "x" and a run of them must share one line. At width 3 the fitting
 // line is "x -"; the rest of the run is the overflow. A run that fits in
-// the window gives that one line, and one unit more gives no layout.
+// the window gives that one line, and one unit more gives no layout. The
+// MDS001 README states the window as eight extra words, so a change to
+// the constant fails here until the README follows.
 func TestWrapTokens_OverflowWindow(t *testing.T) {
+	require.Equal(t, 8, maxOverflowUnits, "the MDS001 README documents eight extra words")
 	run := func(dashes int) []string {
 		return append([]string{"x"}, strings.Split(strings.Repeat("-", dashes), "")...)
 	}
