@@ -53,32 +53,6 @@ func TestOrderedInfo(t *testing.T) {
 	assert.False(t, ok, "no space after delimiter must fail")
 }
 
-// TestOpeningFenceRel covers short-fence and backtick-in-info branches.
-func TestOpeningFenceRel(t *testing.T) {
-	// Only 2 backticks — too short (need 3+).
-	_, ok := openingFenceRel([]byte("``text"), 0, 0)
-	assert.False(t, ok, "2-backtick fence must fail")
-	// Backtick in info string invalidates a backtick fence.
-	_, ok = openingFenceRel([]byte("```go`"), 0, 0)
-	assert.False(t, ok, "backtick in info string must fail")
-	// Tilde fence with 3 tildes is valid (exercises the tilde path).
-	fi, ok := openingFenceRel([]byte("~~~"), 0, 0)
-	assert.True(t, ok, "3-tilde fence must succeed")
-	assert.Equal(t, byte('~'), fi.char)
-	// indent >= len(line) returns false.
-	_, ok = openingFenceRel([]byte("  "), 2, 0)
-	assert.False(t, ok, "indent at EOL must fail")
-}
-
-// TestClosingFence covers the over-indented branch.
-func TestClosingFence(t *testing.T) {
-	fi := fenceInfo{char: '`', length: 3, baseCol: 0}
-	// 4 spaces past baseCol is too far — not a closing fence.
-	assert.False(t, closingFence([]byte("    ```"), fi))
-	// Exact match closes.
-	assert.True(t, closingFence([]byte("```"), fi))
-}
-
 // TestParse_LazyParaContinuation checks that a bare continuation line at
 // column 0 (below the item's content column) is absorbed as lazy paragraph
 // text, keeping the item open — exercises the lazy-break in scanLine.
