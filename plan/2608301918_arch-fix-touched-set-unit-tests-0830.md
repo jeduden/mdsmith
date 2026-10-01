@@ -84,7 +84,14 @@ Both are `tax`: neither sits on a public surface by itself
    `required-structure`, `slide-structure`,
    `fenced-code-language`, and the release website
    rewriter call it. Their local copies are gone.
-7. [x] `go build ./...` and `go test ./...` pass.
+7. [x] Two follow-up gaps, each fixed red/green against
+   the AST. `include` no longer reads an HTML or PI
+   line as setext text, nor shifts headings inside an
+   HTML block; a new leaf package, `internal/mdhtml`,
+   classifies HTML block starts. `mdfence.OpenFinal`
+   drops a one-byte info string on a final line with
+   no newline, as goldmark does.
+8. [x] `go build ./...` and `go test ./...` pass.
 
 ## Acceptance Criteria
 
