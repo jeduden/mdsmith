@@ -866,6 +866,15 @@ func TestRulePageTransforms_NoLeftoverRelativeNonMDSLinks(t *testing.T) {
 	}
 }
 
+func TestApplyOutsideFences_NBSPAfterCloserDoesNotClose(t *testing.T) {
+	// Only CommonMark whitespace may follow a closing run. A run
+	// followed by an NBSP is fence content, so the fence stays open
+	// until the real closer and only the text after it is rewritten.
+	src := []byte("```\nkeep\n```\u00a0\nstill code\n```\nrewrite me")
+	got := applyOutsideFences(src, bytes.ToUpper)
+	assert.Equal(t, "```\nkeep\n```\u00a0\nstill code\n```\nREWRITE ME", string(got))
+}
+
 func TestApplyOutsideFences_BacktickInInfoIsNotAFence(t *testing.T) {
 	// "```x```" is paragraph text (CommonMark forbids a backtick in a
 	// backtick fence's info string), so the line after it is outside
@@ -873,15 +882,4 @@ func TestApplyOutsideFences_BacktickInInfoIsNotAFence(t *testing.T) {
 	src := []byte("```x``` is inline code\nrewrite me")
 	got := applyOutsideFences(src, bytes.ToUpper)
 	assert.Equal(t, "```X``` IS INLINE CODE\nREWRITE ME", string(got))
-}
-
-func TestFenceMarker_BacktickInInfo(t *testing.T) {
-	_, n := fenceMarker([]byte("```x```"))
-	assert.Zero(t, n)
-	c, n := fenceMarker([]byte("~~~ `x`"))
-	assert.Equal(t, byte('~'), c)
-	assert.Equal(t, 3, n)
-	c, n = fenceMarker([]byte("```go"))
-	assert.Equal(t, byte('`'), c)
-	assert.Equal(t, 3, n)
 }

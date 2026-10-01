@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/jeduden/mdsmith/internal/mdfence"
 )
 
 // linkTitleTail optionally matches a Markdown link title — a
@@ -532,9 +534,7 @@ func applyOutsideFences(src []byte, fn func([]byte) []byte) []byte {
 		nonCode.Reset()
 	}
 
-	inFence := false
-	var fenceChar byte
-	var fenceLen int
+	var fence mdfence.Tracker
 
 	start := 0
 	for i := 0; i <= len(src); i++ {
@@ -542,22 +542,12 @@ func applyOutsideFences(src []byte, fn func([]byte) []byte) []byte {
 			continue
 		}
 		line := src[start:i]
-		thisChar, thisLen := fenceMarker(line)
-		var transition bool
-		if !inFence {
-			if thisLen >= 3 {
-				inFence = true
-				fenceChar = thisChar
-				fenceLen = thisLen
-				transition = true
-			}
-		} else if thisChar == fenceChar && thisLen >= fenceLen && fenceLineEmptyAfter(line, thisLen) {
-			inFence = false
-			transition = true
-		}
+		// Fence lines — opener, body, and closer — pass through
+		// verbatim.
+		code := fence.Step(line)
 
 		dst := &nonCode
-		if inFence || transition {
+		if code {
 			flush()
 			dst = &out
 		}
@@ -601,52 +591,6 @@ func applyOutsideInlineCode(b []byte, fn func([]byte) []byte) []byte {
 	}
 	out.Write(fn(b[last:]))
 	return out.Bytes()
-}
-
-// fenceMarker reports the fence char (backtick or tilde) and
-// run length at the start of line after up to three leading
-// spaces, or (0, 0) if the line is not a fence candidate — i.e.
-// the first non-space char is not a backtick or tilde, the run
-// length is less than three, or a backtick run is followed by text
-// containing a backtick (CommonMark reads that as paragraph text).
-func fenceMarker(line []byte) (byte, int) {
-	i := 0
-	for i < len(line) && i < 3 && line[i] == ' ' {
-		i++
-	}
-	if i >= len(line) {
-		return 0, 0
-	}
-	c := line[i]
-	if c != '`' && c != '~' {
-		return 0, 0
-	}
-	count := 0
-	for i+count < len(line) && line[i+count] == c {
-		count++
-	}
-	if count < 3 {
-		return 0, 0
-	}
-	if c == '`' && bytes.IndexByte(line[i+count:], '`') >= 0 {
-		return 0, 0
-	}
-	return c, count
-}
-
-// fenceLineEmptyAfter reports whether the part of line that
-// follows the fence run (skipping up to three leading spaces
-// plus runLen marker chars) is blank. CommonMark allows an info
-// string after an opener but requires a closer to be followed
-// only by spaces — this guard keeps a code line that happens
-// to start with a backtick run inside a fence from prematurely
-// closing it.
-func fenceLineEmptyAfter(line []byte, runLen int) bool {
-	i := 0
-	for i < len(line) && i < 3 && line[i] == ' ' {
-		i++
-	}
-	return len(bytes.TrimSpace(line[i+runLen:])) == 0
 }
 
 // BuildWebsite prepares the Hugo content tree: optionally runs
