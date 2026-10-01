@@ -453,27 +453,6 @@ func TestIsSeparatorContentDegenerate(t *testing.T) {
 	assert.True(t, isSeparatorContent([]byte(":-: | ---")))
 }
 
-// TestIsSepCellBytes exercises every branch of the bytes-native
-// separator-cell validator that replaces sepCellRe.MatchString.
-func TestIsSepCellBytes(t *testing.T) {
-	// Empty input returns false.
-	assert.False(t, isSepCellBytes([]byte{}))
-	// Leading colon only (no dash) returns false.
-	assert.False(t, isSepCellBytes([]byte(":")))
-	// No dash at all returns false.
-	assert.False(t, isSepCellBytes([]byte("x")))
-	// Minimal valid: single dash.
-	assert.True(t, isSepCellBytes([]byte("-")))
-	// Leading colon + dash.
-	assert.True(t, isSepCellBytes([]byte(":-")))
-	// Leading colon + dashes + trailing colon.
-	assert.True(t, isSepCellBytes([]byte(":---:")))
-	// Trailing colon only.
-	assert.True(t, isSepCellBytes([]byte("---:")))
-	// Trailing colon not at end returns false.
-	assert.False(t, isSepCellBytes([]byte("---:x")))
-}
-
 // TestFindUnescapedPipe exercises the escaped-pipe skip path and
 // the not-found return in findUnescapedPipe.
 func TestFindUnescapedPipe(t *testing.T) {

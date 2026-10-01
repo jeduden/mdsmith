@@ -668,14 +668,13 @@ func TestFixSpans_SingleAllocWithoutNesting(t *testing.T) {
 }
 
 func TestFix_RewrittenOutputDoesNotAliasSource(t *testing.T) {
-	for _, src := range []string{"a [ x ](u) b\n"} {
-		f, err := lint.NewFile("t.md", []byte(src))
-		require.NoError(t, err)
-		out := (&Rule{}).Fix(f)
-		require.NotEmpty(t, out)
-		out[0] = 'Z'
-		assert.Equal(t, src, string(f.Source))
-	}
+	const src = "a [ x ](u) b\n"
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	out := (&Rule{}).Fix(f)
+	require.Equal(t, "a [x](u) b\n", string(out))
+	out[0] = 'Z'
+	assert.Equal(t, src, string(f.Source))
 }
 
 // TestFixSpans_NoRewriteReturnsCapLimitedSubslice pins the no-rewrite

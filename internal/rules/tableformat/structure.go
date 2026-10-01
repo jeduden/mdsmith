@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/rules/tablefmt"
 )
 
 // Pipe-style values for the `style` setting (MD055).
@@ -555,35 +556,13 @@ func isSeparatorContent(c []byte) bool {
 			t = t[sep+1:]
 		}
 		if len(cell) > 0 {
-			if !isSepCellBytes(cell) {
+			if !tablefmt.IsSeparatorCell(cell) {
 				return false
 			}
 			hasCells = true
 		}
 	}
 	return hasCells
-}
-
-// isSepCellBytes reports whether cell matches the GFM separator cell
-// pattern :?-+:? without allocating. Replaces sepCellRe.MatchString.
-func isSepCellBytes(cell []byte) bool {
-	if len(cell) == 0 {
-		return false
-	}
-	i := 0
-	if cell[i] == ':' {
-		i++
-	}
-	if i >= len(cell) || cell[i] != '-' {
-		return false
-	}
-	for i < len(cell) && cell[i] == '-' {
-		i++
-	}
-	if i < len(cell) {
-		return cell[i] == ':' && i == len(cell)-1
-	}
-	return true
 }
 
 // findUnescapedPipe returns the index of the first unescaped '|' in b,

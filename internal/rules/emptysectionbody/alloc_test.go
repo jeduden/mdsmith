@@ -126,6 +126,9 @@ func TestHtmlBlockMeaningful(t *testing.T) {
 	cases := map[string]bool{
 		"<div>x</div>\n": true,
 		"<!-- a -->\n":   false,
+		// One block holding a comment line and real content: the comment
+		// opener takes the strip-and-trim path, and content survives it.
+		"<div>\n<!-- c -->\n</div>\n": true,
 	}
 	for body, want := range cases {
 		f, err := lint.NewFile("h.md", []byte("# A\n\n"+body))

@@ -853,15 +853,14 @@ func nameMatches(name, q string) bool {
 }
 
 // containsFold reports whether q, already lower-cased, is a substring of
-// name under case folding. When both are ASCII it folds in place with no
-// allocation; otherwise it takes the strings.ToLower path, because
-// lower-casing can change byte length for non-ASCII runes.
+// name under case folding. An ASCII name is folded in place with no
+// allocation; a non-ASCII name takes the strings.ToLower path, because
+// lower-casing can change byte length for non-ASCII runes. A non-ASCII q
+// never matches an ASCII name: the byte compare below fails on its first
+// non-ASCII byte.
 func containsFold(name, q string) bool {
 	if !isASCII(name) {
 		return strings.Contains(strings.ToLower(name), q)
-	}
-	if !isASCII(q) {
-		return false // ASCII text lower-cases to ASCII and cannot contain q
 	}
 	for i := 0; i+len(q) <= len(name); i++ {
 		j := 0
