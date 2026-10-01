@@ -3,6 +3,8 @@ package include
 import (
 	"regexp"
 	"strings"
+
+	"github.com/jeduden/mdsmith/internal/mdfence"
 )
 
 // atxRe matches an ATX heading line: one or more '#' followed by a space or end of line.
@@ -13,18 +15,6 @@ var setextH1Re = regexp.MustCompile(`^=+\s*$`)
 
 // setextH2Re matches a setext h2 underline: one or more '-' characters.
 var setextH2Re = regexp.MustCompile(`^-+\s*$`)
-
-// openFenceMarker reports the fence run (three or more backticks or
-// tildes) that opens a fenced code block on line. Unlike the CommonMark
-// spec (which limits indent to 3 spaces), all leading whitespace is
-// stripped so that fenced blocks inside list items are also detected
-// and skipped. countFenceRun applies the run-length and backtick-info
-// rules shared with rewriteSkippingCode.
-func openFenceMarker(line string) (string, bool) {
-	t := strings.TrimLeft(line, " \t")
-	n := countFenceRun(t)
-	return t[:n], n > 0
-}
 
 // adjustHeadings shifts all heading levels in content so that the minimum
 // heading level becomes parentLevel+1. If parentLevel is 0 or the computed
@@ -91,21 +81,10 @@ func adjustHeadingsToLevel(content string, target int) string {
 // ignoring lines inside fenced code blocks. Returns 0 if no headings are found.
 func findMinHeadingLevel(lines []string) int {
 	minLevel := 0
-	inFence := false
-	fenceMarker := ""
+	var fence mdfence.Tracker
 
 	for i, line := range lines {
-		if inFence {
-			if isClosingFence(line, fenceMarker) {
-				inFence = false
-				fenceMarker = ""
-			}
-			continue
-		}
-
-		if m, ok := openFenceMarker(line); ok {
-			inFence = true
-			fenceMarker = m
+		if stepFence(&fence, line) {
 			continue
 		}
 
@@ -138,22 +117,10 @@ func headingLevel(lines []string, i int, line string) int {
 // setext headings to ATX when shifted. Lines inside code fences are skipped.
 func applyShift(lines []string, shift int) []string {
 	result := make([]string, 0, len(lines))
-	inFence := false
-	fenceMarker := ""
+	var fence mdfence.Tracker
 
 	for i, line := range lines {
-		if inFence {
-			if isClosingFence(line, fenceMarker) {
-				inFence = false
-				fenceMarker = ""
-			}
-			result = append(result, line)
-			continue
-		}
-
-		if m, ok := openFenceMarker(line); ok {
-			inFence = true
-			fenceMarker = m
+		if stepFence(&fence, line) {
 			result = append(result, line)
 			continue
 		}
@@ -196,24 +163,6 @@ func applyShift(lines []string, shift int) []string {
 	return result
 }
 
-// isClosingFence checks if a line closes a code fence opened with the given marker.
-// Leading whitespace is stripped (any amount) to handle fences inside list items;
-// trailing whitespace, including a CRLF line's "\r", is stripped too.
-func isClosingFence(line, marker string) bool {
-	trimmed := strings.TrimLeft(line, " \t")
-	trimmed = strings.TrimRight(trimmed, " \t\r")
-	if len(trimmed) < len(marker) {
-		return false
-	}
-	ch := marker[0]
-	for _, c := range []byte(trimmed) {
-		if c != ch {
-			return false
-		}
-	}
-	return true
-}
-
 // setextContentLine reports whether prev can carry the text of a setext
 // heading whose underline is the next line. CommonMark reads an underline
 // after a blank line, an ATX heading, a fence line (opener or closer), or
@@ -224,7 +173,7 @@ func setextContentLine(prev string) bool {
 	if strings.TrimSpace(prev) == "" || atxRe.MatchString(prev) {
 		return false
 	}
-	if _, ok := openFenceMarker(prev); ok {
+	if opensFence(prev) {
 		return false
 	}
 	return !setextH1Re.MatchString(prev) && !setextH2Re.MatchString(prev)

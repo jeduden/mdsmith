@@ -4,6 +4,8 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/jeduden/mdsmith/internal/mdfence"
 )
 
 // linkRe matches Markdown links [text](target) and images ![alt](target).
@@ -61,28 +63,11 @@ func adjustLinks(content string, includedFilePath string, includingFilePath stri
 // do not prevent matching.
 func rewriteSkippingCode(content string, rewriteFn func(string) string) string {
 	var b strings.Builder
-	inFence := false
-	var fenceChar byte
-	var fenceLen int
+	var fence mdfence.Tracker
 
 	lines := strings.SplitAfter(content, "\n")
 	for _, line := range lines {
-		trimmed := strings.TrimLeft(line, " \t")
-
-		if inFence {
-			b.WriteString(line)
-			stripped := strings.TrimRight(trimmed, " \t\r\n")
-			if len(stripped) >= fenceLen && allSameChar(stripped, fenceChar) {
-				inFence = false
-			}
-			continue
-		}
-
-		// Detect opening fence: capture exact run length.
-		if run := countFenceRun(trimmed); run > 0 {
-			inFence = true
-			fenceChar = trimmed[0]
-			fenceLen = run
+		if stepFence(&fence, line) {
 			b.WriteString(line)
 			continue
 		}
@@ -91,42 +76,6 @@ func rewriteSkippingCode(content string, rewriteFn func(string) string) string {
 	}
 
 	return b.String()
-}
-
-// countFenceRun returns the length of a backtick or tilde run at the
-// start of trimmed (after whitespace was already stripped). Returns 0
-// if no fence is detected (run < 3, or a backtick run followed by an
-// info string that contains a backtick, which CommonMark treats as
-// paragraph text rather than a fence).
-func countFenceRun(trimmed string) int {
-	if len(trimmed) < 3 {
-		return 0
-	}
-	ch := trimmed[0]
-	if ch != '`' && ch != '~' {
-		return 0
-	}
-	n := 0
-	for n < len(trimmed) && trimmed[n] == ch {
-		n++
-	}
-	if n < 3 {
-		return 0
-	}
-	if ch == '`' && strings.IndexByte(trimmed[n:], '`') >= 0 {
-		return 0
-	}
-	return n
-}
-
-// allSameChar checks if s consists entirely of character ch.
-func allSameChar(s string, ch byte) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] != ch {
-			return false
-		}
-	}
-	return true
 }
 
 // shouldSkip returns true for targets that must not be rewritten.

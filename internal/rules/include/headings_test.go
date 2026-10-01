@@ -341,33 +341,9 @@ func TestAdjustHeadings_CRLFFenceCloses(t *testing.T) {
 	assert.Equal(t, want, adjustHeadings(in, 2))
 }
 
-func TestIsClosingFence(t *testing.T) {
-	assert.True(t, isClosingFence("```", "```"))
-	assert.True(t, isClosingFence("  ````  ", "```"))
-	assert.True(t, isClosingFence("```\r", "```"), "CRLF line ending")
-	assert.False(t, isClosingFence("``", "```"))
-	assert.False(t, isClosingFence("```go", "```"))
-	assert.False(t, isClosingFence("~~~", "```"))
-}
-
 func TestApplyShift_BacktickInInfoIsNotAFence(t *testing.T) {
 	// "```x```" is inline code, not a fence opener, so the heading
 	// after it must still be shifted.
 	got := applyShift([]string{"```x``` is code.", "", "## Head"}, 1)
 	assert.Equal(t, []string{"```x``` is code.", "", "### Head"}, got)
-}
-
-func TestOpenFenceMarker(t *testing.T) {
-	m, ok := openFenceMarker("```go")
-	assert.True(t, ok)
-	assert.Equal(t, "```", m)
-	m, ok = openFenceMarker("~~~~ `x`")
-	assert.True(t, ok)
-	assert.Equal(t, "~~~~", m)
-	_, ok = openFenceMarker("```x```")
-	assert.False(t, ok, "backtick in backtick info string is not a fence")
-	_, ok = openFenceMarker("``")
-	assert.False(t, ok)
-	_, ok = openFenceMarker("text")
-	assert.False(t, ok)
 }
