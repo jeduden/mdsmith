@@ -39,6 +39,10 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		[]byte("# H\n\n~~~python\ncode\n~~~\n"),
 		[]byte("# H\n\ntext\n\n```   \ncode\n```\n\nmore\n"),
 		[]byte("# H\n\n   ```js\ncode\n   ```\n"),
+		// goldmark trims info of ASCII space/tab/CR/LF only, so an NBSP
+		// or vertical tab after the run is a (non-empty) info string.
+		[]byte("# H\n\n```\u00a0\ncode\n```\n"),
+		[]byte("# H\n\n```\v\ncode\n```\n"),
 	}
 	for _, src := range srcs {
 		astFile, err := lint.NewFile("f.md", src)
