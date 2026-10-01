@@ -182,7 +182,10 @@ Clean surfaces, verified:
   imports `internal/rules/...`.
 - `cmd/mdsmith/discover.go` is an exemplary thin shim over
   `internal/directivefiles.DiscoverFilesForInstall` — no
-  domain logic in the handler.
+  domain logic in the handler. (Correction, 2026-10-01: the
+  shim had no production caller since PR #213; it and
+  `internal/directivefiles` were deleted under
+  [plan/2608301918][2608301918].)
 - `internal/rules/catalog/rule.go` and
   `internal/rules/requiredstructure/rule.go`'s changes this
   cycle are perf-only (`RunCache.RawSchemaFile`, MDS019

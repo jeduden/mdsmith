@@ -120,10 +120,8 @@ The pyproject source:
 - Centralize discover-plus-dispatch so every native
   caller resolves pyproject identically: the CLI, the LSP
   `resolveConfig` (which already injects
-  `config.Discover`), and the `DefaultConfigPath` callers
+  `config.Discover`), and the `DefaultConfigPath` caller
   in
-  [internal/directivefiles](../internal/directivefiles/directivefiles.go)
-  and
   [internal/gitattributes](../internal/gitattributes/gitattributes.go).
 
 The positioned diagnostics:

@@ -6,10 +6,11 @@ title: >-
 status: "✅"
 model: haiku
 summary: >-
-  WordFrequencyInto in internal/mdtext and three helpers in
-  internal/directivefiles landed with only behavior-level
-  coverage, not a dedicated unit test by name. Flagged by
-  the 2026-08-30 audit as tax.
+  WordFrequencyInto in internal/mdtext and three fence
+  helpers in internal/directivefiles had no dedicated unit
+  test. The first got one; the second package turned out
+  to be dead and was deleted, and its fence logic was
+  consolidated into internal/mdfence.
 ---
 # Add dedicated unit tests for the 2026-08-30 touched-set tax findings
 
@@ -35,70 +36,62 @@ exercised only indirectly through a caller's scenario test:
   `WordFrequencyInto` directly across repeated
   accumulate/clear cycles — the exact zero-alloc-reuse
   behavior it exists for.
-- [internal/directivefiles/directivefiles.go][directivefiles]:190,226,171 —
+- `internal/directivefiles/directivefiles.go` —
   `openingFence`, `isClosingFence`, and `isIndentedCodeBlock`,
-  the fence-tracking helpers `hasDirectiveMarker` uses to skip
+  the fence-tracking helpers `hasDirectiveMarker` used to skip
   directive-marker matches inside code blocks. Covered only
-  indirectly via the `TestDiscoverFiles_Ignores*` and
-  `TestHasDirectiveMarker_*` fixture tests in
-  [directivefiles_test.go][directivefiles-test].
+  indirectly via the package's fixture tests.
 
 Both are `tax`: neither sits on a public surface by itself
 (their callers already have tests).
 
 ## Tasks
 
-1. Add `TestWordFrequencyInto` to
+1. [x] Add `TestWordFrequencyInto` to
    [wordfreq_test.go][wordfreq-test], calling
    `WordFrequencyInto` directly across at least two
-   accumulate/`clear`/accumulate cycles on one reused map, so
-   the test exercises the reuse contract the doc comment
-   describes rather than a single one-shot call.
-2. Add `TestOpeningFence`, `TestIsClosingFence`, and
-   `TestIsIndentedCodeBlock` to
-   [directivefiles_test.go][directivefiles-test] as
-   table-driven tests covering the fence-character and
-   run-length matching each helper performs.
-3. Do not delete or duplicate the existing behavior-level
-   tests named above. They cover the public contract and
-   stay as-is.
-4. `go build ./...` passes.
-5. `go test ./internal/mdtext/... ./internal/directivefiles/...`
-   passes.
-6. Deviation found while writing `TestOpeningFence`:
-   `openingFence` accepted a backtick fence whose info
-   string holds a backtick (such as ```` ```x``` ````).
-   goldmark and `internal/lint` read that line as an inline
-   code span. Discovery then hid every directive marker
-   below it. Fixed in place, with a red/green
-   `TestHasDirectiveMarker_BacktickInInfoIsNotAFence`.
-   No production code calls `DiscoverFiles` today
-   (`deadcode` reports the package unreachable), so the
-   fix has no user-visible effect.
-7. The same backtick-info gap sat in three rules' own
-   fence scanners. Each is fixed with a red/green test,
-   and each fix changes rule output. In `include`
-   (MDS021), heading shifts and link rewrites now
-   continue past a ```` ```x``` ```` line. In
-   `required-structure` (MDS020), body-sync collection
-   skips directive blocks after such a line. In
-   `slide-structure` (MDS073), such a line no longer
-   toggles code-block state.
-8. Code review of those scanners found more fence gaps,
-   each fixed with a red/green test. `include` no longer
-   reads `---` after an ATX heading, a fence line, or a
-   setext underline as a setext underline, and a CRLF
-   closing fence now closes. `slide-structure` tracks
-   the opener's character and length, so a shorter inner
-   fence is code content. `required-structure` treats a
-   tab-indented fence line as indented code. The release
-   website link rewriter's `fenceMarker` got the same
-   backtick-info fix.
+   accumulate/`clear`/accumulate cycles on one reused map.
+2. [x] Add table-driven tests for the three
+   `directivefiles` fence helpers. Done first, then made
+   moot by task 5.
+3. [x] Writing those tests found a bug: a backtick fence
+   whose info string holds a backtick (```` ```x``` ````)
+   was read as a fence opener. goldmark reads it as an
+   inline code span. The same bug sat in the fence
+   scanners of `include` (MDS021), `required-structure`
+   (MDS020), `slide-structure` (MDS073), and the release
+   website link rewriter. Each was fixed with a red/green
+   test, and each fix changes that rule's output.
+4. [x] Code review of those scanners found more gaps, each
+   fixed with a red/green test. `include` no longer reads
+   `---` after an ATX heading, a fence line, or a setext
+   underline as a setext underline, and a CRLF closing
+   fence now closes. `slide-structure` tracks the
+   opener's character and length. `required-structure`
+   treats a tab-indented fence line as indented code.
+5. [x] Deviation: delete `internal/directivefiles` and
+   `cmd/mdsmith/discover.go`. History shows discovery lost
+   its last production caller in PR #213 (2026-05-02),
+   when `merge-driver install` moved to config-derived
+   globs and the pre-merge-commit hook to a fixed script.
+   Only tests called it since. No plan needs it.
+6. [x] Deviation: the fence open/close logic was copied
+   into about eight packages. It now lives in one
+   zero-allocation leaf package,
+   [internal/mdfence][mdfence], with `Open`, `Close`, and
+   a `Tracker`, each with its own table-driven test.
+   `internal/lint`, `listscan`, `include`,
+   `required-structure`, `slide-structure`,
+   `fenced-code-language`, and the release website
+   rewriter call it. Their local copies are gone.
+7. [x] `go build ./...` and `go test ./...` pass.
 
 ## Acceptance Criteria
 
-- [x] Every function named in the Background section has a
-      test carrying its own name.
+- [x] `WordFrequencyInto` has a test carrying its own name;
+      the `directivefiles` helpers are deleted with their
+      package, and their replacement `mdfence` functions
+      each have one.
 - [x] `go test ./...` is green.
 - [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
@@ -108,5 +101,4 @@ Both are `tax`: neither sits on a public surface by itself
 [tests]: ../docs/development/architecture/tests.md
 [wordfreq]: ../internal/mdtext/wordfreq.go
 [wordfreq-test]: ../internal/mdtext/wordfreq_test.go
-[directivefiles]: ../internal/directivefiles/directivefiles.go
-[directivefiles-test]: ../internal/directivefiles/directivefiles_test.go
+[mdfence]: ../internal/mdfence/mdfence.go
