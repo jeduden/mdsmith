@@ -361,6 +361,16 @@ func TestLinkRef_RewritesUsesWithInlineMarkupInText(t *testing.T) {
 		{"image shortcut", "![docs]\n\n[docs]: u\n", "![ref]\n\n[ref]: u\n"},
 		{"empty text", "[][docs]\n\n[docs]: u\n", "[][ref]\n\n[ref]: u\n"},
 		{"escaped bracket", "[a\\]b][docs]\n\n[docs]: u\n", "[a\\]b][ref]\n\n[ref]: u\n"},
+		{
+			"bracket in nested image destination",
+			"[![i](x]y.png)][docs]\n\n[docs]: u\n", "[![i](x]y.png)][ref]\n\n[ref]: u\n",
+		},
+		{
+			"bracket in raw HTML attribute",
+			"[<b title=\"]\">x</b>][docs]\n\n[docs]: u\n", "[<b title=\"]\">x</b>][ref]\n\n[ref]: u\n",
+		},
+		{"bracket in autolink", "[<http://a]b>][docs]\n\n[docs]: u\n", "[<http://a]b>][ref]\n\n[ref]: u\n"},
+		{"in blockquote", "> see [**b**][docs]\n\n[docs]: u\n", "> see [**b**][ref]\n\n[ref]: u\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -411,35 +421,50 @@ func TestReferenceOf(t *testing.T) {
 	assert.Nil(t, referenceOf(ast.NewText()))
 }
 
-func TestBalancingBracket(t *testing.T) {
+func TestContentEnd(t *testing.T) {
 	cases := []struct {
-		body string
-		want int
+		src  string
+		want string // the source prefix ending at contentEnd
 	}{
-		{"[abc]", 4},
-		{"[a [b] c]", 8},
-		{`[a\]b]`, 5},
-		{"[`]`]", 4},
-		{"[``a]``]", 7},
-		{"[unclosed", -1},
+		{"[a *b*][x]\n\n[x]: u\n", "[a *b"},
+		{"[`]`][x]\n\n[x]: u\n", "[`]"},
+		{"[<a title=\"]\">][x]\n\n[x]: u\n", "[<a title=\"]\">"},
+		{"[<http://a]b>][x]\n\n[x]: u\n", "[<http://a]b>"},
+		{"[][x]\n\n[x]: u\n", "["},
 	}
 	for _, tc := range cases {
-		assert.Equal(t, tc.want, balancingBracket([]byte(tc.body), 1), tc.body)
+		body := []byte(tc.src)
+		l := firstLink(t, parseBody(body))
+		assert.Equal(t, tc.want, string(body[:contentEnd(l, body, 1)]), tc.src)
 	}
 }
 
-func TestCodeSpanEnd(t *testing.T) {
-	assert.Equal(t, 3, codeSpanEnd([]byte("`a`b"), 0))
-	// A shorter inner run does not close a longer opener.
-	assert.Equal(t, 7, codeSpanEnd([]byte("``a`b``"), 0))
-	// A run with no matching closer is literal: skip just the run.
-	assert.Equal(t, 1, codeSpanEnd([]byte("`a"), 0))
-	// A closer past a blank line is in another paragraph.
-	assert.Equal(t, 1, codeSpanEnd([]byte("`a\n\nb`"), 0))
-}
-
-func TestBacktickRun(t *testing.T) {
-	assert.Equal(t, 0, backtickRun([]byte("a`"), 0))
-	assert.Equal(t, 3, backtickRun([]byte("x```y"), 1))
-	assert.Equal(t, 2, backtickRun([]byte("``"), 0))
+func TestClosingTextBracket(t *testing.T) {
+	full := &ast.ReferenceLink{Type: ast.ReferenceLinkFull, Value: []byte("docs")}
+	collapsed := &ast.ReferenceLink{Type: ast.ReferenceLinkCollapsed, Value: []byte("a b")}
+	shortcut := &ast.ReferenceLink{Type: ast.ReferenceLinkShortcut, Value: []byte("a")}
+	cases := []struct {
+		name string
+		body string
+		from int
+		ref  *ast.ReferenceLink
+		want int
+	}{
+		{"full", "[t][docs]", 1, full, 2},
+		{"full skips non-label bracket", "[x](y]z)][docs]", 1, full, 8},
+		{"full skips non-matching label", "[a][x][docs]", 1, full, 5},
+		{"full label case-folds", "[t][DOCS]", 1, full, 2},
+		{"full unclosed label", "[t][docs", 1, full, -1},
+		{"escaped bracket skipped", "[a\\]][docs]", 1, full, 4},
+		{"collapsed", "[A  B][]", 1, collapsed, 5},
+		{"collapsed needs []", "[a b] x", 1, collapsed, -1},
+		{"shortcut", "[a] x", 1, shortcut, 2},
+		{"blank line ends search", "[a\n\n]", 1, shortcut, -1},
+		{"newline inside text", "[a\nb][docs]", 1, full, 4},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, closingTextBracket([]byte(tc.body), 1, tc.from, tc.ref))
+		})
+	}
 }

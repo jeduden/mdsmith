@@ -170,8 +170,9 @@ Two overlaps remain:
   - `linkTextBounds` anchored on the inner text nodes, so a
      use like `[**bold**][docs]`, ``[`code`][docs]``, or
      `[][docs]` was dropped. It now anchors on the link's
-     recorded `[` and scans to the balancing `]`, skipping
-     escapes and code spans.
+     recorded `[`. The closing `]` comes after every byte the
+     parser put inside the link (text, raw HTML, autolinks), and
+     the label that follows must match the reference.
   - `refUseEditsInBody` skipped image references such as
      `![alt][docs]`. It now rewrites them too.
   - `invalidLinkRefRune` accepted a label that ends in an

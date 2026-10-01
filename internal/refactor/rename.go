@@ -409,83 +409,106 @@ func labelBoundsInBody(body []byte, textStart, textEnd int, refType ast.Referenc
 }
 
 // linkTextBounds returns the [start, end) absolute byte offsets of
-// the display-text run of a link or image inside body — the bytes
-// between its opening `[` and the `]` that balances it — or (-1, -1)
-// when the node has no recorded source position or no balancing `]`.
-// The parser records Pos() at the `[` (at the `!` for an image), so
-// the bounds hold for any text content: emphasis, code spans, nested
-// images, or none at all (`[][id]`).
+// the display-text run of a reference-style link or image inside
+// body, or (-1, -1) when the node has no recorded source position or
+// no closing `]` can be confirmed. The parser records Pos() at the `[`
+// (at the `!` for an image), so the bounds hold for any text content:
+// emphasis, code spans, nested images, raw HTML, or none (`[][id]`).
 func linkTextBounds(n ast.Node, body []byte) (int, int) {
+	ref := referenceOf(n)
 	open := n.Pos()
 	if _, ok := n.(*ast.Image); ok && open >= 0 {
 		open++
 	}
-	if open < 0 || open >= len(body) || body[open] != '[' {
+	if ref == nil || open < 0 || open >= len(body) || body[open] != '[' {
 		return -1, -1
 	}
-	end := balancingBracket(body, open+1)
+	end := closingTextBracket(body, open+1, contentEnd(n, body, open+1), ref)
 	if end < 0 {
 		return -1, -1
 	}
 	return open + 1, end
 }
 
-// balancingBracket returns the offset of the `]` that balances the `[`
-// just before pos, or -1 when there is none. Backslash escapes and
-// code spans are skipped, since CommonMark binds both tighter than
-// link brackets: the `]` in [`a]`][id] is code, not a bracket.
-func balancingBracket(body []byte, pos int) int {
-	depth := 1
-	for i := pos; i < len(body); i++ {
-		switch body[i] {
-		case '\\':
-			i++
-		case '`':
-			i = codeSpanEnd(body, i) - 1
-		case '[':
-			depth++
-		case ']':
-			depth--
-			if depth == 0 {
-				return i
+// contentEnd returns the offset just past the last source byte the
+// parser placed inside n — text, raw HTML, or an autolink — or from
+// when n has no such content. The closing `]` of the link text sits at
+// or after it, so a `]` inside a nested image destination, a code
+// span, or an HTML attribute is never taken for it.
+func contentEnd(n ast.Node, body []byte, from int) int {
+	end := from
+	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		stop := -1
+		switch t := c.(type) {
+		case *ast.Text:
+			stop = t.Segment.Stop
+		case *ast.RawHTML:
+			if k := t.Segments.Len(); k > 0 {
+				stop = t.Segments.At(k - 1).Stop
 			}
+		case *ast.AutoLink:
+			if t.Pos() >= 0 {
+				stop = t.Pos() + len(t.Label(body)) + 2
+			}
+		}
+		if stop > end {
+			end = stop
+		}
+		return ast.WalkContinue, nil
+	})
+	return end
+}
+
+// closingTextBracket returns the offset of the `]` that closes the
+// link text starting at textStart, scanning from the content end
+// `from`. A candidate `]` must be followed by what ref.Type requires
+// (`[label]` for full, `[]` for collapsed), and the label — the bracket
+// after it for full, the text itself otherwise — must normalize to
+// ref.Value. Backslash escapes are skipped and a blank line ends the
+// search. Returns -1 when no candidate qualifies.
+func closingTextBracket(body []byte, textStart, from int, ref *ast.ReferenceLink) int {
+	want := NormalizedLabel(ref.Value)
+	for p := from; p < len(body); p++ {
+		switch body[p] {
+		case '\\':
+			p++
+			continue
+		case '\n':
+			if p+1 < len(body) && body[p+1] == '\n' {
+				return -1
+			}
+			continue
+		case ']':
+		default:
+			continue
+		}
+		var label []byte
+		switch ref.Type {
+		case ast.ReferenceLinkFull:
+			if p+1 >= len(body) || body[p+1] != '[' {
+				continue
+			}
+			q := bytes.IndexByte(body[p+2:], ']')
+			if q < 0 {
+				return -1
+			}
+			label = body[p+2 : p+2+q]
+		case ast.ReferenceLinkCollapsed:
+			if !bytes.HasPrefix(body[p+1:], []byte("[]")) {
+				continue
+			}
+			label = body[textStart:p]
+		default:
+			label = body[textStart:p]
+		}
+		if NormalizedLabel(label) == want {
+			return p
 		}
 	}
 	return -1
-}
-
-// codeSpanEnd returns the offset just past the code span whose opening
-// backtick run starts at i. When no closing run of the same length
-// follows before a blank line, the run is literal text and the offset
-// just past it is returned.
-func codeSpanEnd(body []byte, i int) int {
-	n := backtickRun(body, i)
-	limit := len(body)
-	if k := bytes.Index(body[i:], []byte("\n\n")); k >= 0 {
-		limit = i + k
-	}
-	for j := i + n; j < limit; {
-		k := bytes.IndexByte(body[j:limit], '`')
-		if k < 0 {
-			break
-		}
-		j += k
-		m := backtickRun(body, j)
-		if m == n {
-			return j + m
-		}
-		j += m
-	}
-	return i + n
-}
-
-// backtickRun returns the length of the backtick run starting at i.
-func backtickRun(body []byte, i int) int {
-	n := 0
-	for i+n < len(body) && body[i+n] == '`' {
-		n++
-	}
-	return n
 }
 
 // RefDefBracketBytes returns the [start, end) byte offsets of the
