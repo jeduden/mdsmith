@@ -236,7 +236,7 @@ func collectBlocks(f *lint.File) []blockInfo {
 	add := func(b blockInfo) {
 		if blocks == nil {
 			// Lazy, so a file with no code blocks stays alloc-free.
-			blocks = make([]blockInfo, 0, 16)
+			blocks = make([]blockInfo, 0, 8)
 		}
 		blocks = append(blocks, b)
 	}

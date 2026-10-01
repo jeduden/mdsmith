@@ -98,14 +98,20 @@ func SentLenVariance(text string) float64 {
 	// One pass, no allocation: count words per sentence while scanning
 	// (high-performance-go.md, "Allocations"). A word is a run of
 	// [a-z0-9'] after rune-wise lowercasing — the same tokens as
-	// wordPattern over strings.ToLower — and a sentence ends at each
+	// wordPattern in model.go (keep the two in step; the oracle test in
+	// sentlen_test.go pins it) — and a sentence ends at each
 	// run of '.', '!', '?'.
-	var n, sum, sumSq, words int
+	// Welford's running mean/M2 over per-sentence word counts: exactly 0
+	// for equal lengths, and no integer overflow on huge inputs.
+	var n, words int
+	var mean, m2 float64
 	flush := func() {
 		if words > 0 {
 			n++
-			sum += words
-			sumSq += words * words
+			w := float64(words)
+			delta := w - mean
+			mean += delta / float64(n)
+			m2 += delta * (w - mean)
 			words = 0
 		}
 	}
@@ -130,13 +136,10 @@ func SentLenVariance(text string) float64 {
 		}
 	}
 	flush()
-	if n < 2 || sum == 0 {
+	if n < 2 {
 		return 0.0
 	}
-	// stddev/mean with integer arithmetic: variance = (n*sumSq-sum²)/n²,
-	// mean = sum/n, so the ratio is sqrt(n*sumSq-sum²)/sum. Exactly 0 when
-	// all sentences have equal length, never a negative radicand.
-	return math.Sqrt(float64(n*sumSq-sum*sum)) / float64(sum)
+	return math.Sqrt(m2/float64(n)) / mean
 }
 
 // FuncWordRatio returns the fraction of tokens that are function words

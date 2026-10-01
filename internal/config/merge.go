@@ -327,16 +327,11 @@ func mergeCategories(base, override map[string]bool) map[string]bool {
 // caller has no FM info — such entries simply won't match.
 func EffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []string {
 	if cfg == nil {
-		seen := make(map[string]struct{}, len(fmKinds))
-		out := make([]string, 0, len(fmKinds))
+		kl := kindList{list: make([]string, 0, len(fmKinds))}
 		for _, k := range fmKinds {
-			if _, ok := seen[k]; ok {
-				continue
-			}
-			seen[k] = struct{}{}
-			out = append(out, k)
+			kl.add(k, len(fmKinds))
 		}
-		return out
+		return kl.list
 	}
 	return resolveEffectiveKinds(cfg, filePath, fmKinds, fmFields)
 }
@@ -346,21 +341,9 @@ func EffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map
 // they come first. kind-assignment matches are appended in config order.
 // Duplicate names are dropped after their first occurrence.
 func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []string {
-	// Kind lists are short (0-3 names), so a linear scan of result
-	// dedups cheaper than a map (high-performance-go.md, "Sorted slice
-	// beats a map for n < ~100"). result stays nil until the first kind
-	// and is pre-sized to the front-matter kinds' count.
-	var result []string
-
-	add := func(name string) {
-		if slices.Contains(result, name) {
-			return
-		}
-		if result == nil {
-			result = make([]string, 0, max(len(fmKinds), len(cfg.KindAssignment), 1))
-		}
-		result = append(result, name)
-	}
+	var kl kindList
+	hint := max(len(fmKinds), 2)
+	add := func(name string) { kl.add(name, hint) }
 
 	for _, k := range fmKinds {
 		add(k)
@@ -372,7 +355,41 @@ func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFie
 			}
 		}
 	}
-	return result
+	return kl.list
+}
+
+// kindListMapThreshold is the length past which kindList switches from a
+// linear scan to a set. Kind lists are normally 0-3 names, where the scan
+// beats a map (high-performance-go.md, "Data structures"); front matter is
+// user-controlled, so the set bounds the worst case.
+const kindListMapThreshold = 16
+
+// kindList is an ordered, deduplicated list of kind names. list stays nil
+// until the first name and is allocated with the caller's capacity hint.
+type kindList struct {
+	list []string
+	seen map[string]struct{} // built once len(list) passes kindListMapThreshold
+}
+
+func (k *kindList) add(name string, hint int) {
+	if k.seen != nil {
+		if _, ok := k.seen[name]; ok {
+			return
+		}
+		k.seen[name] = struct{}{}
+	} else if slices.Contains(k.list, name) {
+		return
+	}
+	if k.list == nil {
+		k.list = make([]string, 0, hint)
+	}
+	k.list = append(k.list, name)
+	if k.seen == nil && len(k.list) > kindListMapThreshold {
+		k.seen = make(map[string]struct{}, 2*len(k.list))
+		for _, n := range k.list {
+			k.seen[n] = struct{}{}
+		}
+	}
 }
 
 // Effective returns the effective rule configuration for a given file path.
@@ -439,7 +456,7 @@ func EffectiveSignature(
 		n += len(k) + 1
 	}
 	var b strings.Builder
-	b.Grow(n + 4*len(cfg.Overrides))
+	b.Grow(n + 8) // kinds, separator, and a few matching override indices
 	for _, k := range kinds {
 		b.WriteString(k)
 		b.WriteByte(0x1f) // unit separator; kind names are YAML-parsed, so cannot contain control bytes

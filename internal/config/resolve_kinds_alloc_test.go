@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,4 +39,19 @@ func TestEffectiveSignature_OneAllocNoKinds(t *testing.T) {
 		EffectiveSignature(cfg, "x.md", nil, nil)
 	})
 	assert.LessOrEqual(t, allocs, 1.0)
+}
+
+func TestResolveEffectiveKinds_ManyKindsDedupOrder(t *testing.T) {
+	var fm, want []string
+	for i := 0; i < 5000; i++ {
+		name := "kind" + strconv.Itoa(i)
+		want = append(want, name)
+		fm = append(fm, name, name) // each twice
+	}
+	got := resolveEffectiveKinds(&Config{}, "x.md", fm, nil)
+	assert.Equal(t, want, got)
+}
+
+func TestEffectiveKinds_NilCfgDedup(t *testing.T) {
+	assert.Equal(t, []string{"a", "b"}, EffectiveKinds(nil, "x.md", []string{"a", "b", "a"}, nil))
 }

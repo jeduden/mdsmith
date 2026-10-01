@@ -129,6 +129,10 @@ func collectCodeSpanRanges(f *lint.File) []byteRange {
 		out = append(out, byteRange{start, end})
 		return ast.WalkContinue, nil
 	})
+	// inCodeSpan binary-searches out, so it must be sorted. The AST walk
+	// is normally in document order, but a parser extension that moves
+	// nodes (footnote lists go last) would break that.
+	slices.SortFunc(out, func(a, b byteRange) int { return cmp.Compare(a.start, b.start) })
 	return out
 }
 
@@ -150,7 +154,7 @@ func codeSpanTextBounds(n ast.Node) (first, last int) {
 
 // inCodeSpan reports whether offset falls inside one of spans. spans
 // must be sorted by start and disjoint, which collectCodeSpanRanges
-// guarantees (AST walk order, code spans cannot nest). Binary search
+// guarantees (it sorts; code spans cannot nest). Binary search
 // keeps a wikilink-heavy file from going matches × spans.
 func inCodeSpan(spans []byteRange, offset int) bool {
 	i, _ := slices.BinarySearchFunc(spans, offset, func(r byteRange, off int) int {

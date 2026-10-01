@@ -12,7 +12,7 @@ import (
 var sentPattern = regexp.MustCompile(`[.!?]+`)
 
 // refSentLenVariance is the regexp-based definition SentLenVariance
-// must keep matching byte for byte.
+// must keep matching within float rounding.
 func refSentLenVariance(text string) float64 {
 	var lengths []float64
 	for _, p := range sentPattern.Split(text, -1) {
@@ -59,4 +59,11 @@ func TestSentLenVariance_NoAlloc(t *testing.T) {
 	text := "Short. A much longer second sentence here! Another one follows? Yes."
 	allocs := testing.AllocsPerRun(100, func() { SentLenVariance(text) })
 	assert.Zero(t, allocs)
+}
+
+func TestSentLenVariance_LargeInputFinite(t *testing.T) {
+	text := strings.Repeat("a ", 3000) + "." + strings.Repeat("b. ", 3000)
+	got := SentLenVariance(text)
+	assert.False(t, math.IsNaN(got))
+	assert.InDelta(t, refSentLenVariance(text), got, 1e-9)
 }
