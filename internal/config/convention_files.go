@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
-	"gopkg.in/yaml.v3"
 )
 
 // conventionFilesDir is the directory under the workspace root that
@@ -204,13 +202,8 @@ func parseConventionFile(path string) (UserConvention, error) {
 	if err != nil {
 		return UserConvention{}, fmt.Errorf("reading %s: %w", path, err)
 	}
-	if err := yamlutil.RejectYAMLAliases(data); err != nil {
-		return UserConvention{}, fmt.Errorf("parsing %s: %w", path, err)
-	}
 	var body UserConvention
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&body); err != nil {
+	if err := yamlutil.UnmarshalStrictSafe(data, &body); err != nil {
 		// An empty, whitespace-only, or comments-only file decodes to
 		// io.EOF (no YAML node). A convention with no body can't be
 		// validated downstream (applyConvention requires a flavor), so

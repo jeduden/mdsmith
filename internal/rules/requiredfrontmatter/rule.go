@@ -14,7 +14,6 @@
 package requiredfrontmatter
 
 import (
-	"bytes"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -133,7 +132,7 @@ func (r *Rule) docFrontMatter(f *lint.File) map[string]any {
 			}
 		}
 	}
-	body := extractYAMLBody(fmBytes)
+	body := lint.FrontMatterYAML(fmBytes)
 	if len(body) == 0 {
 		return nil
 	}
@@ -142,23 +141,6 @@ func (r *Rule) docFrontMatter(f *lint.File) map[string]any {
 		return nil
 	}
 	return raw
-}
-
-// extractYAMLBody strips the surrounding `---` fences from a stored
-// front-matter block and returns the YAML body. It handles both a
-// trailing `---\n` fence and a bare `---` (no final newline), mirroring
-// how the engine and lint.StripFrontMatter store the prefix. A block
-// with no recognisable fences is returned unchanged so a bare YAML
-// payload still parses.
-func extractYAMLBody(fmBlock []byte) []byte {
-	body := bytes.TrimPrefix(fmBlock, []byte("---\n"))
-	switch {
-	case bytes.HasSuffix(body, []byte("---\n")):
-		return body[:len(body)-len("---\n")]
-	case bytes.HasSuffix(body, []byte("---")):
-		return body[:len(body)-len("---")]
-	}
-	return body
 }
 
 // isEmptyValue reports whether a front-matter value counts as empty:

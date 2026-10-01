@@ -13,11 +13,13 @@
 //   - [Marshal] — thin wrapper around yaml.Marshal for consistency; safe for
 //     output marshaling where data originates from trusted Go values.
 //
+// A strict decode, where an unknown key is an error (kind, convention, and
+// word-list files), goes through [UnmarshalStrictSafe].
+//
 // One escape hatch is allowed: call [RejectYAMLAliases] directly, followed by
-// a raw decode, when the wrappers cannot express the decode — a strict
-// KnownFields decoder (kind and convention files), per-error-type diagnostics
-// (required-structure front matter), or parse errors that must defer to a
-// later [UnmarshalSafe] on the same bytes (the config convention pre-check).
+// a raw decode, when parse errors must defer to a later [UnmarshalSafe] on the
+// same bytes (the config convention pre-check). A caller that words the alias rejection differently from other
+// parse errors tests the wrapper's error with errors.Is against [ErrAliases].
 // Every such site keeps the pre-check directly above its decode.
 //
 // See docs/security/2026-04-05-adversarial-markdown.md for threat model context.
@@ -25,6 +27,7 @@ package yamlutil
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -32,6 +35,10 @@ import (
 
 	"gopkg.in/yaml.v3"
 )
+
+// ErrAliases is the error every helper here returns when the input
+// holds a YAML anchor or alias.
+var ErrAliases = errors.New("yaml anchors/aliases are not permitted")
 
 // RejectYAMLAliases decodes YAML into a node tree and returns an error if any
 // anchor or alias is found. Decoding into yaml.Node does not expand aliases,
@@ -54,14 +61,14 @@ func RejectYAMLAliases(data []byte) error {
 			// An undefined alias causes a parse error containing "unknown anchor".
 			// Reject this as evidence of alias usage.
 			if strings.Contains(err.Error(), "unknown anchor") {
-				return fmt.Errorf("yaml anchors/aliases are not permitted")
+				return ErrAliases
 			}
 			// Other syntax errors are handled by the caller's yaml.Unmarshal.
 			return nil
 		}
 
 		if hasYAMLAnchorOrAlias(&doc) {
-			return fmt.Errorf("yaml anchors/aliases are not permitted")
+			return ErrAliases
 		}
 	}
 }
@@ -94,7 +101,7 @@ func parseSafeDocuments(data []byte) (*yaml.Node, error) {
 			// An undefined alias causes a parse error containing
 			// "unknown anchor". Reject this as evidence of alias usage.
 			if strings.Contains(err.Error(), "unknown anchor") {
-				return nil, fmt.Errorf("yaml anchors/aliases are not permitted")
+				return nil, ErrAliases
 			}
 			if i == 0 {
 				return nil, err
@@ -102,7 +109,7 @@ func parseSafeDocuments(data []byte) (*yaml.Node, error) {
 			return first, nil
 		}
 		if hasYAMLAnchorOrAlias(&doc) {
-			return nil, fmt.Errorf("yaml anchors/aliases are not permitted")
+			return nil, ErrAliases
 		}
 		if i == 0 {
 			first = &doc
@@ -111,6 +118,7 @@ func parseSafeDocuments(data []byte) (*yaml.Node, error) {
 }
 
 // UnmarshalSafe rejects YAML anchors/aliases then unmarshals data into v.
+// A panic inside the yaml.v3 decoder is returned as an error.
 // Use this for all user-supplied YAML content (config files, front matter,
 // directive parameters).
 func UnmarshalSafe(data []byte, v any) error {
@@ -122,7 +130,53 @@ func UnmarshalSafe(data []byte, v any) error {
 		// No document: leave v at its zero value, like yaml.Unmarshal.
 		return nil
 	}
-	return first.Decode(v)
+	return decodeNoPanic(first, v)
+}
+
+// UnmarshalStrictSafe rejects YAML anchors/aliases, then decodes the
+// first document of data into v with unknown keys as errors. Input
+// with no document returns io.EOF, unwrapped, so callers can report an
+// empty file. A yaml.v3 decode panic comes back as an error, as in
+// [UnmarshalSafe].
+func UnmarshalStrictSafe(data []byte, v any) (err error) {
+	if err := RejectYAMLAliases(data); err != nil {
+		return err
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("yaml: decode failed: %v", r)
+		}
+	}()
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	return dec.Decode(v)
+}
+
+// DecodeNodeSafe decodes a document node returned by
+// [UnmarshalNodeSafe] into v, so a caller that has already parsed
+// the bytes for node inspection need not parse them again. Pass
+// only nodes from [UnmarshalNodeSafe]: they are known alias-free.
+// A nil node is an error, and a yaml.v3 decode panic comes back as
+// an error, as in [UnmarshalSafe].
+func DecodeNodeSafe(n *yaml.Node, v any) error {
+	if n == nil {
+		return errors.New("yaml: nil node")
+	}
+	return decodeNoPanic(n, v)
+}
+
+// decodeNoPanic decodes n into v and turns a runtime panic inside
+// yaml.v3 into an error. yaml.v3 re-panics non-yaml errors; a
+// mapping with both a complex key (`? [a, b]`) and a merge key
+// (`<<:`) makes it hash an unhashable slice when the target is a
+// struct or map. User front matter must never crash the process.
+func decodeNoPanic(n *yaml.Node, v any) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("yaml: decode failed: %v", r)
+		}
+	}()
+	return n.Decode(v)
 }
 
 // UnmarshalNodeSafe rejects YAML anchors/aliases then unmarshals data into a

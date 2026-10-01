@@ -5,7 +5,6 @@ package tocdirective
 
 import (
 	"bytes"
-	"regexp"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -17,10 +16,11 @@ func init() {
 	rule.Register(&Rule{})
 }
 
-// tocVariant pairs a line-level detection regex with the exact directive
-// token echoed back in diagnostics.
+// tocVariant pairs a directive literal with the exact token echoed back
+// in diagnostics. The literal is compared with bytes.Equal rather than a
+// regexp (docs/development/high-performance-go.md, "Strings and bytes").
 type tocVariant struct {
-	pattern *regexp.Regexp
+	literal []byte
 	token   string
 	// isLinkRefCandidate marks `[TOC]`, which is syntactically a valid
 	// CommonMark shortcut reference link and must be suppressed when a
@@ -29,13 +29,13 @@ type tocVariant struct {
 }
 
 // variants lists the four renderer-specific TOC directives detected by the
-// rule. The regex anchors ensure each directive occupies the entire line
-// (trailing whitespace allowed); anything else on the line rules it out.
+// rule. Each directive must occupy the entire line (trailing spaces and
+// tabs allowed); anything else on the line rules it out.
 var variants = []tocVariant{
-	{pattern: regexp.MustCompile(`^\[TOC\][ \t]*$`), token: "[TOC]", isLinkRefCandidate: true},
-	{pattern: regexp.MustCompile(`^\[\[_TOC_\]\][ \t]*$`), token: "[[_TOC_]]"},
-	{pattern: regexp.MustCompile(`^\[\[toc\]\][ \t]*$`), token: "[[toc]]"},
-	{pattern: regexp.MustCompile(`^\$\{toc\}[ \t]*$`), token: "${toc}"},
+	{literal: []byte("[TOC]"), token: "[TOC]", isLinkRefCandidate: true},
+	{literal: []byte("[[_TOC_]]"), token: "[[_TOC_]]"},
+	{literal: []byte("[[toc]]"), token: "[[toc]]"},
+	{literal: []byte("${toc}"), token: "${toc}"},
 }
 
 // Rule detects renderer-specific TOC directives.
@@ -131,8 +131,20 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 var _ rule.NodeChecker = (*Rule)(nil)
 
 func matchVariant(line []byte) (tocVariant, bool) {
+	// Every directive starts with '[' or '$'; most lines start with
+	// neither, so reject them before trimming or comparing. A new variant
+	// with another first byte must extend this switch.
+	if len(line) == 0 {
+		return tocVariant{}, false
+	}
+	switch line[0] {
+	case '[', '$': // first bytes of the variants above
+	default:
+		return tocVariant{}, false
+	}
+	line = bytes.TrimRight(line, " \t")
 	for _, v := range variants {
-		if v.pattern.Match(line) {
+		if bytes.Equal(line, v.literal) {
 			return v, true
 		}
 	}

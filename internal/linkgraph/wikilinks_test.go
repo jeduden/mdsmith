@@ -660,3 +660,46 @@ func TestResolveWikiLink_OnDiskFS(t *testing.T) {
 func openDirFS(dir string) (fs.FS, error) {
 	return os.DirFS(dir), nil
 }
+
+func TestInCodeSpan_ManySpans(t *testing.T) {
+	// 1000 ordered, disjoint spans: [10i, 10i+4).
+	spans := make([]byteRange, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		spans = append(spans, byteRange{start: 10 * i, end: 10*i + 4})
+	}
+	for i := 0; i < 1000; i++ {
+		assert.True(t, inCodeSpan(spans, 10*i), "start of span %d", i)
+		assert.True(t, inCodeSpan(spans, 10*i+3), "last byte of span %d", i)
+		assert.False(t, inCodeSpan(spans, 10*i+4), "end of span %d is exclusive", i)
+		assert.False(t, inCodeSpan(spans, 10*i+9), "gap after span %d", i)
+	}
+	assert.False(t, inCodeSpan(spans, -1))
+	assert.False(t, inCodeSpan(spans, 20000))
+	assert.False(t, inCodeSpan([]byteRange{{start: 5, end: 5}}, 5), "zero-width span is empty")
+}
+
+func BenchmarkInCodeSpan(b *testing.B) {
+	spans := make([]byteRange, 0, 2000)
+	for i := 0; i < 2000; i++ {
+		spans = append(spans, byteRange{start: 10 * i, end: 10*i + 4})
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		for i := 0; i < 2000; i++ {
+			inCodeSpan(spans, 10*i+7)
+		}
+	}
+}
+
+// inCodeSpan binary-searches, so collectCodeSpanRanges must return
+// sorted, disjoint spans for real parsed documents.
+func TestCollectCodeSpanRanges_SortedDisjoint(t *testing.T) {
+	src := "`a` text [[x]] ``b`` and\n\n- item `c`\n\n> quote `d` `e`\n\n[^1]: note `f`\n\nText[^1] `g`\n"
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	spans := collectCodeSpanRanges(f)
+	require.NotEmpty(t, spans)
+	for i := 1; i < len(spans); i++ {
+		assert.LessOrEqual(t, spans[i-1].end, spans[i].start, "span %d overlaps or precedes span %d", i, i-1)
+	}
+}

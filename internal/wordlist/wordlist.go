@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/yamlutil"
-	"gopkg.in/yaml.v3"
 )
 
 // Wordlist is a named, ordered set of literal string entries with an
@@ -44,13 +43,8 @@ type fileBody struct {
 // with no entries cannot be referenced meaningfully, and `entries:` is
 // required even when `extends:` is present.
 func Parse(data []byte) (extends string, entries []string, err error) {
-	if err := yamlutil.RejectYAMLAliases(data); err != nil {
-		return "", nil, err
-	}
 	var body fileBody
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&body); err != nil {
+	if err := yamlutil.UnmarshalStrictSafe(data, &body); err != nil {
 		if errors.Is(err, io.EOF) {
 			return "", nil, fmt.Errorf("empty wordlist")
 		}

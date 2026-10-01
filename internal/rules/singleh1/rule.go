@@ -1,7 +1,6 @@
 package singleh1
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 
@@ -277,7 +276,7 @@ func (r *Rule) frontMatterHasTitle(f *lint.File) bool {
 	if len(fmBytes) == 0 {
 		return false
 	}
-	yamlBytes := extractYAMLBody(fmBytes)
+	yamlBytes := lint.FrontMatterYAML(fmBytes)
 	if len(yamlBytes) == 0 {
 		return false
 	}
@@ -291,16 +290,6 @@ func (r *Rule) frontMatterHasTitle(f *lint.File) bool {
 	}
 	s, ok := v.(string)
 	return ok && s != ""
-}
-
-var fmDelim = []byte("---\n")
-
-// extractYAMLBody trims the opening and closing --- delimiters from a
-// StripFrontMatter-produced block and returns the raw YAML bytes.
-func extractYAMLBody(fm []byte) []byte {
-	body := bytes.TrimPrefix(fm, fmDelim)
-	body = bytes.TrimSuffix(body, fmDelim)
-	return body
 }
 
 type rep struct {

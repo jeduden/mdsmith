@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"bytes"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -134,7 +133,7 @@ func frontMatterScalarKind(fm []byte) (string, bool) {
 		return "", false
 	}
 	var m map[string]any
-	if err := yamlutil.UnmarshalSafe(stripFrontMatterDelimiters(fm), &m); err != nil {
+	if err := yamlutil.UnmarshalSafe(lint.FrontMatterYAML(fm), &m); err != nil {
 		return "", false
 	}
 	v, ok := m["kind"]
@@ -145,20 +144,6 @@ func frontMatterScalarKind(fm []byte) (string, bool) {
 		return s, true
 	}
 	return "", false
-}
-
-// stripFrontMatterDelimiters removes the leading `---\n` and
-// trailing `---\n` (or `---`) from a front-matter prefix as
-// returned by lint.StripFrontMatter. Mirrors the helper inside
-// internal/index, kept private to avoid leaking the index's
-// internal naming.
-func stripFrontMatterDelimiters(fm []byte) []byte {
-	body := fm
-	body = bytes.TrimPrefix(body, []byte("---\n"))
-	if t := bytes.TrimSuffix(body, []byte("---\n")); len(t) != len(body) {
-		return t
-	}
-	return bytes.TrimSuffix(body, []byte("---"))
 }
 
 // invalidateIndex drops the cached index. The next symbol request

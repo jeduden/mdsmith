@@ -1279,15 +1279,10 @@ func readFrontMatter(fsys fs.FS, path string, maxBytes int64) (map[string]any, e
 		return nil, nil
 	}
 
-	// Extract the YAML between --- delimiters (byte-slice to avoid a
-	// string allocation on the hot cross-file path).
-	delim := []byte("---\n")
-	body := bytes.TrimPrefix(prefix, delim)
-	idx := bytes.Index(body, delim)
-	if idx < 0 {
-		return nil, nil
-	}
-	yamlBody := body[:idx]
+	// Extract the YAML between the --- fences. The closing fence is
+	// trimmed, not searched for, so a "---" line inside a block
+	// scalar does not cut the YAML short.
+	yamlBody := lint.FrontMatterYAML(prefix)
 
 	// Fast path: avoid the yaml.v3 parser for files whose front matter
 	// contains only flat key: scalar pairs (common for docs with a single

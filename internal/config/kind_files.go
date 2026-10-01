@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/yamlutil"
-	"gopkg.in/yaml.v3"
 )
 
 // kindFilesDir is the directory under the workspace root that
@@ -182,13 +180,8 @@ func parseKindFile(path string) (KindBody, error) {
 	if err != nil {
 		return KindBody{}, fmt.Errorf("reading %s: %w", path, err)
 	}
-	if err := yamlutil.RejectYAMLAliases(data); err != nil {
-		return KindBody{}, fmt.Errorf("parsing %s: %w", path, err)
-	}
 	var body KindBody
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	dec.KnownFields(true)
-	if err := dec.Decode(&body); err != nil {
+	if err := yamlutil.UnmarshalStrictSafe(data, &body); err != nil {
 		// An empty, whitespace-only, or comments-only file decodes to
 		// io.EOF (no YAML node); report it clearly instead of
 		// surfacing the decoder's bare "EOF".
