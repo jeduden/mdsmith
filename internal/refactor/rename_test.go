@@ -336,6 +336,19 @@ func TestLinkTextBounds(t *testing.T) {
 	s, e = linkTextBounds(ast.NewLink(), body)
 	assert.Equal(t, -1, s)
 	assert.Equal(t, -1, e)
+
+	// Bytes that no longer match the parsed link have no bounds: a
+	// label that no longer matches the reference, a `[` that moved,
+	// and a position past the end of the buffer.
+	for _, other := range [][]byte{
+		[]byte("See [the spec][y] now.\n"),
+		[]byte("See (the spec][x] now.\n"),
+		[]byte("See"),
+	} {
+		s, e = linkTextBounds(l, other)
+		assert.Equal(t, -1, s, string(other))
+		assert.Equal(t, -1, e, string(other))
+	}
 }
 
 func TestBodyNewlineCount(t *testing.T) {
