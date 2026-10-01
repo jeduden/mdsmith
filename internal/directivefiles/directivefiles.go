@@ -1,8 +1,12 @@
 // Package directivefiles discovers Markdown files in a workspace that
 // contain a generated-section directive marker (catalog, include,
-// toc, …), for consumers — the merge-driver and pre-merge-commit
-// install commands, and the git-hook-sync rule — that need to know
-// which files a repo-wide `mdsmith fix` would touch.
+// toc, …), i.e. which files a repo-wide `mdsmith fix` would touch.
+//
+// No production code path calls it today: the merge-driver and
+// pre-merge-commit install commands and the git-hook-sync rule
+// (MDS048) build their file lists from gitattributes.GlobsFromConfig
+// instead. Its only caller is the test-only cmd/mdsmith shim
+// discoverFilesWithGeneratedContent.
 package directivefiles
 
 import (
@@ -212,7 +216,8 @@ func openingFence(line []byte) (byte, int) {
 		return 0, 0
 	}
 	// A backtick fence's info string may not contain a backtick;
-	// such a line is an inline code span, not a fence.
+	// such a line is paragraph text (typically an inline code
+	// span), not a fence.
 	if c == '`' && bytes.IndexByte(line[i:], '`') >= 0 {
 		return 0, 0
 	}

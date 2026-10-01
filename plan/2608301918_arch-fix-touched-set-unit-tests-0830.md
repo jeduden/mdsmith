@@ -35,7 +35,7 @@ exercised only indirectly through a caller's scenario test:
   `WordFrequencyInto` directly across repeated
   accumulate/clear cycles — the exact zero-alloc-reuse
   behavior it exists for.
-- [internal/directivefiles/directivefiles.go][directivefiles]:192,222,174 —
+- [internal/directivefiles/directivefiles.go][directivefiles]:193,228,174 —
   `openingFence`, `isClosingFence`, and `isIndentedCodeBlock`,
   the fence-tracking helpers `hasDirectiveMarker` uses to skip
   directive-marker matches inside code blocks. Covered only
@@ -72,6 +72,9 @@ Both are `tax`: neither sits on a public surface by itself
    code span. Discovery then hid every directive marker
    below it. Fixed in place, with a red/green
    `TestHasDirectiveMarker_BacktickInInfoIsNotAFence`.
+   No production code calls `DiscoverFiles` today
+   (`deadcode` reports the package unreachable), so the
+   fix has no user-visible effect.
 
 ## Acceptance Criteria
 
