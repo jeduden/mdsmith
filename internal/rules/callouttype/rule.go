@@ -52,8 +52,8 @@ func (r *Rule) Category() string { return "structural" }
 func (r *Rule) EnabledByDefault() bool { return false }
 
 // builtInTypes lists every base Obsidian callout type and its
-// aliases. Lowercased; lookup uses strings.ToLower on the captured
-// token. Keep this map in sync with Obsidian's published
+// aliases. Lowercased; isAllowed case-folds the captured
+// token before lookup. Keep this map in sync with Obsidian's published
 // vocabulary; the diagnostic message orders names via
 // validTypeOrder below, so map iteration order does not affect
 // output stability.
@@ -130,7 +130,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-		if setutil.Contains(allowed, strings.ToLower(token)) {
+		if isAllowed(allowed, token) {
 			return ast.WalkContinue, nil
 		}
 		diags = append(diags, r.unknownTypeDiag(f.Path, line, col, token))
@@ -181,7 +181,7 @@ func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
 			prevDepth = d
 			continue
 		}
-		if setutil.Contains(allowed, strings.ToLower(token)) {
+		if isAllowed(allowed, token) {
 			prevDepth = d
 			continue
 		}
@@ -367,3 +367,27 @@ var (
 	_ rule.ListMerger   = (*Rule)(nil)
 	_ rule.Defaultable  = (*Rule)(nil)
 )
+
+// isAllowed reports whether token, folded to lower case, is in allowed.
+// `[!NOTE]` is uppercase by convention, so strings.ToLower would allocate
+// on nearly every callout; short ASCII tokens are folded into a stack
+// buffer and looked up via the allocation-free map[string(buf)] form.
+func isAllowed(allowed map[string]struct{}, token string) bool {
+	var buf [32]byte
+	if len(token) > len(buf) {
+		return setutil.Contains(allowed, strings.ToLower(token))
+	}
+	b := buf[:len(token)]
+	for i := 0; i < len(token); i++ {
+		c := token[i]
+		if c >= 0x80 {
+			return setutil.Contains(allowed, strings.ToLower(token))
+		}
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b[i] = c
+	}
+	_, ok := allowed[string(b)]
+	return ok
+}

@@ -19,6 +19,8 @@ const (
 	defaultAllowMarker = "allow-empty-section"
 )
 
+var htmlCommentOpen = []byte("<!--")
+
 var htmlCommentPattern = regexp.MustCompile(`(?s)<!--.*?-->`)
 
 func init() {
@@ -291,13 +293,9 @@ func hasMeaningfulContent(nodes []ast.Node, source []byte) bool {
 		case *piparser.ProcessingInstruction:
 			continue
 		case *ast.HTMLBlock:
-			raw := nodeLinesText(n, source)
-			raw = stripHTMLComments(raw)
-			trimmed := strings.TrimSpace(raw)
-			if trimmed == "" {
-				continue
+			if htmlBlockMeaningful(n, source) {
+				return true
 			}
-			return true
 		case *ast.CodeBlock, *ast.FencedCodeBlock:
 			if hasNonBlankLines(node, source) {
 				return true
@@ -309,6 +307,23 @@ func hasMeaningfulContent(nodes []ast.Node, source []byte) bool {
 		}
 	}
 	return false
+}
+
+// htmlBlockMeaningful reports whether an HTML block holds content other
+// than whitespace and HTML comments. A block with no "<!--" is decided on
+// the source bytes alone — no string copy and no regexp run; only blocks
+// that contain a comment opener take the strip-and-trim path.
+func htmlBlockMeaningful(n *ast.HTMLBlock, source []byte) bool {
+	lines := n.Lines()
+	for i := 0; i < lines.Len(); i++ {
+		seg := lines.At(i)
+		if bytes.Contains(seg.Value(source), htmlCommentOpen) {
+			return strings.TrimSpace(stripHTMLComments(nodeLinesText(n, source))) != ""
+		}
+	}
+	// An HTML block opens with '<' on its first line, so a block with no
+	// comment opener always has content.
+	return lines.Len() > 0
 }
 
 func nodeHasText(node ast.Node, source []byte) bool {

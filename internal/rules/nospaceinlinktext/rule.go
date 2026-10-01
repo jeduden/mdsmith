@@ -396,11 +396,18 @@ func (r *Rule) Fix(f *lint.File) []byte {
 // fixed recursively before the outer boundary is trimmed, so both outer and
 // inner whitespace are removed in a single call.
 func fixSpans(source []byte, spans []span, from, to int) []byte {
+	// A range with no span opening inside it is returned as a cap-limited
+	// sub-slice of source (Fix then returns f.Source content, like peer rules);
+	// callers only read or copy it. Only ranges that rewrite bytes
+	// allocate, once, sized to the range.
 	var result []byte
 	prev := from
 	for i, s := range spans {
 		if s.open < from || s.open >= to || s.open < prev {
 			continue
+		}
+		if result == nil {
+			result = make([]byte, 0, to-from)
 		}
 		result = append(result, source[prev:s.open+1]...) // up to and including [
 		inner := fixSpans(source, spans[i+1:], s.open+1, s.close)
@@ -411,6 +418,9 @@ func fixSpans(source []byte, spans []span, from, to int) []byte {
 			result = append(result, trimmed...)
 		}
 		prev = s.close
+	}
+	if result == nil {
+		return source[from:to:to] // cap-limited so an append cannot write into source
 	}
 	result = append(result, source[prev:to]...)
 	return result

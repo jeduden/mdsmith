@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"math"
-	"regexp"
 	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -221,8 +220,6 @@ type tableRow struct {
 	line        int
 	isSeparator bool
 }
-
-var separatorRe = regexp.MustCompile(`^:?-+:?$`)
 
 // parseTables uses tablefmt.ScanTableBoundaries to locate table blocks,
 // then parses each block's cells into the tablereadability-local table
@@ -576,7 +573,7 @@ func isSeparatorRow(cells [][]byte) bool {
 		return false
 	}
 	for _, cell := range cells {
-		if !separatorRe.Match(bytes.TrimSpace(cell)) {
+		if !tablefmt.IsSeparatorCell(bytes.TrimSpace(cell)) {
 			return false
 		}
 	}
