@@ -27,6 +27,14 @@ func TestParse_RejectsUnknownKey(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestParse_DecodePanicIsError: a yaml.v3 decode panic is an error,
+// not a crash.
+func TestParse_DecodePanicIsError(t *testing.T) {
+	var err error
+	require.NotPanics(t, func() { _, _, err = Parse([]byte("? [a, b]\n: c\n<<: {x: y}\n")) })
+	require.Error(t, err)
+}
+
 func TestParse_RejectsAliases(t *testing.T) {
 	_, _, err := Parse([]byte("entries: &a [x]\nmore: *a\n"))
 	require.Error(t, err)

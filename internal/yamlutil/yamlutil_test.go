@@ -2,6 +2,7 @@ package yamlutil_test
 
 import (
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/yamlutil"
@@ -67,6 +68,47 @@ func TestErrAliases(t *testing.T) {
 	assert.True(t, errors.Is(yamlutil.RejectYAMLAliases(undefined), yamlutil.ErrAliases))
 
 	assert.False(t, errors.Is(yamlutil.UnmarshalSafe([]byte("a: [\n"), &m), yamlutil.ErrAliases))
+}
+
+// TestUnmarshalStrictSafe covers the strict decode used for kind,
+// convention, and word-list files.
+func TestUnmarshalStrictSafe(t *testing.T) {
+	t.Parallel()
+	type body struct {
+		A string `yaml:"a"`
+	}
+	t.Run("decodes", func(t *testing.T) {
+		t.Parallel()
+		var b body
+		require.NoError(t, yamlutil.UnmarshalStrictSafe([]byte("a: x\n"), &b))
+		assert.Equal(t, "x", b.A)
+	})
+	t.Run("unknown field", func(t *testing.T) {
+		t.Parallel()
+		var b body
+		assert.ErrorContains(t, yamlutil.UnmarshalStrictSafe([]byte("b: x\n"), &b), "not found")
+	})
+	t.Run("aliases", func(t *testing.T) {
+		t.Parallel()
+		var b body
+		err := yamlutil.UnmarshalStrictSafe([]byte("a: &x y\n"), &b)
+		assert.True(t, errors.Is(err, yamlutil.ErrAliases))
+	})
+	t.Run("empty is io.EOF", func(t *testing.T) {
+		t.Parallel()
+		var b body
+		err := yamlutil.UnmarshalStrictSafe([]byte("# only a comment\n"), &b)
+		assert.True(t, errors.Is(err, io.EOF))
+	})
+	t.Run("panic becomes error", func(t *testing.T) {
+		t.Parallel()
+		var b body
+		var err error
+		require.NotPanics(t, func() {
+			err = yamlutil.UnmarshalStrictSafe([]byte("? [a, b]\n: c\n<<: {x: y}\n"), &b)
+		})
+		assert.ErrorContains(t, err, "unhashable")
+	})
 }
 
 func TestUnmarshalSafe(t *testing.T) {

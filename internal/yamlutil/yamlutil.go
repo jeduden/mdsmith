@@ -13,11 +13,12 @@
 //   - [Marshal] — thin wrapper around yaml.Marshal for consistency; safe for
 //     output marshaling where data originates from trusted Go values.
 //
+// A strict decode, where an unknown key is an error (kind, convention, and
+// word-list files), goes through [UnmarshalStrictSafe].
+//
 // One escape hatch is allowed: call [RejectYAMLAliases] directly, followed by
-// a raw decode, when the wrappers cannot express the decode — a strict
-// KnownFields decoder (kind and convention files), or parse errors that must
-// defer to a later [UnmarshalSafe] on the same bytes (the config convention
-// pre-check). A caller that words the alias rejection differently from other
+// a raw decode, when parse errors must defer to a later [UnmarshalSafe] on the
+// same bytes (the config convention pre-check). A caller that words the alias rejection differently from other
 // parse errors tests the wrapper's error with errors.Is against [ErrAliases].
 // Every such site keeps the pre-check directly above its decode.
 //
@@ -130,6 +131,25 @@ func UnmarshalSafe(data []byte, v any) error {
 		return nil
 	}
 	return decodeNoPanic(first, v)
+}
+
+// UnmarshalStrictSafe rejects YAML anchors/aliases, then decodes the
+// first document of data into v with unknown keys as errors. Input
+// with no document returns io.EOF, unwrapped, so callers can report an
+// empty file. A yaml.v3 decode panic comes back as an error, as in
+// [UnmarshalSafe].
+func UnmarshalStrictSafe(data []byte, v any) (err error) {
+	if err := RejectYAMLAliases(data); err != nil {
+		return err
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("yaml: decode failed: %v", r)
+		}
+	}()
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	return dec.Decode(v)
 }
 
 // DecodeNodeSafe decodes a document node returned by

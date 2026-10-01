@@ -80,7 +80,9 @@ decoders. The port fixes the drift:
 - A title collapses runs of Unicode whitespace to one
   space and trims its ends, so a workspace symbol name has
   no newlines. A `title` key that appears twice yields no
-  title; other duplicate keys leave it alone.
+  title; other duplicate keys leave it alone. A title set
+  only through a merge (`<<`) key is read, as the engine's
+  map decode reads it.
 - Typed scalar titles (int, float, uint64, bool, date) keep
   their source text. The deleted `frontMatterScalar` wrote
   a date in RFC 3339 form; the index never used that path.
@@ -101,6 +103,9 @@ decoders. The port fixes the drift:
   `requiredstructure` decoded document front matter with a
   raw `yaml.Unmarshal`; it now uses `UnmarshalSafe` and
   words the alias case apart through `yamlutil.ErrAliases`.
+  Kind, convention, and word-list files had the same crash
+  in their strict decoders; they now share
+  `yamlutil.UnmarshalStrictSafe`.
 - The index's `stripDelimiters` had a fallback for a closing
   `---` with no newline, which `StripFrontMatter` never
   produces. It and the other exact copies of the fence

@@ -199,6 +199,22 @@ func TestDiscoverConventions_RejectsYAMLAnchors(t *testing.T) {
 	assert.Contains(t, err.Error(), "anchors/aliases")
 }
 
+// TestDiscoverConventions_DecodePanicIsError: a yaml.v3 decode panic
+// in a convention file is an error naming the file, not a crash.
+func TestDiscoverConventions_DecodePanicIsError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(
+		filepath.Join(dir, ".mdsmith", "conventions"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "conventions", "foo.yaml"),
+		[]byte("? [a, b]\n: c\n<<: {x: y}\n"), 0o644))
+
+	var err error
+	require.NotPanics(t, func() { _, err = discoverConventions(dir) })
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "foo.yaml")
+}
+
 // TestDiscoverConventions_RejectsBadYAML pins the decode-error
 // path: a `.mdsmith/conventions/<name>.yaml` whose body is not
 // valid YAML surfaces the parse error with the file name.
