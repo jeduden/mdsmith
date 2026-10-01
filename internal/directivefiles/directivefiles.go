@@ -2,11 +2,11 @@
 // contain a generated-section directive marker (catalog, include,
 // toc, …), i.e. which files a repo-wide `mdsmith fix` would touch.
 //
-// No production code path calls it today: the merge-driver and
-// pre-merge-commit install commands and the git-hook-sync rule
-// (MDS048) build their file lists from gitattributes.GlobsFromConfig
-// instead. Its only caller is the test-only cmd/mdsmith shim
-// discoverFilesWithGeneratedContent.
+// No production code path calls it today: `mdsmith merge-driver
+// install` and the git-hook-sync rule (MDS048) derive their glob set
+// from gitattributes.GlobsFromConfig, and the pre-merge-commit hook
+// runs `mdsmith fix .` with no file list at all. Its only caller is
+// the test-only cmd/mdsmith shim discoverFilesWithGeneratedContent.
 package directivefiles
 
 import (
@@ -31,8 +31,7 @@ import (
 //
 // Hidden directories (names starting with ".") are skipped. The
 // returned slice is sorted and may be empty: the caller decides
-// whether to apply a fallback (the install commands do; the
-// git-hook-sync rule does not).
+// whether to apply a fallback (DiscoverFilesForInstall does).
 func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 	allRules := rule.All()
 	directiveNames := make([]string, 0, len(allRules))
@@ -43,11 +42,10 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 	}
 
 	// Load the project's ignore patterns so discovery does not list
-	// files that mdsmith would skip during `mdsmith fix`. Without this
-	// the merge driver and pre-merge-commit hook would fire on paths
-	// (e.g. fixture files under `internal/rules/*/{good,bad,fixed}/**`)
-	// where mdsmith fix is a no-op, leaving real conflicts unresolved.
-	// A missing or unparseable config simply means no ignore filtering.
+	// files that mdsmith would skip during `mdsmith fix` (e.g. fixture
+	// files under `internal/rules/*/{good,bad,fixed}/**`), where a fix
+	// is a no-op. A missing or unparseable config simply means no
+	// ignore filtering.
 	var ignorePatterns []string
 	if cfg, err := config.Load(config.DefaultConfigPath(repoRoot)); err == nil {
 		ignorePatterns = cfg.Ignore
@@ -105,16 +103,11 @@ func DiscoverFiles(repoRoot string, maxBytes int64) []string {
 	return files
 }
 
-// DiscoverFilesForInstall is the install-time variant of DiscoverFiles
-// that supplies a sensible default file list when the repository has
-// no directive-bearing files. It returns ["PLAN.md", "README.md"] in
-// that case so a fresh repo still gets a useful hook/.gitattributes
-// configuration after `mdsmith merge-driver install` or
-// `mdsmith pre-merge-commit install`.
-//
-// The git-hook-sync rule must not use this variant: when the user
-// has no directive-bearing files, the rule should report nothing
-// rather than reference fictional PLAN.md/README.md paths.
+// DiscoverFilesForInstall is the variant of DiscoverFiles that
+// supplies a default file list when the repository has no
+// directive-bearing files: it returns ["PLAN.md", "README.md"] in
+// that case. A drift check must not use this variant, since it would
+// then reference fictional PLAN.md/README.md paths.
 func DiscoverFilesForInstall(repoRoot string, maxBytes int64) []string {
 	files := DiscoverFiles(repoRoot, maxBytes)
 	if len(files) == 0 {

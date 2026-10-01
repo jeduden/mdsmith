@@ -35,7 +35,7 @@ exercised only indirectly through a caller's scenario test:
   `WordFrequencyInto` directly across repeated
   accumulate/clear cycles — the exact zero-alloc-reuse
   behavior it exists for.
-- [internal/directivefiles/directivefiles.go][directivefiles]:193,228,174 —
+- [internal/directivefiles/directivefiles.go][directivefiles]:190,226,171 —
   `openingFence`, `isClosingFence`, and `isIndentedCodeBlock`,
   the fence-tracking helpers `hasDirectiveMarker` uses to skip
   directive-marker matches inside code blocks. Covered only
@@ -75,6 +75,25 @@ Both are `tax`: neither sits on a public surface by itself
    No production code calls `DiscoverFiles` today
    (`deadcode` reports the package unreachable), so the
    fix has no user-visible effect.
+7. The same backtick-info gap sat in three rules' own
+   fence scanners. Each is fixed with a red/green test,
+   and each fix changes rule output. In `include`
+   (MDS021), heading shifts and link rewrites now
+   continue past a ```` ```x``` ```` line. In
+   `required-structure` (MDS020), body-sync collection
+   skips directive blocks after such a line. In
+   `slide-structure` (MDS073), such a line no longer
+   toggles code-block state.
+8. Code review of those scanners found more fence gaps,
+   each fixed with a red/green test. `include` no longer
+   reads `---` after an ATX heading, a fence line, or a
+   setext underline as a setext underline, and a CRLF
+   closing fence now closes. `slide-structure` tracks
+   the opener's character and length, so a shorter inner
+   fence is code content. `required-structure` treats a
+   tab-indented fence line as indented code. The release
+   website link rewriter's `fenceMarker` got the same
+   backtick-info fix.
 
 ## Acceptance Criteria
 
