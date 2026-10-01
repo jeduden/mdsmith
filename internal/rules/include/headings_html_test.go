@@ -115,3 +115,45 @@ func TestAdjustHeadings_HTMLLineIsNotSetextText(t *testing.T) {
 		assert.Equal(t, tt.want, adjustHeadings(tt.in, 2), "%q", tt.in)
 	}
 }
+
+// TestHeadingScan_Step walks one document through the scan and pins the
+// verdict per line, covering each state the scan tracks.
+func TestHeadingScan_Step(t *testing.T) {
+	type verdict struct {
+		level  int
+		setext bool
+	}
+	lines := []struct {
+		line string
+		want verdict
+	}{
+		{"## A", verdict{2, false}},
+		{"Title", verdict{}},
+		{"===", verdict{1, true}},
+		{"---", verdict{}},
+		{"<!-- open", verdict{}},
+		{"# in comment", verdict{}},
+		{"-->", verdict{}},
+		{"<?catalog", verdict{}},
+		{"# in PI", verdict{}},
+		{"?>", verdict{}},
+		{"```", verdict{}},
+		{"# in fence", verdict{}},
+		{"```", verdict{}},
+		{"<div>", verdict{}},
+		{"# in div", verdict{}},
+		{"", verdict{}},
+		{"### B", verdict{3, false}},
+	}
+	var scan headingScan
+	for _, l := range lines {
+		level, setext := scan.step(l.line)
+		assert.Equal(t, l.want, verdict{level, setext}, "%q", l.line)
+	}
+}
+
+func TestAtxLevel(t *testing.T) {
+	assert.Equal(t, 1, atxLevel("# A"))
+	assert.Equal(t, 6, atxLevel("######"))
+	assert.Equal(t, 0, atxLevel("A"))
+}
