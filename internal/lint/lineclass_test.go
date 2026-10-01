@@ -121,6 +121,11 @@ var equivCases = map[string]string{
 	"fence tilde backtick at eof":    "~~~`",
 	"fence one-byte info after para": "para\n\n```x",
 	"quoted fence one-byte at eof":   "> ```x",
+	// goldmark counts a final line's trailing "\r" among the bytes after
+	// the run, so a one-byte info before it is kept.
+	"fence one-byte info cr at eof":        "```x\r",
+	"quoted fence one-byte info cr at eof": "> ```x\r",
+	"fence info-less cr at eof":            "```\r",
 }
 
 func sortedKeys(m map[int]struct{}) []int {

@@ -17,6 +17,8 @@ func TestCompleteTag(t *testing.T) {
 		{"<div>", true, Type6},
 		{"</ div a>", true, Type6},
 		{"</span a>", false, None},
+		{"</ span a>", false, Type7},
+		{"</ span a>", true, None},
 		{"<pre>", false, None},
 		{"<span/>  ", false, Type7},
 		{"<span> x", false, None},

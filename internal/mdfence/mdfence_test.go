@@ -166,9 +166,6 @@ func TestZeroAllocs(t *testing.T) {
 		if f, ok = OpenFinal(open, true); !ok || !f.HasInfo {
 			panic("unexpected final fence result")
 		}
-		if f, ok = OpenFinal(open, true); !ok || !f.HasInfo {
-			panic("unexpected final fence result")
-		}
 		var tr Tracker
 		tr.Step(open)
 		tr.Step(body)

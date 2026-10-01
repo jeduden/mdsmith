@@ -1,6 +1,7 @@
 package include
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -283,8 +284,10 @@ func TestAdjustHeadingsToLevel(t *testing.T) {
 
 // TestHeadingScan_SetextText pins which previous lines may carry setext
 // heading text. CommonMark reads an underline after a blank line, an
-// ATX heading, a fence line, an HTML line, or another underline as a
-// thematic break (or paragraph text), never as a setext heading.
+// ATX heading, a fence line, an HTML line, a thematic break, indented
+// code, or a list item or block quote line as a thematic break (or
+// paragraph text), never as a setext heading. A lone "===" is paragraph
+// text, so an underline after it does make a heading.
 func TestHeadingScan_SetextText(t *testing.T) {
 	tests := []struct {
 		name string
@@ -301,21 +304,94 @@ func TestHeadingScan_SetextText(t *testing.T) {
 		{"backtick fence", "```", false},
 		{"indented fence with info", "  ```go", false},
 		{"tilde fence", "~~~", false},
-		{"setext h1 underline", "===", false},
+		{"lone = run is paragraph text", "===", true},
+		{"indented = run is paragraph text", "  ==", true},
+		{"two dashes are paragraph text", "--", true},
 		{"setext h2 underline", "---", false},
 		{"html comment", "<!-- note -->", false},
 		{"processing instruction", "<?toc?>", false},
 		{"block tag", "<div>", false},
+		{"thematic break", "***", false},
+		{"spaced thematic break", "* * *", false},
+		{"bullet item", "- item", false},
+		{"ordered item", "1. item", false},
+		{"ordered item not at 1", "2. item", false},
+		{"block quote", "> quote", false},
+		{"indented code", "    code", false},
+		{"tab-indented code", "\tcode", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var scan headingScan
 			scan.step(tt.prev)
-			level, setext := scan.step("---")
-			assert.Equal(t, tt.want, setext)
+			level, text := scan.step("---")
+			assert.Equal(t, tt.want, text > 0)
 			assert.Equal(t, tt.want, level == 2)
 		})
 	}
+}
+
+// TestHeadingScan_ContainerAndBlockLinesMatchParser checks the scan
+// against the canonical parser for lines that are not document-level
+// paragraph text: an underline after them is no setext heading, while a
+// line that cannot interrupt an open paragraph still continues it.
+func TestHeadingScan_ContainerAndBlockLinesMatchParser(t *testing.T) {
+	for _, src := range []string{
+		"- item\n---\n", "- item\n===\n", "1. item\n---\n", "> quote\n---\n",
+		"***\n---\n", "* * *\n---\n", "\n    code\n---\n", "- item\nlazy\n---\n",
+		"***\nTitle\n---\n", "* * *\nTitle\n---\n", "- a\n\nTitle\n---\n",
+		"para\n2. item\n---\n", "para\n    more\n---\n", "***\n<span>\n---\n",
+		"- item\n===\n---\n", "a\nb\n---\n", "===\n---\n", "Title\n   ---\n",
+		"Title\n    ---\n", "1. a\n-\n<span>\n# H\n",
+	} {
+		want := astHasHeading(src)
+		got := findMinHeadingLevel(strings.Split(src, "\n")) > 0
+		assert.Equal(t, want, got, "%q", src)
+	}
+}
+
+func TestNextPara(t *testing.T) {
+	tests := []struct {
+		line string
+		prev paraKind
+		want paraKind
+	}{
+		{"text", paraNone, paraRoot},
+		{"text", paraRoot, paraRoot},
+		{"text", paraContainer, paraContainer},
+		{"***", paraRoot, paraNone},
+		{"* * *", paraNone, paraNone},
+		{"- item", paraNone, paraContainer},
+		{"- item", paraRoot, paraContainer},
+		{"2. item", paraNone, paraContainer},
+		{"2. item", paraRoot, paraRoot},
+		{"> quote", paraRoot, paraContainer},
+		{"    code", paraNone, paraNone},
+		{"\tcode", paraNone, paraNone},
+		{"    more", paraRoot, paraRoot},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, nextPara([]byte(tt.line), tt.prev), "%q after %d", tt.line, tt.prev)
+	}
+}
+
+func TestSetextText(t *testing.T) {
+	assert.Equal(t, "  Title", setextText([]string{"  Title"}), "one line is kept as it is")
+	assert.Equal(t, "a b c", setextText([]string{" a ", "\tb", "c  "}))
+	assert.Equal(t, "a b\r", setextText([]string{"a\r", "b\r"}), "CRLF ending kept")
+}
+
+func TestApplyShift_MultiLineSetext(t *testing.T) {
+	// A setext heading's text is its whole paragraph; an ATX heading
+	// holds one line, so the lines are joined rather than the first
+	// left behind as a paragraph.
+	got := applyShift([]string{"intro", "First", "second", "---", "", "## B"}, 1)
+	assert.Equal(t, []string{"### intro First second", "", "### B"}, got)
+}
+
+func TestAdjustHeadings_ListItemThenBreakIsNoHeading(t *testing.T) {
+	in := "- item\n---\n\n## A\n"
+	assert.Equal(t, "- item\n---\n\n### A\n", adjustHeadings(in, 2))
 }
 
 // TestPIStart pins the processing-instruction start rules mirrored from
@@ -353,6 +429,9 @@ func TestSetextLevel(t *testing.T) {
 		{"---", 2},
 		{"-", 2},
 		{"--- \t", 2},
+		{"   ---", 2},
+		{"   =", 1},
+		{"    ---", 0},
 		{"", 0},
 		{"Title", 0},
 		{"=-=", 0},

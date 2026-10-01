@@ -26,10 +26,3 @@ import (
 func stepFence(t *mdfence.Tracker, line string) bool {
 	return t.Step(util.StringToReadOnlyBytes(strings.TrimLeft(line, " \t")))
 }
-
-// opensFence reports whether line, after stripping its leading
-// whitespace, opens a fenced code block.
-func opensFence(line string) bool {
-	_, ok := mdfence.Open(util.StringToReadOnlyBytes(strings.TrimLeft(line, " \t")))
-	return ok
-}

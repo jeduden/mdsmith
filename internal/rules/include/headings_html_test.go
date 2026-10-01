@@ -120,16 +120,16 @@ func TestAdjustHeadings_HTMLLineIsNotSetextText(t *testing.T) {
 // verdict per line, covering each state the scan tracks.
 func TestHeadingScan_Step(t *testing.T) {
 	type verdict struct {
-		level  int
-		setext bool
+		level int
+		text  int // setext heading text lines; 0 for ATX or none
 	}
 	lines := []struct {
 		line string
 		want verdict
 	}{
-		{"## A", verdict{2, false}},
+		{"## A", verdict{2, 0}},
 		{"Title", verdict{}},
-		{"===", verdict{1, true}},
+		{"===", verdict{1, 1}},
 		{"---", verdict{}},
 		{"<!-- open", verdict{}},
 		{"# in comment", verdict{}},
@@ -143,12 +143,19 @@ func TestHeadingScan_Step(t *testing.T) {
 		{"<div>", verdict{}},
 		{"# in div", verdict{}},
 		{"", verdict{}},
-		{"### B", verdict{3, false}},
+		{"### B", verdict{3, 0}},
+		{"First", verdict{}},
+		{"second", verdict{}},
+		{"---", verdict{2, 2}},
+		{"- item", verdict{}},
+		{"lazy", verdict{}},
+		{"===", verdict{}},
+		{"---", verdict{}},
 	}
 	var scan headingScan
 	for _, l := range lines {
-		level, setext := scan.step(l.line)
-		assert.Equal(t, l.want, verdict{level, setext}, "%q", l.line)
+		level, text := scan.step(l.line)
+		assert.Equal(t, l.want, verdict{level, text}, "%q", l.line)
 	}
 }
 

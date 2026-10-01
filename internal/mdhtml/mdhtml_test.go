@@ -62,6 +62,8 @@ var openCases = []struct {
 	{"<span>Title</span>", false, None},
 	{"<span =x>", false, None},
 	{"</span a>", false, None},
+	{"</ span a>", false, Type7},
+	{"</  x-y b=c/>", false, Type7},
 	{"<span a=b c='d' e=\"f\" g>", false, Type7},
 	{"<span a = b>", false, Type7},
 	{"<span a=>", false, None},

@@ -91,7 +91,15 @@ Both are `tax`: neither sits on a public surface by itself
    classifies HTML block starts. `mdfence.OpenFinal`
    drops a one-byte info string on a final line with
    no newline, as goldmark does.
-8. [x] `go build ./...` and `go test ./...` pass.
+8. [x] Review fixes, each red/green. `include` reads a
+   list item, block quote, thematic break, or indented
+   code line as no setext text, joins a multi-line
+   setext heading into one ATX line, and accepts an
+   underline indented up to three spaces. The line
+   classifier keeps a one-byte info string on a final
+   line that ends in `\r`. `mdhtml` reads `</ span a>`
+   as type 7, as the fork does.
+9. [x] `go build ./...` and `go test ./...` pass.
 
 ## Acceptance Criteria
 

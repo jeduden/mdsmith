@@ -123,8 +123,12 @@ func completeTag(s []byte, inParagraph bool) Kind {
 	i := 1
 	closing := false
 	if i < len(s) && s[i] == '/' {
-		closing = true
 		i++
+		// The fork counts the tag as closing only when its captured
+		// "/" group is exactly "/": "</ span a>" (spaces after the
+		// slash) is no closing tag to it, so its attributes do not
+		// block type 7.
+		closing = i >= len(s) || s[i] != ' '
 		for i < len(s) && s[i] == ' ' {
 			i++
 		}

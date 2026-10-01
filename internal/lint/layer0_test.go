@@ -58,7 +58,7 @@ func TestLayer0_OneByteInfoAtEOFMatchesAST(t *testing.T) {
 	// lines.
 	for _, src := range []string{
 		"```x", "```\v", "``` x", "```xy", "```x\n", "```\v\n", "~~~`", "para\n\n```x",
-		"> ```x", "> a\n>\n> ```x", "> ```x\n",
+		"> ```x", "> a\n>\n> ```x", "> ```x\n", "```x\r", "> ```x\r",
 	} {
 		f, err := NewFile("t.md", []byte(src))
 		require.NoError(t, err)

@@ -522,8 +522,16 @@ func (p *lc0Pass) inFence() bool { return p.fence.Char != 0 }
 // It records the open line so finishFence can mark the block as a unit.
 // rest ends where line ln ends, so on the source's final line with no
 // newline it reads the info string as goldmark does (mdfence.OpenFinal).
+// classifyLine trimmed a trailing "\r" off rest, but goldmark counts that
+// "\r" among the bytes after the run, so a final line ending in "\r"
+// keeps its one-byte info string and is not passed as final.
 func (p *lc0Pass) tryOpenFence(ln int, rest []byte) bool {
-	fence, ok := mdfence.OpenFinal(rest, ln == finalLineNoEOL(p.lines))
+	final := ln == finalLineNoEOL(p.lines)
+	if final {
+		raw := p.lines[ln-1] // non-empty: finalLineNoEOL returned ln
+		final = raw[len(raw)-1] != '\r'
+	}
+	fence, ok := mdfence.OpenFinal(rest, final)
 	if !ok {
 		return false
 	}

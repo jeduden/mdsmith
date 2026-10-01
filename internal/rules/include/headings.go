@@ -8,11 +8,13 @@ import (
 // atxRe matches an ATX heading line: one or more '#' followed by a space or end of line.
 var atxRe = regexp.MustCompile(`^(#{1,6})([ \t].*)?$`)
 
-// setextH1Re matches a setext h1 underline: one or more '=' characters.
-var setextH1Re = regexp.MustCompile(`^=+\s*$`)
+// setextH1Re matches a setext h1 underline: up to three spaces of
+// indentation, then one or more '=' characters.
+var setextH1Re = regexp.MustCompile(`^ {0,3}=+\s*$`)
 
-// setextH2Re matches a setext h2 underline: one or more '-' characters.
-var setextH2Re = regexp.MustCompile(`^-+\s*$`)
+// setextH2Re matches a setext h2 underline: up to three spaces of
+// indentation, then one or more '-' characters.
+var setextH2Re = regexp.MustCompile(`^ {0,3}-+\s*$`)
 
 // adjustHeadings shifts all heading levels in content so that the minimum
 // heading level becomes parentLevel+1. If parentLevel is 0 or the computed
@@ -112,15 +114,16 @@ func applyShift(lines []string, shift int) []string {
 	var scan headingScan
 
 	for i, line := range lines {
-		level, setext := scan.step(line)
+		level, text := scan.step(line)
 		switch {
 		case level == 0:
 			result = append(result, line)
-		case setext:
-			// The scan only reports a setext underline after a paragraph
-			// line, which the previous iteration appended unchanged:
-			// replace it with an ATX heading and drop the underline.
-			result[len(result)-1] = strings.Repeat("#", clampLevel(level+shift)) + " " + lines[i-1]
+		case text > 0:
+			// The scan reports a setext underline only after a paragraph,
+			// whose text lines the previous iterations appended unchanged:
+			// replace them with one ATX heading and drop the underline.
+			heading := strings.Repeat("#", clampLevel(level+shift)) + " " + setextText(lines[i-text:i])
+			result = append(result[:len(result)-text], heading)
 		default:
 			rest := atxRe.FindStringSubmatch(line)[2]
 			if rest == "" {
@@ -131,6 +134,26 @@ func applyShift(lines []string, shift int) []string {
 	}
 
 	return result
+}
+
+// setextText returns the text of a setext heading whose paragraph
+// lines are text, as one ATX heading line. A single line is kept as it
+// is. Several lines, which an ATX heading cannot hold, are trimmed of
+// surrounding spaces and tabs and joined by a space, as a renderer joins
+// a heading's soft line breaks; a CRLF ending on the last line is kept.
+func setextText(text []string) string {
+	if len(text) == 1 {
+		return text[0]
+	}
+	parts := make([]string, len(text))
+	for i, l := range text {
+		parts[i] = strings.Trim(l, " \t\r")
+	}
+	joined := strings.Join(parts, " ")
+	if strings.HasSuffix(text[len(text)-1], "\r") {
+		joined += "\r"
+	}
+	return joined
 }
 
 // clampLevel ensures a heading level is between 1 and 6.

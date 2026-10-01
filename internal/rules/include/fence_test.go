@@ -32,26 +32,14 @@ func TestStepFence(t *testing.T) {
 		"a backtick in a backtick info string is not a fence")
 }
 
-func TestOpensFence(t *testing.T) {
-	assert.True(t, opensFence("```go"))
-	assert.True(t, opensFence("~~~~ `x`"))
-	assert.True(t, opensFence("    ```"), "any indentation is stripped")
-	assert.True(t, opensFence("\t~~~"), "tab indentation is stripped")
-	assert.False(t, opensFence("```x```"), "backtick in backtick info string")
-	assert.False(t, opensFence("``"))
-	assert.False(t, opensFence("text"))
-	assert.False(t, opensFence(""))
-}
-
-// TestFenceHelpers_ZeroAllocs pins that the string-to-bytes view does
+// TestStepFence_ZeroAllocs pins that the string-to-bytes view does
 // not copy: a line longer than the compiler's 32-byte stack buffer
 // would otherwise allocate on every call.
-func TestFenceHelpers_ZeroAllocs(t *testing.T) {
+func TestStepFence_ZeroAllocs(t *testing.T) {
 	const long = "  ```go title=\"a fairly long info string here\""
 	allocs := testing.AllocsPerRun(100, func() {
 		var tr mdfence.Tracker
 		_ = stepFence(&tr, long)
-		_ = opensFence(long)
 	})
 	assert.Zero(t, allocs)
 }
