@@ -2,7 +2,7 @@
 id: 2609061915
 title: >-
   Add unit tests for the untested rename/move helpers
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   21 private helpers in internal/refactor and its
@@ -136,7 +136,9 @@ Two overlaps remain:
    `TestLinkRefEdits`, `TestRefUseEditsInBody`,
    `TestRefUseEdit`, `TestLinkTextBounds`, and
    `TestBodyNewlineCount` to [rename_test.go][rename-test].
-4. Add `TestApplyEditsToFile` to
+4. Skipped: `applyEditsToFile` no longer exists on main (the
+   all-or-nothing plan applier replaced it). Original text: add
+   `TestApplyEditsToFile` to
    [move_unit_test.go][cmd-move-test] if `applyEditsToFile`
    still exists. Open PR #859 replaces it with an
    all-or-nothing plan applier whose functions carry their own
@@ -166,15 +168,15 @@ Two overlaps remain:
 
 ## Acceptance Criteria
 
-- [ ] Every function listed in the Background section has a
+- [x] Every function listed in the Background section has a
       test carrying its own name, added here or earlier by
       another PR.
-- [ ] No test name is declared twice in a package.
-- [ ] No production code changed.
-- [ ] `go test ./...` is green.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] No test name is declared twice in a package.
+- [x] No production code changed.
+- [x] `go test ./...` is green.
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` is green.
+- [x] `mdsmith check .` is green.
 
 [tests]: ../docs/development/architecture/tests.md
 [fileop-exec]: ../internal/refactor/fileop_exec.go
