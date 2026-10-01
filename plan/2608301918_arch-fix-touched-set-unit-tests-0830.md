@@ -65,6 +65,13 @@ Both are `tax`: neither sits on a public surface by itself
 4. `go build ./...` passes.
 5. `go test ./internal/mdtext/... ./internal/directivefiles/...`
    passes.
+6. Deviation found while writing `TestOpeningFence`:
+   `openingFence` accepted a backtick fence whose info
+   string holds a backtick (such as ```` ```x``` ````).
+   goldmark and `internal/lint` read that line as an inline
+   code span. Discovery then hid every directive marker
+   below it. Fixed in place, with a red/green
+   `TestHasDirectiveMarker_BacktickInInfoIsNotAFence`.
 
 ## Acceptance Criteria
 

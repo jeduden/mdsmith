@@ -271,6 +271,14 @@ func TestHasDirectiveMarker_ClosingFenceWithTrailingWhitespace(t *testing.T) {
 	assert.True(t, hasDirectiveMarker(content, []string{"catalog"}))
 }
 
+func TestHasDirectiveMarker_BacktickInInfoIsNotAFence(t *testing.T) {
+	// A backtick run whose info string contains a backtick is an
+	// inline code span, not a fence (CommonMark; goldmark and
+	// internal/lint agree). It must not hide the marker below it.
+	content := []byte("```x``` is inline code.\n\n<?catalog?>\n<?/catalog?>\n")
+	assert.True(t, hasDirectiveMarker(content, []string{"catalog"}))
+}
+
 func TestOpeningFence(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -285,6 +293,10 @@ func TestOpeningFence(t *testing.T) {
 		{"long tildes with info", "~~~~ text", '~', 4},
 		{"three space indent", "   ```", '`', 3},
 		{"four space indent", "    ```", 0, 0},
+		{"tab indent", "\t```", 0, 0},
+		{"backtick in backtick info", "```x```", 0, 0},
+		{"backtick later in backtick info", "``` js `x`", 0, 0},
+		{"backtick in tilde info", "~~~ `x`", '~', 3},
 		{"two backticks", "``", 0, 0},
 		{"two tildes", "~~", 0, 0},
 		{"plain text", "hello", 0, 0},
@@ -316,6 +328,7 @@ func TestIsClosingFence(t *testing.T) {
 		{"tildes", "~~~", '~', 3, true},
 		{"three space indent", "   ```", '`', 3, true},
 		{"four space indent", "    ```", '`', 3, false},
+		{"tab indent", "\t```", '`', 3, false},
 		{"trailing whitespace", "```  \t", '`', 3, true},
 		{"trailing carriage return", "```\r", '`', 3, true},
 		{"info string", "```go", '`', 3, false},
