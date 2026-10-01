@@ -59,6 +59,9 @@ var ErrEmptyLabel = fmt.Errorf("label cannot be empty")
 type InvalidLabelRuneError struct{ Rune rune }
 
 func (e InvalidLabelRuneError) Error() string {
+	if e.Rune == '\\' {
+		return "label cannot end with an unescaped backslash"
+	}
 	return fmt.Sprintf("label cannot contain %q", e.Rune)
 }
 
@@ -145,13 +148,19 @@ func BodyAndFMOffset(source []byte) ([]byte, int) {
 // longer parses. `]` ends the label early. `[` is technically
 // escapable, but emitting a raw `[` would still confuse most
 // CommonMark renderers and the ref-def regex, so both bracket forms
-// are rejected outright rather than auto-escaped.
+// are rejected outright rather than auto-escaped. A trailing
+// unescaped backslash (an odd-length run at the end) escapes the
+// closing `]`, so it is reported as '\\'.
 func invalidLinkRefRune(s string) rune {
 	for _, r := range s {
 		switch r {
 		case '\n', '\r', '[', ']':
 			return r
 		}
+	}
+	trailing := len(s) - len(strings.TrimRight(s, `\`))
+	if trailing%2 == 1 {
+		return '\\'
 	}
 	return 0
 }
@@ -298,8 +307,8 @@ func refDefEditsInBody(
 	return out
 }
 
-// refUseEditsInBody walks the AST for ast.Link nodes whose Reference
-// matches oldLabel and emits one Edit per use.
+// refUseEditsInBody walks the AST for ast.Link and ast.Image nodes
+// whose Reference matches oldLabel and emits one Edit per use.
 func refUseEditsInBody(
 	root ast.Node, body []byte, lines [][]byte, fmOffset int,
 	oldLabel, newName string,
@@ -310,14 +319,11 @@ func refUseEditsInBody(
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		l, ok := n.(*ast.Link)
-		if !ok || l.Reference == nil {
+		ref := referenceOf(n)
+		if ref == nil || NormalizedLabel(ref.Value) != oldLabel {
 			return ast.WalkContinue, nil
 		}
-		if NormalizedLabel(l.Reference.Value) != oldLabel {
-			return ast.WalkContinue, nil
-		}
-		edit, ok := refUseEdit(l, body, lines, fmOffset, newName, idx)
+		edit, ok := refUseEdit(n, ref, body, lines, fmOffset, newName, idx)
 		if ok {
 			out = append(out, edit)
 		}
@@ -326,15 +332,27 @@ func refUseEditsInBody(
 	return out
 }
 
-// refUseEdit converts one link node into an Edit, or false when the
-// source position can't be recovered (e.g. an empty-text reference
-// like `[][id]` that linkTextBounds can't anchor).
+// referenceOf returns the reference of a reference-style link or
+// image, or nil for any other node (inline links included).
+func referenceOf(n ast.Node) *ast.ReferenceLink {
+	switch t := n.(type) {
+	case *ast.Link:
+		return t.Reference
+	case *ast.Image:
+		return t.Reference
+	}
+	return nil
+}
+
+// refUseEdit converts one reference-style link or image node into an
+// Edit, or false when the source position can't be recovered (a node
+// with no recorded position, or brackets that don't match ref.Type).
 func refUseEdit(
-	l *ast.Link, body []byte, lines [][]byte, fmOffset int, newName string,
-	bodyIdx bodyLineIndex,
+	n ast.Node, ref *ast.ReferenceLink, body []byte, lines [][]byte,
+	fmOffset int, newName string, bodyIdx bodyLineIndex,
 ) (Edit, bool) {
-	textStart, textEnd := linkTextBounds(l, body)
-	labelStart, labelEnd, ok := labelBoundsInBody(body, textStart, textEnd, l.Reference.Type)
+	textStart, textEnd := linkTextBounds(n, body)
+	labelStart, labelEnd, ok := labelBoundsInBody(body, textStart, textEnd, ref.Type)
 	if !ok {
 		return Edit{}, false
 	}
@@ -391,27 +409,83 @@ func labelBoundsInBody(body []byte, textStart, textEnd int, refType ast.Referenc
 }
 
 // linkTextBounds returns the [start, end) absolute byte offsets of
-// the link's display-text run inside body, or (-1, -1) when the link
-// has no parsed text segment.
-func linkTextBounds(l *ast.Link, body []byte) (int, int) {
-	start, end := -1, -1
-	_ = ast.Walk(l, func(cur ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
+// the display-text run of a link or image inside body — the bytes
+// between its opening `[` and the `]` that balances it — or (-1, -1)
+// when the node has no recorded source position or no balancing `]`.
+// The parser records Pos() at the `[` (at the `!` for an image), so
+// the bounds hold for any text content: emphasis, code spans, nested
+// images, or none at all (`[][id]`).
+func linkTextBounds(n ast.Node, body []byte) (int, int) {
+	open := n.Pos()
+	if _, ok := n.(*ast.Image); ok && open >= 0 {
+		open++
+	}
+	if open < 0 || open >= len(body) || body[open] != '[' {
+		return -1, -1
+	}
+	end := balancingBracket(body, open+1)
+	if end < 0 {
+		return -1, -1
+	}
+	return open + 1, end
+}
+
+// balancingBracket returns the offset of the `]` that balances the `[`
+// just before pos, or -1 when there is none. Backslash escapes and
+// code spans are skipped, since CommonMark binds both tighter than
+// link brackets: the `]` in [`a]`][id] is code, not a bracket.
+func balancingBracket(body []byte, pos int) int {
+	depth := 1
+	for i := pos; i < len(body); i++ {
+		switch body[i] {
+		case '\\':
+			i++
+		case '`':
+			i = codeSpanEnd(body, i) - 1
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				return i
+			}
 		}
-		t, ok := cur.(*ast.Text)
-		if !ok {
-			return ast.WalkContinue, nil
+	}
+	return -1
+}
+
+// codeSpanEnd returns the offset just past the code span whose opening
+// backtick run starts at i. When no closing run of the same length
+// follows before a blank line, the run is literal text and the offset
+// just past it is returned.
+func codeSpanEnd(body []byte, i int) int {
+	n := backtickRun(body, i)
+	limit := len(body)
+	if k := bytes.Index(body[i:], []byte("\n\n")); k >= 0 {
+		limit = i + k
+	}
+	for j := i + n; j < limit; {
+		k := bytes.IndexByte(body[j:limit], '`')
+		if k < 0 {
+			break
 		}
-		if start < 0 || t.Segment.Start < start {
-			start = t.Segment.Start
+		j += k
+		m := backtickRun(body, j)
+		if m == n {
+			return j + m
 		}
-		if t.Segment.Stop > end {
-			end = t.Segment.Stop
-		}
-		return ast.WalkContinue, nil
-	})
-	return start, end
+		j += m
+	}
+	return i + n
+}
+
+// backtickRun returns the length of the backtick run starting at i.
+func backtickRun(body []byte, i int) int {
+	n := 0
+	for i+n < len(body) && body[i+n] == '`' {
+		n++
+	}
+	return n
 }
 
 // RefDefBracketBytes returns the [start, end) byte offsets of the

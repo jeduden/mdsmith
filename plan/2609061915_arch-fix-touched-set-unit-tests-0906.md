@@ -162,10 +162,25 @@ Two overlaps remain:
    `TestSessionRefactorWorkspace_Resolve`, and
    `TestSession_BuildRefactorWorkspace` to
    [refactor_test.go][pkg-refactor-test].
-7. Do not change production code. Keep the caller tests named
-   in the Background section. They cover the public contract.
-   Task 5's subtest move is the one change to them.
-8. `go build ./...` and `go vet ./...` pass.
+7. Keep the caller tests named in the Background section. They
+   cover the public contract. Task 5's subtest move is the one
+   change to them.
+8. Fix the production bugs the new tests exposed:
+
+  - `linkTextBounds` anchored on the inner text nodes, so a
+     use like `[**bold**][docs]`, ``[`code`][docs]``, or
+     `[][docs]` was dropped. It now anchors on the link's
+     recorded `[` and scans to the balancing `]`, skipping
+     escapes and code spans.
+  - `refUseEditsInBody` skipped image references such as
+     `![alt][docs]`. It now rewrites them too.
+  - `invalidLinkRefRune` accepted a label that ends in an
+     unescaped backslash, which escapes the def's closing `]`.
+     It now rejects one.
+  - The `buildRenameWorkspace` comment said an empty
+     workspace returns 0. It returns 1.
+
+9. `go build ./...` and `go vet ./...` pass.
 
 ## Acceptance Criteria
 
@@ -173,7 +188,9 @@ Two overlaps remain:
       still exists has a test carrying its own name, added
       here or earlier by another PR.
 - [x] No test name is declared twice in a package.
-- [x] No production code changed.
+- [x] Reference uses with inline markup, empty text, or an
+      image are rewritten, and a label ending in an unescaped
+      backslash is rejected.
 - [x] `go test ./...` is green.
 - [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.

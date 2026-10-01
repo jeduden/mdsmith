@@ -275,7 +275,7 @@ func TestRefUseEdit(t *testing.T) {
 	root := parseBody(body)
 	l := firstLink(t, root)
 
-	e, ok := refUseEdit(l, body, splitLines(src), off, "new", newBodyLineIndex(body))
+	e, ok := refUseEdit(l, l.Reference, body, splitLines(src), off, "new", newBodyLineIndex(body))
 	require.True(t, ok)
 	// Front matter shifts the line: "See ..." is file line index 3.
 	assert.Equal(t, 3, e.Range.Start.Line)
@@ -284,11 +284,10 @@ func TestRefUseEdit(t *testing.T) {
 	assert.Equal(t, 16, e.Range.End.Character)
 	assert.Equal(t, "new", e.NewText)
 
-	// An empty-text reference cannot be anchored.
-	empty := []byte("[][x]\n\n[x]: u\n")
-	eb, eo := bodyAndFMOffset(empty)
-	el := firstLink(t, parseBody(eb))
-	_, ok = refUseEdit(el, eb, splitLines(empty), eo, "new", newBodyLineIndex(eb))
+	// A node with no recorded source position cannot be anchored.
+	bare := ast.NewLink()
+	bare.Reference = l.Reference
+	_, ok = refUseEdit(bare, bare.Reference, body, splitLines(src), off, "new", newBodyLineIndex(body))
 	assert.False(t, ok)
 }
 
@@ -297,7 +296,7 @@ func TestRefUseEdit_UTF16ColumnsAndMultiLine(t *testing.T) {
 	src := []byte("😀 é [t][docs]\n\n[docs]: u\n")
 	body, off := bodyAndFMOffset(src)
 	l := firstLink(t, parseBody(body))
-	e, ok := refUseEdit(l, body, splitLines(src), off, "new", newBodyLineIndex(body))
+	e, ok := refUseEdit(l, l.Reference, body, splitLines(src), off, "new", newBodyLineIndex(body))
 	require.True(t, ok)
 	assert.Equal(t, 0, e.Range.Start.Line)
 	assert.Equal(t, 9, e.Range.Start.Character)
@@ -307,7 +306,7 @@ func TestRefUseEdit_UTF16ColumnsAndMultiLine(t *testing.T) {
 	wrapped := []byte("[t][two\nwords]\n\n[two words]: u\n")
 	wb, wo := bodyAndFMOffset(wrapped)
 	wl := firstLink(t, parseBody(wb))
-	we, ok := refUseEdit(wl, wb, splitLines(wrapped), wo, "new", newBodyLineIndex(wb))
+	we, ok := refUseEdit(wl, wl.Reference, wb, splitLines(wrapped), wo, "new", newBodyLineIndex(wb))
 	require.True(t, ok)
 	assert.Equal(t, 0, we.Range.Start.Line)
 	assert.Equal(t, 1, we.Range.End.Line)
@@ -320,10 +319,21 @@ func TestLinkTextBounds(t *testing.T) {
 	start, end := linkTextBounds(l, body)
 	assert.Equal(t, "the spec", string(body[start:end]))
 
-	// A link with no text children has no bounds.
+	// Inline markup in the text stays inside the bounds.
+	marked := []byte("[**b** `]`][x]\n\n[x]: u\n")
+	ml := firstLink(t, parseBody(marked))
+	ms, me := linkTextBounds(ml, marked)
+	assert.Equal(t, "**b** `]`", string(marked[ms:me]))
+
+	// An empty-text link has an empty, anchored run.
 	empty := []byte("[][x]\n\n[x]: u\n")
 	el := firstLink(t, parseBody(empty))
 	s, e := linkTextBounds(el, empty)
+	assert.Equal(t, 1, s)
+	assert.Equal(t, 1, e)
+
+	// A node with no recorded position has no bounds.
+	s, e = linkTextBounds(ast.NewLink(), body)
 	assert.Equal(t, -1, s)
 	assert.Equal(t, -1, e)
 }
@@ -333,4 +343,103 @@ func TestBodyNewlineCount(t *testing.T) {
 	assert.Equal(t, 0, bodyNewlineCount([]byte("no newline")))
 	assert.Equal(t, 1, bodyNewlineCount([]byte("a\n")))
 	assert.Equal(t, 3, bodyNewlineCount([]byte("a\n\nb\nc")))
+}
+
+// TestLinkRef_RewritesUsesWithInlineMarkupInText covers reference
+// uses whose display text is not plain text: emphasis, a code span
+// (even one holding a `]`), a nested image, and an image reference.
+// Each use must be rewritten along with the def, or the rename leaves
+// a dangling label behind.
+func TestLinkRef_RewritesUsesWithInlineMarkupInText(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"emphasis", "[**bold**][docs]\n\n[docs]: u\n", "[**bold**][ref]\n\n[ref]: u\n"},
+		{"trailing emphasis", "[a *b*][docs]\n\n[docs]: u\n", "[a *b*][ref]\n\n[ref]: u\n"},
+		{"code span", "[`code`][docs]\n\n[docs]: u\n", "[`code`][ref]\n\n[ref]: u\n"},
+		{"code span with bracket", "[`a]`][docs]\n\n[docs]: u\n", "[`a]`][ref]\n\n[ref]: u\n"},
+		{"nested image", "[![i](x.png)][docs]\n\n[docs]: u\n", "[![i](x.png)][ref]\n\n[ref]: u\n"},
+		{"image full", "![alt][docs]\n\n[docs]: u\n", "![alt][ref]\n\n[ref]: u\n"},
+		{"image shortcut", "![docs]\n\n[docs]: u\n", "![ref]\n\n[ref]: u\n"},
+		{"empty text", "[][docs]\n\n[docs]: u\n", "[][ref]\n\n[ref]: u\n"},
+		{"escaped bracket", "[a\\]b][docs]\n\n[docs]: u\n", "[a\\]b][ref]\n\n[ref]: u\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			edits, err := callLinkRef([]byte(tc.src), "docs", "ref")
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, applyEditsToSource(t, tc.src, edits))
+		})
+	}
+}
+
+func TestInvalidLinkRefRune_TrailingBackslash(t *testing.T) {
+	// A trailing unescaped backslash escapes the closing `]`, so the
+	// def `[foo\]: u` no longer parses.
+	assert.Equal(t, '\\', invalidLinkRefRune(`foo\`))
+	assert.Equal(t, '\\', invalidLinkRefRune(`foo\\\`))
+	// An escaped backslash (even run) and an inner one are fine.
+	assert.Equal(t, rune(0), invalidLinkRefRune(`foo\\`))
+	assert.Equal(t, rune(0), invalidLinkRefRune(`a\b`))
+}
+
+func TestLinkRef_TrailingBackslashRejected(t *testing.T) {
+	_, err := callLinkRef([]byte("[a]\n\n[a]: u\n"), "a", `b\`)
+	var runeErr InvalidLabelRuneError
+	require.ErrorAs(t, err, &runeErr)
+	assert.Equal(t, `label cannot end with an unescaped backslash`, err.Error())
+}
+
+func TestReferenceOf(t *testing.T) {
+	src := []byte("[a][r] ![b][r] [c](u)\n\n[r]: u\n")
+	root := parseBody(src)
+	var refs []*ast.ReferenceLink
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering {
+			refs = append(refs, referenceOf(n))
+		}
+		return ast.WalkContinue, nil
+	})
+	var nonNil int
+	for _, r := range refs {
+		if r != nil {
+			nonNil++
+			assert.Equal(t, "r", string(r.Value))
+		}
+	}
+	// The link and the image carry a reference; the inline link,
+	// text, paragraph, and document do not.
+	assert.Equal(t, 2, nonNil)
+	assert.Nil(t, referenceOf(ast.NewText()))
+}
+
+func TestBalancingBracket(t *testing.T) {
+	cases := []struct {
+		body string
+		want int
+	}{
+		{"[abc]", 4},
+		{"[a [b] c]", 8},
+		{`[a\]b]`, 5},
+		{"[`]`]", 4},
+		{"[``a]``]", 7},
+		{"[unclosed", -1},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, balancingBracket([]byte(tc.body), 1), tc.body)
+	}
+}
+
+func TestCodeSpanEnd(t *testing.T) {
+	assert.Equal(t, 3, codeSpanEnd([]byte("`a`b"), 0))
+	// A shorter inner run does not close a longer opener.
+	assert.Equal(t, 7, codeSpanEnd([]byte("``a`b``"), 0))
+	// A run with no matching closer is literal: skip just the run.
+	assert.Equal(t, 1, codeSpanEnd([]byte("`a"), 0))
+	// A closer past a blank line is in another paragraph.
+	assert.Equal(t, 1, codeSpanEnd([]byte("`a\n\nb`"), 0))
+}
+
+func TestBacktickRun(t *testing.T) {
+	assert.Equal(t, 0, backtickRun([]byte("a`"), 0))
+	assert.Equal(t, 3, backtickRun([]byte("x```y"), 1))
+	assert.Equal(t, 2, backtickRun([]byte("``"), 0))
 }
