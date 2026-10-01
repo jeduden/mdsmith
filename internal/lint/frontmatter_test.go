@@ -3,6 +3,8 @@ package lint
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/yamlutil"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -12,6 +14,31 @@ import (
 // live there as TestStripFrontMatter / TestCountLines. The lint-owned
 // YAML decoders ParseFrontMatterKinds / ParseFrontMatterFields are
 // tested below.
+
+func TestFrontMatterYAML(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"nil", "", ""},
+		{"typical block", "---\ntitle: hi\n---\n", "title: hi\n"},
+		{"empty block", "---\n---\n", ""},
+		{
+			"inner fence in block scalar kept",
+			"---\nnotes: |\n  a\n  ---\n  b\n---\n",
+			"notes: |\n  a\n  ---\n  b\n",
+		},
+		{"no delimiters passes through", "title: hi\n", "title: hi\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, string(FrontMatterYAML([]byte(tt.input))))
+		})
+	}
+}
 
 func TestParseFrontMatterKinds(t *testing.T) {
 	tests := []struct {
@@ -73,6 +100,99 @@ func TestParseFrontMatterKinds(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// TestParseFrontMatterKinds_KeySpellings pins which spellings of
+// the kinds key the engine reads. The `kinds:` fast path is part of
+// the contract: a block without those bytes yields no kinds, even
+// when YAML would decode some other spelling to the same key.
+func TestParseFrontMatterKinds_KeySpellings(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name, input string
+		want        []string
+	}{
+		{"merge key", "---\n<<: {kinds: [m]}\n---\n", []string{"m"}},
+		{"typed scalars kept as text", "---\nkinds: [a, 42]\n---\n", []string{"a", "42"}},
+		{"quoted key not read", "---\n\"kinds\": [a]\n---\n", nil},
+		{"escaped key not read", "---\n\"kind\\x73\": [a]\n---\n", nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ParseFrontMatterKinds([]byte(tt.input))
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestParseFrontMatterKinds_LenientWithoutKindsKey: a block that
+// only mentions the word "kinds" in a value must not be decoded, so
+// its YAML errors never abort the file.
+func TestParseFrontMatterKinds_LenientWithoutKindsKey(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{
+		"---\nsummary: all kinds of things\ntags: a\ntags: b\n---\n",
+		"---\n- all kinds\n---\n",
+	} {
+		got, err := ParseFrontMatterKinds([]byte(in))
+		require.NoError(t, err, in)
+		assert.Nil(t, got, in)
+	}
+}
+
+// TestParseFrontMatterKinds_DecodePanicIsError: yaml.v3 panics with
+// a runtime error when a mapping holds both a complex key and a
+// merge key. The parser must report an error, not crash.
+func TestParseFrontMatterKinds_DecodePanicIsError(t *testing.T) {
+	t.Parallel()
+	in := "---\n? [a, b]\n: c\n<<: {x: y}\nkinds: [a]\n---\n"
+	var got []string
+	var err error
+	require.NotPanics(t, func() { got, err = ParseFrontMatterKinds([]byte(in)) })
+	assert.Error(t, err)
+	assert.Nil(t, got)
+}
+
+// TestFrontMatterKindsFromNode: decoding kinds from an already
+// parsed node gives what ParseFrontMatterKinds gives for the same
+// block, including the `kinds:` byte gate and the error cases.
+func TestFrontMatterKindsFromNode(t *testing.T) {
+	t.Parallel()
+	cases := []string{
+		"---\nkinds: [plan, doc]\n---\n",
+		"---\n<<: {kinds: [plan]}\n---\n",
+		"---\nkinds: [42, true]\n---\n",
+		"---\ntitle: x\n---\n",
+		"---\ntitle: kinds\nkinds:\n---\n",
+		"---\n\"kinds\": [plan]\n---\n",
+		"---\nkinds: plan\n---\n",
+		"---\nkinds: [a]\nkinds: [b]\n---\n",
+		"---\n? [a, b]\n: c\n<<: {kinds: [x]}\n---\n",
+		"---\n---\n",
+		"---\n# kinds: only a comment\n---\n",
+	}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			t.Parallel()
+			body := FrontMatterYAML([]byte(in))
+			doc, err := yamlutil.UnmarshalNodeSafe(body)
+			require.NoError(t, err)
+			want, wantErr := ParseFrontMatterKinds([]byte(in))
+			var got []string
+			var gotErr error
+			require.NotPanics(t, func() { got, gotErr = FrontMatterKindsFromNode(body, &doc) })
+			assert.Equal(t, want, got)
+			assert.Equal(t, wantErr != nil, gotErr != nil, "error: want %v, got %v", wantErr, gotErr)
+		})
+	}
+
+	t.Run("nil node", func(t *testing.T) {
+		t.Parallel()
+		got, err := FrontMatterKindsFromNode([]byte("kinds: [a]\n"), nil)
+		assert.NoError(t, err)
+		assert.Nil(t, got)
+	})
 }
 
 func TestUnmarshalFrontMatter(t *testing.T) {

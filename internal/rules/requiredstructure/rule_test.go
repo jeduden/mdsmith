@@ -1368,6 +1368,19 @@ func TestCheck_FrontMatterAnchorRejected(t *testing.T) {
 	expectDiagMsg(t, diags, "anchors/aliases are not permitted")
 }
 
+// TestCheck_FrontMatterDecodePanicIsDiagnostic: a mapping with both a
+// complex key and a merge key makes yaml.v3 panic while decoding into
+// a map. The rule must report invalid front matter, not crash.
+func TestCheck_FrontMatterDecodePanicIsDiagnostic(t *testing.T) {
+	schemaPath := writeSchema(t, "---\nid: 'int'\n---\n# ?\n")
+	r := &Rule{Schema: schemaPath}
+	f := newTestFile(t, "doc.md",
+		"---\n? [a, b]\n: c\n<<: {x: y}\n---\n# Title\n")
+	var diags []lint.Diagnostic
+	require.NotPanics(t, func() { diags = r.Check(f) })
+	expectDiagMsg(t, diags, "front matter: invalid YAML")
+}
+
 func TestDeriveFrontMatterCUE_AnchorRejected(t *testing.T) {
 	yml := []byte("base: &base\n  id: 1\n")
 	_, _, _, err := deriveFrontMatterCUE(yml)
@@ -1585,66 +1598,6 @@ func TestCueExprForValue_UnsupportedStruct(t *testing.T) {
 	_, err := cueExprForValue(struct{}{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported schema value type")
-}
-
-// =====================================================================
-// Phase 4 coverage: extractYAML
-// =====================================================================
-
-func TestExtractYAML_NormalCase(t *testing.T) {
-	input := []byte("---\nkey: value\n---\n")
-	result := extractYAML(input)
-	assert.Equal(t, []byte("key: value\n"), result)
-}
-
-func TestExtractYAML_Normal(t *testing.T) {
-	input := []byte("---\ntitle: hello\nauthor: world\n---\n")
-	got := extractYAML(input)
-	assert.Equal(t, "title: hello\nauthor: world\n", string(got))
-}
-
-func TestExtractYAML_ClosingWithoutNewline(t *testing.T) {
-	input := []byte("---\nkey: value\n---")
-	result := extractYAML(input)
-	assert.Equal(t, []byte("key: value\n"), result)
-}
-
-func TestExtractYAML_NoTrailingNewline(t *testing.T) {
-	input := []byte("---\ntitle: hello\n---")
-	got := extractYAML(input)
-	assert.Equal(t, "title: hello\n", string(got))
-}
-
-func TestExtractYAML_NoClosingDelimiter(t *testing.T) {
-	input := []byte("---\nkey: value\n")
-	result := extractYAML(input)
-	assert.Nil(t, result)
-}
-
-func TestExtractYAML_UnclosedFrontMatter(t *testing.T) {
-	input := []byte("---\ntitle: hello\n")
-	got := extractYAML(input)
-	assert.Nil(t, got, "unclosed front matter should return nil")
-}
-
-// TestExtractYAML_BlockScalarFenceSequence regresses a Copilot
-// review observation: a YAML block-scalar value (e.g. `notes:
-// |`) can contain the literal `---\n` sequence inside its body.
-// The earlier strings.Index search would truncate at the first
-// match; TrimSuffix on the canonical closing fence keeps the
-// full body intact.
-func TestExtractYAML_BlockScalarFenceSequence(t *testing.T) {
-	input := []byte(
-		"---\n" +
-			"id: 1\n" +
-			"notes: |\n" +
-			"  ---\n" +
-			"  more text\n" +
-			"status: open\n" +
-			"---\n")
-	got := extractYAML(input)
-	want := "id: 1\nnotes: |\n  ---\n  more text\nstatus: open\n"
-	assert.Equal(t, want, string(got))
 }
 
 // =====================================================================
@@ -1995,15 +1948,6 @@ func TestValidateFrontMatterCUE_NonMarshalableFrontMatter(t *testing.T) {
 		map[string]any{"ch": make(chan int)})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported front-matter value")
-}
-
-// readDocFrontMatterRaw: extractYAML returns nil when FrontMatter has no closing delimiter
-func TestReadDocFrontMatterRaw_ExtractYAMLNil(t *testing.T) {
-	// Manually set FrontMatter to content without proper --- delimiter pair.
-	f := &lint.File{FrontMatter: []byte("no-closing-delimiter content")}
-	raw, diags := readDocFrontMatterRaw(f)
-	assert.Nil(t, raw)
-	assert.Nil(t, diags)
 }
 
 // checkBodySync: headingIdx+1 < len(allHeadings) constrains endLine

@@ -238,6 +238,22 @@ func TestDiscoverKinds_RejectsYAMLAnchors(t *testing.T) {
 	assert.Contains(t, err.Error(), "anchors/aliases")
 }
 
+// TestDiscoverKinds_DecodePanicIsError: a complex key next to a merge
+// key makes yaml.v3 panic in a strict decode. A kind file must fail
+// with an error naming the file, not crash the process.
+func TestDiscoverKinds_DecodePanicIsError(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".mdsmith", "kinds"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, ".mdsmith", "kinds", "foo.yaml"),
+		[]byte("? [a, b]\n: c\n<<: {x: y}\n"), 0o644))
+
+	var err error
+	require.NotPanics(t, func() { _, err = discoverKinds(dir) })
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "foo.yaml")
+}
+
 // TestDiscoverKinds_RejectsKindFileWithBadYAML pins the
 // decode-error path: a `.mdsmith/kinds/<name>.yaml` whose body
 // is not valid YAML surfaces the parse error with the file

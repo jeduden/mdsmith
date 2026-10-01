@@ -27,7 +27,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
-	"gopkg.in/yaml.v3"
 )
 
 func init() {
@@ -668,7 +667,7 @@ func schemaDataDeclaresExtends(data []byte) bool {
 	if prefix == nil {
 		return false
 	}
-	yamlBytes := extractYAML(prefix)
+	yamlBytes := lint.FrontMatterYAML(prefix)
 	var raw map[string]any
 	if err := yamlutil.UnmarshalSafe(yamlBytes, &raw); err != nil {
 		return false
@@ -1213,7 +1212,7 @@ func parseSchemaFrontMatter(prefix []byte, cache *lint.RunCache) (schemaConfig, 
 	if prefix == nil {
 		return cfg, nil
 	}
-	yamlBytes := extractYAML(prefix)
+	yamlBytes := lint.FrontMatterYAML(prefix)
 	derivedSchema, perKey, meta, err := deriveFrontMatterCUE(yamlBytes)
 	if err != nil {
 		return cfg, err
@@ -2513,19 +2512,15 @@ func readDocFrontMatterRaw(f *lint.File) (map[string]any, []lint.Diagnostic) {
 		return nil, nil
 	}
 
-	yamlBytes := extractYAML(f.FrontMatter)
-	if yamlBytes == nil {
-		return nil, nil
-	}
-
-	if err := yamlutil.RejectYAMLAliases(yamlBytes); err != nil {
-		return nil, []lint.Diagnostic{makeDiag(f.Path, schema.NonBodyDiagLine(f),
-			fmt.Sprintf("front matter: %v", err))}
-	}
+	yamlBytes := lint.FrontMatterYAML(f.FrontMatter)
 	var raw map[string]any
-	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
+	if err := yamlutil.UnmarshalSafe(yamlBytes, &raw); err != nil {
+		format := "front matter: invalid YAML: %v"
+		if errors.Is(err, yamlutil.ErrAliases) {
+			format = "front matter: %v"
+		}
 		return nil, []lint.Diagnostic{makeDiag(f.Path, schema.NonBodyDiagLine(f),
-			fmt.Sprintf("front matter: invalid YAML: %v", err))}
+			fmt.Sprintf(format, err))}
 	}
 	return raw, nil
 }
@@ -2540,25 +2535,6 @@ func frontMatterParseErr(fmDiags []lint.Diagnostic) error {
 		return nil
 	}
 	return errors.New(fmDiags[0].Message)
-}
-
-// extractYAML extracts the YAML content between --- delimiters.
-// The closing fence is removed via TrimSuffix on the canonical
-// `---\n` (or bare `---` for blocks that omit the trailing
-// newline) rather than a strings.Index scan, so a YAML block
-// scalar value (e.g. `notes: |\n  ---\n`) that legitimately
-// contains the same sequence inside its body cannot truncate
-// the YAML early. A block that carries no recognisable fence at
-// all returns nil so the caller short-circuits on bad input.
-func extractYAML(fmBlock []byte) []byte {
-	body := bytes.TrimPrefix(fmBlock, []byte("---\n"))
-	switch {
-	case bytes.HasSuffix(body, []byte("---\n")):
-		return body[:len(body)-len("---\n")]
-	case bytes.HasSuffix(body, []byte("---")):
-		return body[:len(body)-len("---")]
-	}
-	return nil
 }
 
 // findRequireDirectiveLine returns the 1-based line number of the first

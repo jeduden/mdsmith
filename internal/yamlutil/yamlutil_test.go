@@ -1,6 +1,8 @@
 package yamlutil_test
 
 import (
+	"errors"
+	"io"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/yamlutil"
@@ -50,7 +52,77 @@ func TestRejectYAMLAliases(t *testing.T) {
 	}
 }
 
+// TestErrAliases: every helper's alias rejection is ErrAliases, so a
+// caller can word it apart from other parse errors with errors.Is.
+func TestErrAliases(t *testing.T) {
+	t.Parallel()
+	anchored := []byte("base: &base\n  id: 1\n")
+	undefined := []byte("child: *missing\n")
+
+	var m map[string]any
+	assert.True(t, errors.Is(yamlutil.UnmarshalSafe(anchored, &m), yamlutil.ErrAliases))
+	assert.True(t, errors.Is(yamlutil.UnmarshalSafe(undefined, &m), yamlutil.ErrAliases))
+	_, err := yamlutil.UnmarshalNodeSafe(anchored)
+	assert.True(t, errors.Is(err, yamlutil.ErrAliases))
+	assert.True(t, errors.Is(yamlutil.RejectYAMLAliases(anchored), yamlutil.ErrAliases))
+	assert.True(t, errors.Is(yamlutil.RejectYAMLAliases(undefined), yamlutil.ErrAliases))
+
+	assert.False(t, errors.Is(yamlutil.UnmarshalSafe([]byte("a: [\n"), &m), yamlutil.ErrAliases))
+}
+
+// TestUnmarshalStrictSafe covers the strict decode used for kind,
+// convention, and word-list files.
+func TestUnmarshalStrictSafe(t *testing.T) {
+	t.Parallel()
+	type body struct {
+		A string `yaml:"a"`
+	}
+	t.Run("decodes", func(t *testing.T) {
+		t.Parallel()
+		var b body
+		require.NoError(t, yamlutil.UnmarshalStrictSafe([]byte("a: x\n"), &b))
+		assert.Equal(t, "x", b.A)
+	})
+	t.Run("unknown field", func(t *testing.T) {
+		t.Parallel()
+		var b body
+		assert.ErrorContains(t, yamlutil.UnmarshalStrictSafe([]byte("b: x\n"), &b), "not found")
+	})
+	t.Run("aliases", func(t *testing.T) {
+		t.Parallel()
+		var b body
+		err := yamlutil.UnmarshalStrictSafe([]byte("a: &x y\n"), &b)
+		assert.True(t, errors.Is(err, yamlutil.ErrAliases))
+	})
+	t.Run("empty is io.EOF", func(t *testing.T) {
+		t.Parallel()
+		var b body
+		err := yamlutil.UnmarshalStrictSafe([]byte("# only a comment\n"), &b)
+		assert.True(t, errors.Is(err, io.EOF))
+	})
+	t.Run("panic becomes error", func(t *testing.T) {
+		t.Parallel()
+		var b body
+		var err error
+		require.NotPanics(t, func() {
+			err = yamlutil.UnmarshalStrictSafe([]byte("? [a, b]\n: c\n<<: {x: y}\n"), &b)
+		})
+		assert.ErrorContains(t, err, "unhashable")
+	})
+}
+
 func TestUnmarshalSafe(t *testing.T) {
+	// yaml.v3 panics with "hash of unhashable type" when a mapping
+	// holds both a complex key and a merge key and the target is a
+	// struct or map. UnmarshalSafe must turn that into an error.
+	t.Run("decode panic becomes error", func(t *testing.T) {
+		in := []byte("? [a, b]\n: c\n<<: {x: y}\nkinds: [a]\n")
+		var m map[string]any
+		var err error
+		require.NotPanics(t, func() { err = yamlutil.UnmarshalSafe(in, &m) })
+		assert.ErrorContains(t, err, "unhashable")
+	})
+
 	t.Run("unmarshals clean YAML into struct", func(t *testing.T) {
 		var out struct {
 			Title string `yaml:"title"`

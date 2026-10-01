@@ -94,6 +94,7 @@ None.
   the duplicate YAML-parse logic can also drift from
   `frontMatterAll`'s behavior with nothing in the real build
   path to catch it — [plan/2609271913][2609271913].
+  Resolved: the helpers and their coverage-only tests are gone.
 
 ### nice-to-have (2026-09-27)
 

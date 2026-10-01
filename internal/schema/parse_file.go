@@ -1,7 +1,6 @@
 package schema
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -214,7 +213,7 @@ func parseFileFrontmatter(prefix []byte, sch *Schema) (string, error) {
 	if prefix == nil {
 		return "", nil
 	}
-	body := stripDelimiters(prefix)
+	body := lint.FrontMatterYAML(prefix)
 	if len(body) == 0 {
 		return "", nil
 	}
@@ -312,21 +311,6 @@ func extractExtendsKey(raw map[string]any) (string, error) {
 			"schema frontmatter `extends:` must be a non-empty path; got %q", s)
 	}
 	return trimmed, nil
-}
-
-// stripDelimiters returns the YAML body between a front-matter
-// block's "---\n" delimiters. The caller (parseFileFrontmatter)
-// receives prefix bytes produced by lint.StripFrontMatter, which
-// guarantees the block is bracketed by "---\n" on both ends.
-//
-// The closing fence is removed via TrimSuffix rather than a
-// strings.Index scan: searching for the first "---\n" anywhere
-// in the body would truncate the YAML early if a block-scalar
-// value (e.g. `notes: |`) legitimately contained the same
-// sequence on one of its indented lines.
-func stripDelimiters(fm []byte) []byte {
-	s := bytes.TrimPrefix(fm, []byte("---\n"))
-	return bytes.TrimSuffix(s, []byte("---\n"))
 }
 
 // extractRequireFilename walks the schema AST for a <?require?> PI

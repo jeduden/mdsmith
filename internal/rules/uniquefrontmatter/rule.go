@@ -7,7 +7,6 @@
 package uniquefrontmatter
 
 import (
-	"bytes"
 	"fmt"
 	"io/fs"
 	"os"
@@ -298,9 +297,7 @@ func (r *Rule) fieldValue(
 	if prefix == nil {
 		return "", 0, false
 	}
-	delim := []byte("---\n")
-	body := bytes.TrimSuffix(bytes.TrimPrefix(prefix, delim), delim)
-	doc, err := yamlutil.UnmarshalNodeSafe(body)
+	doc, err := yamlutil.UnmarshalNodeSafe(lint.FrontMatterYAML(prefix))
 	if err != nil {
 		return "", 0, false
 	}

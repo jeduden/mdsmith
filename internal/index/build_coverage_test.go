@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -36,43 +37,169 @@ func TestFrontMatterAll_SkipsEmptyAndNonScalarKeys(t *testing.T) {
 	assert.Equal(t, "real", syms[0].Name)
 }
 
-// TestFrontMatterKindsList_NonSequence covers the
-// `v.Kind != SequenceNode` early-return branch. A scalar `kinds:
-// guide` value yields no list entries.
-func TestFrontMatterKindsList_NonSequence(t *testing.T) {
-	t.Parallel()
-	assert.Nil(t, frontMatterKindsList(nil),
-		"nil value node short-circuits to nil")
-	assert.Nil(t, frontMatterKindsList(&yaml.Node{Kind: yaml.ScalarNode, Value: "x"}),
-		"scalar value short-circuits to nil — the front-matter walk")
-}
+// The TestFrontMatterAll_* tests below port the YAML edge cases the
+// removed single-purpose helpers (frontMatterScalar,
+// frontMatterStringList, frontMatterSymbols) used to cover, plus the
+// title and kinds cases where the index must agree with the engine's
+// front-matter decoders.
 
-// TestFrontMatterKindsList_NonScalarItem covers the
-// `item.Kind != ScalarNode` skip branch — a mapping entry in a
-// kinds: list is filtered out without crashing.
-func TestFrontMatterKindsList_NonScalarItem(t *testing.T) {
+// TestFrontMatterAll_UnusableInput covers inputs that yield no
+// symbols, title, or kinds at all.
+func TestFrontMatterAll_UnusableInput(t *testing.T) {
 	t.Parallel()
-	mapping := &yaml.Node{Kind: yaml.MappingNode}
-	str := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "ok"}
-	seq := &yaml.Node{
-		Kind:    yaml.SequenceNode,
-		Content: []*yaml.Node{mapping, str},
+	for _, tc := range []struct{ name, src string }{
+		{"nil input", ""},
+		{"invalid yaml", "---\nthis: is\n  not: valid yaml\nxx: [\n---\n"},
+		{"tagged scalar document", "---\n!!invalid\n---\n"},
+		{"sequence document", "---\n- item\n- another\n---\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			syms, title, kinds := frontMatterAll("a.md", []byte(tc.src))
+			assert.Nil(t, syms)
+			assert.Empty(t, title)
+			assert.Nil(t, kinds)
+		})
 	}
-	got := frontMatterKindsList(seq)
-	assert.Equal(t, []string{"ok"}, got)
 }
 
-// TestFrontMatterKindsList_NonStringTaggedItem covers the
-// `item.Tag != "" && item.Tag != "!!str"` skip branch — a YAML
-// integer in a kinds: list is filtered out so callers see only
-// string entries (matches the previous map[string]any path that
-// dropped non-strings via type assertion).
-func TestFrontMatterKindsList_NonStringTaggedItem(t *testing.T) {
+// TestFrontMatterAll_MissingTitleAndKinds covers a mapping with
+// neither key: the outline symbol survives, title and kinds do not.
+func TestFrontMatterAll_MissingTitleAndKinds(t *testing.T) {
 	t.Parallel()
-	// `- 42` in YAML resolves to Tag "!!int"; `- "real"` is "!!str".
-	src := []byte("---\nkinds:\n  - 42\n  - real\n---\n")
-	_, _, kinds := frontMatterAll("a.md", src)
-	assert.Equal(t, []string{"real"}, kinds)
+	syms, title, kinds := frontMatterAll("a.md", []byte("---\nfoo: bar\n---\n"))
+	require.Len(t, syms, 1)
+	assert.Equal(t, "foo", syms[0].Name)
+	assert.Empty(t, title)
+	assert.Nil(t, kinds)
+}
+
+// TestFrontMatterAll_Kinds checks the kinds list against what
+// lint.ParseFrontMatterKinds (a []string decode) would report.
+func TestFrontMatterAll_Kinds(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, src string
+		want      []string
+	}{
+		{"non-list value", "kinds: hello", nil},
+		{"typed scalars kept as text", "kinds:\n  - a\n  - 42\n  - b", []string{"a", "42", "b"}},
+		{"mapping entry rejects the list", "kinds:\n  - a\n  - {x: y}", nil},
+		{"merge key", "<<: {kinds: [m]}", []string{"m"}},
+		// lint.ParseFrontMatterKinds reads only the bytes `kinds:`;
+		// the index must not report kinds the engine never applies.
+		{"quoted key not read", "\"kinds\": [a]", nil},
+		{"escaped key not read", "\"kind\\x73\": [a]", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, kinds := frontMatterAll("a.md", []byte("---\n"+tc.src+"\n---\n"))
+			assert.Equal(t, tc.want, kinds)
+		})
+	}
+}
+
+// TestFrontMatterAll_Title checks the title text for each scalar
+// shape. Typed scalars keep their source text; the removed
+// frontMatterScalar formatted a timestamp as RFC 3339 instead.
+func TestFrontMatterAll_Title(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{"non-scalar", "title: [a, b]", ""},
+		{"null", "title: null", ""},
+		{"tilde", "title: ~", ""},
+		{"empty", "title:", ""},
+		{"block scalar collapses whitespace", "title: |\n  multi\n  line", "multi line"},
+		{"int", "title: 42", "42"},
+		{"float", "title: 3.14", "3.14"},
+		{"uint64", "title: 18446744073709551615", "18446744073709551615"},
+		{"bool", "title: true", "true"},
+		{"timestamp", "title: 2024-01-15", "2024-01-15"},
+		// The engine's map decode applies a merge key, so a title
+		// supplied only through `<<` is the file's title too.
+		{"merge key", "<<: {title: Merged}", "Merged"},
+		{"merge key list", "<<: [{title: First}, {title: Second}]", "First"},
+		{"explicit title beats merge", "<<: {title: M}\ntitle: E", "E"},
+		{"null merged title", "<<: {title: null}", ""},
+		{"merge key without title", "<<: {x: y}", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, title, _ := frontMatterAll("a.md", []byte("---\n"+tc.src+"\n---\n"))
+			assert.Equal(t, tc.want, title)
+		})
+	}
+}
+
+// TestFrontMatterAll_DuplicateKeys: a duplicated title key has no
+// single value, so the index shows no title. Other duplicates leave
+// the title alone. Kinds follow lint.ParseFrontMatterKinds, which
+// rejects a duplicate key only when the block declares kinds.
+func TestFrontMatterAll_DuplicateKeys(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, src string
+		nSyms     int
+		title     string
+		kinds     []string
+	}{
+		{"title and kinds", "title: hi\ntitle: bye\nkinds: [a]\nkinds: [b]", 4, "", nil},
+		{"unrelated key keeps title", "title: Notes\ntags: a\ntags: b", 3, "Notes", nil},
+		{"empty keys with kinds", "\"\": x\n\"\": y\ntitle: t\nkinds: [a]", 2, "t", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			syms, title, kinds := frontMatterAll("a.md", []byte("---\n"+tc.src+"\n---\n"))
+			assert.Len(t, syms, tc.nSyms)
+			assert.Equal(t, tc.title, title)
+			assert.Equal(t, tc.kinds, kinds)
+		})
+	}
+}
+
+// TestFrontMatterAll_DecodePanicInput: a complex key next to a merge
+// key makes yaml.v3's struct decode panic; the index must survive.
+func TestFrontMatterAll_DecodePanicInput(t *testing.T) {
+	t.Parallel()
+	src := []byte("---\n? [a, b]\n: c\n<<: {x: y}\ntitle: T\nkinds: [a]\n---\n")
+	var title string
+	var kinds []string
+	require.NotPanics(t, func() { _, title, kinds = frontMatterAll("a.md", src) })
+	assert.Equal(t, "T", title)
+	assert.Nil(t, kinds)
+}
+
+// TestFrontMatterTitle covers the display-text rules for a title
+// value node directly.
+func TestFrontMatterTitle(t *testing.T) {
+	t.Parallel()
+	scalar := func(tag, v string) *yaml.Node {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: v}
+	}
+	for _, tc := range []struct {
+		name string
+		node *yaml.Node
+		want string
+	}{
+		{"absent", &yaml.Node{}, ""},
+		{"sequence", &yaml.Node{Kind: yaml.SequenceNode}, ""},
+		{"null", scalar("!!null", "null"), ""},
+		{"plain", scalar("!!str", "Hello world"), "Hello world"},
+		{"newlines", scalar("!!str", "multi\nline\n"), "multi line"},
+		{"double space", scalar("!!str", "a  b"), "a b"},
+		{"edge spaces", scalar("!!str", " a b "), "a b"},
+		{"line separator", scalar("!!str", "a\u2028b"), "a b"},
+		{"next line", scalar("!!str", "a\u0085b"), "a b"},
+		{"no-break space", scalar("!!str", "a\u00a0b"), "a b"},
+		{"binary", scalar("!!binary", "SGVsbG8gd29ybGQ="), "Hello world"},
+		{"binary bad base64", scalar("!!binary", "%%%"), ""},
+		{"binary not UTF-8", scalar("!!binary", "/w=="), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, frontMatterTitle(tc.node))
+		})
+	}
 }
 
 // TestRefDefRegexpMatches covers the exported wrapper that lets the
@@ -232,4 +359,46 @@ func TestCollectDirectiveEdges_BuildInputs(t *testing.T) {
 	require.NotNil(t, resolved, "expected a resolved build edge for src.svg")
 	assert.Equal(t, "dir/doc.md", resolved.SourceFile)
 	assert.Equal(t, "dir/src.svg", resolved.TargetFile)
+}
+
+// TestNeedsSpaceCollapse covers each whitespace shape that forces a
+// collapse and the common single-spaced title that does not.
+func TestNeedsSpaceCollapse(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"", false},
+		{"word", false},
+		{"two words", false},
+		{" lead", true},
+		{"trail ", true},
+		{"a  b", true},
+		{"a\tb", true},
+		{"a\u2028b", true},
+	} {
+		assert.Equal(t, tc.want, needsSpaceCollapse(tc.in), "%q", tc.in)
+	}
+}
+
+// TestMergedTitle covers the merge-key title decode directly: a
+// merged title, a merged null, a mapping with no title, and a decode
+// error (a duplicate key), which yields no title as it does for the
+// engine's map decode.
+func TestMergedTitle(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{"merged", "<<: {title: \"  Merged  title \"}\n", "Merged title"},
+		{"merged null", "<<: {title: ~}\n", ""},
+		{"no title", "<<: {x: y}\n", ""},
+		{"duplicate key", "<<: {title: T}\nx: 1\nx: 2\n", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			doc, err := yamlutil.UnmarshalNodeSafe([]byte(tc.src))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, mergedTitle(&doc))
+		})
+	}
 }

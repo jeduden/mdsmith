@@ -6,6 +6,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/jeduden/mdsmith/pkg/markdown"
+	"gopkg.in/yaml.v3"
 )
 
 // StripFrontMatter removes YAML front matter delimited by "---\n"
@@ -17,6 +18,18 @@ func StripFrontMatter(source []byte) (prefix, content []byte) {
 	return markdown.StripFrontMatter(source)
 }
 
+// FrontMatterYAML returns the YAML body of a front-matter block
+// (as returned by StripFrontMatter) with its opening and closing
+// "---\n" fences removed. The closing fence is removed with a
+// suffix trim, not a search, so a "---" line inside a block-scalar
+// value is never mistaken for the fence. Input without fences
+// passes through unchanged. Decoders that take a StripFrontMatter
+// prefix call this instead of repeating the trim.
+func FrontMatterYAML(fm []byte) []byte {
+	delim := []byte("---\n")
+	return bytes.TrimSuffix(bytes.TrimPrefix(fm, delim), delim)
+}
+
 // UnmarshalFrontMatter strips the leading YAML front matter block off
 // source, decodes it into v via yamlutil.UnmarshalSafe, and returns
 // the body with the block removed. hadFrontMatter reports whether
@@ -25,16 +38,12 @@ func StripFrontMatter(source []byte) (prefix, content []byte) {
 // to distinguish "no front matter" from "front matter with no
 // recognised keys" (typos, schema mismatch) use hadFrontMatter rather
 // than inspecting v's zero state, which conflates the two.
-// Centralises the "---\n" delimiter trim that several call sites
-// were repeating after StripFrontMatter.
 func UnmarshalFrontMatter(source []byte, v any) (body []byte, hadFrontMatter bool, err error) {
 	prefix, content := markdown.StripFrontMatter(source)
 	if prefix == nil {
 		return content, false, nil
 	}
-	delim := []byte("---\n")
-	yamlBody := bytes.TrimPrefix(prefix, delim)
-	yamlBody = bytes.TrimSuffix(yamlBody, delim)
+	yamlBody := FrontMatterYAML(prefix)
 	if err := yamlutil.UnmarshalSafe(yamlBody, v); err != nil {
 		return content, true, err
 	}
@@ -50,25 +59,47 @@ func CountLines(b []byte) int {
 // ParseFrontMatterKinds extracts the kinds: list from a YAML front-matter
 // block (including its --- delimiters). Returns nil kinds and nil error if
 // the block is nil or the kinds key is absent. Returns an error if the
-// YAML contains anchors/aliases or cannot be parsed.
+// YAML contains anchors/aliases, has a duplicate top-level key, or
+// cannot be parsed, or if kinds: is not a list of scalars. Entries
+// decode as yaml.v3 decodes a []string: `- 42` becomes "42".
+//
+// The key is read only when the block contains the bytes `kinds:`.
+// This fast path is part of the contract: a block that merely
+// mentions the word elsewhere is never decoded, so its YAML errors
+// do not abort the file. Spellings without those bytes (`"kinds":`,
+// `kinds :`, escapes) are not read. The workspace index applies the
+// same rule through FrontMatterKindsFromNode.
 func ParseFrontMatterKinds(fm []byte) ([]string, error) {
 	if len(fm) == 0 {
 		return nil, nil
 	}
-	// Strip the leading and trailing --- delimiters to get raw YAML.
-	delim := []byte("---\n")
-	body := bytes.TrimPrefix(fm, delim)
-	body = bytes.TrimSuffix(body, delim)
-
-	// Fast path: skip full YAML decode when no "kinds:" key is present.
-	if !bytes.Contains(body, []byte("kinds:")) {
+	body := FrontMatterYAML(fm)
+	if !bytes.Contains(body, kindsKey) {
 		return nil, nil
 	}
+	doc, err := yamlutil.UnmarshalNodeSafe(body)
+	if err != nil {
+		return nil, err
+	}
+	return FrontMatterKindsFromNode(body, &doc)
+}
 
+// kindsKey is the byte gate ParseFrontMatterKinds documents.
+var kindsKey = []byte("kinds:")
+
+// FrontMatterKindsFromNode is ParseFrontMatterKinds for a caller
+// that has already parsed body, the FrontMatterYAML of the block,
+// into doc with yamlutil.UnmarshalNodeSafe. It applies the same
+// `kinds:` byte gate and the same decode without parsing body a
+// second time. A nil or empty doc has no kinds.
+func FrontMatterKindsFromNode(body []byte, doc *yaml.Node) ([]string, error) {
+	if doc == nil || len(doc.Content) == 0 || !bytes.Contains(body, kindsKey) {
+		return nil, nil
+	}
 	var parsed struct {
 		Kinds []string `yaml:"kinds"`
 	}
-	if err := yamlutil.UnmarshalSafe(body, &parsed); err != nil {
+	if err := yamlutil.DecodeNodeSafe(doc, &parsed); err != nil {
 		return nil, err
 	}
 	return parsed.Kinds, nil
@@ -86,9 +117,7 @@ func ParseFrontMatterFields(fm []byte) (map[string]any, error) {
 	if len(fm) == 0 {
 		return nil, nil
 	}
-	delim := []byte("---\n")
-	body := bytes.TrimPrefix(fm, delim)
-	body = bytes.TrimSuffix(body, delim)
+	body := FrontMatterYAML(fm)
 	if len(bytes.TrimSpace(body)) == 0 {
 		return nil, nil
 	}
