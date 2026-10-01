@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -114,6 +115,13 @@ func TestFrontMatterAll_Title(t *testing.T) {
 		{"uint64", "title: 18446744073709551615", "18446744073709551615"},
 		{"bool", "title: true", "true"},
 		{"timestamp", "title: 2024-01-15", "2024-01-15"},
+		// The engine's map decode applies a merge key, so a title
+		// supplied only through `<<` is the file's title too.
+		{"merge key", "<<: {title: Merged}", "Merged"},
+		{"merge key list", "<<: [{title: First}, {title: Second}]", "First"},
+		{"explicit title beats merge", "<<: {title: M}\ntitle: E", "E"},
+		{"null merged title", "<<: {title: null}", ""},
+		{"merge key without title", "<<: {x: y}", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -371,5 +379,26 @@ func TestNeedsSpaceCollapse(t *testing.T) {
 		{"a\u2028b", true},
 	} {
 		assert.Equal(t, tc.want, needsSpaceCollapse(tc.in), "%q", tc.in)
+	}
+}
+
+// TestMergedTitle covers the merge-key title decode directly: a
+// merged title, a merged null, a mapping with no title, and a decode
+// error (a duplicate key), which yields no title as it does for the
+// engine's map decode.
+func TestMergedTitle(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{"merged", "<<: {title: \"  Merged  title \"}\n", "Merged title"},
+		{"merged null", "<<: {title: ~}\n", ""},
+		{"no title", "<<: {x: y}\n", ""},
+		{"duplicate key", "<<: {title: T}\nx: 1\nx: 2\n", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			doc, err := yamlutil.UnmarshalNodeSafe([]byte(tc.src))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, mergedTitle(&doc))
+		})
 	}
 }

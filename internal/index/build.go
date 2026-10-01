@@ -282,8 +282,10 @@ func lineOfOffset(source []byte, offset int) int {
 // symbol index has to match.
 //
 // A title key that appears twice has no single value, so it yields
-// no title. Kinds come from lint.FrontMatterKindsFromNode, the
-// engine's own decode applied to the node parsed here, so the index
+// no title. A title supplied only through a merge (`<<`) key is
+// read from the parsed node by mergedTitle. Kinds come from
+// lint.FrontMatterKindsFromNode, the engine's own decode applied
+// to the node parsed here, so the index
 // never reports a kind the engine would not apply and the YAML is
 // parsed only once. It runs only when the walk saw a `kinds` or
 // merge (`<<`) key, the only keys that can carry kinds.
@@ -301,7 +303,7 @@ func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, ki
 		return nil, "", nil
 	}
 	syms = make([]Symbol, 0, len(mapping.Content)/2)
-	titles, mayHaveKinds := 0, false
+	titles, sawMerge, mayHaveKinds := 0, false, false
 	for i := 0; i < len(mapping.Content); i += 2 {
 		k := mapping.Content[i]
 		if k.Kind != yaml.ScalarNode || k.Value == "" {
@@ -312,17 +314,37 @@ func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, ki
 		case "title":
 			titles++
 			title = frontMatterTitle(mapping.Content[i+1])
-		case "kinds", "<<":
+		case "<<":
+			sawMerge, mayHaveKinds = true, true
+		case "kinds":
 			mayHaveKinds = true
 		}
 	}
-	if titles > 1 {
+	switch {
+	case titles > 1:
 		title = ""
+	case titles == 0 && sawMerge:
+		title = mergedTitle(&node)
 	}
 	if mayHaveKinds {
 		kinds, _ = lint.FrontMatterKindsFromNode(body, &node)
 	}
 	return syms, title, kinds
+}
+
+// mergedTitle returns the title a merge (`<<`) key supplies when the
+// mapping has no `title:` key of its own. It decodes the parsed
+// document node, so the merge follows the engine's map decode: the
+// first merged mapping that sets title wins. A decode error, such as
+// a duplicate key, yields no title, as it does for the engine.
+func mergedTitle(doc *yaml.Node) string {
+	var fm struct {
+		Title yaml.Node `yaml:"title"`
+	}
+	if yamlutil.DecodeNodeSafe(doc, &fm) != nil || fm.Title.Kind == 0 {
+		return ""
+	}
+	return frontMatterTitle(&fm.Title)
 }
 
 // frontMatterTitle returns the display text of a `title:` value

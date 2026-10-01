@@ -67,8 +67,8 @@ func CountLines(b []byte) int {
 // This fast path is part of the contract: a block that merely
 // mentions the word elsewhere is never decoded, so its YAML errors
 // do not abort the file. Spellings without those bytes (`"kinds":`,
-// `kinds :`, escapes) are not read. The workspace index calls this
-// function, so it applies the same rule.
+// `kinds :`, escapes) are not read. The workspace index applies the
+// same rule through FrontMatterKindsFromNode.
 func ParseFrontMatterKinds(fm []byte) ([]string, error) {
 	if len(fm) == 0 {
 		return nil, nil
