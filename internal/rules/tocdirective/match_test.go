@@ -54,6 +54,9 @@ func TestMatchVariant_RejectNoAlloc(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
 	line := []byte("An ordinary paragraph line with no directive.")
 	allocs := testing.AllocsPerRun(100, func() { matchVariant(line) })
 	assert.Zero(t, allocs)

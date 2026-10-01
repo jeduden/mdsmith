@@ -60,9 +60,25 @@ func TestSentLenVariance_NoAlloc(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
 	text := "Short. A much longer second sentence here! Another one follows? Yes."
 	allocs := testing.AllocsPerRun(100, func() { SentLenVariance(text) })
 	assert.Zero(t, allocs)
+}
+
+// The Welford accumulator documents that equal-length sentences give
+// exactly 0 (no rounding residue); InDelta against the reference would
+// not catch a 1e-13 residue, so pin it with exact equality.
+func TestSentLenVariance_EqualLengthsAreExactlyZero(t *testing.T) {
+	for _, in := range []string{
+		"one two three. four five six. seven eight nine.",
+		"a b c d e f g. h i j k l m n! o p q r s t u?",
+		strings.Repeat("alpha beta gamma. ", 1000),
+	} {
+		assert.Equal(t, 0.0, SentLenVariance(in), "%q", in)
+	}
 }
 
 func TestSentLenVariance_LargeInputFinite(t *testing.T) {
