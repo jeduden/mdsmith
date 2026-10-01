@@ -1,6 +1,7 @@
 package config
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -319,23 +320,19 @@ func mergeCategories(base, override map[string]bool) map[string]bool {
 //
 // When cfg is nil there are no kind-assignment entries to apply, so
 // the result is just fmKinds with duplicates dropped — preserving
-// the dedup contract callers rely on.
+// the dedup contract callers rely on. The result is nil when there are
+// no kinds.
 //
 // fmFields, when non-nil, is the file's parsed front matter; it is
 // consumed by entries that set `fields-present:`. Pass nil when the
 // caller has no FM info — such entries simply won't match.
 func EffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []string {
 	if cfg == nil {
-		seen := make(map[string]struct{}, len(fmKinds))
-		out := make([]string, 0, len(fmKinds))
+		kl := kindList{hint: len(fmKinds)}
 		for _, k := range fmKinds {
-			if _, ok := seen[k]; ok {
-				continue
-			}
-			seen[k] = struct{}{}
-			out = append(out, k)
+			kl.add(k)
 		}
-		return out
+		return kl.list
 	}
 	return resolveEffectiveKinds(cfg, filePath, fmKinds, fmFields)
 }
@@ -345,15 +342,8 @@ func EffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map
 // they come first. kind-assignment matches are appended in config order.
 // Duplicate names are dropped after their first occurrence.
 func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []string {
-	seen := make(map[string]struct{})
-	var result []string
-
-	add := func(name string) {
-		if _, ok := seen[name]; !ok {
-			seen[name] = struct{}{}
-			result = append(result, name)
-		}
-	}
+	kl := kindList{hint: max(len(fmKinds), 2)}
+	add := kl.add
 
 	for _, k := range fmKinds {
 		add(k)
@@ -365,7 +355,42 @@ func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFie
 			}
 		}
 	}
-	return result
+	return kl.list
+}
+
+// kindListMapThreshold is the length past which kindList switches from a
+// linear scan to a set. Kind lists are normally 0-3 names, where the scan
+// is cheaper than hashing; front matter is user-controlled, so the set
+// bounds the worst case.
+const kindListMapThreshold = 16
+
+// kindList is an ordered, deduplicated list of kind names. list stays nil
+// until the first name and is allocated with the caller's capacity hint.
+type kindList struct {
+	list []string
+	hint int                 // capacity of the first allocation
+	seen map[string]struct{} // built once len(list) passes kindListMapThreshold
+}
+
+func (k *kindList) add(name string) {
+	if k.seen != nil {
+		if _, ok := k.seen[name]; ok {
+			return
+		}
+		k.seen[name] = struct{}{}
+	} else if slices.Contains(k.list, name) {
+		return
+	}
+	if k.list == nil {
+		k.list = make([]string, 0, k.hint)
+	}
+	k.list = append(k.list, name)
+	if k.seen == nil && len(k.list) > kindListMapThreshold {
+		k.seen = make(map[string]struct{}, 2*len(k.list))
+		for _, n := range k.list {
+			k.seen[n] = struct{}{}
+		}
+	}
 }
 
 // Effective returns the effective rule configuration for a given file path.
@@ -427,7 +452,12 @@ func EffectiveSignature(
 	cfg *Config, filePath string, fmKinds []string, fmFields map[string]any,
 ) (string, []string) {
 	kinds := resolveEffectiveKinds(cfg, filePath, fmKinds, fmFields)
+	n := 1 // record separator
+	for _, k := range kinds {
+		n += len(k) + 1
+	}
 	var b strings.Builder
+	b.Grow(n + 8) // kinds, separator, and a few matching override indices
 	for _, k := range kinds {
 		b.WriteString(k)
 		b.WriteByte(0x1f) // unit separator; kind names are YAML-parsed, so cannot contain control bytes

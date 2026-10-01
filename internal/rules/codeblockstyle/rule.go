@@ -233,6 +233,13 @@ type blockInfo struct {
 
 func collectBlocks(f *lint.File) []blockInfo {
 	var blocks []blockInfo
+	add := func(b blockInfo) {
+		if blocks == nil {
+			// Lazy, so a file with no code blocks stays alloc-free.
+			blocks = make([]blockInfo, 0, 8)
+		}
+		blocks = append(blocks, b)
+	}
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -244,7 +251,7 @@ func collectBlocks(f *lint.File) []blockInfo {
 				return ast.WalkContinue, nil
 			}
 			last := fencepos.CloseLine(f, cb)
-			blocks = append(blocks, blockInfo{
+			add(blockInfo{
 				style: "fenced", line: line, lastLine: last,
 				topLevel: isTopLevel(cb),
 			})
@@ -258,7 +265,7 @@ func collectBlocks(f *lint.File) []blockInfo {
 				return ast.WalkContinue, nil
 			}
 			last := f.LineOfOffset(segs.At(segs.Len() - 1).Start)
-			blocks = append(blocks, blockInfo{
+			add(blockInfo{
 				style: "indented", line: first, lastLine: last,
 				topLevel: isTopLevel(cb),
 			})

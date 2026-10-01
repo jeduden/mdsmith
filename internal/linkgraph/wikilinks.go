@@ -148,13 +148,22 @@ func codeSpanTextBounds(n ast.Node) (first, last int) {
 	return first, last
 }
 
+// inCodeSpan reports whether offset falls inside one of spans. spans
+// must be sorted by start and disjoint, which collectCodeSpanRanges
+// guarantees (AST walk order; the canonical parser installs no
+// node-relocating extension, and code spans cannot nest). Binary search
+// keeps a wikilink-heavy file from going matches × spans.
 func inCodeSpan(spans []byteRange, offset int) bool {
-	for _, r := range spans {
-		if offset >= r.start && offset < r.end {
-			return true
-		}
+	i, _ := slices.BinarySearchFunc(spans, offset, func(r byteRange, off int) int {
+		return cmp.Compare(r.start, off)
+	})
+	// i is the first span with start >= offset; the candidate that
+	// could contain offset is that span (start == offset) or the one
+	// before it.
+	if i < len(spans) && spans[i].start == offset && offset < spans[i].end {
+		return true
 	}
-	return false
+	return i > 0 && offset < spans[i-1].end
 }
 
 // WikilinkIndexFor returns a *WikilinkIndex for root, memoized on
