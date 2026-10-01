@@ -100,6 +100,11 @@ func buildSectionHeadings(f *lint.File) any {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
+		if out == nil {
+			// Lazy, so a file with no headings stays alloc-free;
+			// 16 covers typical docs without regrowing.
+			out = make([]SectionHeading, 0, 16)
+		}
 		out = append(out, SectionHeading{
 			Level: h.Level,
 			Line:  HeadingLine(h, f),

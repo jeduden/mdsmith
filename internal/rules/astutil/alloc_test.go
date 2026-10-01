@@ -48,3 +48,23 @@ func TestBuildSectionHeadings_NoReflectSort(t *testing.T) {
 	require.LessOrEqualf(t, sortAllocs, float64(0),
 		"sortSectionHeadings allocs/op = %.0f, want 0 (no reflection)", sortAllocs)
 }
+
+// TestBuildSectionHeadings_PreSized pins buildSectionHeadings to a
+// pre-sized result slice (docs/development/high-performance-go.md,
+// "Pre-size slices"). Nine headings used to regrow the slice at 1, 2,
+// 4 and 8; the walk itself costs a fixed few allocs.
+func TestBuildSectionHeadings_PreSized(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	src := ""
+	for i := 0; i < 9; i++ {
+		src += "## H\n\ntext\n\n"
+	}
+	f, err := lint.NewFile("many.md", []byte(src))
+	require.NoError(t, err)
+	require.Len(t, buildSectionHeadings(f).([]SectionHeading), 9)
+
+	allocs := testing.AllocsPerRun(200, func() { buildSectionHeadings(f) })
+	require.LessOrEqual(t, allocs, 4.0)
+}
