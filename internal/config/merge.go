@@ -1,6 +1,7 @@
 package config
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -345,14 +346,20 @@ func EffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map
 // they come first. kind-assignment matches are appended in config order.
 // Duplicate names are dropped after their first occurrence.
 func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []string {
-	seen := make(map[string]struct{})
+	// Kind lists are short (0-3 names), so a linear scan of result
+	// dedups cheaper than a map (high-performance-go.md, "Sorted slice
+	// beats a map for n < ~100"). result stays nil until the first kind
+	// and is pre-sized to the front-matter kinds' count.
 	var result []string
 
 	add := func(name string) {
-		if _, ok := seen[name]; !ok {
-			seen[name] = struct{}{}
-			result = append(result, name)
+		if slices.Contains(result, name) {
+			return
 		}
+		if result == nil {
+			result = make([]string, 0, max(len(fmKinds), len(cfg.KindAssignment), 1))
+		}
+		result = append(result, name)
 	}
 
 	for _, k := range fmKinds {
@@ -427,7 +434,12 @@ func EffectiveSignature(
 	cfg *Config, filePath string, fmKinds []string, fmFields map[string]any,
 ) (string, []string) {
 	kinds := resolveEffectiveKinds(cfg, filePath, fmKinds, fmFields)
+	n := 1 // record separator
+	for _, k := range kinds {
+		n += len(k) + 1
+	}
 	var b strings.Builder
+	b.Grow(n + 4*len(cfg.Overrides))
 	for _, k := range kinds {
 		b.WriteString(k)
 		b.WriteByte(0x1f) // unit separator; kind names are YAML-parsed, so cannot contain control bytes
