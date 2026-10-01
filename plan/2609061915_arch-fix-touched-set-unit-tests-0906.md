@@ -171,7 +171,8 @@ Two overlaps remain:
      use like `[**bold**][docs]`, ``[`code`][docs]``, or
      `[][docs]` was dropped. It now anchors on the link's
      recorded `[`. The closing `]` comes after every byte the
-     parser put inside the link (text, raw HTML, autolinks), and
+     parser put inside the link (text, raw HTML, autolinks, and
+     a nested image through its own destination or label), and
      the label that follows must match the reference.
   - `refUseEditsInBody` skipped image references such as
      `![alt][docs]`. It now rewrites them too.

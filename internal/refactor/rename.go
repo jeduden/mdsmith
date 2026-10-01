@@ -414,16 +414,18 @@ func labelBoundsInBody(body []byte, textStart, textEnd int, refType ast.Referenc
 // no closing `]` can be confirmed. The parser records Pos() at the `[`
 // (at the `!` for an image), so the bounds hold for any text content:
 // emphasis, code spans, nested images, raw HTML, or none (`[][id]`).
+//
+// A node with a nil Reference is an inline link or image: its close is
+// the first `]` past the content that is followed by `(`.
 func linkTextBounds(n ast.Node, body []byte) (int, int) {
-	ref := referenceOf(n)
 	open := n.Pos()
 	if _, ok := n.(*ast.Image); ok && open >= 0 {
 		open++
 	}
-	if ref == nil || open < 0 || open >= len(body) || body[open] != '[' {
+	if open < 0 || open >= len(body) || body[open] != '[' {
 		return -1, -1
 	}
-	end := closingTextBracket(body, open+1, contentEnd(n, body, open+1), ref)
+	end := closingTextBracket(body, open+1, contentEnd(n, body, open+1), referenceOf(n))
 	if end < 0 {
 		return -1, -1
 	}
@@ -431,10 +433,11 @@ func linkTextBounds(n ast.Node, body []byte) (int, int) {
 }
 
 // contentEnd returns the offset just past the last source byte the
-// parser placed inside n — text, raw HTML, or an autolink — or from
-// when n has no such content. The closing `]` of the link text sits at
-// or after it, so a `]` inside a nested image destination, a code
-// span, or an HTML attribute is never taken for it.
+// parser placed inside n — text, raw HTML, an autolink, or a whole
+// nested image — or from when n has no such content. The closing `]`
+// of the link text sits at or after it, so a `]` inside a nested
+// image's destination or reference, a code span, or an HTML attribute
+// is never taken for it.
 func contentEnd(n ast.Node, body []byte, from int) int {
 	end := from
 	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -443,6 +446,13 @@ func contentEnd(n ast.Node, body []byte, from int) int {
 		}
 		stop := -1
 		switch t := c.(type) {
+		case *ast.Image:
+			if c != n {
+				if e := imageEnd(t, body); e > end {
+					end = e
+				}
+				return ast.WalkSkipChildren, nil
+			}
 		case *ast.Text:
 			stop = t.Segment.Stop
 		case *ast.RawHTML:
@@ -462,14 +472,62 @@ func contentEnd(n ast.Node, body []byte, from int) int {
 	return end
 }
 
+// imageEnd returns the offset just past a nested image's full source
+// — `![alt](dest)`, `![alt][label]`, `![alt][]`, or `![alt]` — or -1
+// when its text bracket can't be confirmed. contentEnd uses it to keep
+// the image's own `][label]` from closing the enclosing link.
+func imageEnd(img *ast.Image, body []byte) int {
+	_, closeIdx := linkTextBounds(img, body)
+	if closeIdx < 0 {
+		return -1
+	}
+	if img.Reference == nil {
+		return parenEnd(body, closeIdx+1)
+	}
+	switch img.Reference.Type {
+	case ast.ReferenceLinkFull:
+		// linkTextBounds confirmed the `[label]` that follows, so its
+		// closing `]` is present.
+		return closeIdx + 2 + bytes.IndexByte(body[closeIdx+2:], ']') + 1
+	case ast.ReferenceLinkCollapsed:
+		return closeIdx + 3
+	}
+	return closeIdx + 1
+}
+
+// parenEnd returns the offset just past the `)` that balances the `(`
+// at open, honoring backslash escapes and nested parentheses, or -1
+// when there is none.
+func parenEnd(body []byte, open int) int {
+	depth := 0
+	for i := open; i < len(body); i++ {
+		switch body[i] {
+		case '\\':
+			i++
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return -1
+}
+
 // closingTextBracket returns the offset of the `]` that closes the
 // link text starting at textStart, scanning from the content end
 // `from`. A candidate `]` must be followed by what ref.Type requires
 // (`[label]` for full, `[]` for collapsed), and the label — the bracket
 // after it for full, the text itself otherwise — must normalize to
-// ref.Value. Backslash escapes are skipped and a blank line ends the
-// search. Returns -1 when no candidate qualifies.
+// ref.Value. A nil ref means an inline link or image: the candidate
+// must be followed by `(`. Backslash escapes are skipped and a blank
+// line ends the search. Returns -1 when no candidate qualifies.
 func closingTextBracket(body []byte, textStart, from int, ref *ast.ReferenceLink) int {
+	if ref == nil {
+		return inlineTextBracket(body, from)
+	}
 	want := NormalizedLabel(ref.Value)
 	for p := from; p < len(body); p++ {
 		switch body[p] {
@@ -506,6 +564,27 @@ func closingTextBracket(body []byte, textStart, from int, ref *ast.ReferenceLink
 		}
 		if NormalizedLabel(label) == want {
 			return p
+		}
+	}
+	return -1
+}
+
+// inlineTextBracket returns the offset of the first `]` at or after
+// from that is followed by `(` — the close of an inline link's text —
+// skipping backslash escapes and stopping at a blank line, or -1.
+func inlineTextBracket(body []byte, from int) int {
+	for p := from; p < len(body); p++ {
+		switch body[p] {
+		case '\\':
+			p++
+		case '\n':
+			if p+1 < len(body) && body[p+1] == '\n' {
+				return -1
+			}
+		case ']':
+			if p+1 < len(body) && body[p+1] == '(' {
+				return p
+			}
 		}
 	}
 	return -1

@@ -382,6 +382,13 @@ func TestLinkRef_RewritesUsesWithInlineMarkupInText(t *testing.T) {
 			"bracket in raw HTML attribute",
 			"[<b title=\"]\">x</b>][docs]\n\n[docs]: u\n", "[<b title=\"]\">x</b>][ref]\n\n[ref]: u\n",
 		},
+		{"nested image same label", "[![i][docs]][docs]\n\n[docs]: u\n", "[![i][ref]][ref]\n\n[ref]: u\n"},
+		{"nested image collapsed", "[![docs][]][docs]\n\n[docs]: u\n", "[![ref][]][ref]\n\n[ref]: u\n"},
+		{"nested image shortcut", "[![docs]][docs]\n\n[docs]: u\n", "[![ref]][ref]\n\n[ref]: u\n"},
+		{
+			"nested inline image with label-like destination",
+			"[![i](x][docs)][docs]\n\n[docs]: u\n", "[![i](x][docs)][ref]\n\n[ref]: u\n",
+		},
 		{"bracket in autolink", "[<http://a]b>][docs]\n\n[docs]: u\n", "[<http://a]b>][ref]\n\n[ref]: u\n"},
 		{"in blockquote", "> see [**b**][docs]\n\n[docs]: u\n", "> see [**b**][ref]\n\n[ref]: u\n"},
 	}
@@ -480,4 +487,57 @@ func TestClosingTextBracket(t *testing.T) {
 			assert.Equal(t, tc.want, closingTextBracket([]byte(tc.body), 1, tc.from, tc.ref))
 		})
 	}
+}
+
+// firstImage returns the first image node in root.
+func firstImage(t *testing.T, root ast.Node) *ast.Image {
+	t.Helper()
+	var found *ast.Image
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if img, ok := n.(*ast.Image); ok && entering && found == nil {
+			found = img
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	require.NotNil(t, found, "no image in body")
+	return found
+}
+
+func TestImageEnd(t *testing.T) {
+	cases := []struct {
+		src  string
+		want string // the source prefix ending at imageEnd
+	}{
+		{"![a](x(y)z) t\n", "![a](x(y)z)"},
+		{"![a][docs] t\n\n[docs]: u\n", "![a][docs]"},
+		{"![docs][] t\n\n[docs]: u\n", "![docs][]"},
+		{"![docs] t\n\n[docs]: u\n", "![docs]"},
+	}
+	for _, tc := range cases {
+		body := []byte(tc.src)
+		img := firstImage(t, parseBody(body))
+		assert.Equal(t, tc.want, string(body[:imageEnd(img, body)]), tc.src)
+	}
+	// Bytes that no longer match the parsed image have no end.
+	body := []byte("![a][docs] t\n\n[docs]: u\n")
+	img := firstImage(t, parseBody(body))
+	assert.Equal(t, -1, imageEnd(img, []byte("(a][docs] t\n")))
+	assert.Equal(t, -1, imageEnd(img, []byte("![a][docs")))
+}
+
+func TestParenEnd(t *testing.T) {
+	assert.Equal(t, 3, parenEnd([]byte("(a)"), 0))
+	assert.Equal(t, 7, parenEnd([]byte("(a(b)c)"), 0))
+	assert.Equal(t, 5, parenEnd([]byte(`(a\))`), 0))
+	assert.Equal(t, -1, parenEnd([]byte("(a"), 0))
+}
+
+func TestInlineTextBracket(t *testing.T) {
+	assert.Equal(t, 2, inlineTextBracket([]byte("[a](u)"), 1))
+	// A `]` not followed by `(` and an escaped `]` are skipped.
+	assert.Equal(t, 5, inlineTextBracket([]byte("[a] b](u)"), 1))
+	assert.Equal(t, 7, inlineTextBracket([]byte(`[a\](u)](v)`), 1))
+	assert.Equal(t, -1, inlineTextBracket([]byte("[a\n\n](u)"), 1))
+	assert.Equal(t, -1, inlineTextBracket([]byte("[a]"), 1))
 }
