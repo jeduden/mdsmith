@@ -40,6 +40,17 @@ func TestLayer0_BacktickInInfoStringIsNotAFence(t *testing.T) {
 	assert.Empty(t, l0.CodeBlockLines)
 }
 
+func TestLayer0_NonASCIISpaceInfoMatchesAST(t *testing.T) {
+	// goldmark trims an info string of ASCII space/tab/CR/LF only, so a
+	// vertical tab, form feed, or NBSP after the run is real info: the
+	// empty fence keeps a position and its lines count as code.
+	for _, src := range []string{"```\v\n```\n", "```\f\n```\n", "```\u00a0\n```\n"} {
+		f, err := NewFile("t.md", []byte(src))
+		require.NoError(t, err)
+		assert.Equal(t, keysOf(collectCodeBlockLines(f)), keysOf(scan(src).CodeBlockLines), "%q", src)
+	}
+}
+
 func TestLayer0_UnclosedFenceMarksPhantomClose(t *testing.T) {
 	// An unclosed fence with content marks the opening fence, its content,
 	// and a phantom closing-fence line after the last content line.
@@ -537,20 +548,6 @@ func TestStripQuoteMarker_MarkerWithoutSpace(t *testing.T) {
 	assert.Equal(t, "x", string(stripQuoteMarker([]byte(">x"))))
 }
 
-func TestOpeningFence_IndentOnlyLineIsNotFence(t *testing.T) {
-	// A line of only spaces (indent >= len) does not open a fence.
-	_, ok := openingFence([]byte("   "))
-	assert.False(t, ok)
-}
-
-func TestClosingFence_IndentOnlyLineIsNotClose(t *testing.T) {
-	fi := fenceInfo{char: '`', length: 3}
-	// A blank/indent-only line does not close a fence.
-	assert.False(t, closingFence([]byte("   "), fi))
-	// An over-indented (>=4) line does not close a fence.
-	assert.False(t, closingFence([]byte("    ```"), fi))
-}
-
 func TestHTMLBlockCloses_EachType(t *testing.T) {
 	assert.True(t, htmlBlockCloses([]byte("</script>"), htmlType1))
 	assert.True(t, htmlBlockCloses([]byte("x -->"), htmlType2))
@@ -570,12 +567,6 @@ func TestIsThematicBreak_NonMarkerLeadIsFalse(t *testing.T) {
 	// A line whose first non-space byte is not `-`, `*`, or `_` is not a
 	// thematic break.
 	assert.False(t, isThematicBreak([]byte("abc")))
-}
-
-func TestOpeningFence_IndentOnlyLineReturnsFalse(t *testing.T) {
-	// A line that is all spaces (indent >= len(line)) is not a fence opener.
-	_, ok := openingFence([]byte("   "))
-	assert.False(t, ok)
 }
 
 func TestTryFence_InfoFenceImmediateClose(t *testing.T) {
@@ -602,12 +593,6 @@ func TestScanParagraph_HTMLInterruptsParagraph(t *testing.T) {
 	}
 	assert.Contains(t, kinds, BlockParagraph)
 	assert.Contains(t, kinds, BlockHTML)
-}
-
-func TestOpeningFence_TwoCharRunNotAFence(t *testing.T) {
-	// A run of only 2 fence characters (length < 3) is not a fence opener.
-	_, ok := openingFence([]byte("``code"))
-	assert.False(t, ok)
 }
 
 func TestScanParagraph_ATXHeadingInterruptsParagraph(t *testing.T) {

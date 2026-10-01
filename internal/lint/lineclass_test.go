@@ -90,6 +90,12 @@ var equivCases = map[string]string{
 	"type7 img then fence":        "<img src=\"x.png\">\n```go\nx := 1\n```\n",
 	"type7 br then fence":         "<br>\n```\ncode\n```\n",
 	"type7 cannot interrupt para": "a paragraph\n<img src=\"x\">\n```\ncode\n```\n",
+	// goldmark's info string is trimmed of ASCII space/tab/CR/LF only, so
+	// a vertical tab, form feed, or NBSP after the run is a non-empty
+	// info string and an otherwise empty fence still has a position.
+	"fence vt info empty":   "```\v\n```\n",
+	"fence ff info empty":   "```\f\n```\n",
+	"fence nbsp info empty": "```\u00a0\n```\n",
 }
 
 func sortedKeys(m map[int]struct{}) []int {

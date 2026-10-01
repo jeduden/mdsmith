@@ -1,6 +1,10 @@
 package lint
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/jeduden/mdsmith/internal/mdfence"
+)
 
 // LineClass is the flat Layer-0 classification of one source line. It is
 // the per-line product of ClassifyLines — a node-tree-free alternative to
@@ -146,10 +150,8 @@ type lc0Pass struct {
 	// blanks into the block but drops trailing ones.
 	pendingBlanks []int
 
+	fence         mdfence.Fence // the open fence; valid while inFence
 	inFence       bool
-	fenceChar     byte
-	fenceLen      int
-	fenceHadInfo  bool
 	fenceOpenLine int // 1-based
 
 	inHTML   bool     // inside an HTML block
@@ -278,7 +280,7 @@ func trimTrailingCR(b []byte) []byte {
 // close fence ends the block, anything else is an in-code content line.
 func (p *lc0Pass) handleFenceBody(ln int, rest []byte) {
 	p.out.classes[ln-1] = LineInCode
-	if isFenceClose(rest, p.fenceChar, p.fenceLen) {
+	if mdfence.Close(rest, p.fence) {
 		p.out.classes[ln-1] = LineFenceClose
 		p.finishFence(ln)
 		p.inFence = false
@@ -516,14 +518,12 @@ func (c lc0Container) consume(line []byte, pos int) (int, bool) {
 // tryOpenFence opens a fenced code block when rest is an opening fence.
 // It records the open line so finishFence can mark the block as a unit.
 func (p *lc0Pass) tryOpenFence(ln int, rest []byte) bool {
-	ch, n, hadInfo, ok := detectFenceOpen(rest)
+	fence, ok := mdfence.Open(rest)
 	if !ok {
 		return false
 	}
 	p.inFence = true
-	p.fenceChar = ch
-	p.fenceLen = n
-	p.fenceHadInfo = hadInfo
+	p.fence = fence
 	p.fenceOpenLine = ln
 	p.openBlockDepth = len(p.stack)
 	p.out.classes[ln-1] = LineFenceOpen
@@ -549,7 +549,7 @@ func (p *lc0Pass) finishFence(closeLine int) {
 		contentTo = len(p.lines) - 1
 	}
 	hasContent := contentTo >= o+1
-	if !hasContent && !p.fenceHadInfo {
+	if !hasContent && !p.fence.HasInfo {
 		return // goldmark exposes no source position for this empty fence
 	}
 	p.markCode(o)

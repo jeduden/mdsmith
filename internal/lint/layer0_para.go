@@ -1,6 +1,10 @@
 package lint
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/jeduden/mdsmith/internal/mdfence"
+)
 
 var (
 	fenceBacktickRun = []byte("```")
@@ -83,7 +87,7 @@ func (s *scanner) scanParagraph() {
 			s.prevNonBlankParagraph = false
 			return
 		}
-		if _, ok := openingFence(cur); ok {
+		if _, ok := mdfence.Open(cur); ok {
 			break
 		}
 		if opensPI(cur) {
@@ -181,7 +185,7 @@ func blockDepth(line []byte) int {
 // and blank-line cases, so this only classifies non-marker, non-blank
 // lines.
 func isLazyContinuation(line []byte) bool {
-	if _, ok := openingFence(line); ok {
+	if _, ok := mdfence.Open(line); ok {
 		return false
 	}
 	if isATXHeadingLine(line) {
@@ -195,7 +199,7 @@ func isLazyContinuation(line []byte) bool {
 
 // lineHasNonFenceCode reports whether line could contribute a code block to
 // a recursively-scanned block-quote body for a reason OTHER than opening a
-// fence — the caller already tested the fence case via openingFence and
+// fence — the caller already tested the fence case via mdfence.Open and
 // folds it in separately. It is true when the line carries a >=4-column
 // indent (potential indented code) or is itself a nested block quote
 // (whose deeper levels may hold code only the recursive scan can reach).

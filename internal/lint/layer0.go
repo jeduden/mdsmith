@@ -1,6 +1,10 @@
 package lint
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/jeduden/mdsmith/internal/mdfence"
+)
 
 // BlockKind classifies a Layer 0 block span by its leading construct.
 type BlockKind uint8
@@ -267,7 +271,7 @@ func (s *scanner) tryBlockquote() bool {
 	// marker on every line — it does not accept lazy continuation — so a
 	// non-marker line while a fence is open ends the quote rather than
 	// extending the code.
-	var openFence *fenceInfo
+	var openFence *mdfence.Fence
 	for s.i < len(s.lines) {
 		if s.trailingEmptyLine(s.i) {
 			break
@@ -295,8 +299,8 @@ func (s *scanner) tryBlockquote() bool {
 		// Compute the fence-open once and feed both the codeCapable guard
 		// (does the body need a recursive scan?) and the open-fence tracking
 		// (can the next non-marker line lazily continue, or does the fence
-		// forbid it?), so openingFence runs once per body line, not twice.
-		fi, opensFence := openingFence(stripped)
+		// forbid it?), so mdfence.Open runs once per body line, not twice.
+		fi, opensFence := mdfence.Open(stripped)
 		if !codeCapable && (opensFence || lineHasNonFenceCode(stripped)) {
 			codeCapable = true
 		}

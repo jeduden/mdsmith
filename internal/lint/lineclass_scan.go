@@ -89,59 +89,6 @@ func lcIsSetextUnderline(rest []byte) bool {
 	return true
 }
 
-// detectFenceOpen reports whether rest opens a fenced code block, and if
-// so returns the fence character, its length, and whether a non-empty
-// info string follows. For backtick fences the info string may not
-// contain a backtick (the CommonMark rule that lets inline code spans
-// coexist with fences); tilde fences allow any info string.
-func detectFenceOpen(rest []byte) (ch byte, length int, hasInfo, ok bool) {
-	i := leadingSpaces(rest)
-	if i > 3 || i >= len(rest) {
-		return 0, 0, false, false
-	}
-	c := rest[i]
-	if c != '`' && c != '~' {
-		return 0, 0, false, false
-	}
-	n := 0
-	for i < len(rest) && rest[i] == c {
-		i++
-		n++
-	}
-	if n < 3 {
-		return 0, 0, false, false
-	}
-	info := rest[i:]
-	if c == '`' && bytes.IndexByte(info, '`') >= 0 {
-		return 0, 0, false, false
-	}
-	return c, n, len(bytes.TrimSpace(info)) > 0, true
-}
-
-// isFenceClose reports whether rest closes a fence of the given character
-// and minimum length: a run of at least length fence characters (after
-// ≤3 indent) followed only by spaces or tabs.
-func isFenceClose(rest []byte, ch byte, length int) bool {
-	i := leadingSpaces(rest)
-	if i > 3 {
-		return false
-	}
-	n := 0
-	for i < len(rest) && rest[i] == ch {
-		i++
-		n++
-	}
-	if n < length {
-		return false
-	}
-	for ; i < len(rest); i++ {
-		if rest[i] != ' ' && rest[i] != '\t' {
-			return false
-		}
-	}
-	return true
-}
-
 // htmlBlockEnd reports how a CommonMark HTML block beginning at rest (after
 // ≤3 indent) ends, and whether rest opens one. A marker-terminated block
 // (comment, CDATA section, processing instruction, declaration) returns its
