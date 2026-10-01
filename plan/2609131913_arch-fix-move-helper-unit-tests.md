@@ -39,8 +39,8 @@ A related, smaller finding on `cmd/mdsmith` was scoped out
 of this plan on review.
 
 `looksLikePath`, `firstPathish`, and `resolveWriteMode`
-([cmd/mdsmith/rename.go][cli-rename]) lack a test
-symbol by name.
+([cmd/mdsmith/rename.go][cli-rename]) lacked a test
+symbol by name. Plan 2609061915 has since added all three.
 
 Each is small and low-risk. Each is also covered
 indirectly by `TestRunRename_MoveIntentGuard` and
@@ -69,10 +69,10 @@ Each has a named test in
 4. `go test ./...` passes.
 5. `go tool -modfile=tools/go.mod golangci-lint run` reports
    no issues.
-6. Optional stretch, not required to close this plan. Plan
-   2609061915 already added them; skip it. Add
+6. Nothing to do: plan 2609061915 already added
    `TestLooksLikePath`, `TestFirstPathish`, and
    `TestResolveWriteMode` in `cmd/mdsmith/rename_unit_test.go`.
+   Do not add them again; Go rejects the duplicate names.
 
 ## Acceptance Criteria
 

@@ -6,9 +6,9 @@ status: "✅"
 model: sonnet
 summary: >-
   20 private helpers in internal/refactor and its
-  cmd/mdsmith and pkg/mdsmith callers have no unit test
-  named after them. They are covered only through tests of
-  the functions that call them.
+  cmd/mdsmith and pkg/mdsmith callers each got a unit
+  test named after them. Before, only tests of the
+  functions that call them reached the helpers.
 ---
 # Add unit tests for the untested rename/move helpers
 
@@ -24,8 +24,8 @@ The 2026-09-06 architecture audit of the `internal/refactor`
 rename/move engine flagged these functions. That audit was in
 closed PR #839 and never reached main. These functions had
 no test named after them on main. One of the original 21,
-`applyEditsToFile`, no longer exists, so 20 remain. They are listed by name, not
-line, since the files keep moving:
+`applyEditsToFile`, no longer exists, so 20 remain. They are
+listed by name, not line, since the files keep moving:
 
 - [internal/refactor/fileop_exec.go][fileop-exec] —
   `gitTracked`, `gitMove`. Only the `TestFileOpExecute_*`
@@ -62,8 +62,9 @@ scenario tests:
 
 A few caller tests are unit tests next to the source:
 
-- `TestBuildRenameWorkspace_DiscoveryPaths` drives every exit
-  of `buildWorkspace` through `buildRenameWorkspace`.
+- `TestBuildRenameWorkspace_DiscoveryPaths` drove the exits
+  of `buildWorkspace` through `buildRenameWorkspace`. It now
+  keeps only the exits `buildRenameWorkspace` itself owns.
 - The `TestApplyPlan_*` tests in
   [move_unit_test.go][cmd-move-test] call `buildWorkspace`
   directly, but only as setup.
@@ -152,9 +153,11 @@ Two overlaps remain:
    `TestBuildRenameWorkspace_DiscoveryPaths` into it, rather
    than assert the same exits twice. Keep "missing config
    exits 2" and "unreadable target exits 2" in the
-   `buildRenameWorkspace` test. It still needs one
-   `buildWorkspace` failure to cover its early return, so
-   "missing config" is asserted in both tests on purpose.
+   `buildRenameWorkspace` test. It still needs `buildWorkspace`
+   failures to cover its early return, so "missing config"
+   and "empty workspace exits 1" are asserted in both tests
+   on purpose: the second proves that exit 1 propagates
+   unchanged.
 6. Add `TestDetectRenameKind`, `TestToRefactorPlan`,
    `TestSessionRefactorWorkspace_Resolve`, and
    `TestSession_BuildRefactorWorkspace` to

@@ -165,6 +165,9 @@ func TestGitTracked(t *testing.T) {
 }
 
 func TestGitMove(t *testing.T) {
+	// git translates its messages; pin the C locale so the substring
+	// assertion below is stable.
+	t.Setenv("LC_ALL", "C")
 	dir := t.TempDir()
 	gitInit(t, dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n"), 0o644))

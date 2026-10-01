@@ -292,6 +292,28 @@ func TestRefUseEdit(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestRefUseEdit_UTF16ColumnsAndMultiLine(t *testing.T) {
+	// The emoji is 4 UTF-8 bytes but 2 UTF-16 units; é is 2 bytes, 1 unit.
+	src := []byte("😀 é [t][docs]\n\n[docs]: u\n")
+	body, off := bodyAndFMOffset(src)
+	l := firstLink(t, parseBody(body))
+	e, ok := refUseEdit(l, body, splitLines(src), off, "new", newBodyLineIndex(body))
+	require.True(t, ok)
+	assert.Equal(t, 0, e.Range.Start.Line)
+	assert.Equal(t, 9, e.Range.Start.Character)
+	assert.Equal(t, 13, e.Range.End.Character)
+
+	// A label that wraps across lines ends on a later line.
+	wrapped := []byte("[t][two\nwords]\n\n[two words]: u\n")
+	wb, wo := bodyAndFMOffset(wrapped)
+	wl := firstLink(t, parseBody(wb))
+	we, ok := refUseEdit(wl, wb, splitLines(wrapped), wo, "new", newBodyLineIndex(wb))
+	require.True(t, ok)
+	assert.Equal(t, 0, we.Range.Start.Line)
+	assert.Equal(t, 1, we.Range.End.Line)
+	assert.Equal(t, 5, we.Range.End.Character)
+}
+
 func TestLinkTextBounds(t *testing.T) {
 	body := []byte("See [the spec][x] now.\n\n[x]: u\n")
 	l := firstLink(t, parseBody(body))
