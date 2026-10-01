@@ -520,8 +520,10 @@ func (p *lc0Pass) inFence() bool { return p.fence.Char != 0 }
 
 // tryOpenFence opens a fenced code block when rest is an opening fence.
 // It records the open line so finishFence can mark the block as a unit.
+// rest ends where line ln ends, so on the source's final line with no
+// newline it reads the info string as goldmark does (mdfence.OpenFinal).
 func (p *lc0Pass) tryOpenFence(ln int, rest []byte) bool {
-	fence, ok := mdfence.Open(rest)
+	fence, ok := mdfence.OpenFinal(rest, ln == finalLineNoEOL(p.lines))
 	if !ok {
 		return false
 	}

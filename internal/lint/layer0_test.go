@@ -51,6 +51,21 @@ func TestLayer0_NonASCIISpaceInfoMatchesAST(t *testing.T) {
 	}
 }
 
+func TestLayer0_OneByteInfoAtEOFMatchesAST(t *testing.T) {
+	// goldmark reads an info string only when two or more bytes follow
+	// the run on a line with no newline: a one-byte info on the final
+	// line is dropped, so the empty fence has no position and no code
+	// lines.
+	for _, src := range []string{
+		"```x", "```\v", "``` x", "```xy", "```x\n", "```\v\n", "~~~`", "para\n\n```x",
+		"> ```x", "> a\n>\n> ```x", "> ```x\n",
+	} {
+		f, err := NewFile("t.md", []byte(src))
+		require.NoError(t, err)
+		assert.Equal(t, keysOf(collectCodeBlockLines(f)), keysOf(scan(src).CodeBlockLines), "%q", src)
+	}
+}
+
 func TestLayer0_UnclosedFenceMarksPhantomClose(t *testing.T) {
 	// An unclosed fence with content marks the opening fence, its content,
 	// and a phantom closing-fence line after the last content line.
@@ -669,4 +684,25 @@ func TestSourceMayHaveBlockQuote(t *testing.T) {
 		assert.True(t, SourceMayHaveBlockQuote([]byte(src)),
 			"expected may-have-quote: %q", src)
 	}
+}
+
+func TestFinalLineNoEOL(t *testing.T) {
+	assert.Equal(t, 2, finalLineNoEOL(splitLines("a\nb")))
+	assert.Equal(t, 0, finalLineNoEOL(splitLines("a\nb\n")))
+	assert.Equal(t, 0, finalLineNoEOL(nil))
+}
+
+func TestQuoteBodyFinal(t *testing.T) {
+	body := [][]byte{[]byte("a"), []byte("```x")}
+	// The quote's last body line comes from parent line index 4, the
+	// 1-based final line 5.
+	assert.Equal(t, 2, quoteBodyFinal(body, []int{3, 4}, 5))
+	assert.Equal(t, 0, quoteBodyFinal(body, []int{3, 4}, 0))
+	assert.Equal(t, 0, quoteBodyFinal(body, []int{2, 3}, 5))
+	// A trailing phantom slot (nil line) is skipped, even when it maps to
+	// the final line.
+	withPhantom := [][]byte{[]byte("```x"), nil}
+	assert.Equal(t, 1, quoteBodyFinal(withPhantom, []int{4, 5}, 5))
+	assert.Equal(t, 0, quoteBodyFinal(withPhantom, []int{3, 4}, 5))
+	assert.Equal(t, 0, quoteBodyFinal(nil, nil, 5))
 }

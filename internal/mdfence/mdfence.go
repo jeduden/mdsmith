@@ -19,6 +19,8 @@
 //   - Whitespace is goldmark's util.IsSpace set: space, tab, CR and
 //     LF. A trailing "\r" from a CRLF line therefore never counts as
 //     info text nor blocks a close.
+//   - On the source's final line, when it ends without a newline,
+//     goldmark ignores a one-byte info string; OpenFinal mirrors that.
 //
 // The helpers work on one line's bytes, never allocate, and know
 // nothing about containers. A caller scanning inside a list item or
@@ -50,6 +52,17 @@ type Fence struct {
 // Open reports whether line opens a fenced code block and, if so,
 // returns the fence. See the package comment for the rules.
 func Open(line []byte) (Fence, bool) {
+	return OpenFinal(line, false)
+}
+
+// OpenFinal is Open with one goldmark quirk mirrored: final reports
+// that line is the source's last line and ends without a newline.
+// goldmark reads an info string only when at least two bytes follow
+// the run on the line it sees, newline included, so on such a final
+// line a single byte after the run ("```x", "```\v") is dropped and
+// the fence has no info. Whether the line opens a fence is unchanged:
+// that one byte can never be a backtick after a backtick run.
+func OpenFinal(line []byte, final bool) (Fence, bool) {
 	indent := 0
 	for indent < len(line) && line[indent] == ' ' {
 		indent++
@@ -76,6 +89,9 @@ func Open(line []byte) (Fence, bool) {
 		if !isSpace(c) {
 			hasInfo = true
 		}
+	}
+	if final && len(line)-j == 1 {
+		hasInfo = false
 	}
 	return Fence{Indent: indent, Len: j - indent, Char: ch, HasInfo: hasInfo}, true
 }

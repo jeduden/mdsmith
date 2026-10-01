@@ -141,14 +141,41 @@ func Layer0(f *File) *Layer0Scan {
 // or PI blocks for a code-heavy file) does not re-grow the map, keeping
 // the scan inside the rule allocation budget.
 func scanLayer0(lines [][]byte) *Layer0Scan {
-	return scanLayer0Depth(lines, 0)
+	return scanLayer0Depth(lines, 0, finalLineNoEOL(lines))
+}
+
+// finalLineNoEOL returns the 1-based number of the last of lines when
+// the source ends without a newline (bytes.Split then leaves a non-empty
+// last element), or 0 when it ends with one.
+func finalLineNoEOL(lines [][]byte) int {
+	if n := len(lines); n > 0 && len(lines[n-1]) > 0 {
+		return n
+	}
+	return 0
+}
+
+// quoteBodyFinal maps final, the parent scan's 1-based final line with
+// no newline (0 for none), into a block quote's stripped body: it returns
+// the 1-based body line taken from that parent line, or 0. The final
+// line, when in the quote, is the last real body line; a phantom
+// closing-fence slot (a nil line) may follow it, so the last two slots
+// are checked.
+func quoteBodyFinal(body [][]byte, parentLine []int, final int) int {
+	for k := len(body) - 1; k >= 0 && k >= len(body)-2; k-- {
+		if body[k] != nil && parentLine[k]+1 == final {
+			return k + 1
+		}
+	}
+	return 0
 }
 
 // scanLayer0Depth is scanLayer0's depth-tracking core. depth is the
 // number of tryBlockquote recursions already taken to reach lines;
 // tryBlockquote refuses to recurse past maxBlockquoteDepth so a
-// pathologically nested `>` line cannot exhaust the stack.
-func scanLayer0Depth(lines [][]byte, depth int) *Layer0Scan {
+// pathologically nested `>` line cannot exhaust the stack. final is the
+// 1-based number of the line that is the source's last line with no
+// trailing newline, or 0 when lines holds no such line.
+func scanLayer0Depth(lines [][]byte, depth, final int) *Layer0Scan {
 	n := len(lines)
 	l0 := &Layer0Scan{
 		Classes:        make([]lineClass, n),
@@ -160,7 +187,7 @@ func scanLayer0Depth(lines [][]byte, depth int) *Layer0Scan {
 		// dense alternating block/blank layout in one allocation.
 		BlockSpans: make([]BlockSpan, 0, n/2+1),
 	}
-	sc := scanner{lines: lines, l0: l0, depth: depth}
+	sc := scanner{lines: lines, l0: l0, depth: depth, final: final}
 	sc.run()
 	return l0
 }
@@ -181,6 +208,10 @@ type scanner struct {
 	// depth is the number of tryBlockquote recursions taken to reach this
 	// scan. See maxBlockquoteDepth.
 	depth int
+	// final is the 1-based number of the line that is the source's last
+	// line with no trailing newline, or 0 when lines holds none. goldmark
+	// drops a one-byte info string on that line (mdfence.OpenFinal).
+	final int
 }
 
 // run drives the forward pass: a block loop that dispatches on each line's
@@ -325,7 +356,7 @@ func (s *scanner) tryBlockquote() bool {
 	// nested deeper is silently not marked as code rather than growing the
 	// stack further (see maxBlockquoteDepth).
 	if codeCapable && s.depth < maxBlockquoteDepth {
-		inner := scanLayer0Depth(body, s.depth+1)
+		inner := scanLayer0Depth(body, s.depth+1, quoteBodyFinal(body, parentLine, s.final))
 		for ln := range inner.CodeBlockLines {
 			// A phantom closing-fence line from a deeper recursion level can
 			// fall one past this level's body (ln-1 == len(parentLine)); the

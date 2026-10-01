@@ -110,6 +110,17 @@ var equivCases = map[string]string{
 	"fence vt info empty":   "```\v\n```\n",
 	"fence ff info empty":   "```\f\n```\n",
 	"fence nbsp info empty": "```\u00a0\n```\n",
+	// goldmark reads an info string only when two or more bytes follow
+	// the run on a line with no newline, so a one-byte info on the
+	// source's final line is dropped and the empty fence has no position.
+	"fence one-byte info at eof":     "```x",
+	"fence vt info at eof":           "```\v",
+	"fence space info at eof":        "``` x",
+	"fence two-byte info at eof":     "```xy",
+	"fence one-byte info newline":    "```x\n",
+	"fence tilde backtick at eof":    "~~~`",
+	"fence one-byte info after para": "para\n\n```x",
+	"quoted fence one-byte at eof":   "> ```x",
 }
 
 func sortedKeys(m map[int]struct{}) []int {

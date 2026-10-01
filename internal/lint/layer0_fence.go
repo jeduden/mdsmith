@@ -29,7 +29,7 @@ func advanceFenceState(open mdfence.Fence, line []byte, fi mdfence.Fence, opensF
 // document for an unclosed fence) as code, records the span, and advances
 // the cursor past it. Returns false when the cursor line is not a fence.
 func (s *scanner) tryFence() bool {
-	fi, ok := mdfence.Open(s.lines[s.i])
+	fi, ok := mdfence.OpenFinal(s.lines[s.i], s.i+1 == s.final)
 	if !ok {
 		return false
 	}
