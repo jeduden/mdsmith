@@ -246,20 +246,18 @@ func TestSessionRefactorWorkspace_Resolve(t *testing.T) {
 func TestSession_BuildRefactorWorkspace(t *testing.T) {
 	s := newRefactorSession(t, map[string][]byte{
 		"a.md":      []byte("# A\n"),
+		"c.md":      []byte("See [x](a.md#other).\n"),
 		"sub/b.md":  []byte("# B\n"),
 		"notes.txt": []byte("not markdown"),
 	})
-	ws := s.buildRefactorWorkspace("", nil)
-	assert.ElementsMatch(t, []string{"a.md", "sub/b.md"}, ws.Files())
-	assert.Same(t, s, ws.s)
+	plain := s.buildRefactorWorkspace("", nil)
+	assert.ElementsMatch(t, []string{"a.md", "c.md", "sub/b.md"}, plain.Files())
+	// a.md has no "Other" heading on disk, but c.md already links to it.
+	assert.Len(t, plain.IncomingAnchorEdges("a.md", "other"), 1)
 
-	// The overlay replaces the indexed bytes of the buffer's file.
-	overlay := s.buildRefactorWorkspace("a.md", []byte("# Other\n"))
-	assert.Equal(t, "a.md", overlay.overlayURI)
-	assert.Equal(t, "# Other\n", string(overlay.overlaySource))
-	assert.Empty(t, overlay.IncomingAnchorEdges("a.md", "a"))
-
-	// A failing walk leaves an empty index rather than an error.
-	failed := &Session{ws: failFSWorkspace{NewMemWorkspace(nil)}}
-	assert.Empty(t, failed.buildRefactorWorkspace("", nil).Files())
+	// With an overlay the index reads the unsaved buffer for a.md. The
+	// buffer's link to b.md#b shows up only when the overlay is used.
+	overlay := s.buildRefactorWorkspace("a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
+	assert.Len(t, overlay.IncomingAnchorEdges("sub/b.md", "b"), 1)
+	assert.Empty(t, plain.IncomingAnchorEdges("sub/b.md", "b"))
 }

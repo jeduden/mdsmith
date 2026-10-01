@@ -5,7 +5,7 @@ title: >-
 status: "✅"
 model: sonnet
 summary: >-
-  21 private helpers in internal/refactor and its
+  20 private helpers in internal/refactor and its
   cmd/mdsmith and pkg/mdsmith callers have no unit test
   named after them. They are covered only through tests of
   the functions that call them.
@@ -22,8 +22,9 @@ test" rule.
 
 The 2026-09-06 architecture audit of the `internal/refactor`
 rename/move engine flagged these functions. That audit was in
-closed PR #839 and never reached main. These 21 functions have
-no test named after them on main. They are listed by name, not
+closed PR #839 and never reached main. These functions had
+no test named after them on main. One of the original 21,
+`applyEditsToFile`, no longer exists, so 20 remain. They are listed by name, not
 line, since the files keep moving:
 
 - [internal/refactor/fileop_exec.go][fileop-exec] —
@@ -40,7 +41,8 @@ line, since the files keep moving:
   `internal/lsp` and drive a `textDocument/rename` request
   through a server harness. They are integration tests, not
   unit tests next to the source.
-- [cmd/mdsmith/move.go][cmd-move] — `applyEditsToFile`.
+- [cmd/mdsmith/move.go][cmd-move] — `applyEditsToFile`
+  (removed since the audit; see Task 4).
 - [cmd/mdsmith/rename.go][cmd-rename] —
   `buildWorkspace`, `detectRenameMode`, `headingPlan`,
   `linkRefPlan`, `looksLikePath`, `firstPathish`,
@@ -70,7 +72,7 @@ A few caller tests are unit tests next to the source:
   and `TestE2E_Rename_LinkRef_JSON` reach `linkRefPlan`.
 - `TestWriteFilePreservingMode*` reaches `resolveWriteMode`.
 
-None of the 21 is a public surface by itself, so all are
+None of them is a public surface by itself, so all are
 `tax`, not `blocker`.
 
 ## Out of scope
@@ -136,13 +138,9 @@ Two overlaps remain:
    `TestLinkRefEdits`, `TestRefUseEditsInBody`,
    `TestRefUseEdit`, `TestLinkTextBounds`, and
    `TestBodyNewlineCount` to [rename_test.go][rename-test].
-4. Skipped: `applyEditsToFile` no longer exists on main (the
-   all-or-nothing plan applier replaced it). Original text: add
-   `TestApplyEditsToFile` to
-   [move_unit_test.go][cmd-move-test] if `applyEditsToFile`
-   still exists. Open PR #859 replaces it with an
-   all-or-nothing plan applier whose functions carry their own
-   tests; if #859 has merged, skip this task.
+4. Skipped. `applyEditsToFile` no longer exists on main: PR #859
+   replaced it with an all-or-nothing plan applier whose
+   functions carry their own tests.
 5. Add `TestBuildWorkspace`, `TestDetectRenameMode`,
    `TestHeadingPlan`, `TestLinkRefPlan`, `TestLooksLikePath`,
    `TestFirstPathish`, and `TestResolveWriteMode` to
@@ -168,9 +166,9 @@ Two overlaps remain:
 
 ## Acceptance Criteria
 
-- [x] Every function listed in the Background section has a
-      test carrying its own name, added here or earlier by
-      another PR.
+- [x] Every function listed in the Background section that
+      still exists has a test carrying its own name, added
+      here or earlier by another PR.
 - [x] No test name is declared twice in a package.
 - [x] No production code changed.
 - [x] `go test ./...` is green.

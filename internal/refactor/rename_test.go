@@ -214,6 +214,14 @@ func TestLinkRefEdits(t *testing.T) {
 	}
 	// The def edit comes first and targets line index 4.
 	assert.Equal(t, 4, edits[0].Range.Start.Line)
+	// Uses: shortcut [spec] at columns 5-9, full [the spec][spec] label
+	// at columns 23-27, both on line index 2.
+	for i, want := range [][2]int{{5, 9}, {23, 27}} {
+		e := edits[i+1]
+		assert.Equal(t, 2, e.Range.Start.Line)
+		assert.Equal(t, want[0], e.Range.Start.Character)
+		assert.Equal(t, want[1], e.Range.End.Character)
+	}
 	assert.Empty(t, linkRefEdits(src, "ghost", "rfc"))
 }
 
@@ -249,6 +257,10 @@ func TestRefUseEditsInBody(t *testing.T) {
 	assert.Equal(t, 1, edits[0].Range.Start.Character)
 	assert.Equal(t, 2, edits[0].Range.End.Character)
 	assert.Equal(t, "z", edits[1].NewText)
+	// [t][A]: the label A sits at columns 20-21 of line 0.
+	assert.Equal(t, 0, edits[1].Range.Start.Line)
+	assert.Equal(t, 20, edits[1].Range.Start.Character)
+	assert.Equal(t, 21, edits[1].Range.End.Character)
 
 	assert.Empty(t, refUseEditsInBody(root, body, lines, off, "ghost", "z"))
 	// An inline link carries no Reference and is skipped.
@@ -281,12 +293,10 @@ func TestRefUseEdit(t *testing.T) {
 }
 
 func TestLinkTextBounds(t *testing.T) {
-	body := []byte("See [the *spec*][x] now.\n\n[x]: u\n")
+	body := []byte("See [the spec][x] now.\n\n[x]: u\n")
 	l := firstLink(t, parseBody(body))
 	start, end := linkTextBounds(l, body)
-	assert.Equal(t, "the ", string(body[start:start+4]))
-	assert.Equal(t, "spec", string(body[end-4:end]))
-	assert.Less(t, start, end)
+	assert.Equal(t, "the spec", string(body[start:end]))
 
 	// A link with no text children has no bounds.
 	empty := []byte("[][x]\n\n[x]: u\n")

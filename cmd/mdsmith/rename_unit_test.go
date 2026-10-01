@@ -187,6 +187,15 @@ func TestBuildRenameWorkspace_DiscoveryPaths(t *testing.T) {
 		_, _, code := buildRenameWorkspace(opts, "a.md")
 		assert.Equal(t, 2, code)
 	})
+	t.Run("empty workspace exits 1", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+			[]byte("files:\n  - \"nope/*.md\"\n"), 0o644))
+		t.Chdir(dir)
+		_, _, code := buildRenameWorkspace(renameOptions{}, "a.md")
+		assert.Equal(t, 1, code, "buildWorkspace's exit 1 propagates")
+	})
 	t.Run("unreadable target exits 2", func(t *testing.T) {
 		renameWorkspace(t)
 		_, _, code := buildRenameWorkspace(renameOptions{}, "missing.md")
@@ -243,8 +252,11 @@ func TestDetectRenameMode(t *testing.T) {
 	assert.Equal(t, 2, code)
 
 	// A path-shaped request with no matching symbol is steered to move.
-	_, code = detectRenameMode("a.md", src, "old.md", "new.md")
+	stderr := captureStderr(func() {
+		_, code = detectRenameMode("a.md", src, "old.md", "new.md")
+	})
 	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "mdsmith move old.md new.md")
 }
 
 func TestHeadingPlan(t *testing.T) {
@@ -257,6 +269,10 @@ func TestHeadingPlan(t *testing.T) {
 	assert.Contains(t, plan.Edits, "a.md")
 	// The anchor link in b.md is rewritten too.
 	assert.Contains(t, plan.Edits, "b.md")
+
+	// A no-op rename produces no edits and exits 1.
+	_, c = headingPlan(ws, "a.md", src, "Setup", "Setup")
+	assert.Equal(t, 1, c, "no edits exits 1")
 
 	_, c = headingPlan(ws, "a.md", src, "Ghost", "X")
 	assert.Equal(t, 1, c, "missing heading exits 1")
@@ -297,18 +313,17 @@ func TestFirstPathish(t *testing.T) {
 }
 
 func TestResolveWriteMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits and symlinks are not portable to Windows")
+	}
 	dir := t.TempDir()
 	f := filepath.Join(dir, "f.md")
 	require.NoError(t, os.WriteFile(f, []byte("x"), 0o600))
-	require.NoError(t, os.Chmod(f, 0o600))
 	assert.Equal(t, os.FileMode(0o600), resolveWriteMode(f))
 
 	// A missing path falls back to 0o644.
 	assert.Equal(t, os.FileMode(0o644), resolveWriteMode(filepath.Join(dir, "none.md")))
 
-	if runtime.GOOS == "windows" {
-		t.Skip("symlinks need privileges on Windows")
-	}
 	link := filepath.Join(dir, "link.md")
 	require.NoError(t, os.Symlink(f, link))
 	assert.Equal(t, os.FileMode(0o600), resolveWriteMode(link), "symlink follows to its target")

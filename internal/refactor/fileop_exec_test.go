@@ -157,8 +157,11 @@ func TestGitTracked(t *testing.T) {
 	assert.True(t, gitTracked(dir, "a.md"), "staged file is tracked")
 	assert.False(t, gitTracked(dir, "u.md"), "untracked file is not tracked")
 	assert.False(t, gitTracked(dir, "missing.md"), "missing path is not tracked")
-	// A directory that is not a repository reports false.
-	assert.False(t, gitTracked(t.TempDir(), "a.md"))
+	// A directory that is not a repository reports false, even when
+	// the file exists.
+	plain := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(plain, "a.md"), []byte("# A\n"), 0o644))
+	assert.False(t, gitTracked(plain, "a.md"))
 }
 
 func TestGitMove(t *testing.T) {
@@ -178,5 +181,6 @@ func TestGitMove(t *testing.T) {
 	err := gitMove(dir, "c.md", "b.md")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "git mv:")
+	assert.Contains(t, err.Error(), "destination exists")
 	assert.FileExists(t, filepath.Join(dir, "c.md"))
 }

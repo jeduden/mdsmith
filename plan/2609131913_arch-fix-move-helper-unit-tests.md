@@ -69,7 +69,8 @@ Each has a named test in
 4. `go test ./...` passes.
 5. `go tool -modfile=tools/go.mod golangci-lint run` reports
    no issues.
-6. Optional stretch, not required to close this plan: add
+6. Optional stretch, not required to close this plan. Plan
+   2609061915 already added them; skip it. Add
    `TestLooksLikePath`, `TestFirstPathish`, and
    `TestResolveWriteMode` in `cmd/mdsmith/rename_unit_test.go`.
 
