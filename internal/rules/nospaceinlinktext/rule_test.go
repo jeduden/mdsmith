@@ -677,3 +677,15 @@ func TestFix_RewrittenOutputDoesNotAliasSource(t *testing.T) {
 		assert.Equal(t, src, string(f.Source))
 	}
 }
+
+// TestFixSpans_NoRewriteReturnsCapLimitedSubslice pins the no-rewrite
+// contract: the result equals the source range and its capacity stops at
+// its length, so an append by a caller cannot write into the source.
+func TestFixSpans_NoRewriteReturnsCapLimitedSubslice(t *testing.T) {
+	src := []byte("plain text\n")
+	out := fixSpans(src, nil, 0, len(src))
+	assert.Equal(t, string(src), string(out))
+	assert.Equal(t, len(out), cap(out))
+	_ = append(out, 'X')
+	assert.Equal(t, "plain text\n", string(src))
+}

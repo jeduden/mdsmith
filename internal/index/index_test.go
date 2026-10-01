@@ -650,3 +650,15 @@ func TestIsASCII(t *testing.T) {
 	assert.True(t, isASCII("Apple Pie"))
 	assert.False(t, isASCII("caf\u00e9"))
 }
+
+// TestSearchSymbols_UppercaseQueryMatches pins that SearchSymbols
+// lower-cases the query before nameMatches/containsFold, which require a
+// lower-cased q.
+func TestSearchSymbols_UppercaseQueryMatches(t *testing.T) {
+	t.Parallel()
+	idx := New("/root")
+	idx.Update("a.md", []byte("# Apple Pie\n"))
+	hits := idx.SearchSymbols("APPLE", 0)
+	require.Len(t, hits, 1)
+	assert.Equal(t, "Apple Pie", hits[0].Symbol.Name)
+}
