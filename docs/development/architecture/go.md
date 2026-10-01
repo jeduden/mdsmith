@@ -55,6 +55,9 @@ question. The current production set:
   [Public Markdown Library](../markdown-library.md).
 - `internal/mdtext` — walk an already-parsed AST (slugging, TOC,
   plain-text). `pkg/markdown` produces the node it walks.
+- `internal/mdfence` — does this source line open or close a CommonMark
+  fenced code block? The one shared, zero-allocation copy line
+  scanners use instead of hand-rolled fence checks.
 - `internal/punkt` — sentence segmenter (vendored Punkt); only
   `internal/mdtext` imports it.
 - `internal/rule` — interfaces for rules and fixes (the ports package).
