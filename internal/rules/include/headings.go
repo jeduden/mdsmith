@@ -3,8 +3,6 @@ package include
 import (
 	"regexp"
 	"strings"
-
-	"github.com/jeduden/mdsmith/internal/mdfence"
 )
 
 // atxRe matches an ATX heading line: one or more '#' followed by a space or end of line.
@@ -78,36 +76,20 @@ func adjustHeadingsToLevel(content string, target int) string {
 }
 
 // findMinHeadingLevel scans lines and returns the minimum heading level found,
-// ignoring lines inside fenced code blocks. Returns 0 if no headings are found.
+// ignoring lines inside fenced code blocks, HTML blocks, and processing
+// instructions. Returns 0 if no headings are found.
 func findMinHeadingLevel(lines []string) int {
 	minLevel := 0
-	var fence mdfence.Tracker
+	var scan headingScan
 
-	for i, line := range lines {
-		if stepFence(&fence, line) {
-			continue
-		}
-
-		level := headingLevel(lines, i, line)
+	for _, line := range lines {
+		level, _ := scan.step(line)
 		if level > 0 && (minLevel == 0 || level < minLevel) {
 			minLevel = level
 		}
 	}
 
 	return minLevel
-}
-
-// headingLevel returns the heading level of line at index i, or 0 if not a heading.
-func headingLevel(lines []string, i int, line string) int {
-	if m := atxRe.FindStringSubmatch(line); m != nil {
-		return len(m[1])
-	}
-	// Test the cheap underline match first: most lines are not
-	// underlines, so the previous-line check rarely runs.
-	if level := setextLevel(line); level > 0 && i > 0 && setextContentLine(lines[i-1]) {
-		return level
-	}
-	return 0
 }
 
 // setextLevel returns 1 when line is a setext h1 underline (`=` run),
@@ -123,64 +105,32 @@ func setextLevel(line string) int {
 }
 
 // applyShift applies the heading level shift to all headings, converting
-// setext headings to ATX when shifted. Lines inside code fences are skipped.
+// setext headings to ATX when shifted. Lines inside code fences, HTML
+// blocks, and processing instructions are kept as they are.
 func applyShift(lines []string, shift int) []string {
 	result := make([]string, 0, len(lines))
-	var fence mdfence.Tracker
+	var scan headingScan
 
 	for i, line := range lines {
-		if stepFence(&fence, line) {
+		level, setext := scan.step(line)
+		switch {
+		case level == 0:
 			result = append(result, line)
-			continue
-		}
-
-		// Check setext heading (must check before appending the line,
-		// because we may need to replace the previous line and skip this one).
-		// The check reads the last result line, not lines[i-1], so a
-		// setext heading already converted to ATX is not re-used as text.
-		// The cheap underline match runs first so the previous-line check
-		// only runs on the rare underline-shaped line.
-		if level := setextLevel(line); level > 0 && len(result) > 0 &&
-			setextContentLine(result[len(result)-1]) {
-			newLevel := clampLevel(level + shift)
-			// Replace previous line (the heading text) with ATX heading.
-			result[len(result)-1] = strings.Repeat("#", newLevel) + " " + lines[i-1]
-			// Skip the underline.
-			continue
-		}
-
-		// Check ATX heading.
-		if m := atxRe.FindStringSubmatch(line); m != nil {
-			oldLevel := len(m[1])
-			newLevel := clampLevel(oldLevel + shift)
-			rest := m[2]
+		case setext:
+			// The scan only reports a setext underline after a paragraph
+			// line, which the previous iteration appended unchanged:
+			// replace it with an ATX heading and drop the underline.
+			result[len(result)-1] = strings.Repeat("#", clampLevel(level+shift)) + " " + lines[i-1]
+		default:
+			rest := atxRe.FindStringSubmatch(line)[2]
 			if rest == "" {
 				rest = " "
 			}
-			result = append(result, strings.Repeat("#", newLevel)+rest)
-			continue
+			result = append(result, strings.Repeat("#", clampLevel(level+shift))+rest)
 		}
-
-		result = append(result, line)
 	}
 
 	return result
-}
-
-// setextContentLine reports whether prev can carry the text of a setext
-// heading whose underline is the next line. CommonMark reads an underline
-// after a blank line, an ATX heading, a fence line (opener or closer), or
-// another underline as a thematic break or paragraph text, never as a
-// setext heading. This is a conservative check; it won't catch all edge
-// cases (list items, block quotes).
-func setextContentLine(prev string) bool {
-	if strings.TrimSpace(prev) == "" || atxRe.MatchString(prev) {
-		return false
-	}
-	if opensFence(prev) {
-		return false
-	}
-	return setextLevel(prev) == 0
 }
 
 // clampLevel ensures a heading level is between 1 and 6.

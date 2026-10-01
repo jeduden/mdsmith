@@ -279,13 +279,13 @@ func TestAdjustHeadingsToLevel(t *testing.T) {
 	}
 }
 
-// --- setextContentLine ---
+// --- headingScan ---
 
-// TestSetextContentLine pins which previous lines may carry setext
+// TestHeadingScan_SetextText pins which previous lines may carry setext
 // heading text. CommonMark reads an underline after a blank line, an
-// ATX heading, a fence line, or another underline as a thematic break
-// (or paragraph text), never as a setext heading.
-func TestSetextContentLine(t *testing.T) {
+// ATX heading, a fence line, an HTML line, or another underline as a
+// thematic break (or paragraph text), never as a setext heading.
+func TestHeadingScan_SetextText(t *testing.T) {
 	tests := []struct {
 		name string
 		prev string
@@ -293,6 +293,7 @@ func TestSetextContentLine(t *testing.T) {
 	}{
 		{"paragraph text", "Title", true},
 		{"inline code span", "```x``` is code", true},
+		{"inline html", "<span>Title</span>", true},
 		{"empty", "", false},
 		{"whitespace only", "  \t", false},
 		{"carriage return only", "\r", false},
@@ -302,11 +303,42 @@ func TestSetextContentLine(t *testing.T) {
 		{"tilde fence", "~~~", false},
 		{"setext h1 underline", "===", false},
 		{"setext h2 underline", "---", false},
+		{"html comment", "<!-- note -->", false},
+		{"processing instruction", "<?toc?>", false},
+		{"block tag", "<div>", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, setextContentLine(tt.prev))
+			var scan headingScan
+			scan.step(tt.prev)
+			level, setext := scan.step("---")
+			assert.Equal(t, tt.want, setext)
+			assert.Equal(t, tt.want, level == 2)
 		})
+	}
+}
+
+// TestPIStart pins the processing-instruction start rules mirrored from
+// the canonical parser.
+func TestPIStart(t *testing.T) {
+	tests := []struct {
+		line           string
+		opened, closed bool
+	}{
+		{"<?toc?>", true, true},
+		{"   <?toc ?>  ", true, true},
+		{"<?catalog", true, false},
+		{"<?catalog\r", true, false},
+		{"    <?toc?>", false, false},
+		{"<? x", false, false},
+		{"<??>", false, false},
+		{"<?", false, false},
+		{"text", false, false},
+	}
+	for _, tt := range tests {
+		opened, closed := piStart(tt.line)
+		assert.Equal(t, tt.opened, opened, "%q opened", tt.line)
+		assert.Equal(t, tt.closed, closed, "%q closed", tt.line)
 	}
 }
 
@@ -337,6 +369,10 @@ func TestApplyShift_ATXThenThematicBreak(t *testing.T) {
 	// underline: the heading is shifted and the break kept.
 	got := applyShift([]string{"## A", "---", "text"}, 1)
 	assert.Equal(t, []string{"### A", "---", "text"}, got)
+}
+
+func TestApplyShift_EmptyATXHeading(t *testing.T) {
+	assert.Equal(t, []string{"### "}, applyShift([]string{"##"}, 1))
 }
 
 func TestApplyShift_SetextThenThematicBreak(t *testing.T) {
