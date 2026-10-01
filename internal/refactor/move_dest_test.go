@@ -18,7 +18,7 @@ func moveAndApply(t *testing.T, files map[string]string, src, dst string) map[st
 	require.NoError(t, err)
 	out := make(map[string]string, len(files))
 	for rel, body := range files {
-		out[rel] = applyEditsToSource(body, plan.Edits[rel])
+		out[rel] = applyEditsToSource(t, body, plan.Edits[rel])
 	}
 	return out
 }

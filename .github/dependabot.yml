@@ -5,6 +5,21 @@ updates:
     open-pull-requests-limit: 1
     schedule:
       interval: "weekly"
+    # These golang.org/x releases raise their go directive to 1.26.0,
+    # which would lift the root go.mod floor off Go 1.25 for every
+    # `go install` consumer. Remove this block when go.mod moves to
+    # Go 1.26 on purpose.
+    ignore:
+      - dependency-name: "golang.org/x/mod"
+        versions: [">= 0.41.0"]
+      - dependency-name: "golang.org/x/net"
+        versions: [">= 0.59.0"]
+      - dependency-name: "golang.org/x/sync"
+        versions: [">= 0.23.0"]
+      - dependency-name: "golang.org/x/sys"
+        versions: [">= 0.48.0"]
+      - dependency-name: "golang.org/x/tools"
+        versions: [">= 0.50.0"]
   - package-ecosystem: "npm"
     directory: "/docs/research/benchmarks/npm"
     open-pull-requests-limit: 1

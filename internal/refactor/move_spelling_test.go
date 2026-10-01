@@ -125,7 +125,8 @@ func TestMove_NonMarkdownSourceBytesUntouched(t *testing.T) {
 	plan, err := Move(ws, "docs/n.txt", "guide/n.txt")
 	require.NoError(t, err)
 	assert.Empty(t, plan.Edits["docs/n.txt"])
-	assert.Equal(t, "[n](../guide/n.txt)\n", applyEditsToSource(string(sources["docs/b.md"]), plan.Edits["docs/b.md"]))
+	assert.Equal(t, "[n](../guide/n.txt)\n",
+		applyEditsToSource(t, string(sources["docs/b.md"]), plan.Edits["docs/b.md"]))
 }
 
 // TestMove_ListedNonMdSourceRecomputed pins that a moved file the

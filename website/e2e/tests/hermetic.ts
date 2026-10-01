@@ -7,12 +7,12 @@ import {
 /**
  * Hermetic-network test fixtures.
  *
- * The homepage hero embeds four third-party badge images (github.com,
- * goreportcard.com, codecov.io, img.shields.io) marked loading="lazy".
+ * The homepage hero embeds three third-party badge images (github.com,
+ * codecov.io, img.shields.io) marked loading="lazy".
  * With JavaScript enabled, lazy images never gate the window load
  * event. With JavaScript disabled, Chromium loads lazy images eagerly
  * (the HTML spec's lazy-load steps require scripting), so page.goto's
- * default waitUntil: "load" blocks on all four external hosts — and a
+ * default waitUntil: "load" blocks on all three external hosts — and a
  * hanging badge host times out the no-JS tests after 30s, which is
  * exactly the failure CI hit while every JS-enabled test stayed green.
  *

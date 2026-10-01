@@ -100,7 +100,9 @@ func (e HeadingCollisionError) Error() string {
 //  2. Reject a new bare-slug collision with another heading.
 //  3. Diff old vs new slug maps to find shifted headings.
 //  4. Emit the heading-line edit plus, per shifted slug, every
-//     incoming anchor edit and every ref-def-destination edit.
+//     incoming anchor edit and every ref-def-destination edit —
+//     except a link inside the heading text itself, whose bytes the
+//     heading-line edit already replaces.
 func Heading(
 	ws Workspace, fileKey, file string, source []byte,
 	line int, oldName, newName string,
@@ -121,11 +123,13 @@ func Heading(
 	// headingTextEdit's false branch is unreachable here: the caller
 	// resolved `line` to a heading line, so the row is a heading.
 	headingEdit, _ := headingTextEdit(source, line, newName)
-	changes := map[string][]Edit{fileKey: {headingEdit}}
+	changes := map[string][]Edit{}
 	for old, neu := range slugRemapPairs(oldSlugs, newSlugs) {
 		appendAnchorEditsForHeading(changes, ws, file, old, neu)
 		appendRefDefDestEditsForHeading(changes, ws, file, old, neu)
 	}
+	changes[fileKey] = append([]Edit{headingEdit},
+		dropEditsInside(changes[fileKey], headingEdit.Range)...)
 	stableSortEdits(changes)
 	return Plan{Edits: changes}, nil
 }
@@ -322,6 +326,31 @@ func headingTextEdit(source []byte, line int, newName string) (Edit, bool) {
 		},
 		NewText: newName,
 	}, true
+}
+
+// dropEditsInside returns es without the edits that outer swallows,
+// filtering es in place. The heading-text edit outer replaces its
+// range wholesale with the new text, so an edit inside that range —
+// the fragment of a link in the heading that points back at the
+// heading — has no bytes left to rewrite. Kept, it would claim the
+// same bytes twice: ApplyEdits rejects such a plan and LSP forbids it.
+//
+// An edit is swallowed when it lies on outer's line, within outer's
+// range, and claims a byte of it or inserts strictly inside it. An
+// insert at either end of outer only touches it, and a partial overlap
+// is left for ApplyEdits to report.
+func dropEditsInside(es []Edit, outer Range) []Edit {
+	kept := es[:0]
+	for _, e := range es {
+		r := e.Range
+		inside := r.Start.Line == outer.Start.Line && r.End.Line == outer.End.Line &&
+			r.Start.Character >= outer.Start.Character && r.End.Character <= outer.End.Character &&
+			r.Start.Character < outer.End.Character && r.End.Character > outer.Start.Character
+		if !inside {
+			kept = append(kept, e)
+		}
+	}
+	return kept
 }
 
 // HeadingTextRange returns the byte offsets of the heading text on an
