@@ -4,6 +4,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -172,4 +177,128 @@ func TestNormalizedLabel(t *testing.T) {
 			assert.Equal(t, tc.want, NormalizedLabel([]byte(tc.input)))
 		})
 	}
+}
+
+func TestInvalidLinkRefRune(t *testing.T) {
+	assert.Equal(t, rune(0), invalidLinkRefRune("plain label"))
+	assert.Equal(t, rune(0), invalidLinkRefRune(""))
+	assert.Equal(t, '\n', invalidLinkRefRune("a\nb"))
+	assert.Equal(t, '\r', invalidLinkRefRune("a\rb"))
+	assert.Equal(t, '[', invalidLinkRefRune("a[b"))
+	assert.Equal(t, ']', invalidLinkRefRune("a]b"))
+	// The first offending rune wins.
+	assert.Equal(t, '[', invalidLinkRefRune("x[y]"))
+}
+
+func TestLabelConflict(t *testing.T) {
+	src := []byte("[a]: u1\n[Beta]: u2\n")
+	assert.Equal(t, "Beta", labelConflict(src, "a", "beta"))
+	assert.Equal(t, "", labelConflict(src, "a", "gamma"))
+	// Renaming a label to itself is not a conflict.
+	assert.Equal(t, "", labelConflict(src, "a", "a"))
+	// A def-shaped line inside a fence is not a real definition.
+	fenced := []byte("[a]: u1\n\n```\n[beta]: u2\n```\n")
+	assert.Equal(t, "", labelConflict(fenced, "a", "beta"))
+	// Front matter does not confuse the scan.
+	fm := []byte("---\ntitle: t\n---\n[a]: u1\n[beta]: u2\n")
+	assert.Equal(t, "beta", labelConflict(fm, "a", "beta"))
+}
+
+func TestLinkRefEdits(t *testing.T) {
+	src := []byte("# T\n\nSee [spec], [the spec][spec], and [other][x].\n\n[spec]: u\n[x]: v\n")
+	edits := linkRefEdits(src, "spec", "rfc")
+	// One def edit plus a shortcut use and a full use.
+	require.Len(t, edits, 3)
+	for _, e := range edits {
+		assert.Equal(t, "rfc", e.NewText)
+	}
+	// The def edit comes first and targets line index 4.
+	assert.Equal(t, 4, edits[0].Range.Start.Line)
+	assert.Empty(t, linkRefEdits(src, "ghost", "rfc"))
+}
+
+// parseBody parses body with the lint parser, as linkRefEdits does.
+func parseBody(body []byte) ast.Node {
+	return lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
+}
+
+func firstLink(t *testing.T, root ast.Node) *ast.Link {
+	t.Helper()
+	var found *ast.Link
+	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if l, ok := n.(*ast.Link); ok && entering && found == nil {
+			found = l
+			return ast.WalkStop, nil
+		}
+		return ast.WalkContinue, nil
+	})
+	require.NotNil(t, found, "no link in body")
+	return found
+}
+
+func TestRefUseEditsInBody(t *testing.T) {
+	src := []byte("[a] and [b] and [t][A].\n\n[a]: u\n[b]: v\n")
+	body, off := bodyAndFMOffset(src)
+	root := parseBody(body)
+	lines := splitLines(src)
+
+	edits := refUseEditsInBody(root, body, lines, off, "a", "z")
+	// Shortcut [a] and full [t][A]; [b] is ignored.
+	require.Len(t, edits, 2)
+	assert.Equal(t, 0, edits[0].Range.Start.Line)
+	assert.Equal(t, 1, edits[0].Range.Start.Character)
+	assert.Equal(t, 2, edits[0].Range.End.Character)
+	assert.Equal(t, "z", edits[1].NewText)
+
+	assert.Empty(t, refUseEditsInBody(root, body, lines, off, "ghost", "z"))
+	// An inline link carries no Reference and is skipped.
+	inline := []byte("[a](u)\n")
+	ib, io := bodyAndFMOffset(inline)
+	assert.Empty(t, refUseEditsInBody(parseBody(ib), ib, splitLines(inline), io, "a", "z"))
+}
+
+func TestRefUseEdit(t *testing.T) {
+	src := []byte("---\ntitle: t\n---\nSee [text][Label].\n\n[label]: u\n")
+	body, off := bodyAndFMOffset(src)
+	root := parseBody(body)
+	l := firstLink(t, root)
+
+	e, ok := refUseEdit(l, body, splitLines(src), off, "new", newBodyLineIndex(body))
+	require.True(t, ok)
+	// Front matter shifts the line: "See ..." is file line index 3.
+	assert.Equal(t, 3, e.Range.Start.Line)
+	assert.Equal(t, 3, e.Range.End.Line)
+	assert.Equal(t, 11, e.Range.Start.Character)
+	assert.Equal(t, 16, e.Range.End.Character)
+	assert.Equal(t, "new", e.NewText)
+
+	// An empty-text reference cannot be anchored.
+	empty := []byte("[][x]\n\n[x]: u\n")
+	eb, eo := bodyAndFMOffset(empty)
+	el := firstLink(t, parseBody(eb))
+	_, ok = refUseEdit(el, eb, splitLines(empty), eo, "new", newBodyLineIndex(eb))
+	assert.False(t, ok)
+}
+
+func TestLinkTextBounds(t *testing.T) {
+	body := []byte("See [the *spec*][x] now.\n\n[x]: u\n")
+	l := firstLink(t, parseBody(body))
+	start, end := linkTextBounds(l, body)
+	assert.Equal(t, "the ", string(body[start:start+4]))
+	assert.Equal(t, "spec", string(body[end-4:end]))
+	assert.Less(t, start, end)
+
+	// A link with no text children has no bounds.
+	empty := []byte("[][x]\n\n[x]: u\n")
+	el := firstLink(t, parseBody(empty))
+	s, e := linkTextBounds(el, empty)
+	assert.Equal(t, -1, s)
+	assert.Equal(t, -1, e)
+}
+
+func TestBodyNewlineCount(t *testing.T) {
+	assert.Equal(t, 0, bodyNewlineCount(nil))
+	assert.Equal(t, 0, bodyNewlineCount([]byte("no newline")))
+	assert.Equal(t, 1, bodyNewlineCount([]byte("a\n")))
+	assert.Equal(t, 3, bodyNewlineCount([]byte("a\n\nb\nc")))
 }
