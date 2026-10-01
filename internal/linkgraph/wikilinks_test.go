@@ -660,3 +660,32 @@ func TestResolveWikiLink_OnDiskFS(t *testing.T) {
 func openDirFS(dir string) (fs.FS, error) {
 	return os.DirFS(dir), nil
 }
+
+func TestInCodeSpan_ManySpans(t *testing.T) {
+	// 1000 ordered, disjoint spans: [10i, 10i+4).
+	spans := make([]byteRange, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		spans = append(spans, byteRange{start: 10 * i, end: 10*i + 4})
+	}
+	for i := 0; i < 1000; i++ {
+		assert.True(t, inCodeSpan(spans, 10*i), "start of span %d", i)
+		assert.True(t, inCodeSpan(spans, 10*i+3), "last byte of span %d", i)
+		assert.False(t, inCodeSpan(spans, 10*i+4), "end of span %d is exclusive", i)
+		assert.False(t, inCodeSpan(spans, 10*i+9), "gap after span %d", i)
+	}
+	assert.False(t, inCodeSpan(spans, -1))
+	assert.False(t, inCodeSpan(spans, 20000))
+}
+
+func BenchmarkInCodeSpan(b *testing.B) {
+	spans := make([]byteRange, 0, 2000)
+	for i := 0; i < 2000; i++ {
+		spans = append(spans, byteRange{start: 10 * i, end: 10*i + 4})
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		for i := 0; i < 2000; i++ {
+			inCodeSpan(spans, 10*i+7)
+		}
+	}
+}
