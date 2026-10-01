@@ -3,9 +3,9 @@
 //
 // It is the one shared copy of the fence rules that line scanners
 // across mdsmith (the Layer 0 scanner, the line classifier, rule-local
-// scanners, directive discovery, the website link rewriter) used to
-// re-implement by hand. The rules mirror goldmark's
-// fencedCodeBlockParser in pkg/goldmark/parser/fcode_block.go:
+// scanners, the website link rewriter) used to re-implement by hand.
+// The rules mirror goldmark's fencedCodeBlockParser in
+// pkg/goldmark/parser/fcode_block.go:
 //
 //   - An opener is up to three spaces of indentation, then a run of
 //     three or more identical backticks or tildes. A tab in the

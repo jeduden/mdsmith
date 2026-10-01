@@ -150,9 +150,8 @@ type lc0Pass struct {
 	// blanks into the block but drops trailing ones.
 	pendingBlanks []int
 
-	fence         mdfence.Fence // the open fence; valid while inFence
-	inFence       bool
-	fenceOpenLine int // 1-based
+	fence         mdfence.Fence // the open fence; the zero Fence when none is open (see inFence)
+	fenceOpenLine int           // 1-based
 
 	inHTML   bool     // inside an HTML block
 	htmlKind htmlKind // how the open HTML block ends
@@ -175,7 +174,7 @@ func (p *lc0Pass) run() {
 	for i := start; i < len(p.lines); i++ {
 		p.classifyLine(i)
 	}
-	if p.inFence {
+	if p.inFence() {
 		p.finishFence(0) // unclosed fence: runs to EOF
 	}
 }
@@ -221,11 +220,11 @@ func (p *lc0Pass) classifyLine(i int) {
 	// block at the boundary (no lazy continuation for code/HTML blocks), so
 	// the classifier closes it too, then reclassifies this line at the
 	// reduced container depth.
-	if (p.inFence || p.inHTML) && matched < p.openBlockDepth {
+	if (p.inFence() || p.inHTML) && matched < p.openBlockDepth {
 		p.closeBlockAtBoundary(ln)
 	}
 
-	if p.inFence {
+	if p.inFence() {
 		p.handleFenceBody(ln, rest)
 		return
 	}
@@ -259,9 +258,9 @@ func (p *lc0Pass) markBlank(i, ln int) {
 // ended just before ln (the goldmark phantom-close behaviour finishFence
 // already implements); an HTML block simply ends (its lines are never code).
 func (p *lc0Pass) closeBlockAtBoundary(ln int) {
-	if p.inFence {
+	if p.inFence() {
 		p.finishFence(ln)
-		p.inFence = false
+		p.fence = mdfence.Fence{}
 		return
 	}
 	p.endHTMLBlock()
@@ -283,7 +282,7 @@ func (p *lc0Pass) handleFenceBody(ln int, rest []byte) {
 	if mdfence.Close(rest, p.fence) {
 		p.out.classes[ln-1] = LineFenceClose
 		p.finishFence(ln)
-		p.inFence = false
+		p.fence = mdfence.Fence{}
 	}
 }
 
@@ -385,7 +384,7 @@ func (p *lc0Pass) handleContent(i, ln int, line []byte, off int, rest []byte) {
 		p.prevParagraph = false
 		p.endIndentRun()
 	case indent <= 3 && p.tryOpenFence(ln, rest):
-		// tryOpenFence set inFence and recorded the open line.
+		// tryOpenFence recorded the open fence and its line.
 		p.prevParagraph = false
 		p.endIndentRun()
 	case indent <= 3 && p.tryStartHTML(i, rest):
@@ -515,6 +514,10 @@ func (c lc0Container) consume(line []byte, pos int) (int, bool) {
 	return j, true
 }
 
+// inFence reports whether a fenced code block is open: tryOpenFence set
+// p.fence and no close or container boundary has reset it yet.
+func (p *lc0Pass) inFence() bool { return p.fence.Char != 0 }
+
 // tryOpenFence opens a fenced code block when rest is an opening fence.
 // It records the open line so finishFence can mark the block as a unit.
 func (p *lc0Pass) tryOpenFence(ln int, rest []byte) bool {
@@ -522,7 +525,6 @@ func (p *lc0Pass) tryOpenFence(ln int, rest []byte) bool {
 	if !ok {
 		return false
 	}
-	p.inFence = true
 	p.fence = fence
 	p.fenceOpenLine = ln
 	p.openBlockDepth = len(p.stack)

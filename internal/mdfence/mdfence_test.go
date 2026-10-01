@@ -27,7 +27,7 @@ func TestOpen(t *testing.T) {
 		{"CRLF after info", "```go\r", Fence{Char: '`', Len: 3, HasInfo: true}, true},
 		{"vertical tab is info", "```\v", Fence{Char: '`', Len: 3, HasInfo: true}, true},
 		{"form feed is info", "```\f", Fence{Char: '`', Len: 3, HasInfo: true}, true},
-		{"nbsp is info", "``` ", Fence{Char: '`', Len: 3, HasInfo: true}, true},
+		{"nbsp is info", "```\u00a0", Fence{Char: '`', Len: 3, HasInfo: true}, true},
 		{"tilde info holds backtick", "~~~ `x`", Fence{Char: '~', Len: 3, HasInfo: true}, true},
 		{"mixed run stops at other char", "``~", Fence{}, false},
 		{"tilde run then backticks", "~~~```", Fence{Char: '~', Len: 3, HasInfo: true}, true},
@@ -42,7 +42,7 @@ func TestOpen(t *testing.T) {
 		{"empty", "", Fence{}, false},
 		{"spaces only", "   ", Fence{}, false},
 		{"text", "text", Fence{}, false},
-		{"leading nbsp", " ```", Fence{}, false},
+		{"leading nbsp", "\u00a0```", Fence{}, false},
 		{"leading form feed", "\f```", Fence{}, false},
 	}
 	for _, tt := range tests {
@@ -84,7 +84,7 @@ func TestClose(t *testing.T) {
 		{"tab indent", "\t```", bt3, false},
 		{"spaces then tab", "  \t```", bt3, false},
 		{"trailing vertical tab", "```\v", bt3, false},
-		{"trailing nbsp", "``` ", bt3, false},
+		{"trailing nbsp", "```\u00a0", bt3, false},
 		{"blank", "", bt3, false},
 		{"spaces only", "   ", bt3, false},
 		{"zero fence never closes", "", Fence{}, false},

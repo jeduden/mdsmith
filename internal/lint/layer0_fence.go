@@ -8,16 +8,18 @@ import "github.com/jeduden/mdsmith/internal/mdfence"
 // is open, a fence opener starts one; when a fence is open, a matching
 // closing fence ends it. Used so the quote scan knows a fenced code block
 // is still open and therefore cannot be lazily continued by a non-marker
-// line.
-func advanceFenceState(open *mdfence.Fence, line []byte, fi mdfence.Fence, opensFence bool) *mdfence.Fence {
-	if open == nil {
+// line. The state is a Fence value whose zero (Char == 0) means no fence
+// is open: tracking it by pointer would move every body line's Open
+// result to the heap.
+func advanceFenceState(open mdfence.Fence, line []byte, fi mdfence.Fence, opensFence bool) mdfence.Fence {
+	if open.Char == 0 {
 		if opensFence {
-			return &fi
+			return fi
 		}
-		return nil
+		return mdfence.Fence{}
 	}
-	if mdfence.Close(line, *open) {
-		return nil
+	if mdfence.Close(line, open) {
+		return mdfence.Fence{}
 	}
 	return open
 }

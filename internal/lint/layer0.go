@@ -270,8 +270,8 @@ func (s *scanner) tryBlockquote() bool {
 	// is still open. A fenced code block inside a quote must keep its `>`
 	// marker on every line — it does not accept lazy continuation — so a
 	// non-marker line while a fence is open ends the quote rather than
-	// extending the code.
-	var openFence *mdfence.Fence
+	// extending the code. Its zero value (Char == 0) means no fence is open.
+	var openFence mdfence.Fence
 	for s.i < len(s.lines) {
 		if s.trailingEmptyLine(s.i) {
 			break
@@ -283,7 +283,7 @@ func (s *scanner) tryBlockquote() bool {
 		var stripped []byte
 		if paragraphLeadKind(cur) == BlockQuote {
 			stripped = stripQuoteMarker(cur)
-		} else if openFence == nil && isLazyContinuation(cur) {
+		} else if openFence.Char == 0 && isLazyContinuation(cur) {
 			// A non-marker plain-text line lazily continues the quote's open
 			// paragraph; it carries no `>` to strip and maps through
 			// verbatim. Suppressed while a fence is open (see openFence).
@@ -312,7 +312,7 @@ func (s *scanner) tryBlockquote() bool {
 	// bytes.Split appends at document level. Append that slot to the body
 	// (mapped to the parent line after the last quote line) so the inner
 	// scan records the phantom close at the same parent line the AST does.
-	if openFence != nil && len(parentLine) > 0 {
+	if openFence.Char != 0 && len(parentLine) > 0 {
 		body = append(body, nil)
 		parentLine = append(parentLine, parentLine[len(parentLine)-1]+1)
 	}

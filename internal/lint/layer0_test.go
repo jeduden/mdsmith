@@ -400,7 +400,7 @@ func TestLayer0_BlockquoteFenceClosedMidQuote(t *testing.T) {
 func TestLayer0_BlockquoteLazyContinuationSuppressedByOpenFence(t *testing.T) {
 	// While a fence is open in the quote, a plain non-marker line is not a
 	// lazy continuation, so the quote ends. Pairs with isLazyContinuation
-	// being suppressed by openFence != nil.
+	// being suppressed while openFence is set.
 	l0 := scan("> ```go\n> code\nnot continuation\n")
 	assert.Equal(t, BlockQuote, l0.BlockSpans[0].Kind)
 }

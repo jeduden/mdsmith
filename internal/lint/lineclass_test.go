@@ -23,6 +23,20 @@ func TestLC0Pass_PointerFieldsFirst(t *testing.T) {
 	structlayout.AssertPointerFieldsFirst(t, reflect.TypeOf(lc0Pass{}))
 }
 
+// TestLC0Pass_InFence pins that the open-fence state is derived from the
+// recorded fence: set by tryOpenFence, cleared by a closing fence.
+func TestLC0Pass_InFence(t *testing.T) {
+	lines := [][]byte{[]byte("```go"), []byte("x"), []byte("```")}
+	p := &lc0Pass{lines: lines, out: &LineClassifier{classes: make([]LineClass, len(lines))}}
+	assert.False(t, p.inFence(), "zero pass is outside a fence")
+	require.True(t, p.tryOpenFence(1, lines[0]))
+	assert.True(t, p.inFence(), "after the opener")
+	p.handleFenceBody(2, lines[1])
+	assert.True(t, p.inFence(), "after a content line")
+	p.handleFenceBody(3, lines[2])
+	assert.False(t, p.inFence(), "after the closer")
+}
+
 // equivCases are markdown snippets whose flat-classifier code-block line
 // set must equal the AST-derived set. They cover the block shapes the
 // corpus gate cannot guarantee are present: indented code, blockquote- and
