@@ -2,11 +2,9 @@ package classifier
 
 import (
 	"math"
-	"regexp"
 	"strings"
+	"unicode"
 )
-
-var sentPattern = regexp.MustCompile(`[.!?]+`)
 
 // funcWords is the hardcoded set of determiners, prepositions, conjunctions,
 // and pronouns used by FuncWordRatio.
@@ -97,33 +95,48 @@ func NominalDensity(tokens []string) float64 {
 // the coefficient of variation (stddev / mean) of sentence word counts.
 // Returns 0.0 when fewer than 2 sentences are found.
 func SentLenVariance(text string) float64 {
-	parts := sentPattern.Split(text, -1)
-	// Collect non-empty sentences.
-	var lengths []float64
-	for _, p := range parts {
-		words := wordPattern.FindAllString(strings.ToLower(p), -1)
-		if len(words) > 0 {
-			lengths = append(lengths, float64(len(words)))
+	// One pass, no allocation: count words per sentence while scanning
+	// (high-performance-go.md, "Allocations"). A word is a run of
+	// [a-z0-9'] after rune-wise lowercasing — the same tokens as
+	// wordPattern over strings.ToLower — and a sentence ends at each
+	// run of '.', '!', '?'.
+	var n, sum, sumSq, words int
+	flush := func() {
+		if words > 0 {
+			n++
+			sum += words
+			sumSq += words * words
+			words = 0
 		}
 	}
-	if len(lengths) < 2 {
+	inWord := false
+	for _, r := range text {
+		switch r {
+		case '.', '!', '?':
+			flush()
+			inWord = false
+			continue
+		}
+		if r >= 'A' && r <= 'Z' || r >= 0x80 {
+			r = unicode.ToLower(r)
+		}
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '\'' {
+			if !inWord {
+				words++
+				inWord = true
+			}
+		} else {
+			inWord = false
+		}
+	}
+	flush()
+	if n < 2 || sum == 0 {
 		return 0.0
 	}
-	var sum float64
-	for _, l := range lengths {
-		sum += l
-	}
-	mean := sum / float64(len(lengths))
-	if mean == 0 {
-		return 0.0
-	}
-	var variance float64
-	for _, l := range lengths {
-		d := l - mean
-		variance += d * d
-	}
-	variance /= float64(len(lengths))
-	return math.Sqrt(variance) / mean
+	// stddev/mean with integer arithmetic: variance = (n*sumSq-sum²)/n²,
+	// mean = sum/n, so the ratio is sqrt(n*sumSq-sum²)/sum. Exactly 0 when
+	// all sentences have equal length, never a negative radicand.
+	return math.Sqrt(float64(n*sumSq-sum*sum)) / float64(sum)
 }
 
 // FuncWordRatio returns the fraction of tokens that are function words
