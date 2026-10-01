@@ -1,6 +1,7 @@
 package astutil
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -57,10 +58,7 @@ func TestBuildSectionHeadings_PreSized(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
-	src := ""
-	for i := 0; i < 9; i++ {
-		src += "## H\n\ntext\n\n"
-	}
+	src := strings.Repeat("## H\n\ntext\n\n", 9)
 	f, err := lint.NewFile("many.md", []byte(src))
 	require.NoError(t, err)
 	require.Len(t, buildSectionHeadings(f).([]SectionHeading), 9)
