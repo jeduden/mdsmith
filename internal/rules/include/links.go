@@ -95,7 +95,9 @@ func rewriteSkippingCode(content string, rewriteFn func(string) string) string {
 
 // countFenceRun returns the length of a backtick or tilde run at the
 // start of trimmed (after whitespace was already stripped). Returns 0
-// if no fence is detected (run < 3).
+// if no fence is detected (run < 3, or a backtick run followed by an
+// info string that contains a backtick, which CommonMark treats as
+// paragraph text rather than a fence).
 func countFenceRun(trimmed string) int {
 	if len(trimmed) < 3 {
 		return 0
@@ -109,6 +111,9 @@ func countFenceRun(trimmed string) int {
 		n++
 	}
 	if n < 3 {
+		return 0
+	}
+	if ch == '`' && strings.IndexByte(trimmed[n:], '`') >= 0 {
 		return 0
 	}
 	return n

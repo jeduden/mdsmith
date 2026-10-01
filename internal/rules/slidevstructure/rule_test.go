@@ -521,3 +521,10 @@ func TestCheckSlide(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "unknown Slidev layout")
 }
+
+func TestIsCodeFence_BacktickInInfo(t *testing.T) {
+	assert.True(t, isCodeFence([]byte("```ts")))
+	assert.True(t, isCodeFence([]byte("~~~ `x`")))
+	assert.False(t, isCodeFence([]byte("```ts``` is the language")),
+		"a backtick in a backtick fence's info string makes it inline code")
+}

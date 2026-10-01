@@ -228,3 +228,18 @@ func TestAdjustLinks_Skip(t *testing.T) {
 		})
 	}
 }
+
+func TestAdjustLinks_BacktickInInfoIsNotAFence(t *testing.T) {
+	// A backtick run whose info string holds a backtick is not a fence
+	// opener (CommonMark), so links after it must still be rewritten.
+	in := "```x``` is code.\n[a](b.md)\n"
+	got := adjustLinks(in, "sub/inc.md", "main.md")
+	assert.Equal(t, "```x``` is code.\n[a](sub/b.md)\n", got)
+}
+
+func TestCountFenceRun_BacktickInInfo(t *testing.T) {
+	assert.Equal(t, 0, countFenceRun("```x```"))
+	assert.Equal(t, 0, countFenceRun("``` js `x`"))
+	assert.Equal(t, 3, countFenceRun("~~~ `x`"))
+	assert.Equal(t, 3, countFenceRun("```go"))
+}

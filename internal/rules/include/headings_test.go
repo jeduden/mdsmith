@@ -283,7 +283,7 @@ func TestAdjustHeadingsToLevel(t *testing.T) {
 
 // TestIsResultPrevLineFence pins both branches: empty result
 // returns false (no prior line); non-empty result inspects the
-// last entry against codeFenceRe with leading whitespace trimmed.
+// last entry against openFenceMarker with leading whitespace trimmed.
 // The integration path through adjustHeadings drives these via
 // real Markdown, but the function shape was not pinned directly.
 func TestIsResultPrevLineFence(t *testing.T) {
@@ -299,4 +299,26 @@ func TestIsResultPrevLineFence(t *testing.T) {
 		"triple-tilde is also a fence")
 	assert.False(t, isResultPrevLineFence([]string{"plain text"}),
 		"non-fence content returns false")
+}
+
+func TestApplyShift_BacktickInInfoIsNotAFence(t *testing.T) {
+	// "```x```" is inline code, not a fence opener, so the heading
+	// after it must still be shifted.
+	got := applyShift([]string{"```x``` is code.", "", "## Head"}, 1)
+	assert.Equal(t, []string{"```x``` is code.", "", "### Head"}, got)
+}
+
+func TestOpenFenceMarker(t *testing.T) {
+	m, ok := openFenceMarker("```go")
+	assert.True(t, ok)
+	assert.Equal(t, "```", m)
+	m, ok = openFenceMarker("~~~~ `x`")
+	assert.True(t, ok)
+	assert.Equal(t, "~~~~", m)
+	_, ok = openFenceMarker("```x```")
+	assert.False(t, ok, "backtick in backtick info string is not a fence")
+	_, ok = openFenceMarker("``")
+	assert.False(t, ok)
+	_, ok = openFenceMarker("text")
+	assert.False(t, ok)
 }

@@ -14,11 +14,30 @@ var setextH1Re = regexp.MustCompile(`^=+\s*$`)
 // setextH2Re matches a setext h2 underline: one or more '-' characters.
 var setextH2Re = regexp.MustCompile(`^-+\s*$`)
 
-// codeFenceRe matches the opening of a fenced code block after leading
-// whitespace has been stripped. Unlike the CommonMark spec (which
-// limits indent to 3 spaces), we strip all leading whitespace so that
-// fenced blocks inside list items are also detected and skipped.
-var codeFenceRe = regexp.MustCompile("^(`{3,}|~{3,})")
+// openFenceMarker reports the fence run (three or more backticks or
+// tildes) that opens a fenced code block on line. Unlike the CommonMark
+// spec (which limits indent to 3 spaces), all leading whitespace is
+// stripped so that fenced blocks inside list items are also detected
+// and skipped. Per CommonMark, a backtick fence whose info string
+// contains a backtick is not a fence (the line is paragraph text).
+func openFenceMarker(line string) (string, bool) {
+	t := strings.TrimLeft(line, " \t")
+	if t == "" || (t[0] != '`' && t[0] != '~') {
+		return "", false
+	}
+	ch := t[0]
+	n := 0
+	for n < len(t) && t[n] == ch {
+		n++
+	}
+	if n < 3 {
+		return "", false
+	}
+	if ch == '`' && strings.IndexByte(t[n:], '`') >= 0 {
+		return "", false
+	}
+	return t[:n], true
+}
 
 // adjustHeadings shifts all heading levels in content so that the minimum
 // heading level becomes parentLevel+1. If parentLevel is 0 or the computed
@@ -97,9 +116,9 @@ func findMinHeadingLevel(lines []string) int {
 			continue
 		}
 
-		if m := codeFenceRe.FindStringSubmatch(strings.TrimLeft(line, " \t")); m != nil {
+		if m, ok := openFenceMarker(line); ok {
 			inFence = true
-			fenceMarker = m[1]
+			fenceMarker = m
 			continue
 		}
 
@@ -145,9 +164,9 @@ func applyShift(lines []string, shift int) []string {
 			continue
 		}
 
-		if m := codeFenceRe.FindStringSubmatch(strings.TrimLeft(line, " \t")); m != nil {
+		if m, ok := openFenceMarker(line); ok {
 			inFence = true
-			fenceMarker = m[1]
+			fenceMarker = m
 			result = append(result, line)
 			continue
 		}
@@ -214,7 +233,8 @@ func isResultPrevLineFence(result []string) bool {
 	if len(result) == 0 {
 		return false
 	}
-	return codeFenceRe.MatchString(strings.TrimLeft(result[len(result)-1], " \t"))
+	_, ok := openFenceMarker(result[len(result)-1])
+	return ok
 }
 
 // clampLevel ensures a heading level is between 1 and 6.
