@@ -18,6 +18,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/placeholders"
@@ -1426,8 +1427,7 @@ func collectBodySyncPoints(
 	// body (e.g. a `bind:` value) must not become a body-sync point,
 	// since the row is schema syntax, not body-sync template text.
 	inPIBlock := false
-	var fenceChar byte
-	fenceLen := 0
+	var fence mdfence.Tracker
 	start := 0
 	for start <= len(content) {
 		end := len(content)
@@ -1447,23 +1447,13 @@ func collectBodySyncPoints(
 			// substring inside a YAML value stays inside the block.
 			inPIBlock = !bytes.Equal(lineB, piClose)
 			continue
-		case fenceLen > 0:
-			// Inside a fenced code block the only state change is a
-			// valid close (CommonMark: the opener's character, a run
-			// at least as long, nothing else on the line). Fence
-			// lines — markers included — fall through as ordinary
-			// body text, as they did before the PI skip existed.
-			if fenceClose(raw, lineB, fenceChar, fenceLen) {
-				fenceChar, fenceLen = 0, 0
-			}
+		case fence.Step(raw):
+			// A fenced code block owns its lines before the PI parser
+			// runs, so a directive opener shown inside a fence is code,
+			// not a directive. Fence lines — markers included — fall
+			// through as ordinary body text, as they did before the PI
+			// skip existed.
 		default:
-			if c, n := fenceOpenRun(raw, lineB); n > 0 {
-				// A fenced code block owns its lines before the PI
-				// parser runs, so a directive opener shown inside a
-				// fence is code, not a directive.
-				fenceChar, fenceLen = c, n
-				break
-			}
 			if !isPIOpenLine(raw) {
 				break
 			}
@@ -1525,57 +1515,6 @@ var (
 	piClose      = []byte("?>")
 	spaceSep     = []byte{' '}
 )
-
-// fenceOpenRun reports the marker character and run length when a
-// body line opens a fenced code block the way the block parser would:
-// indentation short of four columns, a run of at least three backticks
-// or tildes, and no backtick in a backtick fence's info string. n is 0
-// when the line opens no fence.
-func fenceOpenRun(raw, lineB []byte) (byte, int) {
-	if len(lineB) == 0 || (lineB[0] != '`' && lineB[0] != '~') {
-		return 0, 0
-	}
-	if codeIndented(raw) {
-		return 0, 0
-	}
-	n := fenceRun(lineB, lineB[0])
-	if n < 3 {
-		return 0, 0
-	}
-	if lineB[0] == '`' && bytes.IndexByte(lineB[n:], '`') >= 0 {
-		return 0, 0
-	}
-	return lineB[0], n
-}
-
-// fenceClose reports whether a body line closes the open fence per
-// CommonMark: the opener's character, a run at least as long as the
-// opener, nothing but the run on the trimmed line, and indentation
-// short of four columns.
-func fenceClose(raw, lineB []byte, ch byte, openLen int) bool {
-	if codeIndented(raw) {
-		return false
-	}
-	n := fenceRun(lineB, ch)
-	return n >= openLen && n == len(lineB)
-}
-
-// codeIndented reports whether raw's indentation reaches four columns
-// — four or more spaces, or a tab after at most three spaces — so the
-// line cannot open or close a fence (CommonMark indented code).
-func codeIndented(raw []byte) bool {
-	s := astutil.CountLeadingSpaces(raw)
-	return s > 3 || (s < len(raw) && raw[s] == '\t')
-}
-
-// fenceRun returns the length of the run of ch at the start of line.
-func fenceRun(line []byte, ch byte) int {
-	n := 0
-	for n < len(line) && line[n] == ch {
-		n++
-	}
-	return n
-}
 
 // isPIOpenLine reports whether a raw body line opens a processing
 // instruction, mirroring the block parser in pkg/markdown: at most
