@@ -64,7 +64,8 @@ A few caller tests are unit tests next to the source:
 
 - `TestBuildRenameWorkspace_DiscoveryPaths` drove the exits
   of `buildWorkspace` through `buildRenameWorkspace`. It now
-  keeps only the exits `buildRenameWorkspace` itself owns.
+  keeps the unreadable-target exit, plus the missing-config
+  and empty-workspace exits as propagation checks.
 - The `TestApplyPlan_*` tests in
   [move_unit_test.go][cmd-move-test] call `buildWorkspace`
   directly, but only as setup.
@@ -148,16 +149,15 @@ Two overlaps remain:
    [rename_unit_test.go][cmd-rename-test].
    `TestBuildWorkspace` calls `buildWorkspace` directly for
    each exit: missing config, empty workspace, bad
-   max-input-size, and success. Move the "empty workspace
-   exits 1" and "bad max-input-size exits 2" subtests out of
+   max-input-size, and success. Move the "bad max-input-size
+   exits 2" subtest out of
    `TestBuildRenameWorkspace_DiscoveryPaths` into it, rather
-   than assert the same exits twice. Keep "missing config
-   exits 2" and "unreadable target exits 2" in the
-   `buildRenameWorkspace` test. It still needs `buildWorkspace`
-   failures to cover its early return, so "missing config"
-   and "empty workspace exits 1" are asserted in both tests
-   on purpose: the second proves that exit 1 propagates
-   unchanged.
+   than assert the same exit twice. Keep "unreadable target
+   exits 2" in the `buildRenameWorkspace` test. That test
+   still needs `buildWorkspace` failures to cover its early
+   return, so "missing config exits 2" and "empty workspace
+   exits 1" are asserted in both tests on purpose: the
+   second proves the exit code propagates unchanged.
 6. Add `TestDetectRenameKind`, `TestToRefactorPlan`,
    `TestSessionRefactorWorkspace_Resolve`, and
    `TestSession_BuildRefactorWorkspace` to

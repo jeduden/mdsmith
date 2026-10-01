@@ -245,14 +245,20 @@ func TestDetectRenameMode(t *testing.T) {
 	assert.Equal(t, -1, code)
 
 	both := []byte("# docs\n\nSee [docs].\n\n[docs]: u\n")
-	_, code = detectRenameMode("a.md", both, "docs", "x")
+	stderr := captureStderr(func() {
+		_, code = detectRenameMode("a.md", both, "docs", "x")
+	})
 	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "matches both a heading and a link-ref label")
 
-	_, code = detectRenameMode("a.md", src, "ghost", "x")
+	stderr = captureStderr(func() {
+		_, code = detectRenameMode("a.md", src, "ghost", "x")
+	})
 	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, `no heading or link-ref label "ghost"`)
 
 	// A path-shaped request with no matching symbol is steered to move.
-	stderr := captureStderr(func() {
+	stderr = captureStderr(func() {
 		_, code = detectRenameMode("a.md", src, "old.md", "new.md")
 	})
 	assert.Equal(t, 2, code)
@@ -279,8 +285,11 @@ func TestHeadingPlan(t *testing.T) {
 
 	// A new name that slugs onto an existing heading is an engine error.
 	two := []byte("# Setup\n\n# Other\n")
-	_, c = headingPlan(ws, "a.md", two, "Setup", "Other")
+	stderr := captureStderr(func() {
+		_, c = headingPlan(ws, "a.md", two, "Setup", "Other")
+	})
 	assert.Equal(t, 2, c)
+	assert.Contains(t, stderr, "collide")
 }
 
 func TestLinkRefPlan(t *testing.T) {
@@ -292,8 +301,11 @@ func TestLinkRefPlan(t *testing.T) {
 	_, c = linkRefPlan("a.md", src, "ghost", "x")
 	assert.Equal(t, 1, c, "missing label exits 1")
 
-	_, c = linkRefPlan("a.md", src, "docs", "bad]name")
+	stderr := captureStderr(func() {
+		_, c = linkRefPlan("a.md", src, "docs", "bad]name")
+	})
 	assert.Equal(t, 2, c, "invalid label rune exits 2")
+	assert.Contains(t, stderr, "label cannot contain")
 }
 
 func TestLooksLikePath(t *testing.T) {

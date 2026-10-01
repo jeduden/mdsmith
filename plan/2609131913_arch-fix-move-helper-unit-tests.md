@@ -42,12 +42,10 @@ of this plan on review.
 ([cmd/mdsmith/rename.go][cli-rename]) lacked a test
 symbol by name. Plan 2609061915 has since added all three.
 
-Each is small and low-risk. Each is also covered
+Each is small and low-risk. Each was also covered
 indirectly by `TestRunRename_MoveIntentGuard` and
-`TestWriteFilePreservingMode_*`.
-
-Adding named tests for them is optional cleanup, not
-required to close this plan.
+`TestWriteFilePreservingMode_*`. The named tests are no
+longer open work here.
 
 The finding also named `applyEditsToFile` in
 [cmd/mdsmith/move.go][cli-move]. That part is closed.
