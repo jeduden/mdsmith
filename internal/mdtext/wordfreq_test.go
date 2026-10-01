@@ -89,3 +89,24 @@ func TestWordFrequency_LastWordBelowMinLength(t *testing.T) {
 	freq := mdtext.WordFrequency("hi", 5)
 	assert.Empty(t, freq)
 }
+
+func TestWordFrequencyInto(t *testing.T) {
+	freq := make(map[string]int)
+
+	// First scope unit: accumulates across two calls.
+	mdtext.WordFrequencyInto(freq, "Alpha beta alpha", 4)
+	mdtext.WordFrequencyInto(freq, "ALPHA gamma bee", 4)
+	assert.Equal(t, map[string]int{"alpha": 3, "beta": 1, "gamma": 1}, freq)
+
+	// Clearing resets state; the map is reused for the next unit.
+	clear(freq)
+	assert.Empty(t, freq)
+	mdtext.WordFrequencyInto(freq, "delta delta", 4)
+	assert.Equal(t, map[string]int{"delta": 2}, freq)
+
+	// Third cycle with minLength 0 keeps short words and does not
+	// retain counts from earlier cycles.
+	clear(freq)
+	mdtext.WordFrequencyInto(freq, "a b a", 0)
+	assert.Equal(t, map[string]int{"a": 2, "b": 1}, freq)
+}
