@@ -279,26 +279,75 @@ func TestAdjustHeadingsToLevel(t *testing.T) {
 	}
 }
 
-// --- isResultPrevLineFence ---
+// --- setextContentLine ---
 
-// TestIsResultPrevLineFence pins both branches: empty result
-// returns false (no prior line); non-empty result inspects the
-// last entry against openFenceMarker with leading whitespace trimmed.
-// The integration path through adjustHeadings drives these via
-// real Markdown, but the function shape was not pinned directly.
-func TestIsResultPrevLineFence(t *testing.T) {
-	assert.False(t, isResultPrevLineFence(nil),
-		"empty slice returns false")
-	assert.False(t, isResultPrevLineFence([]string{}),
-		"zero-length slice returns false")
-	assert.True(t, isResultPrevLineFence([]string{"text", "```"}),
-		"triple-backtick last line is a fence")
-	assert.True(t, isResultPrevLineFence([]string{"  ```go"}),
-		"leading whitespace is trimmed before match")
-	assert.True(t, isResultPrevLineFence([]string{"~~~"}),
-		"triple-tilde is also a fence")
-	assert.False(t, isResultPrevLineFence([]string{"plain text"}),
-		"non-fence content returns false")
+// TestSetextContentLine pins which previous lines may carry setext
+// heading text. CommonMark reads an underline after a blank line, an
+// ATX heading, a fence line, or another underline as a thematic break
+// (or paragraph text), never as a setext heading.
+func TestSetextContentLine(t *testing.T) {
+	tests := []struct {
+		name string
+		prev string
+		want bool
+	}{
+		{"paragraph text", "Title", true},
+		{"inline code span", "```x``` is code", true},
+		{"empty", "", false},
+		{"whitespace only", "  \t", false},
+		{"carriage return only", "\r", false},
+		{"atx heading", "## A", false},
+		{"backtick fence", "```", false},
+		{"indented fence with info", "  ```go", false},
+		{"tilde fence", "~~~", false},
+		{"setext h1 underline", "===", false},
+		{"setext h2 underline", "---", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, setextContentLine(tt.prev))
+		})
+	}
+}
+
+func TestApplyShift_ATXThenThematicBreak(t *testing.T) {
+	// "---" after an ATX heading is a thematic break, not a setext
+	// underline: the heading is shifted and the break kept.
+	got := applyShift([]string{"## A", "---", "text"}, 1)
+	assert.Equal(t, []string{"### A", "---", "text"}, got)
+}
+
+func TestApplyShift_SetextThenThematicBreak(t *testing.T) {
+	got := applyShift([]string{"A", "===", "---"}, 1)
+	assert.Equal(t, []string{"## A", "---"}, got)
+}
+
+func TestFindMinHeadingLevel_ThematicBreakAfterFence(t *testing.T) {
+	// "---" after a closing fence is a thematic break; it must not
+	// count as a level-2 heading and pull the shift off by one.
+	lines := []string{"```", "code", "```", "---", "", "### Real"}
+	assert.Equal(t, 3, findMinHeadingLevel(lines))
+}
+
+func TestFindMinHeadingLevel_ThematicBreakAfterATX(t *testing.T) {
+	assert.Equal(t, 3, findMinHeadingLevel([]string{"### A", "---"}))
+}
+
+func TestAdjustHeadings_CRLFFenceCloses(t *testing.T) {
+	// A CRLF closing fence must close the block so headings after
+	// it are still shifted.
+	in := "```\r\ncode\r\n```\r\n\r\n## Real\r\n"
+	want := "```\r\ncode\r\n```\r\n\r\n### Real\r\n"
+	assert.Equal(t, want, adjustHeadings(in, 2))
+}
+
+func TestIsClosingFence(t *testing.T) {
+	assert.True(t, isClosingFence("```", "```"))
+	assert.True(t, isClosingFence("  ````  ", "```"))
+	assert.True(t, isClosingFence("```\r", "```"), "CRLF line ending")
+	assert.False(t, isClosingFence("``", "```"))
+	assert.False(t, isClosingFence("```go", "```"))
+	assert.False(t, isClosingFence("~~~", "```"))
 }
 
 func TestApplyShift_BacktickInInfoIsNotAFence(t *testing.T) {

@@ -606,8 +606,9 @@ func applyOutsideInlineCode(b []byte, fn func([]byte) []byte) []byte {
 // fenceMarker reports the fence char (backtick or tilde) and
 // run length at the start of line after up to three leading
 // spaces, or (0, 0) if the line is not a fence candidate — i.e.
-// the first non-space char is not a backtick or tilde, or the
-// run length is less than three.
+// the first non-space char is not a backtick or tilde, the run
+// length is less than three, or a backtick run is followed by text
+// containing a backtick (CommonMark reads that as paragraph text).
 func fenceMarker(line []byte) (byte, int) {
 	i := 0
 	for i < len(line) && i < 3 && line[i] == ' ' {
@@ -625,6 +626,9 @@ func fenceMarker(line []byte) (byte, int) {
 		count++
 	}
 	if count < 3 {
+		return 0, 0
+	}
+	if c == '`' && bytes.IndexByte(line[i+count:], '`') >= 0 {
 		return 0, 0
 	}
 	return c, count

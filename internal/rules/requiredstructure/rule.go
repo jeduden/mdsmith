@@ -1528,15 +1528,14 @@ var (
 
 // fenceOpenRun reports the marker character and run length when a
 // body line opens a fenced code block the way the block parser would:
-// at most three spaces of indentation and a run of at least three
-// backticks or tildes, and no backtick in a backtick fence's info
-// string. n is 0 when the line opens no fence. (The same open/close
-// contract as include.rewriteSkippingCode.)
+// indentation short of four columns, a run of at least three backticks
+// or tildes, and no backtick in a backtick fence's info string. n is 0
+// when the line opens no fence.
 func fenceOpenRun(raw, lineB []byte) (byte, int) {
 	if len(lineB) == 0 || (lineB[0] != '`' && lineB[0] != '~') {
 		return 0, 0
 	}
-	if astutil.CountLeadingSpaces(raw) > 3 {
+	if codeIndented(raw) {
 		return 0, 0
 	}
 	n := fenceRun(lineB, lineB[0])
@@ -1551,14 +1550,22 @@ func fenceOpenRun(raw, lineB []byte) (byte, int) {
 
 // fenceClose reports whether a body line closes the open fence per
 // CommonMark: the opener's character, a run at least as long as the
-// opener, nothing but the run on the trimmed line, and at most three
-// spaces of indentation.
+// opener, nothing but the run on the trimmed line, and indentation
+// short of four columns.
 func fenceClose(raw, lineB []byte, ch byte, openLen int) bool {
-	if astutil.CountLeadingSpaces(raw) > 3 {
+	if codeIndented(raw) {
 		return false
 	}
 	n := fenceRun(lineB, ch)
 	return n >= openLen && n == len(lineB)
+}
+
+// codeIndented reports whether raw's indentation reaches four columns
+// — four or more spaces, or a tab after at most three spaces — so the
+// line cannot open or close a fence (CommonMark indented code).
+func codeIndented(raw []byte) bool {
+	s := astutil.CountLeadingSpaces(raw)
+	return s > 3 || (s < len(raw) && raw[s] == '\t')
 }
 
 // fenceRun returns the length of the run of ch at the start of line.

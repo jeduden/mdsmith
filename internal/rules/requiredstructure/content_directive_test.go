@@ -203,6 +203,22 @@ func TestFenceOpenRun(t *testing.T) {
 	c, n = fenceOpenRun([]byte("~~~ `x`"), []byte("~~~ `x`"))
 	assert.Equal(t, byte('~'), c)
 	assert.Equal(t, 3, n)
+	_, n = fenceOpenRun([]byte("\t```"), []byte("```"))
+	assert.Zero(t, n, "a leading tab reaches column 4: indented code")
+	_, n = fenceOpenRun([]byte("  \t```"), []byte("```"))
+	assert.Zero(t, n, "spaces then a tab reach column 4: indented code")
+}
+
+// TestCodeIndented pins the CommonMark four-column indentation test
+// that keeps a fence line from opening or closing a block.
+func TestCodeIndented(t *testing.T) {
+	assert.False(t, codeIndented([]byte("```")))
+	assert.False(t, codeIndented([]byte("   ```")))
+	assert.False(t, codeIndented([]byte("   ")))
+	assert.False(t, codeIndented(nil))
+	assert.True(t, codeIndented([]byte("    ```")))
+	assert.True(t, codeIndented([]byte("\t```")))
+	assert.True(t, codeIndented([]byte("   \t```")))
 }
 
 // TestFenceClose pins the close rule: same character, a run at least
@@ -219,6 +235,8 @@ func TestFenceClose(t *testing.T) {
 		"trailing content")
 	assert.False(t, fenceClose([]byte("    ```"), []byte("```"), '`', 3),
 		"4-space indent")
+	assert.False(t, fenceClose([]byte("\t```"), []byte("```"), '`', 3),
+		"tab indent")
 }
 
 // TestHeadingIndexForLine covers both outcomes: the index of the

@@ -237,6 +237,14 @@ func TestAdjustLinks_BacktickInInfoIsNotAFence(t *testing.T) {
 	assert.Equal(t, "```x``` is code.\n[a](sub/b.md)\n", got)
 }
 
+func TestAdjustLinks_CRLFFenceCloses(t *testing.T) {
+	// A CRLF closing fence must close the block so links after it
+	// are still rewritten.
+	in := "```\r\ncode\r\n```\r\n[a](b.md)\r\n"
+	got := adjustLinks(in, "sub/inc.md", "main.md")
+	assert.Equal(t, "```\r\ncode\r\n```\r\n[a](sub/b.md)\r\n", got)
+}
+
 func TestCountFenceRun_BacktickInInfo(t *testing.T) {
 	assert.Equal(t, 0, countFenceRun("```x```"))
 	assert.Equal(t, 0, countFenceRun("``` js `x`"))

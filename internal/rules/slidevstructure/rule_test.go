@@ -522,9 +522,43 @@ func TestCheckSlide(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "unknown Slidev layout")
 }
 
-func TestIsCodeFence_BacktickInInfo(t *testing.T) {
-	assert.True(t, isCodeFence([]byte("```ts")))
-	assert.True(t, isCodeFence([]byte("~~~ `x`")))
-	assert.False(t, isCodeFence([]byte("```ts``` is the language")),
+func TestCodeFenceStep(t *testing.T) {
+	steps := func(lines ...string) []bool {
+		var c codeFence
+		got := make([]bool, len(lines))
+		for i, ln := range lines {
+			got[i] = c.step([]byte(ln))
+		}
+		return got
+	}
+	assert.Equal(t, []bool{true, true, true, false},
+		steps("```ts", "---", "```", "---"), "backtick fence opens and closes")
+	assert.Equal(t, []bool{true, true, false},
+		steps("~~~ `x`", "~~~", "x"), "tilde info may hold a backtick")
+	assert.Equal(t, []bool{false, false},
+		steps("```ts``` is the language", "---"),
 		"a backtick in a backtick fence's info string makes it inline code")
+	assert.Equal(t, []bool{true, true, true, true, true, false},
+		steps("````md", "```js", "---", "```", "````", "---"),
+		"a shorter inner fence is content, not a closer")
+	assert.Equal(t, []bool{true, true, true, true, false},
+		steps("```", "~~~", "```js", "```\r", "x"),
+		"a different character or an info string does not close; CR does")
+	assert.Equal(t, []bool{false, false}, steps("``", "x"), "two backticks")
+}
+
+func TestFenceRunLen(t *testing.T) {
+	assert.Equal(t, 3, fenceRunLen([]byte("```go"), '`'))
+	assert.Equal(t, 4, fenceRunLen([]byte("~~~~"), '~'))
+	assert.Equal(t, 0, fenceRunLen([]byte("~~~"), '`'))
+	assert.Equal(t, 0, fenceRunLen(nil, '`'))
+}
+
+func TestParseSlides_NestedFenceKeepsSeparatorLiteral(t *testing.T) {
+	// A four-backtick fence showing a three-backtick example keeps the
+	// inner `---` literal: it is neither a marker nor a slide boundary.
+	src := "# A\n\n````md\n```js\n---\n```\n````\n\nProse.\n"
+	lines := splitLines(src)
+	assert.False(t, hasSlidevMarkers(lines))
+	assert.Len(t, parseSlides(lines), 1)
 }

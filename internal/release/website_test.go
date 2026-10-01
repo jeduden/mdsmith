@@ -1,6 +1,7 @@
 package release
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -863,4 +864,24 @@ func TestRulePageTransforms_NoLeftoverRelativeNonMDSLinks(t *testing.T) {
 				"ref-def non-MDS relative link survived rule-page transforms")
 		})
 	}
+}
+
+func TestApplyOutsideFences_BacktickInInfoIsNotAFence(t *testing.T) {
+	// "```x```" is paragraph text (CommonMark forbids a backtick in a
+	// backtick fence's info string), so the line after it is outside
+	// any fence and must still be rewritten.
+	src := []byte("```x``` is inline code\nrewrite me")
+	got := applyOutsideFences(src, bytes.ToUpper)
+	assert.Equal(t, "```X``` IS INLINE CODE\nREWRITE ME", string(got))
+}
+
+func TestFenceMarker_BacktickInInfo(t *testing.T) {
+	_, n := fenceMarker([]byte("```x```"))
+	assert.Zero(t, n)
+	c, n := fenceMarker([]byte("~~~ `x`"))
+	assert.Equal(t, byte('~'), c)
+	assert.Equal(t, 3, n)
+	c, n = fenceMarker([]byte("```go"))
+	assert.Equal(t, byte('`'), c)
+	assert.Equal(t, 3, n)
 }

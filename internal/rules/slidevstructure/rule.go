@@ -170,13 +170,9 @@ func parseFrontMatterBytes(b []byte) map[string]string {
 // block is a `---` fence or a `::name::` slot separator. Pure byte
 // scans, no allocation.
 func hasSlidevMarkers(lines [][]byte) bool {
-	inCode := false
+	var fence codeFence
 	for _, ln := range lines {
-		if isCodeFence(ln) {
-			inCode = !inCode
-			continue
-		}
-		if inCode {
+		if fence.step(ln) {
 			continue
 		}
 		if isFence(ln) {
@@ -189,22 +185,51 @@ func hasSlidevMarkers(lines [][]byte) bool {
 	return false
 }
 
-// isCodeFence reports whether a line opens or closes a fenced code
-// block (``` or ~~~, three or more). A `---` or `::slot::` inside such
-// a block is literal content — a slide showing YAML or a diff — not a
-// separator, so the scanners skip it. Per CommonMark, a backtick run
-// followed by text that contains a backtick (```ts``` is inline code)
-// is neither an opener nor a closer.
-func isCodeFence(line []byte) bool {
+// codeFence tracks the fenced code block (``` or ~~~, three or more)
+// a line scan is inside: the opener's run length and character. ch is
+// 0 outside a block.
+type codeFence struct {
+	n  int
+	ch byte
+}
+
+// step advances the tracker past line and reports whether line belongs
+// to a fenced code block: its opener, a content line, or its closer. A
+// `---` or `::slot::` on such a line is literal content — a slide
+// showing YAML or a diff — not a separator, so the scanners skip it.
+//
+// Per CommonMark, only a run of the opener's character at least as long
+// as the opener, with nothing after it, closes the block; a shorter or
+// different inner fence (```js inside ````md) is content. A backtick
+// run followed by text that contains a backtick (```ts``` is inline
+// code) opens nothing.
+func (c *codeFence) step(line []byte) bool {
 	t := bytes.TrimLeft(line, " ")
-	if bytes.HasPrefix(t, []byte("~~~")) {
+	if c.ch != 0 {
+		n := fenceRunLen(t, c.ch)
+		if n >= c.n && len(bytes.TrimSpace(t[n:])) == 0 {
+			*c = codeFence{}
+		}
 		return true
 	}
-	if !bytes.HasPrefix(t, []byte("```")) {
+	if len(t) == 0 || (t[0] != '`' && t[0] != '~') {
 		return false
 	}
-	rest := bytes.TrimLeft(t, "`")
-	return bytes.IndexByte(rest, '`') < 0
+	n := fenceRunLen(t, t[0])
+	if n < 3 || (t[0] == '`' && bytes.IndexByte(t[n:], '`') >= 0) {
+		return false
+	}
+	c.n, c.ch = n, t[0]
+	return true
+}
+
+// fenceRunLen returns the length of the run of ch at the start of t.
+func fenceRunLen(t []byte, ch byte) int {
+	n := 0
+	for n < len(t) && t[n] == ch {
+		n++
+	}
+	return n
 }
 
 // slide is one logical slide with its frontmatter and slot markers.
@@ -244,14 +269,9 @@ func parseSlides(lines [][]byte) []slide {
 		cur.startLine = min(i+1, len(lines)+1)
 		i = min(i, len(lines))
 	}
-	inCode := false
+	var fence codeFence
 	for i < len(lines) {
-		if isCodeFence(lines[i]) {
-			inCode = !inCode
-			i++
-			continue
-		}
-		if inCode {
+		if fence.step(lines[i]) {
 			i++
 			continue
 		}

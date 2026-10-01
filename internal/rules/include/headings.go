@@ -18,25 +18,12 @@ var setextH2Re = regexp.MustCompile(`^-+\s*$`)
 // tildes) that opens a fenced code block on line. Unlike the CommonMark
 // spec (which limits indent to 3 spaces), all leading whitespace is
 // stripped so that fenced blocks inside list items are also detected
-// and skipped. Per CommonMark, a backtick fence whose info string
-// contains a backtick is not a fence (the line is paragraph text).
+// and skipped. countFenceRun applies the run-length and backtick-info
+// rules shared with rewriteSkippingCode.
 func openFenceMarker(line string) (string, bool) {
 	t := strings.TrimLeft(line, " \t")
-	if t == "" || (t[0] != '`' && t[0] != '~') {
-		return "", false
-	}
-	ch := t[0]
-	n := 0
-	for n < len(t) && t[n] == ch {
-		n++
-	}
-	if n < 3 {
-		return "", false
-	}
-	if ch == '`' && strings.IndexByte(t[n:], '`') >= 0 {
-		return "", false
-	}
-	return t[:n], true
+	n := countFenceRun(t)
+	return t[:n], n > 0
 }
 
 // adjustHeadings shifts all heading levels in content so that the minimum
@@ -136,7 +123,7 @@ func headingLevel(lines []string, i int, line string) int {
 	if m := atxRe.FindStringSubmatch(line); m != nil {
 		return len(m[1])
 	}
-	if i > 0 && lines[i-1] != "" {
+	if i > 0 && setextContentLine(lines[i-1]) {
 		if setextH1Re.MatchString(line) {
 			return 1
 		}
@@ -173,21 +160,21 @@ func applyShift(lines []string, shift int) []string {
 
 		// Check setext heading (must check before appending the line,
 		// because we may need to replace the previous line and skip this one).
-		if i > 0 && !isResultPrevLineFence(result) {
+		// The check reads the last result line, not lines[i-1], so a
+		// setext heading already converted to ATX is not re-used as text.
+		if len(result) > 0 && setextContentLine(result[len(result)-1]) {
 			prevOriginal := lines[i-1]
-			if prevOriginal != "" {
-				if setextH1Re.MatchString(line) {
-					newLevel := clampLevel(1 + shift)
-					// Replace previous line (the heading text) with ATX heading.
-					result[len(result)-1] = strings.Repeat("#", newLevel) + " " + prevOriginal
-					// Skip the underline.
-					continue
-				}
-				if setextH2Re.MatchString(line) {
-					newLevel := clampLevel(2 + shift)
-					result[len(result)-1] = strings.Repeat("#", newLevel) + " " + prevOriginal
-					continue
-				}
+			if setextH1Re.MatchString(line) {
+				newLevel := clampLevel(1 + shift)
+				// Replace previous line (the heading text) with ATX heading.
+				result[len(result)-1] = strings.Repeat("#", newLevel) + " " + prevOriginal
+				// Skip the underline.
+				continue
+			}
+			if setextH2Re.MatchString(line) {
+				newLevel := clampLevel(2 + shift)
+				result[len(result)-1] = strings.Repeat("#", newLevel) + " " + prevOriginal
+				continue
 			}
 		}
 
@@ -210,10 +197,11 @@ func applyShift(lines []string, shift int) []string {
 }
 
 // isClosingFence checks if a line closes a code fence opened with the given marker.
-// Leading whitespace is stripped (any amount) to handle fences inside list items.
+// Leading whitespace is stripped (any amount) to handle fences inside list items;
+// trailing whitespace, including a CRLF line's "\r", is stripped too.
 func isClosingFence(line, marker string) bool {
 	trimmed := strings.TrimLeft(line, " \t")
-	trimmed = strings.TrimRight(trimmed, " \t")
+	trimmed = strings.TrimRight(trimmed, " \t\r")
 	if len(trimmed) < len(marker) {
 		return false
 	}
@@ -226,15 +214,20 @@ func isClosingFence(line, marker string) bool {
 	return true
 }
 
-// isResultPrevLineFence checks if the last line appended to result was a code
-// fence opening. This prevents treating lines after a fence marker as setext.
-// This is a conservative check; it won't catch all edge cases.
-func isResultPrevLineFence(result []string) bool {
-	if len(result) == 0 {
+// setextContentLine reports whether prev can carry the text of a setext
+// heading whose underline is the next line. CommonMark reads an underline
+// after a blank line, an ATX heading, a fence line (opener or closer), or
+// another underline as a thematic break or paragraph text, never as a
+// setext heading. This is a conservative check; it won't catch all edge
+// cases (list items, block quotes).
+func setextContentLine(prev string) bool {
+	if strings.TrimSpace(prev) == "" || atxRe.MatchString(prev) {
 		return false
 	}
-	_, ok := openFenceMarker(result[len(result)-1])
-	return ok
+	if _, ok := openFenceMarker(prev); ok {
+		return false
+	}
+	return !setextH1Re.MatchString(prev) && !setextH2Re.MatchString(prev)
 }
 
 // clampLevel ensures a heading level is between 1 and 6.
