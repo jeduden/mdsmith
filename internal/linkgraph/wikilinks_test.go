@@ -675,6 +675,7 @@ func TestInCodeSpan_ManySpans(t *testing.T) {
 	}
 	assert.False(t, inCodeSpan(spans, -1))
 	assert.False(t, inCodeSpan(spans, 20000))
+	assert.False(t, inCodeSpan([]byteRange{{start: 5, end: 5}}, 5), "zero-width span is empty")
 }
 
 func BenchmarkInCodeSpan(b *testing.B) {

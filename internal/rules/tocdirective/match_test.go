@@ -31,6 +31,12 @@ func TestMatchVariant(t *testing.T) {
 	}
 }
 
+func TestVariants_StartWithGateBytes(t *testing.T) {
+	for _, v := range variants {
+		assert.Contains(t, string(tocFirstBytes), string(v.literal[:1]), v.token)
+	}
+}
+
 func TestMatchVariant_LinkRefCandidate(t *testing.T) {
 	v, ok := matchVariant([]byte("[TOC]"))
 	assert.True(t, ok)
@@ -43,6 +49,9 @@ func TestMatchVariant_LinkRefCandidate(t *testing.T) {
 // The doc's "bytes over regexp for a literal" rule: a line that cannot
 // be a directive must be rejected without running any regexp.
 func TestMatchVariant_RejectNoAlloc(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
 	line := []byte("An ordinary paragraph line with no directive.")
 	allocs := testing.AllocsPerRun(100, func() { matchVariant(line) })
 	assert.Zero(t, allocs)

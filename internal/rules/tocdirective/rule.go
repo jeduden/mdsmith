@@ -38,6 +38,9 @@ var variants = []tocVariant{
 	{literal: []byte("${toc}"), token: "${toc}"},
 }
 
+// tocFirstBytes holds the first byte of each entry in variants.
+var tocFirstBytes = []byte("[$")
+
 // Rule detects renderer-specific TOC directives.
 type Rule struct{}
 
@@ -131,12 +134,13 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 var _ rule.NodeChecker = (*Rule)(nil)
 
 func matchVariant(line []byte) (tocVariant, bool) {
-	line = bytes.TrimRight(line, " \t")
-	// Every directive starts with '[' or '$'; most lines start with
-	// neither, so reject them before comparing any literal.
-	if len(line) == 0 || (line[0] != '[' && line[0] != '$') {
+	// Every directive starts with a byte in tocFirstBytes; most lines
+	// start with neither, so reject them before trimming or comparing.
+	// TestVariants_StartWithGateBytes ties this gate to the table.
+	if len(line) == 0 || !bytes.Contains(tocFirstBytes, line[:1]) {
 		return tocVariant{}, false
 	}
+	line = bytes.TrimRight(line, " \t")
 	for _, v := range variants {
 		if bytes.Equal(line, v.literal) {
 			return v, true

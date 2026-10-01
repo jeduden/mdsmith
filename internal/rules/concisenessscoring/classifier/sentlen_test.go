@@ -2,6 +2,7 @@ package classifier
 
 import (
 	"math"
+	"math/rand"
 	"regexp"
 	"strings"
 	"testing"
@@ -56,6 +57,9 @@ func TestSentLenVariance_MatchesReference(t *testing.T) {
 }
 
 func TestSentLenVariance_NoAlloc(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
 	text := "Short. A much longer second sentence here! Another one follows? Yes."
 	allocs := testing.AllocsPerRun(100, func() { SentLenVariance(text) })
 	assert.Zero(t, allocs)
@@ -66,4 +70,17 @@ func TestSentLenVariance_LargeInputFinite(t *testing.T) {
 	got := SentLenVariance(text)
 	assert.False(t, math.IsNaN(got))
 	assert.InDelta(t, refSentLenVariance(text), got, 1e-9)
+}
+
+func TestSentLenVariance_RandomMatchesReference(t *testing.T) {
+	alphabet := []rune("abcXYZ019' .!?,-\n\u0130\u212A\u00e9\u4e16")
+	rng := rand.New(rand.NewSource(1))
+	for i := 0; i < 5000; i++ {
+		rs := make([]rune, rng.Intn(60))
+		for j := range rs {
+			rs[j] = alphabet[rng.Intn(len(alphabet))]
+		}
+		in := string(rs)
+		assert.InDelta(t, refSentLenVariance(in), SentLenVariance(in), 1e-9, "%q", in)
+	}
 }

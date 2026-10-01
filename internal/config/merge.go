@@ -327,9 +327,9 @@ func mergeCategories(base, override map[string]bool) map[string]bool {
 // caller has no FM info — such entries simply won't match.
 func EffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []string {
 	if cfg == nil {
-		kl := kindList{list: make([]string, 0, len(fmKinds))}
+		kl := kindList{hint: len(fmKinds)}
 		for _, k := range fmKinds {
-			kl.add(k, len(fmKinds))
+			kl.add(k)
 		}
 		return kl.list
 	}
@@ -341,9 +341,8 @@ func EffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map
 // they come first. kind-assignment matches are appended in config order.
 // Duplicate names are dropped after their first occurrence.
 func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFields map[string]any) []string {
-	var kl kindList
-	hint := max(len(fmKinds), 2)
-	add := func(name string) { kl.add(name, hint) }
+	kl := kindList{hint: max(len(fmKinds), 2)}
+	add := kl.add
 
 	for _, k := range fmKinds {
 		add(k)
@@ -368,10 +367,11 @@ const kindListMapThreshold = 16
 // until the first name and is allocated with the caller's capacity hint.
 type kindList struct {
 	list []string
+	hint int                 // capacity of the first allocation
 	seen map[string]struct{} // built once len(list) passes kindListMapThreshold
 }
 
-func (k *kindList) add(name string, hint int) {
+func (k *kindList) add(name string) {
 	if k.seen != nil {
 		if _, ok := k.seen[name]; ok {
 			return
@@ -381,7 +381,7 @@ func (k *kindList) add(name string, hint int) {
 		return
 	}
 	if k.list == nil {
-		k.list = make([]string, 0, hint)
+		k.list = make([]string, 0, k.hint)
 	}
 	k.list = append(k.list, name)
 	if k.seen == nil && len(k.list) > kindListMapThreshold {

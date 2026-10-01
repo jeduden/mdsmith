@@ -16,6 +16,9 @@ func TestResolveEffectiveKinds_Dedup(t *testing.T) {
 }
 
 func TestResolveEffectiveKinds_NoKindsIsNilNoAlloc(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
 	cfg := &Config{}
 	assert.Nil(t, resolveEffectiveKinds(cfg, "x.md", nil, nil))
 	allocs := testing.AllocsPerRun(100, func() {
@@ -25,6 +28,9 @@ func TestResolveEffectiveKinds_NoKindsIsNilNoAlloc(t *testing.T) {
 }
 
 func TestResolveEffectiveKinds_OneAlloc(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
 	cfg := &Config{}
 	fm := []string{"a", "b", "c"}
 	allocs := testing.AllocsPerRun(100, func() {
@@ -34,6 +40,9 @@ func TestResolveEffectiveKinds_OneAlloc(t *testing.T) {
 }
 
 func TestEffectiveSignature_OneAllocNoKinds(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
 	cfg := &Config{}
 	allocs := testing.AllocsPerRun(100, func() {
 		EffectiveSignature(cfg, "x.md", nil, nil)
