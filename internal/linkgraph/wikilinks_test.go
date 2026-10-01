@@ -690,3 +690,16 @@ func BenchmarkInCodeSpan(b *testing.B) {
 		}
 	}
 }
+
+// inCodeSpan binary-searches, so collectCodeSpanRanges must return
+// sorted, disjoint spans for real parsed documents.
+func TestCollectCodeSpanRanges_SortedDisjoint(t *testing.T) {
+	src := "`a` text [[x]] ``b`` and\n\n- item `c`\n\n> quote `d` `e`\n\n[^1]: note `f`\n\nText[^1] `g`\n"
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	spans := collectCodeSpanRanges(f)
+	require.NotEmpty(t, spans)
+	for i := 1; i < len(spans); i++ {
+		assert.LessOrEqual(t, spans[i-1].end, spans[i].start, "span %d overlaps or precedes span %d", i, i-1)
+	}
+}

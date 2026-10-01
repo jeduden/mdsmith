@@ -24,7 +24,7 @@ func TestResolveEffectiveKinds_NoKindsIsNilNoAlloc(t *testing.T) {
 	allocs := testing.AllocsPerRun(100, func() {
 		resolveEffectiveKinds(cfg, "x.md", nil, nil)
 	})
-	assert.Zero(t, allocs, "no kinds must not allocate a dedup map")
+	assert.Zero(t, allocs, "no kinds allocates nothing")
 }
 
 func TestResolveEffectiveKinds_OneAlloc(t *testing.T) {
@@ -39,15 +39,16 @@ func TestResolveEffectiveKinds_OneAlloc(t *testing.T) {
 	assert.LessOrEqual(t, allocs, 1.0, "result slice only, pre-sized")
 }
 
-func TestEffectiveSignature_OneAllocNoKinds(t *testing.T) {
+func TestEffectiveSignature_OneAlloc(t *testing.T) {
+	fm := []string{"a", "b", "c"}
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")
 	}
 	cfg := &Config{}
 	allocs := testing.AllocsPerRun(100, func() {
-		EffectiveSignature(cfg, "x.md", nil, nil)
+		EffectiveSignature(cfg, "x.md", fm, nil)
 	})
-	assert.LessOrEqual(t, allocs, 1.0)
+	assert.LessOrEqual(t, allocs, 2.0, "kinds slice plus one Builder buffer")
 }
 
 func TestResolveEffectiveKinds_ManyKindsDedupOrder(t *testing.T) {
@@ -62,5 +63,5 @@ func TestResolveEffectiveKinds_ManyKindsDedupOrder(t *testing.T) {
 }
 
 func TestEffectiveKinds_NilCfgDedup(t *testing.T) {
-	assert.Equal(t, []string{"a", "b"}, EffectiveKinds(nil, "x.md", []string{"a", "b", "a"}, nil))
+	assert.Nil(t, EffectiveKinds(nil, "x.md", nil, nil), "no kinds is nil")
 }

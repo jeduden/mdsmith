@@ -32,6 +32,8 @@ const (
 var embeddedArtifact []byte
 
 var (
+	// wordPattern is mirrored by the hand-rolled scan in SentLenVariance
+	// (features.go); change both together.
 	wordPattern  = regexp.MustCompile(`[a-z0-9']+`)
 	tokenPattern = regexp.MustCompile(`^[a-z0-9']+$`)
 )

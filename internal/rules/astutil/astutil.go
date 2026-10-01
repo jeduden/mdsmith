@@ -102,7 +102,7 @@ func buildSectionHeadings(f *lint.File) any {
 		}
 		if out == nil {
 			// Lazy, so a file with no headings stays alloc-free;
-			// 8 covers typical docs in one allocation.
+			// 8 avoids the 1,2,4 regrows for small docs.
 			out = make([]SectionHeading, 0, 8)
 		}
 		out = append(out, SectionHeading{

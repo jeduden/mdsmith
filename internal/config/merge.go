@@ -320,7 +320,8 @@ func mergeCategories(base, override map[string]bool) map[string]bool {
 //
 // When cfg is nil there are no kind-assignment entries to apply, so
 // the result is just fmKinds with duplicates dropped — preserving
-// the dedup contract callers rely on.
+// the dedup contract callers rely on. The result is nil when there are
+// no kinds.
 //
 // fmFields, when non-nil, is the file's parsed front matter; it is
 // consumed by entries that set `fields-present:`. Pass nil when the
@@ -359,8 +360,8 @@ func resolveEffectiveKinds(cfg *Config, filePath string, fmKinds []string, fmFie
 
 // kindListMapThreshold is the length past which kindList switches from a
 // linear scan to a set. Kind lists are normally 0-3 names, where the scan
-// beats a map (high-performance-go.md, "Data structures"); front matter is
-// user-controlled, so the set bounds the worst case.
+// is cheaper than hashing; front matter is user-controlled, so the set
+// bounds the worst case.
 const kindListMapThreshold = 16
 
 // kindList is an ordered, deduplicated list of kind names. list stays nil

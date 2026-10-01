@@ -31,9 +31,11 @@ func TestMatchVariant(t *testing.T) {
 	}
 }
 
-func TestVariants_StartWithGateBytes(t *testing.T) {
+func TestMatchVariant_EveryVariantPassesGate(t *testing.T) {
 	for _, v := range variants {
-		assert.Contains(t, string(tocFirstBytes), string(v.literal[:1]), v.token)
+		got, ok := matchVariant(v.literal)
+		assert.True(t, ok, v.token)
+		assert.Equal(t, v.token, got.token)
 	}
 }
 
