@@ -161,20 +161,6 @@ func TestCheck_MalformedFrontMatter(t *testing.T) {
 	assert.Equal(t, `front-matter "type" is required but missing`, diags[0].Message)
 }
 
-func TestExtractYAMLBody(t *testing.T) {
-	cases := map[string]struct{ in, want string }{
-		"newline fence": {"---\ntype: X\n---\n", "type: X\n"},
-		"bare fence":    {"---\ntype: X\n---", "type: X\n"},
-		"no fence":      {"type: X\n", "type: X\n"},
-		"empty":         {"", ""},
-	}
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, c.want, string(extractYAMLBody([]byte(c.in))))
-		})
-	}
-}
-
 func TestApplySettings_FieldEmptyClears(t *testing.T) {
 	// An empty `field` disables the rule rather than requiring "".
 	r := &Rule{Fields: []string{"stale"}}

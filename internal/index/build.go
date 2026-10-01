@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -281,15 +282,17 @@ func lineOfOffset(source []byte, offset int) int {
 // symbol index has to match.
 //
 // A title key that appears twice has no single value, so it yields
-// no title. Kinds come from lint.ParseFrontMatterKinds, the engine's
-// own parser, so the index never reports a kind the engine would
-// not apply. It runs only when the walk saw a `kinds` or merge
-// (`<<`) key, the only keys that can carry kinds.
+// no title. Kinds come from lint.FrontMatterKindsFromNode, the
+// engine's own decode applied to the node parsed here, so the index
+// never reports a kind the engine would not apply and the YAML is
+// parsed only once. It runs only when the walk saw a `kinds` or
+// merge (`<<`) key, the only keys that can carry kinds.
 func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, kinds []string) {
 	if len(fm) == 0 {
 		return nil, "", nil
 	}
-	node, err := yamlutil.UnmarshalNodeSafe(lint.FrontMatterYAML(fm))
+	body := lint.FrontMatterYAML(fm)
+	node, err := yamlutil.UnmarshalNodeSafe(body)
 	if err != nil || len(node.Content) == 0 {
 		return nil, "", nil
 	}
@@ -317,7 +320,7 @@ func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, ki
 		title = ""
 	}
 	if mayHaveKinds {
-		kinds, _ = lint.ParseFrontMatterKinds(fm)
+		kinds, _ = lint.FrontMatterKindsFromNode(body, &node)
 	}
 	return syms, title, kinds
 }
@@ -327,15 +330,26 @@ func frontMatterAll(filePath string, fm []byte) (syms []Symbol, title string, ki
 // Unicode whitespace, including the newlines a block scalar
 // carries, collapse to one space and the ends are trimmed, so the
 // title fits on a single workspace-symbol row. Typed scalars
-// (numbers, booleans, dates) keep their source spelling.
+// (numbers, booleans, dates) keep their source spelling. A
+// `!!binary` value shows its decoded text, as the engine's map
+// decode sees it; one that is not valid base64 or not UTF-8 text
+// has no title.
 func frontMatterTitle(v *yaml.Node) string {
 	if v.Kind != yaml.ScalarNode || v.Tag == "!!null" {
 		return ""
 	}
-	if !needsSpaceCollapse(v.Value) {
-		return v.Value
+	text := v.Value
+	if v.Tag == "!!binary" {
+		var decoded string
+		if yamlutil.DecodeNodeSafe(v, &decoded) != nil || !utf8.ValidString(decoded) {
+			return ""
+		}
+		text = decoded
 	}
-	return strings.Join(strings.Fields(v.Value), " ")
+	if !needsSpaceCollapse(text) {
+		return text
+	}
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // needsSpaceCollapse reports whether s has leading or trailing

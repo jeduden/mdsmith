@@ -183,6 +183,9 @@ func TestFrontMatterTitle(t *testing.T) {
 		{"line separator", scalar("!!str", "a\u2028b"), "a b"},
 		{"next line", scalar("!!str", "a\u0085b"), "a b"},
 		{"no-break space", scalar("!!str", "a\u00a0b"), "a b"},
+		{"binary", scalar("!!binary", "SGVsbG8gd29ybGQ="), "Hello world"},
+		{"binary bad base64", scalar("!!binary", "%%%"), ""},
+		{"binary not UTF-8", scalar("!!binary", "/w=="), ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

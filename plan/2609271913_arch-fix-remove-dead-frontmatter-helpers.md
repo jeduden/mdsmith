@@ -84,23 +84,32 @@ decoders. The port fixes the drift:
 - Typed scalar titles (int, float, uint64, bool, date) keep
   their source text. The deleted `frontMatterScalar` wrote
   a date in RFC 3339 form; the index never used that path.
-- Kinds now come from `lint.ParseFrontMatterKinds`, the
-  engine's own parser, when the walk sees a `kinds` or `<<`
-  key. So `- 42` is `"42"`, a mapping entry or duplicate
-  key drops the list, and only the bytes `kinds:` are read.
-  Before, the index kept kinds the engine never applied.
-- `yamlutil.UnmarshalSafe` now turns a yaml.v3 decode panic
+- Kinds now come from `lint.FrontMatterKindsFromNode`, the
+  engine's own decode, run on the node the index already
+  parsed when the walk sees a `kinds` or `<<` key. So
+  `- 42` is `"42"`, a mapping entry or duplicate key drops
+  the list, and only the bytes `kinds:` are read. Before,
+  the index kept kinds the engine never applied. The YAML
+  is parsed once per file.
+- A `!!binary` title shows its decoded text, as the
+  engine's map decode does. One that is not valid base64
+  or not UTF-8 has no title.
+- `yamlutil.UnmarshalSafe` and the new
+  `yamlutil.DecodeNodeSafe` turn a yaml.v3 decode panic
   into an error. A complex key next to a merge key made
   yaml.v3 panic, so one crafted file crashed the process.
+  `requiredstructure` decoded document front matter with a
+  raw `yaml.Unmarshal`; it now uses `UnmarshalSafe` and
+  words the alias case apart through `yamlutil.ErrAliases`.
 - The index's `stripDelimiters` had a fallback for a closing
   `---` with no newline, which `StripFrontMatter` never
   produces. It and the other exact copies of the fence
   trim now call one helper, `lint.FrontMatterYAML`. That
   fixed the catalog reader, which cut the YAML at a `---`
   line inside a block scalar. The trims in
-  `requiredfrontmatter` and `requiredstructure` also accept
-  a bare `---` close, and the latter returns nil without a
-  fence, so they stay.
+  `requiredfrontmatter` and `requiredstructure` call it
+  too. Their extra branches, for a bare `---` close and a
+  block with no fence, ran only on test input.
 
 ## Acceptance Criteria
 

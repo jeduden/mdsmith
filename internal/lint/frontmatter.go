@@ -6,6 +6,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/jeduden/mdsmith/pkg/markdown"
+	"gopkg.in/yaml.v3"
 )
 
 // StripFrontMatter removes YAML front matter delimited by "---\n"
@@ -73,15 +74,32 @@ func ParseFrontMatterKinds(fm []byte) ([]string, error) {
 		return nil, nil
 	}
 	body := FrontMatterYAML(fm)
-
-	if !bytes.Contains(body, []byte("kinds:")) {
+	if !bytes.Contains(body, kindsKey) {
 		return nil, nil
 	}
+	doc, err := yamlutil.UnmarshalNodeSafe(body)
+	if err != nil {
+		return nil, err
+	}
+	return FrontMatterKindsFromNode(body, &doc)
+}
 
+// kindsKey is the byte gate ParseFrontMatterKinds documents.
+var kindsKey = []byte("kinds:")
+
+// FrontMatterKindsFromNode is ParseFrontMatterKinds for a caller
+// that has already parsed body, the FrontMatterYAML of the block,
+// into doc with yamlutil.UnmarshalNodeSafe. It applies the same
+// `kinds:` byte gate and the same decode without parsing body a
+// second time. A nil or empty doc has no kinds.
+func FrontMatterKindsFromNode(body []byte, doc *yaml.Node) ([]string, error) {
+	if doc == nil || len(doc.Content) == 0 || !bytes.Contains(body, kindsKey) {
+		return nil, nil
+	}
 	var parsed struct {
 		Kinds []string `yaml:"kinds"`
 	}
-	if err := yamlutil.UnmarshalSafe(body, &parsed); err != nil {
+	if err := yamlutil.DecodeNodeSafe(doc, &parsed); err != nil {
 		return nil, err
 	}
 	return parsed.Kinds, nil

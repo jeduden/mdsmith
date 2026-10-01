@@ -1,6 +1,7 @@
 package yamlutil_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/yamlutil"
@@ -48,6 +49,24 @@ func TestRejectYAMLAliases(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestErrAliases: every helper's alias rejection is ErrAliases, so a
+// caller can word it apart from other parse errors with errors.Is.
+func TestErrAliases(t *testing.T) {
+	t.Parallel()
+	anchored := []byte("base: &base\n  id: 1\n")
+	undefined := []byte("child: *missing\n")
+
+	var m map[string]any
+	assert.True(t, errors.Is(yamlutil.UnmarshalSafe(anchored, &m), yamlutil.ErrAliases))
+	assert.True(t, errors.Is(yamlutil.UnmarshalSafe(undefined, &m), yamlutil.ErrAliases))
+	_, err := yamlutil.UnmarshalNodeSafe(anchored)
+	assert.True(t, errors.Is(err, yamlutil.ErrAliases))
+	assert.True(t, errors.Is(yamlutil.RejectYAMLAliases(anchored), yamlutil.ErrAliases))
+	assert.True(t, errors.Is(yamlutil.RejectYAMLAliases(undefined), yamlutil.ErrAliases))
+
+	assert.False(t, errors.Is(yamlutil.UnmarshalSafe([]byte("a: [\n"), &m), yamlutil.ErrAliases))
 }
 
 func TestUnmarshalSafe(t *testing.T) {

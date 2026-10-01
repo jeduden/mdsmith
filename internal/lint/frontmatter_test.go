@@ -3,6 +3,8 @@ package lint
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/yamlutil"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -150,6 +152,47 @@ func TestParseFrontMatterKinds_DecodePanicIsError(t *testing.T) {
 	require.NotPanics(t, func() { got, err = ParseFrontMatterKinds([]byte(in)) })
 	assert.Error(t, err)
 	assert.Nil(t, got)
+}
+
+// TestFrontMatterKindsFromNode: decoding kinds from an already
+// parsed node gives what ParseFrontMatterKinds gives for the same
+// block, including the `kinds:` byte gate and the error cases.
+func TestFrontMatterKindsFromNode(t *testing.T) {
+	t.Parallel()
+	cases := []string{
+		"---\nkinds: [plan, doc]\n---\n",
+		"---\n<<: {kinds: [plan]}\n---\n",
+		"---\nkinds: [42, true]\n---\n",
+		"---\ntitle: x\n---\n",
+		"---\ntitle: kinds\nkinds:\n---\n",
+		"---\n\"kinds\": [plan]\n---\n",
+		"---\nkinds: plan\n---\n",
+		"---\nkinds: [a]\nkinds: [b]\n---\n",
+		"---\n? [a, b]\n: c\n<<: {kinds: [x]}\n---\n",
+		"---\n---\n",
+		"---\n# kinds: only a comment\n---\n",
+	}
+	for _, in := range cases {
+		t.Run(in, func(t *testing.T) {
+			t.Parallel()
+			body := FrontMatterYAML([]byte(in))
+			doc, err := yamlutil.UnmarshalNodeSafe(body)
+			require.NoError(t, err)
+			want, wantErr := ParseFrontMatterKinds([]byte(in))
+			var got []string
+			var gotErr error
+			require.NotPanics(t, func() { got, gotErr = FrontMatterKindsFromNode(body, &doc) })
+			assert.Equal(t, want, got)
+			assert.Equal(t, wantErr != nil, gotErr != nil, "error: want %v, got %v", wantErr, gotErr)
+		})
+	}
+
+	t.Run("nil node", func(t *testing.T) {
+		t.Parallel()
+		got, err := FrontMatterKindsFromNode([]byte("kinds: [a]\n"), nil)
+		assert.NoError(t, err)
+		assert.Nil(t, got)
+	})
 }
 
 func TestUnmarshalFrontMatter(t *testing.T) {
