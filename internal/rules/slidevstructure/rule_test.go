@@ -545,13 +545,10 @@ func TestCodeFenceStep(t *testing.T) {
 		steps("```", "~~~", "```js", "```\r", "x"),
 		"a different character or an info string does not close; CR does")
 	assert.Equal(t, []bool{false, false}, steps("``", "x"), "two backticks")
-}
-
-func TestFenceRunLen(t *testing.T) {
-	assert.Equal(t, 3, fenceRunLen([]byte("```go"), '`'))
-	assert.Equal(t, 4, fenceRunLen([]byte("~~~~"), '~'))
-	assert.Equal(t, 0, fenceRunLen([]byte("~~~"), '`'))
-	assert.Equal(t, 0, fenceRunLen(nil, '`'))
+	assert.Equal(t, []bool{true, true, true}, steps("```", "```\u00a0", "---"),
+		"NBSP after the run is not whitespace: the line does not close")
+	assert.Equal(t, []bool{true, true, false}, steps("    ```", "    ```", "x"),
+		"any indent opens and closes (no container tracking)")
 }
 
 func TestParseSlides_NestedFenceKeepsSeparatorLiteral(t *testing.T) {

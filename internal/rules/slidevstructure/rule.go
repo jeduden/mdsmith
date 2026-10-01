@@ -21,6 +21,7 @@ import (
 	"sort"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/internal/rule"
 	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
 )
@@ -186,11 +187,9 @@ func hasSlidevMarkers(lines [][]byte) bool {
 }
 
 // codeFence tracks the fenced code block (``` or ~~~, three or more)
-// a line scan is inside: the opener's run length and character. ch is
-// 0 outside a block.
+// a line scan is inside.
 type codeFence struct {
-	n  int
-	ch byte
+	t mdfence.Tracker
 }
 
 // step advances the tracker past line and reports whether line belongs
@@ -198,38 +197,14 @@ type codeFence struct {
 // `---` or `::slot::` on such a line is literal content — a slide
 // showing YAML or a diff — not a separator, so the scanners skip it.
 //
-// Per CommonMark, only a run of the opener's character at least as long
-// as the opener, with nothing after it, closes the block; a shorter or
-// different inner fence (```js inside ````md) is content. A backtick
-// run followed by text that contains a backtick (```ts``` is inline
-// code) opens nothing.
+// The fence rules are mdfence's (CommonMark): a closer is the opener's
+// character, a run at least as long, and nothing after it, so a
+// shorter or different inner fence (```js inside ````md) is content,
+// and ```ts``` (inline code) opens nothing. Unlike CommonMark, any
+// number of leading spaces is stripped first: the scanner tracks no
+// list containers, so a fence nested in a list item still counts.
 func (c *codeFence) step(line []byte) bool {
-	t := bytes.TrimLeft(line, " ")
-	if c.ch != 0 {
-		n := fenceRunLen(t, c.ch)
-		if n >= c.n && len(bytes.TrimSpace(t[n:])) == 0 {
-			*c = codeFence{}
-		}
-		return true
-	}
-	if len(t) == 0 || (t[0] != '`' && t[0] != '~') {
-		return false
-	}
-	n := fenceRunLen(t, t[0])
-	if n < 3 || (t[0] == '`' && bytes.IndexByte(t[n:], '`') >= 0) {
-		return false
-	}
-	c.n, c.ch = n, t[0]
-	return true
-}
-
-// fenceRunLen returns the length of the run of ch at the start of t.
-func fenceRunLen(t []byte, ch byte) int {
-	n := 0
-	for n < len(t) && t[n] == ch {
-		n++
-	}
-	return n
+	return c.t.Step(bytes.TrimLeft(line, " "))
 }
 
 // slide is one logical slide with its frontmatter and slot markers.
