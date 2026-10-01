@@ -102,13 +102,22 @@ func headingLevel(lines []string, i int, line string) int {
 	if m := atxRe.FindStringSubmatch(line); m != nil {
 		return len(m[1])
 	}
-	if i > 0 && setextContentLine(lines[i-1]) {
-		if setextH1Re.MatchString(line) {
-			return 1
-		}
-		if setextH2Re.MatchString(line) {
-			return 2
-		}
+	// Test the cheap underline match first: most lines are not
+	// underlines, so the previous-line check rarely runs.
+	if level := setextLevel(line); level > 0 && i > 0 && setextContentLine(lines[i-1]) {
+		return level
+	}
+	return 0
+}
+
+// setextLevel returns 1 when line is a setext h1 underline (`=` run),
+// 2 when it is a setext h2 underline (`-` run), and 0 otherwise.
+func setextLevel(line string) int {
+	if setextH1Re.MatchString(line) {
+		return 1
+	}
+	if setextH2Re.MatchString(line) {
+		return 2
 	}
 	return 0
 }
@@ -129,20 +138,15 @@ func applyShift(lines []string, shift int) []string {
 		// because we may need to replace the previous line and skip this one).
 		// The check reads the last result line, not lines[i-1], so a
 		// setext heading already converted to ATX is not re-used as text.
-		if len(result) > 0 && setextContentLine(result[len(result)-1]) {
-			prevOriginal := lines[i-1]
-			if setextH1Re.MatchString(line) {
-				newLevel := clampLevel(1 + shift)
-				// Replace previous line (the heading text) with ATX heading.
-				result[len(result)-1] = strings.Repeat("#", newLevel) + " " + prevOriginal
-				// Skip the underline.
-				continue
-			}
-			if setextH2Re.MatchString(line) {
-				newLevel := clampLevel(2 + shift)
-				result[len(result)-1] = strings.Repeat("#", newLevel) + " " + prevOriginal
-				continue
-			}
+		// The cheap underline match runs first so the previous-line check
+		// only runs on the rare underline-shaped line.
+		if level := setextLevel(line); level > 0 && len(result) > 0 &&
+			setextContentLine(result[len(result)-1]) {
+			newLevel := clampLevel(level + shift)
+			// Replace previous line (the heading text) with ATX heading.
+			result[len(result)-1] = strings.Repeat("#", newLevel) + " " + lines[i-1]
+			// Skip the underline.
+			continue
 		}
 
 		// Check ATX heading.
@@ -176,7 +180,7 @@ func setextContentLine(prev string) bool {
 	if opensFence(prev) {
 		return false
 	}
-	return !setextH1Re.MatchString(prev) && !setextH2Re.MatchString(prev)
+	return setextLevel(prev) == 0
 }
 
 // clampLevel ensures a heading level is between 1 and 6.

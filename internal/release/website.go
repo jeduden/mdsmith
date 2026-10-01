@@ -495,11 +495,14 @@ func rewritePrunedDocRefDef(match []byte) []byte {
 // that lies OUTSIDE Markdown code regions and passes code
 // regions through unchanged. Two constructs are skipped:
 //
-//   - Fenced code blocks: a line beginning (after up to three
-//     leading spaces, per CommonMark) with three or more
-//     backticks or tildes opens a fence, and the matching run
-//     on its own line closes it. The opener, body, and closer
-//     all pass through verbatim.
+//   - Fenced code blocks, recognized by internal/mdfence: a
+//     line beginning (after up to three leading spaces, per
+//     CommonMark) with three or more backticks or tildes opens
+//     a fence — unless it is a backtick run whose info string
+//     holds a backtick, which is inline code — and a run of the
+//     same character, at least as long, on its own line closes
+//     it. The opener, body, and closer all pass through
+//     verbatim.
 //   - Inline code spans: a backtick-delimited region on a
 //     single line (`code`). Multi-backtick spans (the doubled
 //     or tripled forms) and multi-line spans fall through as

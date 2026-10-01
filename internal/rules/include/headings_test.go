@@ -310,6 +310,28 @@ func TestSetextContentLine(t *testing.T) {
 	}
 }
 
+func TestSetextLevel(t *testing.T) {
+	tests := []struct {
+		line string
+		want int
+	}{
+		{"===", 1},
+		{"=", 1},
+		{"===  \r", 1},
+		{"---", 2},
+		{"-", 2},
+		{"--- \t", 2},
+		{"", 0},
+		{"Title", 0},
+		{"=-=", 0},
+		{"## A", 0},
+		{"- item", 0},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, setextLevel(tt.line), "%q", tt.line)
+	}
+}
+
 func TestApplyShift_ATXThenThematicBreak(t *testing.T) {
 	// "---" after an ATX heading is a thematic break, not a setext
 	// underline: the heading is shifted and the break kept.

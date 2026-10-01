@@ -1440,23 +1440,20 @@ func collectBodySyncPoints(
 		if len(lineB) == 0 {
 			continue
 		}
-		switch {
-		case inPIBlock:
+		if inPIBlock {
 			// Mirror the block parser: a continuation line closes the
 			// PI only when its trimmed text is exactly `?>` — a `?>`
 			// substring inside a YAML value stays inside the block.
 			inPIBlock = !bytes.Equal(lineB, piClose)
 			continue
-		case fence.Step(raw):
-			// A fenced code block owns its lines before the PI parser
-			// runs, so a directive opener shown inside a fence is code,
-			// not a directive. Fence lines — markers included — fall
-			// through as ordinary body text, as they did before the PI
-			// skip existed.
-		default:
-			if !isPIOpenLine(raw) {
-				break
-			}
+		}
+		// A fenced code block owns its lines before the PI parser runs,
+		// so a directive opener shown inside a fence is code, not a
+		// directive. Fence lines — markers included — fall through as
+		// ordinary body text, as they did before the PI skip existed.
+		// fence.Step advances the fence state, so it must see every
+		// line outside a PI block, exactly once.
+		if !fence.Step(raw) && isPIOpenLine(raw) {
 			// A single-line `<?name ... ?>` opens and closes on the
 			// same line; only a multi-line opener leaves us inside the
 			// block for subsequent lines. The parser closes an opener

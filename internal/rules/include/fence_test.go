@@ -8,12 +8,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/mdfence"
 )
 
-func TestFenceBytes(t *testing.T) {
-	assert.Equal(t, []byte("```go"), fenceBytes("```go"))
-	assert.Empty(t, fenceBytes(""))
-	assert.Zero(t, testing.AllocsPerRun(100, func() { _ = fenceBytes("```go") }))
-}
-
 func TestStepFence(t *testing.T) {
 	steps := func(lines ...string) []bool {
 		var tr mdfence.Tracker
@@ -47,4 +41,17 @@ func TestOpensFence(t *testing.T) {
 	assert.False(t, opensFence("``"))
 	assert.False(t, opensFence("text"))
 	assert.False(t, opensFence(""))
+}
+
+// TestFenceHelpers_ZeroAllocs pins that the string-to-bytes view does
+// not copy: a line longer than the compiler's 32-byte stack buffer
+// would otherwise allocate on every call.
+func TestFenceHelpers_ZeroAllocs(t *testing.T) {
+	const long = "  ```go title=\"a fairly long info string here\""
+	allocs := testing.AllocsPerRun(100, func() {
+		var tr mdfence.Tracker
+		_ = stepFence(&tr, long)
+		_ = opensFence(long)
+	})
+	assert.Zero(t, allocs)
 }

@@ -2,9 +2,9 @@ package include
 
 import (
 	"strings"
-	"unsafe"
 
 	"github.com/jeduden/mdsmith/internal/mdfence"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 // The include rule rewrites included content as strings, line by line,
@@ -15,24 +15,21 @@ import (
 // apply to the stripped line unchanged: run length, matching closer
 // character and length, no backtick in a backtick fence's info string,
 // and only whitespace (including a CRLF line's "\r") after a closer.
-
-// fenceBytes views s as a byte slice without copying, for mdfence's
-// byte-slice API. mdfence only reads the slice and never retains it,
-// so the string's bytes are never mutated and outlive the view.
-func fenceBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
-}
+//
+// The string is handed to mdfence's byte-slice API through
+// util.StringToReadOnlyBytes, which views it without copying: mdfence
+// only reads the slice and never retains it.
 
 // stepFence advances t past line, after stripping its leading
 // whitespace, and reports whether line belongs to a fenced code block
 // (opener, content, or closer).
 func stepFence(t *mdfence.Tracker, line string) bool {
-	return t.Step(fenceBytes(strings.TrimLeft(line, " \t")))
+	return t.Step(util.StringToReadOnlyBytes(strings.TrimLeft(line, " \t")))
 }
 
 // opensFence reports whether line, after stripping its leading
 // whitespace, opens a fenced code block.
 func opensFence(line string) bool {
-	_, ok := mdfence.Open(fenceBytes(strings.TrimLeft(line, " \t")))
+	_, ok := mdfence.Open(util.StringToReadOnlyBytes(strings.TrimLeft(line, " \t")))
 	return ok
 }

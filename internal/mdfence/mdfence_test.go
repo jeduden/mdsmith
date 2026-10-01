@@ -136,17 +136,6 @@ func TestTracker_Step(t *testing.T) {
 	}
 }
 
-func TestTracker_InFence(t *testing.T) {
-	var tr Tracker
-	assert.False(t, tr.InFence(), "zero tracker is outside a fence")
-	tr.Step([]byte("```go"))
-	assert.True(t, tr.InFence(), "after an opener")
-	tr.Step([]byte("code"))
-	assert.True(t, tr.InFence(), "after a content line")
-	tr.Step([]byte("```"))
-	assert.False(t, tr.InFence(), "after the closer")
-}
-
 func TestIsSpace(t *testing.T) {
 	for _, c := range []byte{' ', '\t', '\n', '\r'} {
 		assert.True(t, isSpace(c), "%q", c)
@@ -178,7 +167,6 @@ func TestZeroAllocs(t *testing.T) {
 		tr.Step(open)
 		tr.Step(body)
 		tr.Step(closeLine)
-		_ = tr.InFence()
 	})
 	assert.Zero(t, allocs)
 }

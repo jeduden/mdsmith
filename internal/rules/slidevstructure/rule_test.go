@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -522,12 +523,12 @@ func TestCheckSlide(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "unknown Slidev layout")
 }
 
-func TestCodeFenceStep(t *testing.T) {
+func TestStepCodeFence(t *testing.T) {
 	steps := func(lines ...string) []bool {
-		var c codeFence
+		var tr mdfence.Tracker
 		got := make([]bool, len(lines))
 		for i, ln := range lines {
-			got[i] = c.step([]byte(ln))
+			got[i] = stepCodeFence(&tr, []byte(ln))
 		}
 		return got
 	}

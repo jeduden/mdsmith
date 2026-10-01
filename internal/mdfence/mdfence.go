@@ -132,10 +132,6 @@ func (t *Tracker) Step(line []byte) bool {
 	return true
 }
 
-// InFence reports whether a fence opened by an earlier Step is still
-// open.
-func (t *Tracker) InFence() bool { return t.open.Char != 0 }
-
 // isSpace reports whether c is whitespace in goldmark's util.IsSpace
 // sense: space, tab, LF, or CR.
 func isSpace(c byte) bool {
