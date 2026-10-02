@@ -60,6 +60,22 @@ not catch this. The wasm job in
    `internal/refactor` is tagged `!wasm`. Add
    `fileop_exec_wasm.go`, a stub that returns an error, with a
    wasm test.
+6. Added in review round 1. Gate test files and other
+   targets too, since `go build` skips `_test.go`. CI now
+   vets `./...` for js/wasm, wasip1, and plan9. It also
+   runs golangci-lint for js/wasm and windows. To pass,
+   the FIFO tests move from `!windows` to `unix`, and
+   `unixProcessAlive` gets a `!unix` stub. The wasip1
+   spike guest reads input via `keepAlive`. `gracePeriod`
+   moves to `exec_unix.go`, and the docs now say Windows
+   kills with no grace wait. `CloseHandle` gets an
+   explicit error check. `newSessionProxy` is split per
+   method.
+7. Added in review round 1: the stub drops the
+   compile-time guard on wasm `Execute` calls.
+   `cmd/mdsmith-wasm/execguard_test.go` type-checks the
+   bridge's js/wasm dependency graph. It fails on any
+   use of `FileOp.Execute`.
 
 ## Acceptance Criteria
 
@@ -67,3 +83,9 @@ not catch this. The wasm job in
 - [x] CI runs that whole-module wasm build on every PR.
 - [x] Unix and Windows behavior of `runRecipe` is
       unchanged.
+- [x] `go vet ./...` (tests included) passes for js/wasm,
+      wasip1, and plan9, and CI gates it.
+- [x] golangci-lint passes for js/wasm and windows, and
+      CI gates it.
+- [x] No package the wasm bridge links uses
+      `FileOp.Execute`, enforced by a test.

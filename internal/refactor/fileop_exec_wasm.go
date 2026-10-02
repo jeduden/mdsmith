@@ -10,6 +10,8 @@ import "fmt"
 // GOOS=js GOARCH=wasm; it always fails so a move is never half-done.
 // The error names op.From, matching the native Execute's "moving %s"
 // prefix, so a caller's report says which file did not move.
+// cmd/mdsmith-wasm/execguard_test.go fails if any package the wasm
+// bridge links uses Execute, keeping the old compile-time guarantee.
 func (op FileOp) Execute(string) error {
 	return fmt.Errorf("moving %s: file operations are not supported under wasm", op.From)
 }
