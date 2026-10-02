@@ -377,12 +377,12 @@ directory. A recipe that invokes `mdsmith` (for example to run
 `mdsmith extract`) must add the directory holding the binary to
 `build.exec.path`.
 
-Each recipe runs in its own process group (a new session via `Setpgid`
-on Unix; `CREATE_NEW_PROCESS_GROUP` plus a Job Object on Windows). When
-`--build-timeout` expires, Unix gets `SIGTERM` to the whole group, up
-to five seconds of grace, then `SIGKILL`; Windows gets
-`CTRL_BREAK_EVENT` and an immediate Job Object termination. A recipe
-that spawns a background daemon cannot leave an orphan behind.
+Each recipe runs in its own process group (`Setpgid` on Unix;
+`CREATE_NEW_PROCESS_GROUP` plus a Job Object on Windows). On timeout,
+Unix sends `SIGTERM`, waits up to 5 s, then sends `SIGKILL` to the
+group; Windows sends `CTRL_BREAK_EVENT` and ends the Job Object (if one
+was created), so no daemon outlives the recipe. A leader still running
+5 s later is killed directly, and mdsmith stops waiting 5 s after that.
 
 ### Atomic-write hardening
 

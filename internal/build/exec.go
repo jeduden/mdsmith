@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"time"
 )
 
 // defaultExecPath is the compiled-default PATH a recipe runs under when
@@ -103,10 +104,18 @@ type runOpts struct {
 // Unix sends SIGTERM to the group, waits up to gracePeriod, then sends
 // SIGKILL; Windows sends CTRL_BREAK and terminates the Job Object at
 // once, with no wait. Either way a recipe that spawns daemons cannot
-// leave orphans behind. Other targets
+// leave orphans behind. If the Job Object could not be created, Windows
+// falls back to CTRL_BREAK alone, which reaches the leader's group but
+// cannot guarantee that. Other targets
 // (exec_other.go: js/wasm, wasip1, plan9) have no group primitive: the
-// timeout kills only the leader, with no grace period, so that
-// guarantee holds on Unix and Windows only.
+// timeout kills only the leader, with no grace period, so the orphan
+// guarantee holds on Unix and on Windows with a Job Object only.
+//
+// After the kill, runRecipe waits at most reapWait for the recipe to
+// exit. If it has not, it kills the leader directly and waits at most
+// reapWait again, then returns anyway: a leader that ignored the group
+// kill, or a survivor that holds a captured output pipe open, cannot
+// hang mdsmith.
 //
 // It returns the process exit code, whether the run timed out, and any
 // error. On success it returns (0, false, nil). On non-zero exit it
@@ -159,8 +168,19 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		}
 		return exitCode, false, err
 	case <-ctx.Done():
-		killGroup(cmd)
-		waitErr := <-done
+		killGroupFn(cmd)
+		reaped, waitErr := waitAtMost(done, reapWait)
+		if !reaped {
+			// The group kill left the leader running (Windows when the
+			// Job Object could not be set up and the recipe ignores
+			// CTRL_BREAK), or a surviving child still holds a captured
+			// output pipe, so Wait cannot return (targets with no group
+			// kill). Kill the leader directly, then give up waiting so
+			// mdsmith never hangs; done is buffered, so the Wait
+			// goroutine still exits once the pipe closes.
+			_ = cmd.Process.Kill()
+			_, waitErr = waitAtMost(done, reapWait)
+		}
 		exitCode := -1
 		var ee *exec.ExitError
 		if errors.As(waitErr, &ee) {
@@ -176,3 +196,25 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 // afterStartFn indirects afterStart so a test can install a non-nil job
 // cleanup and exercise the deferred-cleanup branch on Unix.
 var afterStartFn = afterStart
+
+// killGroupFn indirects killGroup so a test can model a group kill that
+// leaves the recipe running.
+var killGroupFn = killGroup
+
+// reapWait bounds each wait for cmd.Wait after a timeout kill: once
+// after killGroup, and once more after the leader-only fallback kill.
+// It is a var so a test can shorten it.
+var reapWait = 5 * time.Second
+
+// waitAtMost receives from done for up to d. It reports true and the
+// received error, or false and nil when d elapses first.
+func waitAtMost(done <-chan error, d time.Duration) (bool, error) {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case err := <-done:
+		return true, err
+	case <-t.C:
+		return false, nil
+	}
+}

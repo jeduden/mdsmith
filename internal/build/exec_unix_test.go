@@ -101,3 +101,72 @@ func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
 		return !processAlive(childPID)
 	}, 6*time.Second, 100*time.Millisecond, "spawned child should not be orphaned")
 }
+
+// stubKillGroup swaps killGroupFn and shortens reapWait for one test.
+func stubKillGroup(t *testing.T, fn func(*exec.Cmd)) {
+	t.Helper()
+	oldKill, oldReap := killGroupFn, reapWait
+	killGroupFn, reapWait = fn, 100*time.Millisecond
+	t.Cleanup(func() { killGroupFn, reapWait = oldKill, oldReap })
+}
+
+// killRecordedPID kills the process whose PID a recipe wrote to pidFile,
+// so a test that leaves a survivor on purpose does not leak it.
+func killRecordedPID(t *testing.T, pidFile string) {
+	t.Helper()
+	t.Cleanup(func() {
+		b, err := os.ReadFile(pidFile)
+		if err != nil {
+			return
+		}
+		if pid, err := parsePID(strings.TrimSpace(string(b))); err == nil {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
+}
+
+func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
+	// Models Windows with no Job Object and a recipe that ignores
+	// CTRL_BREAK: the group kill leaves the leader running. runRecipe
+	// must kill the leader itself after reapWait, not wait forever.
+	stubKillGroup(t, func(*exec.Cmd) {})
+	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 5`)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	assert.True(t, timedOut)
+	assert.Less(t, time.Since(start), 3*time.Second, "leader fallback kill should be prompt")
+}
+
+func TestRunRecipe_SurvivorHoldingPipeDoesNotBlock(t *testing.T) {
+	// Models a target with no group kill (plan9): only the leader dies,
+	// and a background child keeps the captured stdout pipe open, so
+	// cmd.Wait would block until that child exits. runRecipe must stop
+	// waiting after reapWait.
+	stubKillGroup(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
+	stage := t.TempDir()
+	pidFile := filepath.Join(stage, "child.pid")
+	killRecordedPID(t, pidFile)
+	script := writeScript(t, t.TempDir(), "daemon.sh",
+		`sleep 5 & echo $! > "`+pidFile+`"; sleep 5`)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     stage,
+		defExec: defaultExecConfig(),
+		stdout:  &strings.Builder{},
+	})
+	require.Error(t, err)
+	assert.True(t, timedOut)
+	assert.Less(t, time.Since(start), 3*time.Second, "a survivor's open pipe must not block")
+}

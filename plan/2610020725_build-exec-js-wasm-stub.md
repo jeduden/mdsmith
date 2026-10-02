@@ -87,13 +87,19 @@ not catch this. The wasm job in
    `dispose()` releases the other method funcs, so a
    disposed session no longer stays pinned. A js/wasm
    test ties the proxy's keys to `sessionMethodNames`.
+9. Added in review round 2. After a timeout kill,
+   `runRecipe` waits at most `reapWait` (5 s). If the
+   recipe is still running, it kills the leader and
+   waits at most `reapWait` again, then returns. So a
+   Windows run with no Job Object, or a plan9 survivor
+   holding the output pipe, can no longer hang mdsmith.
 
 ## Acceptance Criteria
 
 - [x] `GOOS=js GOARCH=wasm go build ./...` exits 0.
 - [x] CI runs that whole-module wasm build on every PR.
-- [x] Unix and Windows behavior of `runRecipe` is
-      unchanged.
+- [x] Unix and Windows kill signals in `runRecipe` are
+      unchanged; only the post-kill wait is now bounded.
 - [x] `go vet ./...` (tests included) passes for js/wasm,
       wasip1, and plan9, and CI gates it.
 - [x] golangci-lint passes for js/wasm and windows, and

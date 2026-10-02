@@ -2,6 +2,7 @@ package build
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -235,4 +236,17 @@ func TestRunRecipe_CancellationReported(t *testing.T) {
 	require.Error(t, err)
 	// A non-deadline cancellation reports "cancelled", not "timed out".
 	assert.Contains(t, err.Error(), "cancelled")
+}
+
+func TestWaitAtMost(t *testing.T) {
+	done := make(chan error, 1)
+	want := errors.New("exit 1")
+	done <- want
+	ok, err := waitAtMost(done, time.Second)
+	assert.True(t, ok)
+	assert.Same(t, want, err)
+
+	ok, err = waitAtMost(done, time.Millisecond)
+	assert.False(t, ok, "an empty channel times out")
+	assert.NoError(t, err)
 }
