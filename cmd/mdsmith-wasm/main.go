@@ -22,11 +22,12 @@ import (
 )
 
 // funcOf and releaseFunc are js.FuncOf and js.Func.Release behind seams
-// so a test can count the session proxy's registered funcs, which
-// syscall/js keeps private.
+// so a test can count the funcs a session's lifecycle registers (its
+// proxy methods and every Promise executor), which syscall/js keeps
+// private.
 var (
 	funcOf      = js.FuncOf
-	releaseFunc = func(f js.Func) { f.Release() }
+	releaseFunc = js.Func.Release
 )
 
 // version is set via ldflags at build time (-X main.version=v1.0.0),

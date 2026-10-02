@@ -306,11 +306,12 @@ func TestNewSessionProxy_DisposeReleasesMethods(t *testing.T) {
 	assert.NotPanics(t, func() { proxy.Call("dispose") }, "second dispose")
 }
 
-// TestNewSessionProxy_DisposeLeavesNoFuncs counts the funcs the session
-// proxy registers and releases through the funcOf and releaseFunc
-// seams. After a warm-up cycle, N more create/dispose cycles must leave
-// the live count unchanged, so a restart loop does not grow
-// syscall/js's handler table. Not parallel: it swaps package seams.
+// TestNewSessionProxy_DisposeLeavesNoFuncs counts the funcs a session's
+// lifecycle (proxy methods and Promise executors) registers and
+// releases through the funcOf and releaseFunc seams. After a warm-up
+// cycle, N more create/dispose cycles must leave the live count
+// unchanged, so a restart loop does not grow syscall/js's handler
+// table. Not parallel: it swaps package seams.
 func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
 	oldOf, oldRelease := funcOf, releaseFunc
 	t.Cleanup(func() { funcOf, releaseFunc = oldOf, oldRelease })
@@ -325,9 +326,11 @@ func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
 	}
 
 	cycle := func() {
-		newTestProxy(t).Call("dispose")
+		proxy := newTestProxy(t)
+		awaitPromise(t, proxy.Call("check", "a.md", "# A\n"))
+		proxy.Call("dispose")
 	}
-	cycle() // warm-up: creates the shared disposed stand-ins once
+	cycle() // warm-up: creates the shared disposed stand-ins if no earlier test did
 	base := live
 	for i := 0; i < 5; i++ {
 		cycle()
