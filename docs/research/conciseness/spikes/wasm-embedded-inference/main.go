@@ -124,6 +124,11 @@ func (g *guestHandle) Classify(text string) (classifyResult, error) {
 	if packed < 0 {
 		return classifyResult{}, errors.New("guest signaled output truncation")
 	}
+	if packed == 0 {
+		// The guest returns 0 for a negative length or a ptr/length
+		// it did not alloc; a real result is never empty.
+		return classifyResult{}, errors.New("guest rejected input pointer or length")
+	}
 	outPtr := uint32(uint64(packed) >> 32)
 	outLen := uint32(uint64(packed) & 0xFFFFFFFF)
 	raw, ok := g.memory.Read(outPtr, outLen)
