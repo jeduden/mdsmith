@@ -2,7 +2,7 @@
 id: 2610020725
 title: >-
   Make internal/build compile under GOOS=js GOARCH=wasm
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   `GOOS=js GOARCH=wasm go build ./...` fails on main because

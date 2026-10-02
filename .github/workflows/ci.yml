@@ -540,6 +540,11 @@ jobs:
       # skips the //go:build js && wasm bridge entirely. go vet does
       # cross-compile, so run it here to give the bridge at least
       # vet-level static analysis.
+      - name: Build the whole module for WASM
+        # Plan 2610020725: the bridge never imports internal/build, so
+        # vet and build of ./cmd/mdsmith-wasm alone missed a js/wasm
+        # break in its exec hooks. Building ./... gates every package.
+        run: GOOS=js GOARCH=wasm go build ./...
       - name: Vet the WASM bridge
         run: GOOS=js GOARCH=wasm go vet ./cmd/mdsmith-wasm/...
       - name: Unit-test the WASM bridge helpers under Node
