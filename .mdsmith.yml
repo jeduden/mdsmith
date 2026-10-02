@@ -480,8 +480,6 @@ kinds:
         # pillar names below so a bad value fails `mdsmith check`
         # instead.
         group: '"Clean, consistent Markdown" | "One engine, every surface" | "A connected docs tree" | "Markdown as a single source of truth" | "Built for your pipeline"'
-        "link?": string
-        "rules?": '[...string]'
   feature-index:
     # docs/features/index.md is the shared "Why mdsmith"
     # overview, not a card: it carries only title + summary

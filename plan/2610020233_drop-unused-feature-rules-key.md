@@ -1,7 +1,7 @@
 ---
 id: 2610020233
 title: "Drop the unused rules? and link? keys from the feature kind schema"
-status: "🔲"
+status: "🔳"
 summary: >-
   The homepage feature grid no longer renders rule-ID chips, and
   no feature page sets `rules:` any more, so the optional
