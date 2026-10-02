@@ -104,7 +104,7 @@ func createSession(_ js.Value, args []js.Value) any {
 		// silently linting with the default config.
 		configYAML := ""
 		if cy := opts.Get("configYAML"); !cy.IsUndefined() {
-			if cy.Type() != js.TypeString {
+			if jsType(cy) != js.TypeString {
 				reject(jsError("createSession options.configYAML must be a string"))
 				return
 			}
@@ -137,7 +137,7 @@ func workspaceFromJS(v js.Value) map[string][]byte {
 	for i := 0; i < n; i++ {
 		key := keys.Index(i).String()
 		val := v.Get(key)
-		if val.Type() == js.TypeString {
+		if jsType(val) == js.TypeString {
 			out[key] = []byte(val.String())
 		}
 	}
@@ -153,7 +153,7 @@ func workspaceFromJS(v js.Value) map[string][]byte {
 // accepts an Object.create(null) record and an object from another
 // realm.
 func isRecord(v js.Value) bool {
-	if v.Type() != js.TypeObject {
+	if jsType(v) != js.TypeObject {
 		return false
 	}
 	// Looked up on first use, not at package init, so loading the
@@ -272,7 +272,7 @@ const maxSessionID = min(1<<53, math.MaxInt)
 // can pass; args then comes back whole, and no fraction is truncated
 // onto a live id.
 func boundSession(args []js.Value) (id int, sess *mdsmith.Session, rest []js.Value) {
-	if len(args) == 0 || args[0].Type() != js.TypeNumber {
+	if len(args) == 0 || jsType(args[0]) != js.TypeNumber {
 		return 0, nil, args
 	}
 	f := args[0].Float()
@@ -331,7 +331,7 @@ func proxyFix(sess *mdsmith.Session, args []js.Value) any {
 // proxyKinds is session.kinds(uri) → Promise<KindsResult>.
 func proxyKinds(sess *mdsmith.Session, args []js.Value) any {
 	return newPromise(func(resolve, reject func(any)) {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
+		if len(args) < 1 || jsType(args[0]) != js.TypeString {
 			reject(jsError("kinds(uri) requires a string argument"))
 			return
 		}
@@ -392,11 +392,11 @@ func proxyCapabilities(sess *mdsmith.Session, _ []js.Value) any {
 // proxyInvalidate is the synchronous session.invalidate(uri, src?).
 // A non-string uri is ignored; a string src replaces the cached source.
 func proxyInvalidate(sess *mdsmith.Session, args []js.Value) any {
-	if len(args) < 1 || args[0].Type() != js.TypeString {
+	if len(args) < 1 || jsType(args[0]) != js.TypeString {
 		return js.Undefined()
 	}
 	uri := args[0].String()
-	if len(args) >= 2 && args[1].Type() == js.TypeString {
+	if len(args) >= 2 && jsType(args[1]) == js.TypeString {
 		sess.Invalidate(uri, []byte(args[1].String()))
 	} else {
 		sess.Invalidate(uri)
@@ -444,7 +444,7 @@ func disposedResult(name string) any {
 // A JS string source crosses as Go []byte while the URI stays a
 // string, matching the design contract.
 func uriAndSource(args []js.Value) (string, []byte, bool) {
-	if len(args) < 2 || args[0].Type() != js.TypeString || args[1].Type() != js.TypeString {
+	if len(args) < 2 || jsType(args[0]) != js.TypeString || jsType(args[1]) != js.TypeString {
 		return "", nil, false
 	}
 	return args[0].String(), []byte(args[1].String()), true
@@ -454,7 +454,7 @@ func uriAndSource(args []js.Value) (string, []byte, bool) {
 // takes a fixed set of string parameters can validate them in one call.
 func allStrings(args []js.Value) bool {
 	for _, a := range args {
-		if a.Type() != js.TypeString {
+		if jsType(a) != js.TypeString {
 			return false
 		}
 	}

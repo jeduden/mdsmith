@@ -50,3 +50,21 @@ func toJS(v any) js.Value {
 	}
 	return js.Global().Get("JSON").Call("parse", string(data))
 }
+
+// typeUnknown is what jsType reports for a value syscall/js has no
+// js.Type for.
+const typeUnknown js.Type = -1
+
+// jsType is v.Type() for a value a caller passed in. syscall/js panics
+// with "bad type flag" on a typeof it does not model (a BigInt), and a
+// panic in a js.FuncOf callback ends the Go program and every session
+// with it, so jsType reports typeUnknown instead, which every check
+// treats as a wrong type.
+func jsType(v js.Value) (t js.Type) {
+	defer func() {
+		if recover() != nil {
+			t = typeUnknown
+		}
+	}()
+	return v.Type()
+}

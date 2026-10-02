@@ -400,6 +400,64 @@ func TestBoundSession(t *testing.T) {
 	}
 }
 
+func TestJSType(t *testing.T) {
+	assert.Equal(t, js.TypeString, jsType(js.ValueOf("a")))
+	assert.Equal(t, js.TypeNumber, jsType(js.ValueOf(1)))
+	assert.Equal(t, js.TypeNull, jsType(js.Null()))
+	assert.Equal(t, typeUnknown, jsType(js.Global().Get("BigInt").Invoke(1)))
+}
+
+// TestBigIntArgs passes a BigInt, whose typeof syscall/js's Value.Type
+// panics on ("bad type flag"), everywhere a caller's value meets a type
+// check. A panic in a js.FuncOf callback ends the Go program and every
+// session with it, so each check must treat a BigInt as a wrong type.
+func TestBigIntArgs(t *testing.T) {
+	big := js.Global().Get("BigInt").Invoke(1)
+	obj := func(m map[string]any) js.Value { return js.ValueOf(m) }
+
+	t.Run("helpers", func(t *testing.T) {
+		assert.False(t, isRecord(big))
+		assert.False(t, allStrings([]js.Value{big}))
+		_, _, ok := uriAndSource([]js.Value{big, big})
+		assert.False(t, ok)
+		_, sess, rest := boundSession([]js.Value{big})
+		assert.Nil(t, sess)
+		assert.Len(t, rest, 1)
+		assert.Empty(t, workspaceFromJS(obj(map[string]any{"a.md": big})))
+	})
+
+	t.Run("createSession", func(t *testing.T) {
+		for _, opts := range []js.Value{
+			big,
+			obj(map[string]any{"configYAML": big}),
+			obj(map[string]any{"workspace": big}),
+		} {
+			_, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{opts}).(js.Value))
+			assert.True(t, rejected)
+		}
+	})
+
+	t.Run("session methods", func(t *testing.T) {
+		proxy := newTestProxy(t)
+		defer proxy.Call("dispose")
+		for _, m := range []string{"check", "fix", "kinds", "rename", "move"} {
+			args := []any{big, big, big, big, big}
+			_, rejected := awaitPromise(t, proxy.Call(m, args...))
+			assert.True(t, rejected, "%s(BigInt...) rejects", m)
+		}
+		assert.True(t, proxy.Call("invalidate", big).IsUndefined())
+		assert.True(t, proxy.Call("invalidate", "a.md", big).IsUndefined())
+		assert.Positive(t, proxy.Call("capabilities").Length(), "session still live")
+	})
+
+	t.Run("shared funcs called directly", func(t *testing.T) {
+		shared := sharedMethods()
+		_, rejected := awaitPromise(t, shared["check"].Invoke(big, "a.md", "# A\n"))
+		assert.True(t, rejected)
+		assert.True(t, shared["dispose"].Invoke(big).IsUndefined())
+	})
+}
+
 // TestSharedMethods_NoSessionID calls each shared func directly with no
 // bound id: every method takes the disposed path instead of panicking,
 // and dispose does nothing.
