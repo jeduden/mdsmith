@@ -460,6 +460,9 @@ func settledShape(t *testing.T, v js.Value) string {
 }
 
 func TestAsyncMethod(t *testing.T) {
+	// fn runs inside a Promise executor, a JS callback, where t.Fatal
+	// would block on the JS event loop and hang the suite; record the
+	// call and assert after the Promise settles instead.
 	t.Run("resolves the value as JS", func(t *testing.T) {
 		var gotArgs []js.Value
 		m := asyncMethod(func(_ *mdsmith.Session, args []js.Value) (any, error) {
@@ -480,9 +483,6 @@ func TestAsyncMethod(t *testing.T) {
 		require.True(t, rejected)
 		assert.Equal(t, "boom", v.Get("message").String())
 	})
-	// fn runs inside a Promise executor, a JS callback, where t.Fatal
-	// would block on the JS event loop and hang the suite; record the
-	// call and assert after the Promise settles instead.
 	// That fn never runs after dispose is sharedFunc's job; see
 	// TestSharedFunc.
 	t.Run("disposed result rejects", func(t *testing.T) {
@@ -563,6 +563,34 @@ func TestVoidMethod(t *testing.T) {
 	assert.Equal(t, 1, calls)
 	assert.True(t, m.disposed().IsUndefined())
 	assert.Equal(t, 1, calls, "disposed result must not run fn")
+}
+
+// TestDisposedReject checks that each call returns a new Promise that
+// rejects with Error("session disposed").
+func TestDisposedReject(t *testing.T) {
+	p, q := disposedReject(), disposedReject()
+	assert.False(t, p.Equal(q), "a fresh Promise per call")
+	// Await both, so neither is left an unhandled rejection.
+	for _, pr := range []js.Value{p, q} {
+		v, rejected := awaitPromise(t, pr)
+		require.True(t, rejected)
+		assert.True(t, v.InstanceOf(js.Global().Get("Error")))
+		assert.Equal(t, disposedAsyncReason, v.Get("message").String())
+	}
+}
+
+// TestDisposedEmptyList checks that each call returns a new empty
+// array, so a caller that pushes onto one cannot change the next.
+func TestDisposedEmptyList(t *testing.T) {
+	a := disposedEmptyList()
+	require.Equal(t, "array", settledShape(t, a))
+	assert.Equal(t, 0, a.Length())
+	a.Call("push", "x")
+	assert.Equal(t, 0, disposedEmptyList().Length(), "a fresh array per call")
+}
+
+func TestDisposedUndefined(t *testing.T) {
+	assert.True(t, disposedUndefined().IsUndefined())
 }
 
 // TestNewSessionProxy_DisposeLeavesNoFuncs tracks the funcs a session's
@@ -768,15 +796,15 @@ func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
 	assert.False(t, proxy.Call("hasOwnProperty", "missing").Bool())
 }
 
-// TestSharedMethods_NoSessionID calls each shared func directly with no
-// bound id: every method takes the disposed path instead of panicking,
-// and dispose does nothing.
 // TestSharedFunc checks the dispatch every shared method func runs: a
 // live bound id calls impl.call with that session and the remaining
 // args, and a disposed id, an unknown id, or no id returns
 // impl.disposed() without ever calling impl.call.
 func TestSharedFunc(t *testing.T) {
 	proxy := newTestProxy(t)
+	// Disposed mid-test too; a second dispose is a no-op, and the defer
+	// frees the session if a require stops the test before that.
+	defer proxy.Call("dispose")
 	liveID := nextSessionID - 1
 	live := sessions[liveID]
 	require.NotNil(t, live)
@@ -815,6 +843,9 @@ func TestSharedFunc(t *testing.T) {
 	assert.Equal(t, 3, disposedCalls)
 }
 
+// TestSharedMethods_NoSessionID calls each shared func directly with no
+// bound id: every method takes the disposed path instead of panicking,
+// and dispose does nothing.
 func TestSharedMethods_NoSessionID(t *testing.T) {
 	shared := sharedMethods()
 	require.ElementsMatch(t, sessionMethodNames(), slices.Collect(maps.Keys(shared)))

@@ -70,5 +70,6 @@ of plan
       disposed func, and a test covers that check
 - [x] All tests pass: `go test ./...` and the js/wasm
       suite
-- [x] `go tool golangci-lint run` reports no issues,
-      natively and with `GOOS=js GOARCH=wasm`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
+      reports no issues, natively and with
+      `GOOS=js GOARCH=wasm`
