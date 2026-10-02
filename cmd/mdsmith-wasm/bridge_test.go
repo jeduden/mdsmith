@@ -271,14 +271,12 @@ func TestNewSessionProxy_DisposeReleasesMethods(t *testing.T) {
 	require.Equal(t, js.TypeObject, proxy.Call("capabilities").Type(),
 		"a live capabilities returns an array")
 	liveCheck := proxy.Get("check")
-	liveDispose := proxy.Get("dispose")
 
 	proxy.Call("dispose")
 
 	// dispose now points at the shared no-op stand-in, so a second
 	// session.dispose() never reaches its own released func (which would
 	// return undefined too, but log "call to released function").
-	assert.False(t, proxy.Get("dispose").Equal(liveDispose), "dispose replaced after dispose")
 	assert.True(t, proxy.Get("dispose").Equal(disposedFunc("dispose").Value),
 		"dispose points at the shared no-op stand-in")
 
@@ -306,23 +304,36 @@ func TestNewSessionProxy_DisposeReleasesMethods(t *testing.T) {
 	assert.NotPanics(t, func() { proxy.Call("dispose") }, "second dispose")
 }
 
-// TestNewSessionProxy_DisposeLeavesNoFuncs counts the funcs a session's
+// TestNewSessionProxy_DisposeLeavesNoFuncs tracks the funcs a session's
 // lifecycle (proxy methods and Promise executors) registers and
 // releases through the funcOf and releaseFunc seams. After a warm-up
-// cycle, N more create/dispose cycles must leave the live count
-// unchanged, so a restart loop does not grow syscall/js's handler
-// table. Not parallel: it swaps package seams.
+// cycle, N more create/dispose cycles must leave the live set the same
+// size, so a restart loop does not grow syscall/js's handler table.
+// Each func is tracked by its JS wrapper rather than a bare counter, so
+// releasing the wrong func (or one twice) cannot cancel out a leak.
+// Not parallel: it swaps package seams.
 func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
 	oldOf, oldRelease := funcOf, releaseFunc
 	t.Cleanup(func() { funcOf, releaseFunc = oldOf, oldRelease })
-	live := 0
+	var live []js.Value
+	// strays counts releases of a func not in live. It is asserted after
+	// the cycles, not reported with t.Errorf in releaseFunc: test output
+	// waits on the JS event loop, which a running callback blocks.
+	strays := 0
 	funcOf = func(fn func(js.Value, []js.Value) any) js.Func {
-		live++
-		return oldOf(fn)
+		f := oldOf(fn)
+		live = append(live, f.Value)
+		return f
 	}
 	releaseFunc = func(f js.Func) {
-		live--
 		oldRelease(f)
+		for i, v := range live {
+			if v.Equal(f.Value) {
+				live = append(live[:i], live[i+1:]...)
+				return
+			}
+		}
+		strays++
 	}
 
 	cycle := func() {
@@ -331,9 +342,10 @@ func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
 		proxy.Call("dispose")
 	}
 	cycle() // warm-up: creates the shared disposed stand-ins if no earlier test did
-	base := live
+	base := len(live)
 	for i := 0; i < 5; i++ {
 		cycle()
 	}
-	assert.Equal(t, base, live, "live funcs after 5 more create/dispose cycles")
+	assert.Len(t, live, base, "live funcs after 5 more create/dispose cycles")
+	assert.Zero(t, strays, "releases of a func that was not live (released twice, or registered outside funcOf)")
 }
