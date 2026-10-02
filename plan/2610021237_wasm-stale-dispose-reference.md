@@ -79,7 +79,7 @@ register once and take a session id first; each session holds
 through any reference takes the disposed path. This supersedes the
 release-and-swap design: nothing is released, so nothing can be
 reached after release. Size is within the budgets
-(`size_test.go` passes).
+([size_test.go](../cmd/mdsmith-wasm/size_test.go) passes).
 
 ## Acceptance Criteria
 

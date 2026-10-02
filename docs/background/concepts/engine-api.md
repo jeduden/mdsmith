@@ -249,11 +249,14 @@ is async, and any Go method returning `(T, error)` maps to a
 No session registers a function of its own. The method functions
 are shared by all sessions and registered once. Each session object
 holds a `bind` of them with a session id, so the binding is collected
-with the session object. `dispose()` drops the id, so the disposed
-session's caches and workspace can be freed, and a create/dispose loop
-holds a fixed number of registered functions. Each method keeps its
-shape afterwards: `check`, `fix`, `kinds`, `rename`, and `move` return
-a `Promise` that rejects with `Error("session disposed")`.
+with the session object. The Go session is not: it stays live until
+`dispose()`, so call `dispose()` before you drop a session.
+
+`dispose()` drops the id, so the disposed session's caches and
+workspace can be freed, and a create/dispose loop holds a fixed number
+of registered functions. Each method keeps its shape afterwards:
+`check`, `fix`, `kinds`, `rename`, and `move` return a `Promise` that
+rejects with `Error("session disposed")`.
 `capabilities()` returns `[]`, and `invalidate()` and a second
 `dispose()` do nothing.
 
