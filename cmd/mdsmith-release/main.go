@@ -25,6 +25,7 @@
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
 //	mdsmith-release merge-coverage -o <out> <profile>...
 //	mdsmith-release test-summary
+//	mdsmith-release test-js-wasm <pkg>
 //	mdsmith-release select-audit-sarifs <dir>
 //	mdsmith-release bench [workdir]
 //	mdsmith-release render-bench-page <out-path>
@@ -77,6 +78,7 @@ Commands:
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
   merge-coverage -o <out> <p>...  Merge coverage profiles by summing hit counts.
   test-summary                    Tally unit/integration/e2e tests from a go test -json stream on stdin.
+  test-js-wasm <pkg>              Run <pkg>'s js/wasm-only tests under Node; fail unless all pass.
   select-audit-sarifs <dir>       Print the newest audit date's directories under <dir> (those with a
                                   findings.sarif) as a JSON array, for the security-audit-sarif matrix.
   bench [workdir]                 Run the pinned cross-tool benchmark; promote JSON + fragments.
@@ -200,6 +202,8 @@ func dispatchGenerators(cmd, root string, rest []string) int {
 		return runRenderBenchPage(root, rest)
 	case "pgo":
 		return runPGO(root, rest)
+	case "test-js-wasm":
+		return runTestJSWasm(root, rest)
 	default:
 		fmt.Fprintf(os.Stderr, "mdsmith-release: unknown command %q\n%s", cmd, usageText)
 		return 2

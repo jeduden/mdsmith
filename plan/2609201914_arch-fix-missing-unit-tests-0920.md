@@ -3,7 +3,7 @@ id: 2609201914
 title: >-
   Add dedicated unit tests for AdvancePastLine and the WASM
   bridge helpers
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   AdvancePastLine in internal/rules/astutil and four helpers
@@ -92,9 +92,11 @@ trivial accessor.
    `Main.Version` that `debug.ReadBuildInfo` reports. On Go
    1.25.11 that is `(devel)` in a test binary, both native
    and `js/wasm`, even inside this Git checkout. So the final
-   `(devel)` fallback is not reachable from a test; do not
-   add a seam for it. The test writes a package variable, so
-   it must not call `t.Parallel`.
+   `(devel)` fallback is not reachable from a test without a
+   seam. ([Plan 2610020046][p0046] later added a
+   `readBuildInfo` seam so each branch is pinned.) The test
+   writes a package variable, so it must not call
+   `t.Parallel`.
 
    `TestWorkspaceFromJS`: a non-object gives `nil`, and an
    object keeps its string entries and drops a non-string
@@ -105,36 +107,39 @@ trivial accessor.
 
 3. Run the task 2 tests in CI. Add a step to the `wasm` job
    in [ci.yml][ci], which already installs Node, next to the
-   existing "Vet the WASM bridge" step. The test names are
-   listed once, and both the `-run` filter and the pass count
-   come from that list:
+   existing "Vet the WASM bridge" step. The step is one call
+   to a tested `mdsmith-release` subcommand, as
+   [release-tooling.md][rt] requires
+   ([plan 2610020045][p0045] moved the first, inline-shell
+   version into it):
 
    ```bash
-   tests='ResolveVersion|WorkspaceFromJS|URIAndSource|AllStrings'
-   env -i PATH="$PATH" HOME="$HOME" \
-     GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)" \
-     GOTOOLCHAIN="$(go env GOTOOLCHAIN)" GOFLAGS="$(go env GOFLAGS)" \
-     GOOS=js GOARCH=wasm go test -v \
-     -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" \
-     -run "^Test($tests)\$" \
-     ./cmd/mdsmith-wasm/ > wasm-bridge.log || { cat wasm-bridge.log; exit 1; }
-   cat wasm-bridge.log
-   want=$(printf '%s\n' "$tests" | tr '|' '\n' | wc -l)
-   test "$(grep -c '^--- PASS: Test' wasm-bridge.log)" -eq "$want"
+   go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm
    ```
 
-   `env -i` is needed because `wasm_exec.js` caps arguments
+   The subcommand takes the test names from the test files
+   that only a `js/wasm` build compiles. `go list` applies
+   the build constraints itself, so any tag spelling or a
+   `_js`/`_wasm` file-name suffix counts, and a test added
+   there later runs without editing the step. `go/parser`
+   lists each file's `TestXxx(*testing.T)` functions, so a
+   commented-out test is not listed.
+
+   It runs `go test -json` with `-exec` set to `env -i` plus
+   `go_js_wasm_exec`, because `wasm_exec.js` caps arguments
    plus environment at about 8 KB. With a full shell
    environment the test binary exits with "total length of
-   command line and environment variables exceeds limit". The
-   step passes through only what `go test` needs: `PATH`,
-   `HOME`, the two caches, `GOTOOLCHAIN` (so the job's
-   `setup-go` toolchain is used, not a download), and
-   `GOFLAGS`.
+   command line and environment variables exceeds limit". It
+   sits inside `-exec`, so it strips only the Node runtime's
+   environment down to `PATH`. The `go` command keeps the
+   job's full environment: caches, `GOTOOLCHAIN`, `GOFLAGS`,
+   and any proxy settings.
 
-   The count check is there because a `-run` filter that
-   matches no test prints `[no tests to run]` and exits 0.
-   The step fails unless every listed test ran and passed.
+   It then fails unless every listed test reports a `pass`
+   event, naming the ones that did not. A `-run` filter
+   that matches no test prints `[no tests to run]` and exits
+   0, and a skipped test also exits 0, so the exit code alone
+   is not enough.
 
    The `go_js_wasm_exec` path depends on the Go version.
    [go.mod][gomod] pins Go 1.25.11, and the job's `setup-go`
@@ -158,17 +163,19 @@ trivial accessor.
 
 ## Acceptance Criteria
 
-- [ ] `AdvancePastLine` has a dedicated `TestAdvancePastLine`.
-- [ ] `resolveVersion`, `workspaceFromJS`, `uriAndSource`,
+- [x] `AdvancePastLine` has a dedicated `TestAdvancePastLine`.
+- [x] `resolveVersion`, `workspaceFromJS`, `uriAndSource`,
       and `allStrings` each have a dedicated test in a
       `js && wasm` test file.
-- [ ] The CI `wasm` job runs those four tests under Node and
+- [x] The CI `wasm` job runs those four tests under Node and
       fails if any of them did not run.
-- [ ] No production code changed.
-- [ ] `go test ./...` is green.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] No production code changed by this plan. (Follow-up
+      [plan 2610020046][p0046], in the same PR, later
+      changed `main.go`.)
+- [x] `go test ./...` is green.
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` is green.
+- [x] `mdsmith check .` is green.
 
 [tests]: ../docs/development/architecture/tests.md
 [tests-exemptions]: ../docs/development/architecture/tests.md#exemptions
@@ -183,4 +190,7 @@ trivial accessor.
 [obsidian-wasm-test]: ../editors/obsidian/src/wasm-runtime.test.ts
 [ci]: ../.github/workflows/ci.yml
 [gomod]: ../go.mod
+[rt]: ../docs/development/release-tooling.md
+[p0045]: 2610020045_wasm-js-test-runner-subcommand.md
+[p0046]: 2610020046_wasm-bridge-input-hardening.md
 [backlinks]: ../cmd/mdsmith/backlinks.go

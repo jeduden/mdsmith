@@ -1090,3 +1090,38 @@ func TestSortSectionHeadings_SortsByLine(t *testing.T) {
 func TestSortSectionHeadings_Empty_NoOp(t *testing.T) {
 	sortSectionHeadings([]SectionHeading{}) // must not panic
 }
+
+// --- AdvancePastLine ---
+
+func TestAdvancePastLine(t *testing.T) {
+	paras := []SectionParagraph{{Line: 2}, {Line: 4}, {Line: 4}, {Line: 7}}
+	tests := []struct {
+		name  string
+		paras []SectionParagraph
+		lo    int
+		start int
+		want  int
+	}{
+		{"nil slice", nil, 0, 5, 0},
+		{"empty slice", []SectionParagraph{}, 0, 5, 0},
+		{"lo already at end", paras, 4, 1, 4},
+		{"nothing below start", paras, 0, 1, 0},
+		{"skips prefix below start", paras, 0, 4, 1},
+		{"keeps entry equal to start", paras, 0, 2, 0},
+		{"skips all", paras, 0, 8, 4},
+		{"starts from lo", paras, 2, 4, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, AdvancePastLine(tt.paras, tt.lo, tt.start))
+		})
+	}
+
+	t.Run("threads lo across non-decreasing starts", func(t *testing.T) {
+		lo := 0
+		for _, c := range []struct{ start, want int }{{1, 0}, {3, 1}, {4, 1}, {5, 3}, {9, 4}} {
+			lo = AdvancePastLine(paras, lo, c.start)
+			assert.Equal(t, c.want, lo, "start=%d", c.start)
+		}
+	})
+}

@@ -68,6 +68,8 @@ func TestRunRejectsBadArity(t *testing.T) {
 		{"render-bench-page without out-path", []string{"render-bench-page"}},
 		{"render-bench-page with extra arg", []string{"render-bench-page", "a", "b"}},
 		{"pgo with extra args", []string{"pgo", "workdir", "extra"}},
+		{"test-js-wasm without pkg", []string{"test-js-wasm"}},
+		{"test-js-wasm with two pkgs", []string{"test-js-wasm", "./a", "./b"}},
 	}
 	for _, c := range cases {
 		assert.Equal(t, 2, run(c.args), c.name)
@@ -125,6 +127,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 		"bench-check",
 		"render-bench-page",
 		"pgo",
+		"test-js-wasm",
 	} {
 		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
 	}
@@ -154,6 +157,7 @@ func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 		"bench-check",
 		"render-bench-page",
 		"pgo",
+		"test-js-wasm",
 	} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}
@@ -911,16 +915,7 @@ func TestBenchCheckCommand(t *testing.T) {
 // everything fn wrote to stdout.
 func captureStdout(t *testing.T, fn func() int) string {
 	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
-	fn()
-	_ = w.Close()
-	os.Stdout = old
-	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
-	return buf.String()
+	return captureFile(t, &os.Stdout, func() { fn() })
 }
 
 // TestRunSelectAuditSarifs drives the select-audit-sarifs subcommand
@@ -960,4 +955,51 @@ func TestRunSelectAuditSarifs(t *testing.T) {
 		return run([]string{"select-audit-sarifs", "sec"})
 	})
 	assert.Equal(t, `["2026-06-12-full-repo-audit"]`+"\n", out)
+}
+
+// TestRunTestJSWasm dispatches through `run test-js-wasm` on this
+// package, which has no js/wasm-only test files. The runner must fail
+// after go list and before go test (no Node needed): exit 1 with that
+// specific error, not some earlier failure such as a broken go list.
+func TestRunTestJSWasm(t *testing.T) {
+	var code int
+	stderr := captureStderr(t, func() { code = run([]string{"test-js-wasm", "."}) })
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "mdsmith-release: no js/wasm-only test files in .")
+}
+
+// captureStderr runs fn with os.Stderr redirected to a pipe and returns
+// everything written to it, including by child processes that inherit
+// os.Stderr.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	return captureFile(t, &os.Stderr, fn)
+}
+
+// captureFile runs fn with *target (os.Stdout or os.Stderr) redirected
+// to a pipe and returns everything written to it. The pipe is drained
+// concurrently so a chatty fn cannot block on a full pipe buffer, and
+// *target is restored even if fn panics or calls t.FailNow.
+func captureFile(t *testing.T, target **os.File, fn func()) string {
+	t.Helper()
+	old := *target
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	// Buffered so the reader never blocks when fn panics and nothing
+	// receives.
+	done := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		done <- buf.String()
+	}()
+	func() {
+		*target = w
+		defer func() {
+			*target = old
+			_ = w.Close()
+		}()
+		fn()
+	}()
+	return <-done
 }

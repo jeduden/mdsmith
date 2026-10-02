@@ -234,8 +234,8 @@ interface Session {
 }
 
 interface SessionOptions {
-  workspace: Record<string, string>;
-  configYAML: string;
+  workspace?: Record<string, string>;
+  configYAML?: string;
 }
 ```
 
@@ -245,6 +245,15 @@ becomes a Go `ConfigSource` exactly as the `-c` flag's text does.
 `createSession` returns a `Promise` because `WebAssembly.instantiate`
 is async, and any Go method returning `(T, error)` maps to a
 `Promise<T>` that rejects with `new Error(msg)`.
+
+`createSession` rejects when `opts` is not a plain object. It also
+rejects when `opts.workspace` is present but is not a plain object of
+path-to-source strings: `null`, a string, an array, and a boxed
+`String` all reject. An array-like is rejected because its indices
+would otherwise become file paths `"0"`, `"1"`, and so on. An absent
+`workspace` means an empty workspace, and a non-string entry value is
+skipped. A present `configYAML` that is not a string, such as `null` or
+a `Buffer`, rejects too; an absent one means the default config.
 
 ## WASM limits and size budgets
 
