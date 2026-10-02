@@ -703,3 +703,36 @@ func TestClassifyAllocBudget(t *testing.T) {
 			allocs, classifyAllocBudget)
 	}
 }
+
+// A paragraph with no lexicon hits must not allocate cue storage; see
+// docs/development/high-performance-go.md, "Allocations".
+func TestCountTokenMatches_NoHitsDoesNotAllocate(t *testing.T) {
+	tokens := []string{"parse", "the", "file", "now"}
+	set := map[string]struct{}{"basically": {}}
+	allocs := testing.AllocsPerRun(50, func() {
+		n, cues := countTokenMatches(tokens, set)
+		if n != 0 || cues != nil {
+			t.Fatalf("got %d %v", n, cues)
+		}
+	})
+	if allocs != 0 {
+		t.Errorf("allocs = %v, want 0", allocs)
+	}
+}
+
+func TestCountTokenMatches_DedupesCues(t *testing.T) {
+	set := map[string]struct{}{"just": {}, "very": {}}
+	n, cues := countTokenMatches(
+		[]string{"just", "a", "very", "just"}, set,
+	)
+	if n != 3 || len(cues) != 2 || cues[0] != "just" || cues[1] != "very" {
+		t.Errorf("got %d %v", n, cues)
+	}
+}
+
+func TestCountTokenHits_MatchesCount(t *testing.T) {
+	set := map[string]struct{}{"just": {}}
+	if got := countTokenHits([]string{"just", "x", "just"}, set); got != 2 {
+		t.Errorf("got %d, want 2", got)
+	}
+}

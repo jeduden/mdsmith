@@ -398,7 +398,7 @@ func extractLexiconFeatures(
 	fillerCount, fillerCues := countTokenMatches(tokens, lexicon.fillerWords)
 	modalCount, modalCues := countTokenMatches(tokens, lexicon.modalWords)
 	vagueCount, vagueCues := countTokenMatches(tokens, lexicon.vagueWords)
-	actionCount, _ := countTokenMatches(tokens, lexicon.actionWords)
+	actionCount := countTokenHits(tokens, lexicon.actionWords)
 	contentCount := countContentTokens(tokens, lexicon.stopWords)
 
 	normText := " " + strings.Join(tokens, " ") + " "
@@ -441,13 +441,18 @@ func countTokenMatches(
 	tokens []string, set map[string]struct{},
 ) (int, []string) {
 	count := 0
-	cues := make([]string, 0, 4)
-	seen := map[string]struct{}{}
+	var cues []string
+	var seen map[string]struct{}
 	for _, tok := range tokens {
 		if _, ok := set[tok]; !ok {
 			continue
 		}
 		count++
+		if seen == nil {
+			// Allocated on the first hit: most paragraphs have none.
+			seen = make(map[string]struct{}, 4)
+			cues = make([]string, 0, 4)
+		}
 		if _, exists := seen[tok]; exists {
 			continue
 		}
@@ -455,6 +460,18 @@ func countTokenMatches(
 		cues = append(cues, tok)
 	}
 	return count, cues
+}
+
+// countTokenHits counts tokens in set without collecting cues, for
+// features whose cues are never reported.
+func countTokenHits(tokens []string, set map[string]struct{}) int {
+	count := 0
+	for _, tok := range tokens {
+		if _, ok := set[tok]; ok {
+			count++
+		}
+	}
+	return count
 }
 
 func countContentTokens(tokens []string, stopWords map[string]struct{}) int {
