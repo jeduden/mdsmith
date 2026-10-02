@@ -264,22 +264,18 @@ func TestSummarizeTestRunScannerError(t *testing.T) {
 }
 
 // TestScanTestLayersScanError drives the propagation of a per-file
-// scan failure: a _test.go line longer than scanTestFuncNames'
-// 1 MiB token cap makes the scanner return bufio.ErrTooLong, which
-// must surface as an error from scanTestLayers.
+// scan failure: a _test.go that go/parser rejects makes
+// scanTestFuncNames fail, and that error, naming the file, must
+// surface from scanTestLayers.
 func TestScanTestLayersScanError(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "go.mod"),
 		[]byte("module example.com/m\n"), 0o644))
-	huge := append([]byte("// "), bytes.Repeat([]byte("a"), 2*1024*1024)...)
-	require.NoError(t, os.WriteFile(filepath.Join(root, "huge_test.go"), huge, 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "broken_test.go"),
+		[]byte("package m\nfunc TestX(\n"), 0o644))
 
 	_, err := scanTestLayers(root)
-	require.Error(t, err)
-
-	// The same oversized line trips scanTestFuncNames directly.
-	_, err = scanTestFuncNames(filepath.Join(root, "huge_test.go"))
-	assert.Error(t, err)
+	assert.ErrorContains(t, err, "broken_test.go")
 }
 
 func TestTallyCounts(t *testing.T) {
