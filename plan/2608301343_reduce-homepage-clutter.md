@@ -1,7 +1,7 @@
 ---
 id: 2608301343
 title: "Reduce mdsmith.dev homepage clutter and coined words"
-status: "🔲"
+status: "🔳"
 summary: >-
   Replace coined forge-metaphor copy on mdsmith.dev with plain
   words the target audience knows on first read — the hero
@@ -142,14 +142,14 @@ meaning and drops the puzzle.
 
 ## Acceptance Criteria
 
-- [ ] No coined or metaphor word remains in visible homepage
+- [x] No coined or metaphor word remains in visible homepage
       copy: "smithed", "Forged", and "forges" are gone.
-- [ ] The hero headline reads in plain words and keeps exactly
+- [x] The hero headline reads in plain words and keeps exactly
       one single-asterisk emphasis span; `sync-messaging --check`
       passes.
-- [ ] The homepage feature cards carry no MDS### chips; the codes
+- [x] The homepage feature cards carry no MDS### chips; the codes
       still appear on the feature pages and the Rules index.
-- [ ] The [design-system](../docs/development/design-system.md)
+- [x] The [design-system](../docs/development/design-system.md)
       doc matches the shipped markup (card chips, and any Tier 3
       changes taken).
 - [ ] `mdsmith check .` passes and the website build is green.

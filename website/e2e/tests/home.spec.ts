@@ -120,6 +120,19 @@ test.describe("homepage positioning", () => {
     }
   });
 
+  test("feature cards carry no opaque MDS rule-ID chips", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    // The codes are defined on each feature page and the Rules
+    // index; on the homepage they are undecodable to a first-time
+    // visitor, so the feature-grid cards omit them.
+    expect(await page.locator(".card-grid .card").count()).toBeGreaterThan(5);
+    await expect(page.locator(".card-grid .rule-chip")).toHaveCount(0);
+    await expect(page.locator(".card-grid .card-rules")).toHaveCount(0);
+  });
+
   test("install commands stay readable on a narrow viewport", async ({
     page,
   }) => {

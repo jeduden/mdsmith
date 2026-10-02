@@ -498,32 +498,6 @@ main {
   max-width: 30ch;
 }
 
-/* .rule-chip — the MDSxxx rule tags shown on feature cards. */
-.rule-chip {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  color: var(--steel-500);
-  background: var(--steel-50);
-  border: 1px solid var(--steel-100);
-  border-radius: 3px;
-  padding: 2px 6px;
-  line-height: 1.5;
-}
-.card-body--lead .rule-chip {
-  color: var(--forge-700);
-  background: var(--forge-50);
-  border-color: var(--forge-100);
-}
-
-.card-rules {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 14px;
-}
-
 .card-content { display: flex; flex-direction: column; flex: 1; }
 
 /* steel-500 / forge-600 bases: the old steel-300 / forge-400 read

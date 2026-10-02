@@ -102,7 +102,9 @@ viewport.
   `is-glow` and one `is-dark` cell per bento.
 - Cards: `--bg-raised` background, 1px `--border`, 6px
   radius, `--shadow-sm` at rest. No left-border accent
-  stripe; use a rule-ID chip instead.
+  stripe. Homepage feature cards carry no MDS rule-ID
+  chips; the codes live on each feature page and the
+  Rules index, where they are defined.
 - Hover: links underline; buttons darken one step on the
   forge ramp. Never opacity-only hover.
 - Press: 1px translate down. No scale effects.
