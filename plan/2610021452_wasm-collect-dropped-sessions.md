@@ -9,17 +9,21 @@ summary: >-
   `dispose()` runs. A host that drops a session
   object without calling `dispose()` leaks that
   Session, with its workspace and parse caches, for
-  the life of the engine. Register each session
-  object with a `FinalizationRegistry` that disposes
-  its id once the object is collected.
+  the life of the engine. Bind a per-session token
+  into every method and register it with a
+  `FinalizationRegistry` that disposes its id once the
+  object and every method taken off it are collected.
 ---
 # Free wasm sessions dropped without dispose
 
 ## Goal
 
-A session object that becomes unreachable without a
-`dispose()` call has its Go Session removed from the
-`sessions` map after JS collects the object.
+A session that becomes unreachable without a `dispose()`
+call has its Go Session removed from the `sessions` map
+after JS collects it. A session is unreachable only once
+its object and every method taken off it are, so
+`const { check } = await createSession(opts)` keeps the
+session live while `check` is.
 
 ## Background
 
@@ -48,13 +52,18 @@ red/green.
    then assert the id has left `sessions`. If forced GC
    is not available, test the callback directly with a
    live id instead.
-3. Register each new session object with its id in
-   `newSessionProxy`. Do not keep the session object
+3. In `newSessionProxy`, create one token object per
+   session, bind it into every method after the id, and
+   register the token with its id. Do not register the
+   session object: a method taken off it outlives it,
+   and the callback would dispose a session that method
+   still uses. Bound arguments keep the token alive
+   while any method is reachable. Do not keep the token
    on the Go side as an unregister token: a `js.Value`
-   held in Go pins the object, so it is never
-   collected. `proxyDispose` gets only the bound id.
-   A callback after an explicit dispose finds no id
-   and does nothing, since ids are never reused.
+   held in Go pins it, so it is never collected.
+   `proxyDispose` gets only the bound id. A callback
+   after an explicit dispose finds no id and does
+   nothing, since ids are never reused.
 4. Check the WASM size budgets with
    [size_test.go](../cmd/mdsmith-wasm/size_test.go), and
    update the engine-api page to describe the fallback.
@@ -63,6 +72,8 @@ red/green.
 
 - [ ] A session dropped without `dispose()` leaves
       `sessions` once its object is collected
+- [ ] A method taken off a session object keeps working
+      after the object alone is collected
 - [ ] An explicit `dispose()` followed by collection
       disposes the Session only once
 - [ ] A create/dispose loop still holds a fixed number

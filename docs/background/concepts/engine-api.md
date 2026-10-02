@@ -250,10 +250,12 @@ is async, and any Go method returning `(T, error)` maps to a
 `Promise<T>` that rejects with `new Error(msg)`.
 
 No session registers a function of its own. The method functions
-are shared by all sessions and registered once. Each session object
-holds a `bind` of them with a session id, so the binding is collected
-with the session object. The Go session is not: it stays live until
-`dispose()`, so call `dispose()` before you drop a session.
+are shared by all sessions and registered once. Each method on a
+session object is a `bind` of one of them with a session id, so the
+binding is collected once that method is unreachable. A method taken
+off the object, such as `const { check } = session`, keeps its binding
+after the object is gone. The Go session is not collected: it stays
+live until `dispose()`, so call `dispose()` before you drop a session.
 
 `dispose()` drops the id, so the disposed session's caches and
 workspace can be freed, and a create/dispose loop holds a fixed number
@@ -282,8 +284,14 @@ so a patched `Reflect.apply` does. Plan
 tracks closing that gap.
 
 An argument of the wrong type, a `BigInt` included, makes an async
-method reject and `invalidate()` do nothing. It never stops the Go
-runtime, so other sessions keep working.
+method reject and `invalidate()` do nothing. So does an options object
+that throws when `createSession` inspects it, such as a revoked
+`Proxy`. In the standard Go build this does not stop the Go runtime,
+so other sessions keep working. Two cases still stop it. One is a
+getter or `Proxy` `get` trap on the options object that throws, because
+`wasm_exec.js` does not catch an exception from a property read. The
+other is a `BigInt` passed to the TinyGo build, because TinyGo does not
+implement `recover()` on WebAssembly.
 
 `createSession` rejects when `opts` is not a plain object. It also
 rejects when `opts.workspace` is present but is not a plain object of
@@ -318,7 +326,7 @@ result matches the native engine on the same in-memory fixture.
 Both target budgets are met and CI-verified:
 
 - The standard Go WASM artifact is about 13.3 MiB uncompressed (about
-  3.2 MiB gzipped at standard compression, the figure that crosses the
+  3.3 MiB gzipped at standard compression, the figure that crosses the
   wire; `cmd/mdsmith-wasm/size_test.go` measures about 4.1 MiB at the
   pessimistic BestSpeed level and fails above 4.25 MiB). It was about
   40 MB before

@@ -84,11 +84,14 @@ measures 13.3 MiB raw, 4.1 MiB gzip, against 14 and 4.25
 MiB); the TinyGo budget is checked by the `tinygo-wasm` CI
 job only.
 
-The design trades two properties, each filed as a plan.
-The Go session now stays registered until `dispose()`,
-even once the JS object is collected (plan
+The design leaves two gaps, each filed as a plan. The
+Go session stays registered until `dispose()`, even
+once the JS object is collected (plan
 [2610021452](2610021452_wasm-collect-dropped-sessions.md)).
-A session id is a guessable integer, so a raw shared func
+That gap is not new: before, each session's own funcs
+held it in the `syscall/js` handler table until
+`dispose()`. The second gap is new. A session id is a
+guessable integer, so a raw shared func
 that leaks through a patched `Reflect.apply` can drive any
 live session (plan
 [2610021439](2610021439_wasm-unforgeable-session-binding.md)).
