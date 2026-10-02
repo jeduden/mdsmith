@@ -445,7 +445,7 @@ func TestMove_WikilinkNotRewrittenToExtensionlessName(t *testing.T) {
 func TestMove_WikilinkNotRewrittenToUnspellableName(t *testing.T) {
 	for _, dst := range []string{
 		"docs/.md", "docs/C#.md", "docs/a|b.md", "docs/[x].md", "docs/x].txt",
-		"docs/guide.md ", "docs/ notes.md", "docs/a\nb.md",
+		"docs/guide.md ", "docs/ notes.md", "docs/a\nb.md", "docs/C:x.md",
 	} {
 		t.Run(dst, func(t *testing.T) {
 			ws := newMemWorkspace(map[string]string{
@@ -501,6 +501,34 @@ func TestMove_EmptyStemSourceLeavesWikilinksAlone(t *testing.T) {
 		"index.md": "See [[.md.md]].\n",
 	})
 	plan, err := Move(ws, "docs/.md", "docs/x.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"])
+}
+
+// TestMove_WhitespaceNamedFileIsNotAStemHolder locks that a listed
+// `x/ guide.md` does not block a `[[guide]]` rewrite: the resolver keys
+// it as ` guide`, and a trimmed `[[guide]]` never reaches it.
+func TestMove_WhitespaceNamedFileIsNotAStemHolder(t *testing.T) {
+	src := "See [[guide]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/guide.md": "# Guide\n",
+		"x/ guide.md":   "# Spaced\n",
+		"index.md":      src,
+	})
+	plan, err := Move(ws, "docs/guide.md", "docs/manual.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[manual]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_WhitespaceNamedSourceLeavesWikilinksAlone locks that moving
+// `docs/ guide.md` leaves `[[guide]]` alone: the trimmed link keys to
+// `guide`, which never named the spaced source.
+func TestMove_WhitespaceNamedSourceLeavesWikilinksAlone(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"docs/ guide.md": "# Spaced\n",
+		"index.md":       "See [[guide]].\n",
+	})
+	plan, err := Move(ws, "docs/ guide.md", "docs/manual.md")
 	require.NoError(t, err)
 	assert.Empty(t, plan.Edits["index.md"])
 }

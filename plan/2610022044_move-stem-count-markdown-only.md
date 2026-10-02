@@ -125,6 +125,16 @@ counts against the resolver's own index.
      `[[.md.md]]` links to another file.
   - Normalize listed paths before the source-listed check, so
      a listed `./src` is not counted twice.
+  - Key both ends and every holder with
+     `linkgraph.FileStemKey`, the function `NewWikilinkIndex`
+     keys files with, and retire `fileStem`. A listed
+     `x/ guide.md` keys as ` guide` and no longer blocks a
+     `[[guide]]` rewrite.
+  - Replace the hand-written `#|[]` list with
+     `linkgraph.WikilinkReaches`. It runs the spelling back
+     through the wikilink grammar and the resolver's target
+     checks, so a drive-letter name such as `C:x.md` is
+     skipped too.
   - Document these cases in
      [move.md](../docs/reference/cli/move.md).
 
@@ -146,6 +156,10 @@ counts against the resolver's own index.
       holding `#`, `|`, `[`, `]`, or a newline, or to one with
       a leading or trailing space
 - [x] Moving `docs/.md` leaves `[[.md.md]]` unchanged
+- [x] A listed `x/ guide.md` does not block moving
+      `docs/guide.md` to `docs/manual.md`
+- [x] Moving `docs/api.md` to `docs/C:x.md` leaves `[[api]]`
+      unchanged
 - [x] Moving an unlisted `a/b/guide.md` while
       `docs/guide.md` is listed leaves `[[guide]]` unchanged
 - [x] All tests pass: `go test ./...`

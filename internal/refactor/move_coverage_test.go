@@ -54,13 +54,6 @@ func TestRelFrom_ErrorFallsBackToTarget(t *testing.T) {
 	assert.Equal(t, "b", relFrom("../a", "b"))
 }
 
-func TestFileStem_NonMarkdownFallback(t *testing.T) {
-	// A typed non-Markdown basename has no wikilink stem; fileStem falls
-	// back to the lowercased basename.
-	assert.Equal(t, "image.png", fileStem("dir/Image.PNG"))
-	assert.Equal(t, "api", fileStem("docs/API.md"))
-}
-
 func TestWikilinkKeyHolders_OldStem(t *testing.T) {
 	files := []string{"a.md", "docs/API.md", "api/api.md", "img/api.png", "notes/b.mdx", "notes/c.markdown"}
 	licenseFiles := []string{"notes/LICENSE", "docs/license.md"}

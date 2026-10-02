@@ -129,7 +129,8 @@ cross-directory move, check them by hand.
   as written, because a bare `[[name]]` finds only Markdown
   files. So does a new name that a wikilink cannot spell: an
   empty stem such as `.md`, a `#`, `|`, `[`, or `]` as in `C#.md`,
-  or a leading or trailing space. Those links break.
+  a leading or trailing space, or a drive-letter shape such as
+  `C:x.md`. Those links break.
 - **Footnote text that is a lone link.** mdsmith reads
   `[^1]: [z](a.md)` as a footnote definition and leaves its text
   as written, so the link inside it is not repointed. Longer

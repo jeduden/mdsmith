@@ -64,13 +64,17 @@ out of plan 2610022044, which fixes the extension filter.
    over `ws.Files()`.
 4. Keep the exact-name guard from plan 2610022044 on the same
    index (`names` map) so both checks read one file set.
-5. Retire `fileStem`, which runs the link-target parser
-   `linkgraph.WikilinkStem` on file paths. Key the moved file
-   and its destination the way `NewWikilinkIndex` keys files,
-   so the Markdown-only filter, the non-Markdown source guard,
-   and the stem/name split in `appendWikilinkStemEdits` read
-   one keying function. The PR #885 code review found that
-   these special cases sit at different depths.
+5. Block a non-Markdown destination when any file the
+   resolver indexes has its name, not only a listed one. An
+   unlisted root `logo.png` must block moving `docs/logo.md`
+   to `docs/logo.png`, since `[[logo.png]]` would reach the
+   shallower root file. The PR #885 code review found this;
+   [move.md](../docs/reference/cli/move.md) documents the
+   current listed-only check.
+
+PR #885 already retired `fileStem`: the move planner keys
+files with `linkgraph.FileStemKey`, the same function
+`NewWikilinkIndex` uses.
 
 ## Acceptance Criteria
 
@@ -78,6 +82,8 @@ out of plan 2610022044, which fixes the extension filter.
       blocks the stem rewrite on move
 - [ ] A `node_modules` README does not block a `[[readme]]`
       rewrite on move
+- [ ] An unlisted `logo.png` blocks moving `docs/logo.md` to
+      `docs/logo.png`
 - [ ] The move planner's stem counts come from the same index
       `[[stem]]` resolution reads
 - [ ] All tests pass: `go test ./...`

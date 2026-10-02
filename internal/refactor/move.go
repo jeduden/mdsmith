@@ -742,16 +742,12 @@ func skipGap(src []byte, i int) int {
 // that keeps the basename leaves wikilinks alone: a stem still resolves
 // to the file at its new path.
 func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst string) {
-	// No `[[stem]]` link resolves to a non-Markdown file, so moving one
-	// retargets nothing. A destination without an extension is likewise
-	// unreachable: a bare `[[name]]` finds Markdown files only.
-	if !mdpath.IsMarkdownPath(src) || path.Ext(dst) == "" {
-		return
-	}
-	// A src with no wikilink stem (an empty one, as in `docs/.md`) is
-	// the target of no `[[stem]]` edge; fileStem's whole-name fallback
-	// would key it as `.md` and pick up `[[.md.md]]` links instead.
-	oldStem, ok := linkgraph.WikilinkStem(path.Base(src))
+	// Both ends are keyed the way NewWikilinkIndex keys files. Only a
+	// Markdown src has a stem key, so moving any other file retargets
+	// no `[[stem]]` link. A src key that no trimmed, non-empty target
+	// spells (`docs/.md` keys as "", ` guide.md` as " guide") matches no
+	// edge, so the edge lookup below returns early for it.
+	oldStem, ok := linkgraph.FileStemKey(path.Base(src))
 	if !ok {
 		return
 	}
@@ -760,19 +756,17 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	// addressed by exact name, a different key space, so it always needs
 	// the rewrite: comparing its name to oldStem would wrongly skip a
 	// move such as docs/guide.png.md → docs/guide.png.
-	dstIsMarkdown := mdpath.IsMarkdownPath(dst)
-	newStem := fileStem(dst)
+	newStem, dstIsMarkdown := linkgraph.FileStemKey(path.Base(dst))
 	if dstIsMarkdown && oldStem == newStem {
 		return
 	}
-	// The rewritten token must still parse as a wikilink naming dst. An
-	// empty stem (`.md`) leaves `[[]]`, and `#`, `|`, `[`, `]`, or a
-	// newline would split or end the link. A leading or trailing space
-	// is trimmed off the target, so `[[guide.md ]]` would reach another
-	// guide.md. No rewrite can reach such a name.
+	// The rewritten token must parse back as a wikilink that resolves by
+	// dst's key. WikilinkReaches checks that against the wikilink
+	// grammar, so a name with no extension (`COPYING`), an empty stem,
+	// a `#`, `|`, `[`, `]`, or newline, a leading or trailing space, or
+	// a drive-letter shape (`C:x.md`) gets no rewrite.
 	newSpelling := dstStemSpelling(dst)
-	if newSpelling == "" || strings.TrimSpace(newSpelling) != newSpelling ||
-		strings.ContainsAny(newSpelling, "#|[]\n") {
+	if !linkgraph.WikilinkReaches(newSpelling, path.Base(dst)) {
 		return
 	}
 	// A wikilink resolves by basename stem, and the index keys these
@@ -806,7 +800,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	}
 	newKey := newStem
 	if !dstIsMarkdown {
-		newKey = strings.ToLower(path.Base(dst))
+		newKey = linkgraph.FileNameKey(path.Base(dst))
 	}
 	oldHolders, newHolders := wikilinkKeyHolders(ws.Files(), src, oldStem, newKey, dstIsMarkdown)
 	if oldHolders > 1 || newHolders > 0 {
@@ -880,19 +874,15 @@ func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem b
 		if index.NormalizePath(f) == src {
 			srcListed = true
 		}
-		isMD := mdpath.IsMarkdownPath(f)
-		var stem string
-		if isMD {
-			stem = fileStem(f)
-			if stem == oldStem {
-				oldN++
-			}
+		stem, isMD := linkgraph.FileStemKey(path.Base(f))
+		if isMD && stem == oldStem {
+			oldN++
 		}
 		if newIsStem {
 			if isMD && stem == newKey {
 				newN++
 			}
-		} else if strings.ToLower(path.Base(f)) == newKey {
+		} else if linkgraph.FileNameKey(path.Base(f)) == newKey {
 			newN++
 		}
 	}
@@ -900,15 +890,6 @@ func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem b
 		oldN++
 	}
 	return oldN, newN
-}
-
-// fileStem returns the lowercased basename stem a file is addressed by
-// as a wikilink target (matching linkgraph.WikilinkStem's lookup key).
-func fileStem(p string) string {
-	if stem, ok := linkgraph.WikilinkStem(path.Base(p)); ok {
-		return stem
-	}
-	return strings.ToLower(path.Base(p))
 }
 
 // dstStemSpelling returns the basename stem of dst with its original
