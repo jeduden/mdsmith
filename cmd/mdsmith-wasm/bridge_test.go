@@ -332,24 +332,22 @@ func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
 	assert.Equal(t, sessionMethodNames(), got)
 }
 
-// TestSharedMethodImpls_Complete checks that every table entry carries
-// both funcs. A nil one panics inside a js.FuncOf callback, which ends
-// the js/wasm test binary, so this test sits before the first test that
-// calls a method in the table: go test runs a file's tests in source
-// order, and this failure is then reported before that crash.
-func TestSharedMethodImpls_Complete(t *testing.T) {
-	for name, impl := range sharedMethodImpls {
-		assertImplComplete(t, name, impl)
-	}
-}
-
-// assertImplComplete reports whether impl carries both a call and a
-// disposed func, failing t for each one that is nil.
-func assertImplComplete(t *testing.T, name string, impl methodImpl) bool {
-	t.Helper()
-	hasCall := assert.NotNil(t, impl.call, "%s has no call func", name)
-	hasDisposed := assert.NotNil(t, impl.disposed, "%s has no disposed func", name)
-	return hasCall && hasDisposed
+// TestMethodTable_PanicsOnIncompleteEntry checks that methodTable
+// rejects an entry with a nil call or disposed func, naming it, so a
+// hand-written methodImpl literal fails at package init rather than
+// panicking inside a js.FuncOf callback on its first call. A complete
+// table comes back unchanged.
+func TestMethodTable_PanicsOnIncompleteEntry(t *testing.T) {
+	ok := voidMethod(func(*mdsmith.Session, []js.Value) {})
+	assert.PanicsWithValue(t, "methodTable: x has no call func", func() {
+		methodTable(map[string]methodImpl{"x": {disposed: ok.disposed}})
+	})
+	assert.PanicsWithValue(t, "methodTable: x has no disposed func", func() {
+		methodTable(map[string]methodImpl{"x": {call: ok.call}})
+	})
+	got := methodTable(map[string]methodImpl{"x": ok})
+	require.Contains(t, got, "x")
+	assert.NotNil(t, got["x"].call)
 }
 
 // asyncMethodNames lists the session methods engine-api.md documents
@@ -363,9 +361,6 @@ var asyncMethodNames = []string{"check", "fix", "kinds", "rename", "move"}
 // a new async method cannot skip the tests that range over that list.
 func TestAsyncMethodNames_MatchTable(t *testing.T) {
 	for name, impl := range sharedMethodImpls {
-		if !assertImplComplete(t, name, impl) {
-			continue
-		}
 		isPromise := settledShape(t, impl.disposed()) == "promise"
 		assert.Equal(t, slices.Contains(asyncMethodNames, name), isPromise,
 			"%s: disposed result is a Promise iff it is in asyncMethodNames", name)
@@ -430,12 +425,9 @@ func assertDisposedShapes(t *testing.T, proxy js.Value) {
 // undefined where the live one is an array. Each method needs an entry
 // in methodSampleArgs, so a new method cannot skip the check. A method
 // left off the session object fails cleanly instead of panicking the
-// test binary, and so does an entry with no call or disposed func when
-// this test runs on its own (-run); in a full run
-// TestSharedMethodImpls_Complete reports that first.
+// test binary.
 func TestNewSessionProxy_DisposedShapeMatchesLive(t *testing.T) {
-	for name, impl := range sharedMethodImpls {
-		require.True(t, assertImplComplete(t, name, impl))
+	for name := range sharedMethodImpls {
 		args, ok := methodSampleArgs[name]
 		require.True(t, ok, "%s needs sample args in methodSampleArgs", name)
 		proxy := newTestProxy(t)

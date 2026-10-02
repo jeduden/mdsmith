@@ -46,8 +46,9 @@ of plan
    and delete the name switch in `disposedResult`. Build
    each entry with a constructor named for its result
    shape (`asyncMethod`, `stringListMethod`,
-   `voidMethod`), so no entry has a nil func and the
-   disposed result always has the live shape. The async
+   `voidMethod`), so the disposed result always has the
+   live shape. `methodTable` panics at package init,
+   naming the entry, if any entry has a nil func. The async
    constructor also owns the Promise boilerplate the five
    async methods repeated. `newPromise` defers
    `rejectOnJSError` around every executor, so a JS
@@ -64,8 +65,9 @@ of plan
       same table entry as its implementation
 - [x] A test fails when a disposed method's result shape
       differs from its live result shape
-- [x] A test fails when a table entry has a nil call
-      or disposed func
+- [x] Building the table panics at package init,
+      naming the entry, when it has a nil call or
+      disposed func, and a test covers that check
 - [x] All tests pass: `go test ./...` and the js/wasm
       suite
 - [x] `go tool golangci-lint run` reports no issues,

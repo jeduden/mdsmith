@@ -232,8 +232,9 @@ var (
 // the result it returns once its session is disposed. Build one with
 // asyncMethod, stringListMethod, or voidMethod, which fix both funcs
 // from the method's result shape, so the two cannot disagree and
-// neither is nil. Each constructor panics on a nil fn, so a bad entry
-// fails when the table is built at package init, not on its first call.
+// neither is nil. Each constructor panics on a nil fn, and methodTable
+// on an entry with a nil func, so a bad entry fails when the table is
+// built at package init, not on its first call.
 type methodImpl struct {
 	// call runs the method for a live session; sess is never nil.
 	call func(sess *mdsmith.Session, args []js.Value) js.Value
@@ -306,7 +307,7 @@ func voidMethod(fn func(sess *mdsmith.Session, args []js.Value)) methodImpl {
 // only for a live session and impl.disposed otherwise; dispose is
 // registered on its own (proxyDispose) because it alone needs the id,
 // to drop it from sessions.
-var sharedMethodImpls = map[string]methodImpl{
+var sharedMethodImpls = methodTable(map[string]methodImpl{
 	"check":        asyncMethod(proxyCheck),
 	"fix":          asyncMethod(proxyFix),
 	"kinds":        asyncMethod(proxyKinds),
@@ -314,6 +315,24 @@ var sharedMethodImpls = map[string]methodImpl{
 	"move":         asyncMethod(proxyMove),
 	"capabilities": stringListMethod(proxyCapabilities),
 	"invalidate":   voidMethod(proxyInvalidate),
+})
+
+// methodTable returns m after checking that every entry carries both a
+// call and a disposed func, panicking with the method's name if not.
+// The constructors never build such an entry, but a hand-written
+// methodImpl literal can, and its nil func would otherwise panic inside
+// a js.FuncOf callback on first use; checked here, it fails at package
+// init instead.
+func methodTable(m map[string]methodImpl) map[string]methodImpl {
+	for name, impl := range m {
+		if impl.call == nil {
+			panic("methodTable: " + name + " has no call func")
+		}
+		if impl.disposed == nil {
+			panic("methodTable: " + name + " has no disposed func")
+		}
+	}
+	return m
 }
 
 var (
