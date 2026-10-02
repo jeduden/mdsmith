@@ -2,7 +2,7 @@
 id: 2610020725
 title: >-
   Make internal/build compile under GOOS=js GOARCH=wasm
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   `GOOS=js GOARCH=wasm go build ./...` fails on main because
@@ -55,10 +55,15 @@ not catch this. The wasm job in
    them to the wasm test runner from plan 2610020045.
 4. Confirm `go build ./...` still passes on
    linux, darwin, and windows.
+5. Added during implementation: the whole-module wasm build
+   also failed in `cmd/mdsmith` because `FileOp.Execute` in
+   `internal/refactor` is tagged `!wasm`. Add
+   `fileop_exec_wasm.go`, a stub that returns an error, with a
+   wasm test.
 
 ## Acceptance Criteria
 
-- [ ] `GOOS=js GOARCH=wasm go build ./...` exits 0.
-- [ ] CI runs that whole-module wasm build on every PR.
-- [ ] Unix and Windows behavior of `runRecipe` is
+- [x] `GOOS=js GOARCH=wasm go build ./...` exits 0.
+- [x] CI runs that whole-module wasm build on every PR.
+- [x] Unix and Windows behavior of `runRecipe` is
       unchanged.

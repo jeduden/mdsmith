@@ -554,6 +554,13 @@ jobs:
         # unless each one reports a go test -json pass (a skip fails by
         # name).
         run: go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm
+      - name: Unit-test the js/wasm exec stubs under Node
+        # Plan 2610020725: exec_other.go (internal/build) and
+        # fileop_exec_wasm.go (internal/refactor) only compile for
+        # non-unix, non-windows targets. test-js-wasm takes one package.
+        run: |
+          go run ./cmd/mdsmith-release test-js-wasm ./internal/build
+          go run ./cmd/mdsmith-release test-js-wasm ./internal/refactor
       - name: WASM smoke test, size budget, and method-set parity
         run: go test ./cmd/mdsmith-wasm/...
 

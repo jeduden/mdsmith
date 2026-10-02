@@ -281,5 +281,5 @@ footer: |
 | 2610020046 | ✅     | sonnet | [Harden WASM bridge workspace input and version lookup](plan/2610020046_wasm-bridge-input-hardening.md)                                                 |
 | 2610020233 | 🔲     | haiku  | [Drop the unused rules? and link? keys from the feature kind schema](plan/2610020233_drop-unused-feature-rules-key.md)                                  |
 | 2610020305 | 🔲     | sonnet | [Homepage Tier 3 declutter: pillar numbers, tints, badges, eyebrows](plan/2610020305_homepage-tier3-declutter.md)                                       |
-| 2610020725 | 🔳     | sonnet | [Make internal/build compile under GOOS=js GOARCH=wasm](plan/2610020725_build-exec-js-wasm-stub.md)                                                     |
+| 2610020725 | ✅     | sonnet | [Make internal/build compile under GOOS=js GOARCH=wasm](plan/2610020725_build-exec-js-wasm-stub.md)                                                     |
 <?/catalog?>
