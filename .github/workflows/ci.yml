@@ -543,40 +543,11 @@ jobs:
       - name: Vet the WASM bridge
         run: GOOS=js GOARCH=wasm go vet ./cmd/mdsmith-wasm/...
       - name: Unit-test the WASM bridge helpers under Node
-        # The test list comes from every test file that only a js/wasm
-        # build compiles (native `go test` never compiles those files).
-        # go list applies the build constraints itself, so any tag
-        # spelling or a _js/_wasm file-name suffix counts, and a test
-        # added there runs here without editing this step. The -run
-        # filter keeps the untagged size and smoke tests, which shell
-        # out to go and node, from running under js/wasm.
-        run: |
-          set -o pipefail
-          pkg=./cmd/mdsmith-wasm
-          tmp=$(mktemp -d)
-          files='{{range .TestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}{{range .XTestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}'
-          GOOS=js GOARCH=wasm go list -f "$files" "$pkg" | sort > "$tmp/js"
-          go list -f "$files" "$pkg" | sort > "$tmp/native"
-          comm -23 "$tmp/js" "$tmp/native" > "$tmp/jsonly"
-          test -s "$tmp/jsonly"
-          names=$(xargs -d '\n' grep -ohE '^func Test[A-Za-z0-9_]+\((\w+ )?\*testing\.T\)' < "$tmp/jsonly" \
-            | sed -E 's/^func Test([A-Za-z0-9_]+)\(.*/\1/')
-          test -n "$names"
-          tests=$(paste -sd'|' <<< "$names")
-          want=$(wc -l <<< "$names")
-          # env -i: wasm_exec.js caps args plus environment at ~8 KB. It
-          # wraps only the Node runtime, so the go command keeps the
-          # job's full Go and proxy environment.
-          GOOS=js GOARCH=wasm go test -v \
-            -exec="env -i 'PATH=$PATH' '$(go env GOROOT)/lib/wasm/go_js_wasm_exec'" \
-            -run "^Test($tests)\$" \
-            "$pkg" > "$tmp/log" || { cat "$tmp/log"; exit 1; }
-          cat "$tmp/log"
-          got=$(grep -c '^--- PASS: Test' "$tmp/log" || true)
-          if [ "$got" -ne "$want" ]; then
-            echo "::error::$got of $want js/wasm tests passed; expected ^Test($tests)\$"
-            exit 1
-          fi
+        # Runtime logic lives in mdsmith-release per
+        # docs/development/release-tooling.md. test-js-wasm runs every
+        # test that only a js/wasm build compiles under Node and fails
+        # unless each one reports --- PASS (a skip fails by name).
+        run: go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm
       - name: WASM smoke test, size budget, and method-set parity
         run: go test ./cmd/mdsmith-wasm/...
 

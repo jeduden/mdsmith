@@ -105,44 +105,26 @@ trivial accessor.
 
 3. Run the task 2 tests in CI. Add a step to the `wasm` job
    in [ci.yml][ci], which already installs Node, next to the
-   existing "Vet the WASM bridge" step. The test names come
-   from the test files that only a `js/wasm` build compiles.
-   `go list` applies the build constraints itself, so any tag
-   spelling or a `_js`/`_wasm` file-name suffix counts, and a
-   test added there later runs without editing the step. Both
-   the `-run` filter and the pass count come from that list:
+   existing "Vet the WASM bridge" step. The step is one call
+   to a tested `mdsmith-release` subcommand, as
+   [release-tooling.md][rt] requires
+   ([plan 2610020045][p0045] moved the first, inline-shell
+   version into it):
 
    ```bash
-   set -o pipefail
-   pkg=./cmd/mdsmith-wasm
-   tmp=$(mktemp -d)
-   files='{{range .TestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}{{range .XTestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}'
-   GOOS=js GOARCH=wasm go list -f "$files" "$pkg" | sort > "$tmp/js"
-   go list -f "$files" "$pkg" | sort > "$tmp/native"
-   comm -23 "$tmp/js" "$tmp/native" > "$tmp/jsonly"
-   test -s "$tmp/jsonly"
-   names=$(xargs -d '\n' grep -ohE '^func Test[A-Za-z0-9_]+\((\w+ )?\*testing\.T\)' < "$tmp/jsonly" \
-     | sed -E 's/^func Test([A-Za-z0-9_]+)\(.*/\1/')
-   test -n "$names"
-   tests=$(paste -sd'|' <<< "$names")
-   want=$(wc -l <<< "$names")
-   GOOS=js GOARCH=wasm go test -v \
-     -exec="env -i 'PATH=$PATH' '$(go env GOROOT)/lib/wasm/go_js_wasm_exec'" \
-     -run "^Test($tests)\$" \
-     "$pkg" > "$tmp/log" || { cat "$tmp/log"; exit 1; }
-   cat "$tmp/log"
-   got=$(grep -c '^--- PASS: Test' "$tmp/log" || true)
-   if [ "$got" -ne "$want" ]; then
-     echo "::error::$got of $want js/wasm tests passed; expected ^Test($tests)\$"
-     exit 1
-   fi
+   go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm
    ```
 
-   `set -o pipefail` matters because a `run:` step with no
-   `shell:` key uses `bash -e`, which ignores a failing
-   `go list` piped into `sort`.
+   The subcommand takes the test names from the test files
+   that only a `js/wasm` build compiles. `go list` applies
+   the build constraints itself, so any tag spelling or a
+   `_js`/`_wasm` file-name suffix counts, and a test added
+   there later runs without editing the step. `go/parser`
+   lists each file's `TestXxx(*testing.T)` functions, so a
+   commented-out test is not listed.
 
-   `env -i` is needed because `wasm_exec.js` caps arguments
+   It runs `go test -v` with `-exec` set to `env -i` plus
+   `go_js_wasm_exec`, because `wasm_exec.js` caps arguments
    plus environment at about 8 KB. With a full shell
    environment the test binary exits with "total length of
    command line and environment variables exceeds limit". It
@@ -151,9 +133,11 @@ trivial accessor.
    job's full environment: caches, `GOTOOLCHAIN`, `GOFLAGS`,
    and any proxy settings.
 
-   The count check is there because a `-run` filter that
-   matches no test prints `[no tests to run]` and exits 0.
-   The step fails unless every listed test ran and passed.
+   It then fails unless every listed test reports
+   `--- PASS`, naming the ones that did not. A `-run` filter
+   that matches no test prints `[no tests to run]` and exits
+   0, and a skipped test also exits 0, so the exit code alone
+   is not enough.
 
    The `go_js_wasm_exec` path depends on the Go version.
    [go.mod][gomod] pins Go 1.25.11, and the job's `setup-go`
@@ -183,7 +167,9 @@ trivial accessor.
       `js && wasm` test file.
 - [x] The CI `wasm` job runs those four tests under Node and
       fails if any of them did not run.
-- [x] No production code changed.
+- [x] No production code changed by this plan. (Follow-up
+      [plan 2610020046][p0046], in the same PR, later
+      changed `main.go`.)
 - [x] `go test ./...` is green.
 - [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
@@ -202,4 +188,7 @@ trivial accessor.
 [obsidian-wasm-test]: ../editors/obsidian/src/wasm-runtime.test.ts
 [ci]: ../.github/workflows/ci.yml
 [gomod]: ../go.mod
+[rt]: ../docs/development/release-tooling.md
+[p0045]: 2610020045_wasm-js-test-runner-subcommand.md
+[p0046]: 2610020046_wasm-bridge-input-hardening.md
 [backlinks]: ../cmd/mdsmith/backlinks.go

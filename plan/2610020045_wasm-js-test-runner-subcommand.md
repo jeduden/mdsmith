@@ -2,7 +2,7 @@
 id: 2610020045
 title: >-
   Move the WASM bridge test-runner shell into mdsmith-release
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   The ci.yml wasm job step "Unit-test the WASM bridge helpers
@@ -73,21 +73,41 @@ the snippet, so the two can drift apart.
    ./cmd/mdsmith-wasm`. Update the Task 3 snippet in
    [plan 2609201914][p1914] to point at the subcommand.
 
+Implemented in [jswasmtests.go][impl] with these
+deviations from the task text:
+
+- The parser is `ListTestFuncs`, not `TestNames`, so no
+  production function in the package starts with `Test`.
+  It honours an aliased `testing` import.
+- `PassedTests(log) []string` replaces `CountPasses`. It
+  returns the top-level passing names, so the error names
+  each listed test that did not pass rather than comparing
+  two counts.
+- The command runner is a `goRunFunc` that returns stdout.
+  The existing `Runner` interface only streams output, and
+  `go list` output has to be captured. The orchestrator is
+  `runJSWasmTestsWith`; `RunJSWasmTests` wires the real
+  `go`, `os.ReadFile`, and `PATH` for it.
+- The `-exec` value quotes each argument for go's
+  quote-aware splitter and errors on a value it cannot
+  quote, instead of assuming `PATH` has no single quote.
+
 ## Acceptance Criteria
 
-- [ ] The `wasm` job step is a single
+- [x] The `wasm` job step is a single
       `mdsmith-release test-js-wasm` call with no inline
       shell logic.
-- [ ] A js/wasm-only test that is added, skipped, or
+- [x] A js/wasm-only test that is added, skipped, or
       commented out produces a pass, a named-test
       error, and no error respectively, as unit tests
       show.
-- [ ] A failing js/wasm-only test fails the step.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] A failing js/wasm-only test fails the step.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues
 
 [p1914]: 2609201914_arch-fix-missing-unit-tests-0920.md
 [ci]: ../.github/workflows/ci.yml
 [rt]: ../docs/development/release-tooling.md
 [rmain]: ../cmd/mdsmith-release/main.go
+[impl]: ../internal/release/jswasmtests.go

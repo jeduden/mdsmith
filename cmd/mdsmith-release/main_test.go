@@ -68,6 +68,8 @@ func TestRunRejectsBadArity(t *testing.T) {
 		{"render-bench-page without out-path", []string{"render-bench-page"}},
 		{"render-bench-page with extra arg", []string{"render-bench-page", "a", "b"}},
 		{"pgo with extra args", []string{"pgo", "workdir", "extra"}},
+		{"test-js-wasm without pkg", []string{"test-js-wasm"}},
+		{"test-js-wasm with two pkgs", []string{"test-js-wasm", "./a", "./b"}},
 	}
 	for _, c := range cases {
 		assert.Equal(t, 2, run(c.args), c.name)
@@ -125,6 +127,7 @@ func TestSubcommandHelpExitsZero(t *testing.T) {
 		"bench-check",
 		"render-bench-page",
 		"pgo",
+		"test-js-wasm",
 	} {
 		assert.Equal(t, 0, run([]string{sub, "--help"}), "%s --help", sub)
 	}
@@ -154,6 +157,7 @@ func TestSubcommandRejectsUnknownFlag(t *testing.T) {
 		"bench-check",
 		"render-bench-page",
 		"pgo",
+		"test-js-wasm",
 	} {
 		assert.Equal(t, 2, run([]string{sub, "--bogus"}), "%s --bogus", sub)
 	}
@@ -960,4 +964,11 @@ func TestRunSelectAuditSarifs(t *testing.T) {
 		return run([]string{"select-audit-sarifs", "sec"})
 	})
 	assert.Equal(t, `["2026-06-12-full-repo-audit"]`+"\n", out)
+}
+
+// TestRunTestJSWasm dispatches through `run test-js-wasm` on this
+// package, which has no js/wasm-only test files, so the runner fails
+// after go list and before go test (no Node needed) with exit 1.
+func TestRunTestJSWasm(t *testing.T) {
+	assert.Equal(t, 1, run([]string{"test-js-wasm", "."}))
 }
