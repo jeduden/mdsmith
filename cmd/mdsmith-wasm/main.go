@@ -398,11 +398,21 @@ func boundSession(args []js.Value) (id int, sess *mdsmith.Session, rest []js.Val
 	return id, sessions[id], args[1:]
 }
 
+// The async proxies reject bad arguments with these errors, built once
+// rather than on every bad call.
+var (
+	errCheckArgs  = errors.New("check(uri, src) requires two string arguments")
+	errFixArgs    = errors.New("fix(uri, src) requires two string arguments")
+	errKindsArgs  = errors.New("kinds(uri) requires a string argument")
+	errRenameArgs = errors.New("rename(uri, source, as, old, new) requires five string arguments")
+	errMoveArgs   = errors.New("move(src, dst) requires two string arguments")
+)
+
 // proxyCheck is session.check(uri, src) → Promise<Diagnostic[]>.
 func proxyCheck(sess *mdsmith.Session, args []js.Value) (any, error) {
 	uri, src, ok := uriAndSource(args)
 	if !ok {
-		return nil, errors.New("check(uri, src) requires two string arguments")
+		return nil, errCheckArgs
 	}
 	diags, err := sess.Check(uri, src)
 	if err != nil {
@@ -420,7 +430,7 @@ func proxyCheck(sess *mdsmith.Session, args []js.Value) (any, error) {
 func proxyFix(sess *mdsmith.Session, args []js.Value) (any, error) {
 	uri, src, ok := uriAndSource(args)
 	if !ok {
-		return nil, errors.New("fix(uri, src) requires two string arguments")
+		return nil, errFixArgs
 	}
 	res, err := sess.Fix(uri, src)
 	if err != nil {
@@ -436,7 +446,7 @@ func proxyFix(sess *mdsmith.Session, args []js.Value) (any, error) {
 // proxyKinds is session.kinds(uri) → Promise<KindsResult>.
 func proxyKinds(sess *mdsmith.Session, args []js.Value) (any, error) {
 	if len(args) < 1 || jsType(args[0]) != js.TypeString {
-		return nil, errors.New("kinds(uri) requires a string argument")
+		return nil, errKindsArgs
 	}
 	return sess.Kinds(args[0].String())
 }
@@ -445,7 +455,7 @@ func proxyKinds(sess *mdsmith.Session, args []js.Value) (any, error) {
 // Promise<Plan>; as may be "".
 func proxyRename(sess *mdsmith.Session, args []js.Value) (any, error) {
 	if len(args) < 5 || !allStrings(args[:5]) {
-		return nil, errors.New("rename(uri, source, as, old, new) requires five string arguments")
+		return nil, errRenameArgs
 	}
 	return sess.Rename(args[0].String(), []byte(args[1].String()),
 		args[2].String(), args[3].String(), args[4].String())
@@ -454,7 +464,7 @@ func proxyRename(sess *mdsmith.Session, args []js.Value) (any, error) {
 // proxyMove is session.move(src, dst) → Promise<Plan>.
 func proxyMove(sess *mdsmith.Session, args []js.Value) (any, error) {
 	if len(args) < 2 || !allStrings(args[:2]) {
-		return nil, errors.New("move(src, dst) requires two string arguments")
+		return nil, errMoveArgs
 	}
 	return sess.Move(args[0].String(), args[1].String())
 }

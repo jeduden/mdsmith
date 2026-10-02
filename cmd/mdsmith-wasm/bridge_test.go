@@ -507,6 +507,31 @@ func TestAsyncMethod(t *testing.T) {
 	})
 }
 
+// TestProxyArgErrors checks that each async proxy rejects bad arguments
+// with its package-level sentinel, so a bad call allocates no new
+// error, and that the sentinel names the method's signature. The
+// argument check runs before the session is used, so sess is nil.
+func TestProxyArgErrors(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		fn   func(*mdsmith.Session, []js.Value) (any, error)
+		want error
+		msg  string
+	}{
+		{"check", proxyCheck, errCheckArgs, "check(uri, src) requires two string arguments"},
+		{"fix", proxyFix, errFixArgs, "fix(uri, src) requires two string arguments"},
+		{"kinds", proxyKinds, errKindsArgs, "kinds(uri) requires a string argument"},
+		{"rename", proxyRename, errRenameArgs, "rename(uri, source, as, old, new) requires five string arguments"},
+		{"move", proxyMove, errMoveArgs, "move(src, dst) requires two string arguments"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.fn(nil, []js.Value{js.ValueOf(1)})
+			assert.Same(t, tt.want, err)
+			assert.EqualError(t, err, tt.msg)
+		})
+	}
+}
+
 func TestStringListMethod(t *testing.T) {
 	m := stringListMethod(func(*mdsmith.Session, []js.Value) []string {
 		return []string{"a", "b"}
