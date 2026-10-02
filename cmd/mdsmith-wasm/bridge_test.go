@@ -271,8 +271,16 @@ func TestNewSessionProxy_DisposeReleasesMethods(t *testing.T) {
 	require.Equal(t, js.TypeObject, proxy.Call("capabilities").Type(),
 		"a live capabilities returns an array")
 	liveCheck := proxy.Get("check")
+	liveDispose := proxy.Get("dispose")
 
 	proxy.Call("dispose")
+
+	// dispose now points at the shared no-op stand-in, so a second
+	// session.dispose() never reaches its own released func (which would
+	// return undefined too, but log "call to released function").
+	assert.False(t, proxy.Get("dispose").Equal(liveDispose), "dispose replaced after dispose")
+	assert.True(t, proxy.Get("dispose").Equal(disposedFunc("dispose").Value),
+		"dispose points at the shared no-op stand-in")
 
 	// The session's own func is released: invoking it returns undefined
 	// (syscall/js logs "call to released function" for this one call).
