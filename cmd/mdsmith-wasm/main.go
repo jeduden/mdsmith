@@ -138,10 +138,19 @@ func workspaceFromJS(v js.Value) map[string][]byte {
 // accepts an Object.create(null) record and an object from another
 // realm.
 func isRecord(v js.Value) bool {
-	return v.Type() == js.TypeObject &&
-		js.Global().Get("Object").Get("prototype").Get("toString").
-			Call("call", v).String() == "[object Object]"
+	if v.Type() != js.TypeObject {
+		return false
+	}
+	// Looked up on first use, not at package init, so loading the
+	// module pays nothing for it; the zero js.Value is undefined.
+	if objectToString.IsUndefined() {
+		objectToString = js.Global().Get("Object").Get("prototype").Get("toString")
+	}
+	return objectToString.Call("call", v).String() == "[object Object]"
 }
+
+// objectToString caches Object.prototype.toString for isRecord.
+var objectToString js.Value
 
 // newSessionProxy builds the JS object whose methods forward to the Go
 // Session. Method names match the Go method names exactly; the WASM
