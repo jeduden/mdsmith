@@ -2,7 +2,10 @@
 
 package build
 
-import "os/exec"
+import (
+	"os"
+	"os/exec"
+)
 
 // configureProcessGroup is a no-op on targets with neither POSIX process
 // groups nor Windows Job Objects (js/wasm, wasip1, plan9). Those targets
@@ -20,5 +23,9 @@ func killGroup(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return
 	}
-	_ = cmd.Process.Kill()
+	_ = killLeader(cmd.Process)
 }
+
+// killLeader kills one process. It is a var so a js/wasm test, where no
+// subprocess can start, can check that killGroup kills the leader.
+var killLeader = (*os.Process).Kill

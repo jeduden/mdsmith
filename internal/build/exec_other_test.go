@@ -3,6 +3,7 @@
 package build
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"testing"
@@ -24,10 +25,18 @@ func TestKillGroup_Other_NilProcess(t *testing.T) {
 	assert.NotPanics(t, func() { killGroup(&exec.Cmd{}) })
 }
 
-func TestKillGroup_Other_IgnoresKillError(t *testing.T) {
-	// A zero os.Process makes Kill return "process not initialized";
-	// killGroup must swallow it rather than panic. No subprocess can
-	// start under js/wasm, so a live leader kill is not testable here.
-	cmd := &exec.Cmd{Process: &os.Process{}}
+func TestKillGroup_Other_KillsLeaderAndIgnoresError(t *testing.T) {
+	// No subprocess can start under js/wasm, so killLeader is stubbed:
+	// killGroup must hand it the recipe's leader and swallow its error.
+	var got *os.Process
+	old := killLeader
+	killLeader = func(p *os.Process) error {
+		got = p
+		return errors.New("kill failed")
+	}
+	t.Cleanup(func() { killLeader = old })
+
+	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
 	assert.NotPanics(t, func() { killGroup(cmd) })
+	assert.Same(t, cmd.Process, got, "killGroup must kill the leader")
 }
