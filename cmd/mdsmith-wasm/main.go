@@ -14,6 +14,7 @@ package main
 
 import (
 	"runtime/debug"
+	"sync"
 	"syscall/js"
 
 	"github.com/jeduden/mdsmith/internal/gctune"
@@ -167,14 +168,13 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 		"capabilities": proxyCapabilities(sess),
 		"invalidate":   proxyInvalidate(sess),
 	}
-	proxy := make(map[string]any, len(methods)+1)
-	others := make([]js.Func, 0, len(methods))
+	fields := make(map[string]any, len(methods)+1)
 	for name, f := range methods {
-		proxy[name] = f
-		others = append(others, f)
+		fields[name] = f
 	}
-	proxy["dispose"] = proxyDispose(sess, others)
-	return js.ValueOf(proxy)
+	proxy := js.ValueOf(fields)
+	proxy.Set("dispose", proxyDispose(sess, proxy, methods))
+	return proxy
 }
 
 // proxyCheck builds session.check(uri, src) → Promise<Diagnostic[]>.
@@ -314,21 +314,64 @@ func proxyInvalidate(sess *mdsmith.Session) js.Func {
 // keeps every closure in syscall/js's handler table until Release, so
 // without releasing them each disposed session, workspace bytes
 // included, would stay reachable for the life of the engine. dispose
-// therefore releases the other method funcs; a call to one afterwards
-// returns undefined. Its own func stays registered so a second
-// dispose() is a no-op, but it drops its references and pins nothing.
-func proxyDispose(sess *mdsmith.Session, others []js.Func) js.Func {
+// therefore releases the session's method funcs and points each
+// method on proxy at a shared stand-in of the same shape (disposedFunc),
+// so a late call never reaches a released func. Its own func stays
+// registered so a second dispose() is a no-op, but it drops its
+// references and pins nothing.
+func proxyDispose(sess *mdsmith.Session, proxy js.Value, methods map[string]js.Func) js.Func {
 	return js.FuncOf(func(_ js.Value, _ []js.Value) any {
 		if sess == nil {
 			return js.Undefined()
 		}
 		sess.Dispose()
-		for _, f := range others {
+		for name, f := range methods {
+			proxy.Set(name, disposedFunc(name))
 			f.Release()
 		}
-		sess, others = nil, nil
+		sess, proxy, methods = nil, js.Undefined(), nil
 		return js.Undefined()
 	})
+}
+
+// Stand-ins a disposed session's methods point at. They are shared by
+// every session and never released, so disposing pins nothing new.
+var (
+	disposedOnce       sync.Once
+	disposedAsync      js.Func // Promise rejecting with "session disposed"
+	disposedEmptyArray js.Func // capabilities(): []
+	disposedNoop       js.Func // invalidate(): undefined
+)
+
+// disposedAsyncReason is the message of a disposed async method's
+// rejection.
+const disposedAsyncReason = "session disposed"
+
+// disposedFunc returns the stand-in for method name: capabilities()
+// returns an empty list, invalidate() does nothing, and every async
+// method returns a Promise that rejects with Error("session disposed").
+func disposedFunc(name string) js.Func {
+	disposedOnce.Do(func() {
+		disposedAsync = js.FuncOf(func(js.Value, []js.Value) any {
+			return newPromise(func(_, reject func(any)) {
+				reject(jsError(disposedAsyncReason))
+			})
+		})
+		disposedEmptyArray = js.FuncOf(func(js.Value, []js.Value) any {
+			return js.ValueOf([]any{})
+		})
+		disposedNoop = js.FuncOf(func(js.Value, []js.Value) any {
+			return js.Undefined()
+		})
+	})
+	switch name {
+	case "capabilities":
+		return disposedEmptyArray
+	case "invalidate":
+		return disposedNoop
+	default:
+		return disposedAsync
+	}
 }
 
 // uriAndSource pulls a (uri string, source []byte) pair from JS args.

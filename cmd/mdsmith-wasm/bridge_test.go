@@ -259,19 +259,41 @@ func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
 }
 
 // TestNewSessionProxy_DisposeReleasesMethods checks that dispose()
-// releases the other method funcs, so syscall/js's handler table stops
-// pinning the Session, and that a second dispose() is still a no-op.
+// releases the session's own method funcs, so syscall/js's handler
+// table stops pinning the Session, while every method keeps its return
+// shape: async methods reject with "session disposed", capabilities()
+// is empty, invalidate() does nothing, and a second dispose() is a
+// no-op. No call reaches a released func.
 func TestNewSessionProxy_DisposeReleasesMethods(t *testing.T) {
 	proxy := newTestProxy(t)
 	require.Equal(t, js.TypeObject, proxy.Call("check", "a.md", "# A\n").Type(),
 		"a live check returns a Promise")
 	require.Equal(t, js.TypeObject, proxy.Call("capabilities").Type(),
 		"a live capabilities returns an array")
+	liveCheck := proxy.Get("check")
 
 	proxy.Call("dispose")
 
-	// A released js.Func returns undefined instead of running.
-	assert.True(t, proxy.Call("check", "a.md", "# A\n").IsUndefined(), "check after dispose")
-	assert.True(t, proxy.Call("capabilities").IsUndefined(), "capabilities after dispose")
+	// The session's own func is released: invoking it returns undefined
+	// (syscall/js logs "call to released function" for this one call).
+	assert.True(t, liveCheck.Invoke("a.md", "# A\n").IsUndefined(), "released check func")
+
+	for _, m := range [][]any{
+		{"check", "a.md", "# A\n"},
+		{"fix", "a.md", "# A\n"},
+		{"kinds", "a.md"},
+		{"rename", "a.md", "1", "B", ""},
+		{"move", "a.md", "b.md"},
+	} {
+		p := proxy.Call(m[0].(string), m[1:]...)
+		require.Equal(t, js.TypeObject, p.Type(), "%s after dispose returns a Promise", m[0])
+		v, rejected := awaitPromise(t, p)
+		assert.True(t, rejected, "%s after dispose rejects", m[0])
+		assert.Equal(t, "session disposed", v.Get("message").String(), m[0])
+	}
+	caps := proxy.Call("capabilities")
+	require.True(t, caps.InstanceOf(js.Global().Get("Array")), "capabilities after dispose")
+	assert.Equal(t, 0, caps.Length())
+	assert.True(t, proxy.Call("invalidate", "a.md").IsUndefined(), "invalidate after dispose")
 	assert.NotPanics(t, func() { proxy.Call("dispose") }, "second dispose")
 }
