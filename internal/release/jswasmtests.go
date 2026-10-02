@@ -234,7 +234,9 @@ func ListTestFuncs(src []byte) ([]string, error) {
 // usable name.
 func testingImportName(f *ast.File) string {
 	for _, imp := range f.Imports {
-		if p, err := strconv.Unquote(imp.Path.Value); err != nil || p != "testing" {
+		// go/parser already rejected any path that is not a valid
+		// string literal, so Unquote cannot fail here.
+		if p, _ := strconv.Unquote(imp.Path.Value); p != "testing" {
 			continue
 		}
 		if imp.Name == nil {
