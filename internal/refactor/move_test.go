@@ -3,6 +3,7 @@ package refactor
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -358,4 +359,238 @@ func TestMove_SafetyErrors(t *testing.T) {
 		var se SourceNotFoundError
 		assert.ErrorAs(t, err, &se)
 	})
+}
+
+// TestMove_WikilinkRewrittenWithExtensionlessSibling locks that an
+// extensionless file such as LICENSE is not a wikilink stem target: the
+// wikilink index maps only Markdown files to stems, so it must not count
+// as a same-stem sibling of docs/license.md.
+func TestMove_WikilinkRewrittenWithExtensionlessSibling(t *testing.T) {
+	src := "See [[license]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/license.md": "# License\n",
+		"notes/LICENSE":   "MIT\n",
+		"index.md":        src,
+	})
+	plan, err := Move(ws, "docs/license.md", "docs/terms.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[terms]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_WikilinkLeftUntouchedWhenTypedDestNameCollides locks that a
+// move to a non-Markdown extension keeps an exact-name collision guard:
+// `[[guide.mdx]]` resolves by exact file name, so with a/guide.mdx
+// already present the rewrite could land on the wrong file.
+func TestMove_WikilinkLeftUntouchedWhenTypedDestNameCollides(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"docs/guide.md": "# Guide\n",
+		"a/guide.mdx":   "# Other\n",
+		"index.md":      "See [[guide]].\n",
+	})
+	plan, err := Move(ws, "docs/guide.md", "docs/guide.mdx")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"],
+		"typed destination name already taken: no wikilink is rewritten")
+}
+
+// TestMove_NonMarkdownSourceLeavesWikilinksAlone locks that moving a
+// non-Markdown file never rewrites `[[stem]]` links: no stem resolves to
+// it, so `[[license]]` still points at docs/license.md. The Markdown
+// destination pins the source guard on its own: an extensionless
+// destination such as COPYING is skipped by the destination guard too.
+func TestMove_NonMarkdownSourceLeavesWikilinksAlone(t *testing.T) {
+	for _, dst := range []string{"COPYING", "docs/terms.md"} {
+		for name, listed := range map[string]bool{"listed": true, "unlisted": false} {
+			t.Run(dst+"/"+name, func(t *testing.T) {
+				files := map[string]string{
+					"docs/license.md": "# License\n",
+					"index.md":        "See [[license]].\n",
+				}
+				if listed {
+					files["LICENSE"] = "MIT\n"
+				}
+				ws := newMemWorkspace(files)
+				// An unlisted source is still resolvable on disk.
+				var w Workspace = ws
+				if !listed {
+					w = unlistedSource{memWorkspace: ws, rel: "LICENSE", body: "MIT\n"}
+				}
+				plan, err := Move(w, "LICENSE", dst)
+				require.NoError(t, err)
+				assert.Empty(t, plan.Edits["index.md"])
+			})
+		}
+	}
+}
+
+// TestMove_WikilinkNotRewrittenToExtensionlessName locks that a move to
+// an extensionless name rewrites nothing: a bare `[[name]]` finds only
+// Markdown files, so it could never reach the destination.
+func TestMove_WikilinkNotRewrittenToExtensionlessName(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"docs/api.md": "# API\n",
+		"index.md":    "See [[api]].\n",
+	})
+	plan, err := Move(ws, "docs/api.md", "docs/COPYING")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"])
+}
+
+// TestMove_WikilinkNotRewrittenToUnspellableName locks that a move to a
+// name no wikilink can spell rewrites nothing: an empty stem (`.md`)
+// leaves `[[]]`, and a `#`, `|`, `[`, `]`, or newline in the stem splits
+// or ends the link, so the rewrite would not name the destination. A
+// trailing space is trimmed off the link target, so `[[guide.md ]]`
+// would reach x/guide.md instead of the moved file.
+func TestMove_WikilinkNotRewrittenToUnspellableName(t *testing.T) {
+	for _, dst := range []string{
+		"docs/.md", "docs/C#.md", "docs/a|b.md", "docs/[x].md", "docs/x].txt",
+		"docs/guide.md ", "docs/a\nb.md", "docs/a\rb.md", "docs/a`b.md",
+	} {
+		t.Run(dst, func(t *testing.T) {
+			ws := newMemWorkspace(map[string]string{
+				"docs/api.md": "# API\n",
+				"x/guide.md":  "# Guide\n",
+				"index.md":    "See [[api]].\n",
+			})
+			plan, err := Move(ws, "docs/api.md", dst)
+			require.NoError(t, err)
+			assert.Empty(t, plan.Edits["index.md"])
+		})
+	}
+}
+
+// TestMove_WikilinkKeepsMarkdownExtForDottedStem locks that a
+// destination stem holding a dot keeps its Markdown extension: a bare
+// `[[v1.3]]` reads `.3` as a typed extension and looks up a file named
+// exactly `v1.3`, so only `[[v1.3.md]]` reaches docs/v1.3.md.
+func TestMove_WikilinkKeepsMarkdownExtForDottedStem(t *testing.T) {
+	src := "See [[v1.2.md]] and [[v1.2.md#notes|old]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/v1.2.md": "# V1.2\n",
+		"index.md":     src,
+	})
+	plan, err := Move(ws, "docs/v1.2.md", "docs/v1.3.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[v1.3.md]] and [[v1.3.md#notes|old]].\n",
+		applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_WikilinkDriveShapedNameGetsDotSlash locks that a destination
+// whose name reads as a drive letter (`C:x.md`) is still reached: a
+// bare `[[C:x]]` is refused as a drive path, so it is written
+// `[[./C:x]]`, while a link with a folder prefix already starts with
+// that folder and keeps the bare name.
+func TestMove_WikilinkDriveShapedNameGetsDotSlash(t *testing.T) {
+	src := "See [[api]] and [[ref/api|R]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/api.md": "# API\n",
+		"index.md":    src,
+	})
+	plan, err := Move(ws, "docs/api.md", "docs/C:x.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[./C:x]] and [[ref/C:x|R]].\n",
+		applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_WikilinkKeepsBackslashPrefixAndTableEscape locks that a
+// rewrite replaces only the stem segment the resolver reads: a `\`
+// folder prefix is kept, and so is the `\` that escapes a `|` inside a
+// table cell, so the alias stays in the cell.
+func TestMove_WikilinkKeepsBackslashPrefixAndTableEscape(t *testing.T) {
+	src := "See [[docs\\api]].\n\n| a |\n| - |\n| [[api\\|API]] |\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/api.md": "# API\n",
+		"index.md":    src,
+	})
+	plan, err := Move(ws, "docs/api.md", "docs/service.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[docs\\service]].\n\n| a |\n| - |\n| [[service\\|API]] |\n",
+		applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_WikilinkKeepsMarkdownExtForTrailingSpaceStem locks that a
+// destination stem ending in a space keeps its Markdown extension: the
+// link target is trimmed, so `[[guide ]]` would look up `guide`, while
+// `[[guide .md]]` keeps the space inside the target and reaches the file.
+func TestMove_WikilinkKeepsMarkdownExtForTrailingSpaceStem(t *testing.T) {
+	src := "See [[api]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/api.md": "# API\n",
+		"index.md":    src,
+	})
+	plan, err := Move(ws, "docs/api.md", "docs/guide .md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[guide .md]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_WikilinkRewrittenWhenTypedDestNameEqualsOldStem locks that a
+// typed destination is compared by name, not against the Markdown stem:
+// docs/guide.png.md has stem `guide.png`, the same string as the
+// destination's name, yet `[[guide.png.md]]` stops resolving once the
+// file is docs/guide.png and must become `[[guide.png]]`.
+func TestMove_WikilinkRewrittenWhenTypedDestNameEqualsOldStem(t *testing.T) {
+	src := "See [[guide.png.md]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/guide.png.md": "# Guide\n",
+		"index.md":          src,
+	})
+	plan, err := Move(ws, "docs/guide.png.md", "docs/guide.png")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[guide.png]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_EmptyStemSourceLeavesWikilinksAlone locks that a source with
+// an empty stem (`docs/.md`) rewrites no wikilink: no `[[stem]]` edge
+// keys to it, and `[[.md.md]]` names a different file, `.md.md`.
+func TestMove_EmptyStemSourceLeavesWikilinksAlone(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"docs/.md": "# Empty\n",
+		"index.md": "See [[.md.md]].\n",
+	})
+	plan, err := Move(ws, "docs/.md", "docs/x.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"])
+}
+
+// TestMove_WhitespaceNamedFileIsNotAStemHolder locks that a listed
+// `x/ guide.md` does not block a `[[guide]]` rewrite: the resolver keys
+// it as ` guide`, and a trimmed `[[guide]]` never reaches it.
+func TestMove_WhitespaceNamedFileIsNotAStemHolder(t *testing.T) {
+	src := "See [[guide]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/guide.md": "# Guide\n",
+		"x/ guide.md":   "# Spaced\n",
+		"index.md":      src,
+	})
+	plan, err := Move(ws, "docs/guide.md", "docs/manual.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[manual]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_WhitespaceNamedSourceLeavesWikilinksAlone locks that moving
+// `docs/ guide.md` leaves `[[guide]]` alone: the trimmed link keys to
+// `guide`, which never named the spaced source.
+func TestMove_WhitespaceNamedSourceLeavesWikilinksAlone(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"docs/ guide.md": "# Spaced\n",
+		"index.md":       "See [[guide]].\n",
+	})
+	plan, err := Move(ws, "docs/ guide.md", "docs/manual.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"])
+}
+
+// unlistedSource resolves one file that Files() does not list, as
+// Resolve reads any file on disk.
+type unlistedSource struct {
+	*memWorkspace
+	rel, body string
+}
+
+func (u unlistedSource) Resolve(file string) (string, []byte, bool) {
+	if n := index.NormalizePath(file); n == u.rel {
+		return n, []byte(u.body), true
+	}
+	return u.memWorkspace.Resolve(file)
 }
