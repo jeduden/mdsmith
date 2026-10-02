@@ -1,7 +1,7 @@
 ---
 id: 2610021237
 title: Silence a stale wasm session dispose reference
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   Since plan 2610021027, a wasm session's `dispose`
