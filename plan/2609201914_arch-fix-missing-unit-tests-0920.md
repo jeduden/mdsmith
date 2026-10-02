@@ -159,12 +159,12 @@ trivial accessor.
 ## Acceptance Criteria
 
 - [x] `AdvancePastLine` has a dedicated `TestAdvancePastLine`.
-- [ ] `resolveVersion`, `workspaceFromJS`, `uriAndSource`,
+- [x] `resolveVersion`, `workspaceFromJS`, `uriAndSource`,
       and `allStrings` each have a dedicated test in a
       `js && wasm` test file.
 - [ ] The CI `wasm` job runs those four tests under Node and
       fails if any of them did not run.
-- [ ] No production code changed.
+- [x] No production code changed.
 - [ ] `go test ./...` is green.
 - [ ] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
