@@ -491,16 +491,15 @@ func TestAsyncMethod(t *testing.T) {
 	// fn runs inside a Promise executor, a JS callback, where t.Fatal
 	// would block on the JS event loop and hang the suite; record the
 	// call and assert after the Promise settles instead.
+	// That fn never runs after dispose is sharedFunc's job; see
+	// TestSharedFunc.
 	t.Run("disposed result rejects", func(t *testing.T) {
-		ran := false
 		m := asyncMethod(func(*mdsmith.Session, []js.Value) (any, error) {
-			ran = true
 			return nil, nil
 		})
 		v, rejected := awaitPromise(t, m.disposed())
 		require.True(t, rejected)
 		assert.Equal(t, disposedAsyncReason, v.Get("message").String())
-		assert.False(t, ran, "fn must not run after dispose")
 	})
 	// A JS exception fn raises (syscall/js panics with js.Error) must
 	// reject the Promise, as in createSession, rather than end the Go
@@ -755,6 +754,50 @@ func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
 // TestSharedMethods_NoSessionID calls each shared func directly with no
 // bound id: every method takes the disposed path instead of panicking,
 // and dispose does nothing.
+// TestSharedFunc checks the dispatch every shared method func runs: a
+// live bound id calls impl.call with that session and the remaining
+// args, and a disposed id, an unknown id, or no id returns
+// impl.disposed() without ever calling impl.call.
+func TestSharedFunc(t *testing.T) {
+	proxy := newTestProxy(t)
+	liveID := nextSessionID - 1
+	live := sessions[liveID]
+	require.NotNil(t, live)
+	var calls []*mdsmith.Session
+	var gotRest []js.Value
+	disposedCalls := 0
+	f := sharedFunc(methodImpl{
+		call: func(sess *mdsmith.Session, args []js.Value) js.Value {
+			calls = append(calls, sess)
+			gotRest = args
+			return js.ValueOf("live")
+		},
+		disposed: func() js.Value {
+			disposedCalls++
+			return js.ValueOf("disposed")
+		},
+	})
+
+	got := jsValue(t, f(js.Undefined(), []js.Value{js.ValueOf(liveID), js.ValueOf("a.md")}))
+	assert.Equal(t, "live", got.String())
+	require.Len(t, calls, 1)
+	assert.Same(t, live, calls[0])
+	require.Len(t, gotRest, 1)
+	assert.Equal(t, "a.md", gotRest[0].String())
+
+	proxy.Call("dispose")
+	for _, args := range [][]js.Value{
+		{js.ValueOf(liveID), js.ValueOf("a.md")},
+		{js.ValueOf(-1)},
+		nil,
+	} {
+		got := jsValue(t, f(js.Undefined(), args))
+		assert.Equal(t, "disposed", got.String())
+	}
+	assert.Len(t, calls, 1, "impl.call must not run without a live session")
+	assert.Equal(t, 3, disposedCalls)
+}
+
 func TestSharedMethods_NoSessionID(t *testing.T) {
 	shared := sharedMethods()
 	require.ElementsMatch(t, sessionMethodNames(), slices.Collect(maps.Keys(shared)))

@@ -332,16 +332,25 @@ func sharedMethods() map[string]js.Value {
 		bindTo = proto.Get("call").Call("bind", proto.Get("bind"))
 		sharedFuncs = make(map[string]js.Value, len(sharedMethodImpls)+1)
 		for name, impl := range sharedMethodImpls {
-			sharedFuncs[name] = funcOf(func(_ js.Value, args []js.Value) any {
-				if _, sess, rest := boundSession(args); sess != nil {
-					return impl.call(sess, rest)
-				}
-				return impl.disposed()
-			}).Value
+			sharedFuncs[name] = funcOf(sharedFunc(impl)).Value
 		}
 		sharedFuncs["dispose"] = funcOf(proxyDispose).Value
 	})
 	return sharedFuncs
+}
+
+// sharedFunc is the body of a forwarding method's shared func: it
+// calls impl.call with the live session bound as args[0] and the
+// remaining args, and returns impl.disposed() when that session is
+// disposed or args[0] is no live id, so impl.call never runs without a
+// live session.
+func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
+	return func(_ js.Value, args []js.Value) any {
+		if _, sess, rest := boundSession(args); sess != nil {
+			return impl.call(sess, rest)
+		}
+		return impl.disposed()
+	}
 }
 
 // maxSessionID bounds a bound id before its int conversion: 2^53 under
