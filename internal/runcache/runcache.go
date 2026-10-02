@@ -10,6 +10,7 @@ package runcache
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/jeduden/mdsmith/internal/memo"
 )
@@ -81,6 +82,17 @@ type Cache struct {
 	// than races on a partial value.
 	schemaIncludes   sync.Map // string (absPath) -> []string
 	schemaCUESources sync.Map // string (absPath) -> []string
+
+	// invalidateGen counts completed Invalidate calls. registeredGen
+	// records, per schema path, the invalidateGen value read before
+	// its last metadata registration. A ParsedSchema hit re-registers
+	// only when the two differ, so the warm path is one sync.Map Load
+	// plus one atomic load. Any Invalidate may drop a dependent edge
+	// (invalidateDependents deletes a fragment's whole set, including
+	// an edge a concurrent ParsedSchema just added), so the first hit
+	// after one re-registers and heals the lost edge.
+	invalidateGen atomic.Uint64
+	registeredGen sync.Map // string (absPath) -> uint64
 }
 
 // ParsedSchemaMetadata is the optional interface a parsed-schema
@@ -370,7 +382,9 @@ func (c *Cache) Wikilinks(rootKey string, build func() any) any {
 // cache also registers absPath as a dependent of every path in
 // SchemaIncludes() on the reverse-include index. Invalidate(fragment)
 // then evicts every schema that reached fragment, closing the
-// stale-fragment gap the LSP would otherwise observe.
+// stale-fragment gap the LSP would otherwise observe. Registration
+// runs on the first lookup and on the first lookup after each
+// Invalidate (see invalidateGen), not on every warm hit.
 //
 // MDS020 reaches this slot via f.RunCache; on a corpus where N
 // host files all reference one schema, the per-Check parseSchema
@@ -380,7 +394,11 @@ func (c *Cache) Wikilinks(rootKey string, build func() any) any {
 func (c *Cache) ParsedSchema(absPath string, build func() any) any {
 	v := load(&c.parsedSchema, absPath, build)
 	if meta, ok := v.(ParsedSchemaMetadata); ok {
-		c.registerSchemaMetadata(absPath, meta)
+		gen := c.invalidateGen.Load()
+		if r, ok := c.registeredGen.Load(absPath); !ok || r.(uint64) != gen {
+			c.registerSchemaMetadata(absPath, meta)
+			c.registeredGen.Store(absPath, gen)
+		}
 	}
 	return v
 }
@@ -485,6 +503,10 @@ func (c *Cache) CompiledCUE(source string, build func() any) any {
 // fresh Cache) when the filesystem layout changes.
 func (c *Cache) Invalidate(absPath string) {
 	c.invalidate(absPath, map[string]struct{}{})
+	// Bump after every edge deletion so a ParsedSchema that read the
+	// old generation before or during this call re-registers on its
+	// next hit (see invalidateGen).
+	c.invalidateGen.Add(1)
 }
 
 // invalidate is the recursive worker for Invalidate. The visited set

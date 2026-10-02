@@ -511,6 +511,58 @@ type testSchemaMeta struct {
 func (m testSchemaMeta) SchemaIncludes() []string   { return m.includes }
 func (m testSchemaMeta) SchemaCUESources() []string { return m.cueSources }
 
+// TestCache_ParsedSchemaWarmPathAllocatesNothing pins the cache-hit
+// cost of ParsedSchema at zero allocs. Re-registering the schema's
+// metadata on every hit Stores boxed slices into two sync.Maps and
+// takes depsMu per include fragment; the registration generation
+// skips that work until an Invalidate could have dropped an edge.
+func TestCache_ParsedSchemaWarmPathAllocatesNothing(t *testing.T) {
+	c := New()
+	meta := testSchemaMeta{
+		includes:   []string{"/abs/frag-a.md", "/abs/frag-b.md"},
+		cueSources: []string{"close({})"},
+	}
+	build := func() any { return meta }
+	_ = c.ParsedSchema("/abs/schema.md", build)
+
+	allocs := testing.AllocsPerRun(200, func() {
+		_ = c.ParsedSchema("/abs/schema.md", build)
+	})
+	assert.Zero(t, allocs, "ParsedSchema's cache-hit path must not allocate")
+}
+
+// TestCache_ParsedSchemaHitReRegistersAfterInvalidate pins the
+// self-healing the skip must keep: invalidateDependents can wipe a
+// fragment's dependent set while a concurrent ParsedSchema registers
+// into it. That lost edge is simulated here by deleting the set
+// directly. The first hit after any Invalidate must re-register it,
+// so a later fragment edit still evicts the schema.
+func TestCache_ParsedSchemaHitReRegistersAfterInvalidate(t *testing.T) {
+	c := New()
+	const schema = "/abs/schema.md"
+	const frag = "/abs/frag.md"
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return testSchemaMeta{includes: []string{frag}}
+	}
+	_ = c.ParsedSchema(schema, build)
+
+	c.depsMu.Lock()
+	delete(c.schemaDependents, frag)
+	c.depsMu.Unlock()
+	c.Invalidate("/abs/unrelated.md")
+
+	_ = c.ParsedSchema(schema, build) // hit: must re-register the edge
+	_, ok := c.dependentSet(frag)
+	require.True(t, ok, "hit after Invalidate must re-register the include edge")
+
+	c.Invalidate(frag)
+	_ = c.ParsedSchema(schema, build)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls),
+		"fragment edit must evict the schema once the edge is healed")
+}
+
 // TestCache_InvalidateFragmentEvictsDependentSchema pins thread 1
 // (PR #377): a ParsedSchema slot whose build returned
 // ParsedSchemaMetadata reporting fragmentB as an include must be
