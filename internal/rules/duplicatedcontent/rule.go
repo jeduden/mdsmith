@@ -24,6 +24,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
 
@@ -373,7 +374,7 @@ func rootRelative(rootDir, path string) (string, bool) {
 // which file is asking. Excluding the asking file's own entries from
 // the corpus is Check's job, applied to the shared result.
 type corpusScanConfig struct {
-	runCache *lint.RunCache
+	runCache *runcache.Cache
 	corpus   fs.FS
 	// rootDir is the absolute on-disk directory corpus is rooted at,
 	// or "" for the FS-only fallback (no stable absolute path) —

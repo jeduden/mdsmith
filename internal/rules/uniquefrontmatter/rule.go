@@ -22,6 +22,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
@@ -85,6 +86,11 @@ type scopeIndex struct {
 	exclude []string
 }
 
+// RunCache detects ScopeInvalidator by runtime type assertion, so a
+// signature drift would silently fall back to dropping the index on
+// every edit; this assertion turns that drift into a compile error.
+var _ runcache.ScopeInvalidator = (*scopeIndex)(nil)
+
 // hostKey returns f.Path in the index's key space; see the
 // scopeIndex comment. An unresolvable host returns "" and misses
 // the index, the fail-open posture MDS027 uses for unmappable
@@ -103,7 +109,7 @@ func (s *scopeIndex) hostKey(f *lint.File) string {
 	return filepath.Clean(p)
 }
 
-// MatchesInvalidatedPath implements lint.ScopeInvalidator. In-root
+// MatchesInvalidatedPath implements runcache.ScopeInvalidator. In-root
 // paths match by the scope's globs. Paths the matcher cannot relate
 // to the root — Rel errors and dot-dot escapes, e.g. a macOS /tmp
 // workspace root receiving /private/tmp document paths — return

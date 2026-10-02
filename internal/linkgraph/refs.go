@@ -42,7 +42,7 @@ type RefLink struct {
 //
 // Memoized via File.MemoFile: buildRefLinkTargets is a package-level
 // function so the call adds no per-Memo-call heap allocation beyond the
-// cold-path memoEntry.
+// cold-path memo.Entry.
 func RefLinkTargets(f *lint.File) []Link {
 	if f == nil {
 		return nil

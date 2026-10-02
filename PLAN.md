@@ -269,7 +269,7 @@ footer: |
 | 2608282011 | ✅     | sonnet | [Security hardening batch — 2026-08-28](plan/2608282011_security-hardening-batch-2026-08-28.md)                                                         |
 | 2608301343 | ✅     | sonnet | [Reduce mdsmith.dev homepage clutter and coined words](plan/2608301343_reduce-homepage-clutter.md)                                                      |
 | 2608301918 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-30 touched-set tax findings](plan/2608301918_arch-fix-touched-set-unit-tests-0830.md)                         |
-| 2608301919 | 🔲     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
+| 2608301919 | ✅     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
 | 2609032052 | 🔲     | opus   | [Resolve config from `pyproject.toml` under `[tool.mdsmith]`](plan/2609032052_pyproject-config-source.md)                                               |
 | 2609061915 | 🔲     | sonnet | [Add unit tests for the untested rename/move helpers](plan/2609061915_arch-fix-touched-set-unit-tests-0906.md)                                          |
 | 2609131911 | 🔲     | sonnet | [Share the refactor Workspace adapter between CLI and Session](plan/2609131911_arch-fix-refactor-workspace-duplication.md)                              |
@@ -281,4 +281,5 @@ footer: |
 | 2610020046 | ✅     | sonnet | [Harden WASM bridge workspace input and version lookup](plan/2610020046_wasm-bridge-input-hardening.md)                                                 |
 | 2610020233 | 🔲     | haiku  | [Drop the unused rules? and link? keys from the feature kind schema](plan/2610020233_drop-unused-feature-rules-key.md)                                  |
 | 2610020305 | 🔲     | sonnet | [Homepage Tier 3 declutter: pillar numbers, tints, badges, eyebrows](plan/2610020305_homepage-tier3-declutter.md)                                       |
+| 2610020725 | 🔲     | sonnet | [Make internal/build compile under GOOS=js GOARCH=wasm](plan/2610020725_build-exec-js-wasm-stub.md)                                                     |
 <?/catalog?>

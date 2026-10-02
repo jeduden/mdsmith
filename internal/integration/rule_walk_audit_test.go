@@ -47,6 +47,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	gmast "github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/tools/go/packages"
@@ -254,7 +255,7 @@ func runRuleForAudit(tb testing.TB, r rule.Rule, in auditProbeInput, src []byte,
 	require.NoError(tb, err, "parsing %s fixture %s", r.ID(), in.label)
 	f.FS = allocBudgetFS()
 	f.RootDir = "."
-	f.RunCache = lint.NewRunCache()
+	f.RunCache = runcache.New()
 	if nilAST {
 		f.AST = nil
 	}

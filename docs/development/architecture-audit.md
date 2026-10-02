@@ -236,7 +236,8 @@ None.
   the run loop"). Not an import-cycle or forbidden-import
   violation — a package-boundary tax per go.md's "Split a
   package by question," now 676 lines and ten cache slots —
-  [plan/2608301919][2608301919].
+  [plan/2608301919][2608301919]. Resolved: moved to the leaf
+  package `internal/runcache` (`internal/engine` would cycle).
 
 ### nice-to-have (2026-08-30)
 

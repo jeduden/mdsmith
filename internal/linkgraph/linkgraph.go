@@ -240,7 +240,7 @@ func (l Link) Text(source []byte) string {
 //
 // Memoized via File.MemoFile (the *File-passing variant of Memo):
 // buildLinks is a package-level function, not a closure, so the call
-// adds no per-Memo-call heap allocation beyond the cold-path memoEntry.
+// adds no per-Memo-call heap allocation beyond the cold-path memo.Entry.
 func Links(f *lint.File) []Link {
 	if f == nil {
 		return nil
@@ -263,7 +263,7 @@ func buildLinks(f *lint.File) any {
 //
 // Memoized via File.MemoFile: buildImages is a package-level function so
 // the call adds no per-Memo-call heap allocation beyond the cold-path
-// memoEntry.
+// memo.Entry.
 func Images(f *lint.File) []Link {
 	if f == nil {
 		return nil

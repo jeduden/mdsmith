@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +14,7 @@ import (
 // wrapper. Plan 195 task 15 follow-up: extends the RunCache.CompiledCUE
 // reuse to the schema package's frontmatter validator.
 func TestCachedCompile_BuildsOncePerSource(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.New()
 	const src = `close({id: string})`
 	v1 := CachedCompile(cache, src)
 	v2 := CachedCompile(cache, src)
@@ -36,7 +36,7 @@ func TestCachedCompile_NilCacheStillCompiles(t *testing.T) {
 // TestCachedCompile_DistinctSourcesDoNotShare pins that two different
 // CUE source strings produce independent entries.
 func TestCachedCompile_DistinctSourcesDoNotShare(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.New()
 	v1 := CachedCompile(cache, `{a: string}`)
 	v2 := CachedCompile(cache, `{b: string}`)
 	require.NotNil(t, v1)
@@ -48,7 +48,7 @@ func TestCachedCompile_DistinctSourcesDoNotShare(t *testing.T) {
 // TestCachedCompile_ConcurrentSingleBuild pins that concurrent
 // callers compiling the same source share one compile.
 func TestCachedCompile_ConcurrentSingleBuild(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.New()
 	const src = `{shared: string}`
 	var wg sync.WaitGroup
 	results := make([]*CompiledCUE, 16)

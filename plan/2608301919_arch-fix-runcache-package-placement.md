@@ -2,14 +2,15 @@
 id: 2608301919
 title: >-
   Relocate RunCache out of internal/lint
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
-  internal/lint/runcache.go's RunCache memoizes state across
-  every host file in one engine.Run pass — a cross-file,
-  whole-run scope that answers a different question than
-  internal/lint's stated charter of modeling one parsed
-  Markdown file. Flagged by the 2026-08-30 audit as tax.
+  RunCache (then internal/lint/runcache.go) memoizes state
+  across every host file in one engine.Run pass — a
+  cross-file, whole-run scope that answers a different
+  question than internal/lint's stated charter of modeling
+  one parsed Markdown file. Flagged by the 2026-08-30 audit
+  as tax; moved to the leaf package internal/runcache.
 ---
 # Relocate RunCache out of internal/lint
 
@@ -61,14 +62,27 @@ this scope mismatch:
    [internal/linkgraph/wikilinks.go][wikilinks], and
    [pkg/mdsmith/session.go][session].
 3. Move `RunCache` and its dependent types from
-   `internal/lint` to `internal/engine` (the package that
-   already owns the run loop `RunCache` is scoped to), or to
-   a new peer package if `internal/engine` would create an
-   import cycle with a current `RunCache` caller — check
-   this before choosing.
+   `internal/lint` to a new leaf package, `internal/runcache`.
+   `internal/engine` would create an import cycle:
+   `engine` imports `lint` directly, and `lint.File` holds
+   the `*RunCache` field, so `lint` would have to import
+   `engine`. `schema` and `linkgraph` also call `RunCache`
+   directly, and `engine` reaches `schema` via `config`.
+   Name the type `runcache.Cache` with constructor
+   `runcache.New`, so call sites do not stutter
+   (`runcache.RunCache`). The `RunCache` field names on
+   `lint.File` and `engine.Runner` stay.
+   The build-once slot (`load`/`runCacheEntry`) duplicated
+   `lint.File.Memo`'s `memoEntry`/`memoLoad` line for line,
+   so both now use one primitive in the new stdlib-only leaf
+   `internal/memo` (`memo.Entry` and the typed `memo.Map`). `Get`
+   splits its warm path from an outlined cold path so it
+   inlines; `MemoFile` then wraps `Get` in a closure that
+   stays on the stack, so no generic `GetWith` is needed.
 4. Update every import across the files listed in task 2.
-5. Keep `internal/lint`'s per-file `Memo` type in place;
-   only the cross-file `RunCache` moves.
+5. Keep `internal/lint`'s per-file `Memo` and `MemoFile`
+   methods in place; only the cross-file `RunCache` and the
+   shared build-once slot (now `internal/memo`) move.
 6. `go build ./...` passes.
 7. `go test ./...` passes.
 8. `go tool -modfile=tools/go.mod golangci-lint run` reports
@@ -76,20 +90,22 @@ this scope mismatch:
 
 ## Acceptance Criteria
 
-- [ ] `internal/lint`'s package doc no longer lists a
+- [x] `internal/lint`'s package doc no longer lists a
       cross-file, whole-run cache among its responsibilities.
-- [ ] `RunCache` lives in the package whose stated charter is
-      "orchestrate rules over files."
-- [ ] No behavior change: `mdsmith check .` and `mdsmith lsp`
+- [x] `RunCache` lives in a package whose charter matches its
+      whole-run scope: `internal/runcache`, a leaf package.
+      (`internal/engine` was ruled out by an import cycle; see
+      task 3.)
+- [x] No behavior change: `mdsmith check .` and `mdsmith lsp`
       produce identical diagnostics before and after the
       move.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [go]: ../docs/development/architecture/go.md
 [lint]: ../internal/lint/
-[runcache]: ../internal/lint/runcache.go
+[runcache]: ../internal/runcache/runcache.go
 [schema-cc]: ../internal/schema/compile_cache.go
 [schema-validate]: ../internal/schema/validate.go
 [runner-cache]: ../internal/engine/runner_cache.go

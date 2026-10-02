@@ -7,8 +7,8 @@ import (
 	"github.com/jeduden/mdsmith/internal/checker"
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/gitignore"
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/runcache"
 )
 
 // effectiveCache memoizes effective rule configs by config signature for
@@ -108,11 +108,11 @@ func (r *Runner) effectiveCached(
 // call only and never stored on r — a Runner re-used for a second
 // Run starts clean and cannot serve stale reads from the previous
 // corpus.
-func (r *Runner) runCacheForCall() *lint.RunCache {
+func (r *Runner) runCacheForCall() *runcache.Cache {
 	if r.RunCache != nil {
 		return r.RunCache
 	}
-	return lint.NewRunCache()
+	return runcache.New()
 }
 
 // cachedGitignore returns a *gitignore.Matcher for the given directory,
