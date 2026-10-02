@@ -1,7 +1,7 @@
 ---
 id: 2610020233
 title: "Drop the unused rules? and link? keys from the feature kind schema"
-status: "🔲"
+status: "✅"
 summary: >-
   The homepage feature grid no longer renders rule-ID chips, and
   no feature page sets `rules:` any more, so the optional
@@ -38,7 +38,9 @@ that file needs explicit user consent to edit.
 ## Tasks
 
 1. Get explicit user consent to edit
-   [`.mdsmith.yml`](../.mdsmith.yml).
+   [`.mdsmith.yml`](../.mdsmith.yml). Pending: the edit is
+   made on PR #875 for review, but the maintainer has not
+   yet consented. Do not merge until they do.
 2. Delete the `"rules?": '[...string]'` and `"link?": string`
    lines from the `feature` kind's `schema.frontmatter` block.
 3. Confirm no file under `docs/features/` sets `rules:` or
@@ -49,9 +51,9 @@ that file needs explicit user consent to edit.
 
 ## Acceptance Criteria
 
-- [ ] The `feature` kind schema has no `rules?` or `link?`
+- [x] The `feature` kind schema has no `rules?` or `link?`
       key.
-- [ ] `mdsmith list query 'rules: _' docs/features/` and
+- [x] `mdsmith list query 'rules: _' docs/features/` and
       `mdsmith list query 'link: _' docs/features/` print
       nothing (front matter only, so code blocks do not match).
-- [ ] `mdsmith check .` passes.
+- [x] `mdsmith check .` passes.
