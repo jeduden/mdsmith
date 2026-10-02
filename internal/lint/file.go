@@ -294,8 +294,9 @@ func (f *File) Memo(key string, build func() any) any {
 // Memo's.
 func (f *File) MemoFile(key string, build func(*File) any) any {
 	// The adapter closure captures f and build, but memo.Map.Get does
-	// not leak build, so the closure
-	// stays on the stack (pinned by TestFile_MemoFile_*Alloc* tests).
+	// not leak build, so the closure stays on the stack (pinned by
+	// TestFile_MemoFile_WarmPathAllocatesNothing and
+	// TestFile_MemoFile_ColdPathMatchesMemo).
 	return f.scratch.Get(key, func() any { return build(f) })
 }
 
