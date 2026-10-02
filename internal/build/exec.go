@@ -204,13 +204,9 @@ func exitResult(err error) (int, bool, error) {
 // pipes if a survivor still holds them, and reports the timeout or
 // cancellation with the exit code waitErr carries.
 func timeoutResult(ctx context.Context, ro *recipeOutput, waitErr error) (int, bool, error) {
-	t := time.NewTimer(reapWait)
-	select {
-	case <-ro.drained:
-	case <-t.C:
+	if drained, _ := waitAtMost(ro.drained, reapWait); !drained {
 		ro.abandon()
 	}
-	t.Stop()
 	exitCode := exitCodeOf(waitErr)
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return exitCode, true, fmt.Errorf("recipe timed out: %w", ctx.Err())
@@ -241,15 +237,17 @@ var killGroupFn = killGroup
 // captured output to drain. It is a var so a test can shorten it.
 var reapWait = 5 * time.Second
 
-// waitAtMost receives from done for up to d. It reports true and the
-// received error, or false and nil when d elapses first.
-func waitAtMost(done <-chan error, d time.Duration) (bool, error) {
+// waitAtMost receives from ch for up to d. It reports true and the
+// received value (the zero value once ch is closed), or false and the
+// zero value when d elapses first.
+func waitAtMost[T any](ch <-chan T, d time.Duration) (bool, T) {
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {
-	case err := <-done:
-		return true, err
+	case v := <-ch:
+		return true, v
 	case <-t.C:
-		return false, nil
+		var zero T
+		return false, zero
 	}
 }
