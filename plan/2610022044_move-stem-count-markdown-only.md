@@ -149,6 +149,9 @@ counts against the resolver's own index.
      on `\` as well as `/`, and drop trailing whitespace and
      separators, so `[[docs\api]]` keeps its prefix and a
      table-escaped `[[api\|alias]]` keeps its `\`.
+  - Read `ws.Files()` once per move: `destResolver.paths`
+     normalizes the list once for the referrer scan, the
+     listed checks, and `wikilinkKeyHolders`.
   - Document these cases in
      [move.md](../docs/reference/cli/move.md).
 

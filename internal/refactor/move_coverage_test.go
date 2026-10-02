@@ -109,7 +109,8 @@ func TestWikilinkKeyHolders_UnlistedSourceCounts(t *testing.T) {
 	assert.Equal(t, 2, oldN, "an unlisted source holds its own stem")
 	oldN, _ = wikilinkKeyHolders(append(files, "a/guide.md"), "a/guide.md", "guide", "manual", true)
 	assert.Equal(t, 2, oldN, "a listed source is not counted twice")
-	oldN, _ = wikilinkKeyHolders([]string{"./a/guide.md"}, "a/guide.md", "guide", "manual", true)
+	r := &destResolver{ws: stubWorkspace{files: []string{"./a/guide.md"}}, src: "a/guide.md"}
+	oldN, _ = wikilinkKeyHolders(r.paths(), "a/guide.md", "guide", "manual", true)
 	assert.Equal(t, 1, oldN, "a source listed with a ./ prefix is still listed")
 }
 
@@ -373,7 +374,7 @@ func TestAppendWikilinkStemEdits_DefensiveBranches(t *testing.T) {
 	}
 	// Basename changes (api -> service) so the pass runs, but every edge
 	// hits a skip branch.
-	appendWikilinkStemEdits(changes, ws, "api.md", "service.md")
+	appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: "api.md"}, "api.md", "service.md")
 	assert.Empty(t, changes)
 }
 
@@ -482,4 +483,30 @@ func TestMove_UnlistedSourceCountsTowardStemAmbiguity(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, plan.Edits["index.md"],
 		"unlisted source plus a listed sibling: [[guide]] is ambiguous")
+}
+
+// countingWorkspace counts Files calls on a wrapped workspace.
+type countingWorkspace struct {
+	*memWorkspace
+	files int
+}
+
+func (w *countingWorkspace) Files() []string {
+	w.files++
+	return w.memWorkspace.Files()
+}
+
+// TestMove_ListsFilesOnce locks that a move reads the workspace file
+// list once and shares the normalized copy between the referrer scan,
+// the listed-source check, and the wikilink holder count, instead of
+// copying the list per pass.
+func TestMove_ListsFilesOnce(t *testing.T) {
+	ws := &countingWorkspace{memWorkspace: newMemWorkspace(map[string]string{
+		"docs/api.md": "# API\n",
+		"index.md":    "See [[api]] and [a](docs/api.md?x).\n",
+	})}
+	plan, err := Move(ws, "docs/api.md", "docs/service.md")
+	require.NoError(t, err)
+	require.NotEmpty(t, plan.Edits["index.md"])
+	assert.Equal(t, 1, ws.files)
 }

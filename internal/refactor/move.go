@@ -115,7 +115,7 @@ func Move(ws Workspace, src, dst string) (Plan, error) {
 	p := lint.NewParser()
 	r := &destResolver{ws: ws, src: src}
 	appendReferrerEdits(changes, ws, p, r, src, dst)
-	appendWikilinkStemEdits(changes, ws, src, dst)
+	appendWikilinkStemEdits(changes, ws, r, src, dst)
 	if mdpath.HasMarkdownExt(path.Ext(src)) || r.listed(src) {
 		appendOutboundEdits(changes, p, r, srcKey, src, dst, srcSource)
 	}
@@ -168,8 +168,7 @@ func appendReferrerEdits(
 	changes map[string][]Edit, ws Workspace, p parser.Parser, r *destResolver, src, dst string,
 ) {
 	base := []byte(path.Base(src))
-	for _, rel := range ws.Files() {
-		rel = index.NormalizePath(rel)
+	for _, rel := range r.paths() {
 		if rel == src {
 			continue
 		}
@@ -277,12 +276,29 @@ type destRef struct {
 	dir    bool   // path ends in `/` and target is no file: a directory
 }
 
-// destResolver reads destinations for a move of src. It lists the
-// workspace's files only when a literal `?` needs them (see target).
+// destResolver reads destinations for a move of src. It also holds the
+// workspace file list, read once per move and normalized, which the
+// referrer scan, the listed checks, and the wikilink holder count share.
 type destResolver struct {
-	ws    Workspace
-	src   string
-	files map[string]bool
+	ws     Workspace
+	src    string
+	list   []string
+	listOK bool
+	files  map[string]bool
+}
+
+// paths returns the workspace's files, normalized as Resolve keys
+// them. It reads ws.Files() once, on the first call.
+func (r *destResolver) paths() []string {
+	if !r.listOK {
+		r.listOK = true
+		files := r.ws.Files()
+		r.list = make([]string, len(files))
+		for i, f := range files {
+			r.list[i] = index.NormalizePath(f)
+		}
+	}
+	return r.list
 }
 
 // target reads dest, written in refFile, the way the index does:
@@ -368,13 +384,14 @@ func (r *destResolver) exists(p string) bool {
 	return p == r.src || r.listed(p)
 }
 
-// listed reports whether the workspace lists p. It lists the files
-// once, on the first call.
+// listed reports whether the workspace lists p. It builds the lookup
+// set once, on the first call.
 func (r *destResolver) listed(p string) bool {
 	if r.files == nil {
-		r.files = map[string]bool{}
-		for _, f := range r.ws.Files() {
-			r.files[index.NormalizePath(f)] = true
+		list := r.paths()
+		r.files = make(map[string]bool, len(list))
+		for _, f := range list {
+			r.files[f] = true
 		}
 	}
 	return r.files[p]
@@ -744,7 +761,7 @@ func skipGap(src []byte, i int) int {
 // basename stem, but only when the move changes the basename. A move
 // that keeps the basename leaves wikilinks alone: a stem still resolves
 // to the file at its new path.
-func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst string) {
+func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destResolver, src, dst string) {
 	// Both ends are keyed the way NewWikilinkIndex keys files. Only a
 	// Markdown src has a stem key, so moving any other file retargets
 	// no `[[stem]]` link. An empty src key (`docs/.md`) matches no edge,
@@ -806,7 +823,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	if !dstIsMarkdown {
 		newKey = linkgraph.FileNameKey(path.Base(dst))
 	}
-	oldHolders, newHolders := wikilinkKeyHolders(ws.Files(), src, oldStem, newKey, dstIsMarkdown)
+	oldHolders, newHolders := wikilinkKeyHolders(r.paths(), src, oldStem, newKey, dstIsMarkdown)
 	if oldHolders > 1 || newHolders > 0 {
 		return
 	}
@@ -885,12 +902,12 @@ func wikilinkStemBytes(row []byte, bracketStart int) (int, int, bool) {
 // lowercased exact basename, since a typed wikilink such as
 // `[[guide.mdx]]` resolves by file name. src always counts as an
 // oldStem holder, listed or not, because Resolve reads it from disk.
-// files are normalized before the compare, as appendReferrerEdits does,
-// so a listed `./src` is not counted a second time.
+// files must already be normalized (destResolver.paths), so a listed
+// `./src` compares equal to src and is not counted a second time.
 func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem bool) (oldN, newN int) {
 	srcListed := false
 	for _, f := range files {
-		if index.NormalizePath(f) == src {
+		if f == src {
 			srcListed = true
 		}
 		stem, isMD := linkgraph.FileStemKey(path.Base(f))

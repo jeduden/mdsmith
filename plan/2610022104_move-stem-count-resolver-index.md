@@ -64,11 +64,16 @@ out of plan 2610022044, which fixes the extension filter.
    over `ws.Files()`.
 4. Keep the exact-name guard from plan 2610022044 on the same
    index (`names` map) so both checks read one file set.
+   The holder count then reads the index instead of
+   `destResolver.paths`.
 5. Block a non-Markdown destination when any file the
    resolver indexes has its name, not only a listed one. An
    unlisted root `logo.png` must block moving `docs/logo.md`
    to `docs/logo.png`, since `[[logo.png]]` would reach the
-   shallower root file. The PR #885 code review found this;
+   shallower root file. The same holds in the LSP and session
+   API, where `Files()` lists only `.md` files: an existing
+   `a/guide.mdx` must block moving `docs/guide.md` to
+   `docs/guide.mdx`. The PR #885 code review found this;
    [move.md](../docs/reference/cli/move.md) documents the
    current listed-only check.
 
