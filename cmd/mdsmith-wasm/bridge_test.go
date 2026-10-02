@@ -403,6 +403,57 @@ func TestSharedMethods_NoSessionID(t *testing.T) {
 	assert.Len(t, sessions, before, "dispose without an id drops no session")
 }
 
+// TestNewSessionProxy_IgnoresLaterBindPatch checks that a
+// Function.prototype.bind or .call replaced after the engine loaded (by
+// another plugin sharing the realm) never sees a session's id or the
+// unbound shared funcs: the proxy binds through the pair captured at
+// load.
+func TestNewSessionProxy_IgnoresLaterBindPatch(t *testing.T) {
+	warm := newTestProxy(t) // captures bind and registers the shared funcs
+	warm.Call("dispose")
+
+	for _, method := range []string{"bind", "call"} {
+		t.Run(method, func(t *testing.T) {
+			proto := js.Global().Get("Function").Get("prototype")
+			orig := proto.Get(method)
+			apply := js.Global().Get("Reflect").Get("apply")
+			leaks := 0
+			spy := js.FuncOf(func(this js.Value, args []js.Value) any {
+				argv := make([]any, len(args))
+				for i, a := range args {
+					argv[i] = a
+				}
+				for _, v := range append([]js.Value{this}, args...) {
+					if isSharedFunc(v) {
+						leaks++
+					}
+				}
+				return apply.Invoke(orig, this, js.ValueOf(argv))
+			})
+			proto.Set(method, spy)
+			proxy := newTestProxy(t)
+			proto.Set(method, orig)
+			spy.Release()
+			defer proxy.Call("dispose")
+
+			assert.Zero(t, leaks, "patched %s received a raw shared func", method)
+			_, rejected := awaitPromise(t, proxy.Call("check", "a.md", "# A\n"))
+			assert.False(t, rejected, "the session built without the patched %s still works", method)
+		})
+	}
+}
+
+// isSharedFunc reports whether v is one of the unbound shared method
+// funcs.
+func isSharedFunc(v js.Value) bool {
+	for _, f := range sharedMethods() {
+		if v.Equal(f) {
+			return true
+		}
+	}
+	return false
+}
+
 // keysOf returns m's keys in no particular order.
 func keysOf(m map[string]js.Value) []string {
 	keys := make([]string, 0, len(m))

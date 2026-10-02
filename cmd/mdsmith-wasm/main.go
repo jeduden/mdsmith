@@ -44,6 +44,9 @@ func main() {
 	// runs the same check/fix work as the CLI, so it gets the same GOGC
 	// default from the one source of truth. An explicit GOGC still wins.
 	gctune.ApplyBatch()
+	// Capture Function.prototype.bind before the API is reachable, so a
+	// later patch of it never sees the unbound shared funcs.
+	captureBind()
 	js.Global().Set("mdsmith", js.ValueOf(map[string]any{
 		"createSession": js.FuncOf(createSession),
 		"version":       resolveVersion(),
@@ -178,15 +181,34 @@ var objectToString js.Value
 // never reaches a released func, so syscall/js logs nothing. See plan
 // 2610021237.
 func newSessionProxy(sess *mdsmith.Session) js.Value {
+	captureBind()
 	shared := sharedMethods()
 	id := nextSessionID
 	nextSessionID++
 	sessions[id] = sess
 	fields := make(map[string]any, len(shared))
 	for name, f := range shared {
-		fields[name] = f.Call("bind", js.Undefined(), id)
+		fields[name] = bindTo.Invoke(f, js.Undefined(), id)
 	}
 	return js.ValueOf(fields)
+}
+
+// bindTo is Function.prototype.call.bind(Function.prototype.bind), as
+// captured by captureBind: bindTo(f, this, ...args) is f.bind(this,
+// ...args) with no property lookup at call time. newSessionProxy binds
+// through it, so a bind or call that another script installs after the
+// engine loads never receives a raw shared func, which would accept any
+// session id.
+var bindTo js.Value
+
+// captureBind stores bindTo once. main calls it before exposing the
+// API; newSessionProxy calls it too for the tests, which never run
+// main. The zero js.Value is undefined.
+func captureBind() {
+	if bindTo.IsUndefined() {
+		proto := js.Global().Get("Function").Get("prototype")
+		bindTo = proto.Get("call").Call("bind", proto.Get("bind"))
+	}
 }
 
 // sessions maps a live session's id to its Session. js/wasm runs every
