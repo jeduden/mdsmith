@@ -476,6 +476,22 @@ func TestMove_WikilinkKeepsMarkdownExtForDottedStem(t *testing.T) {
 		applyEditsToSource(t, src, plan.Edits["index.md"]))
 }
 
+// TestMove_WikilinkKeepsBackslashPrefixAndTableEscape locks that a
+// rewrite replaces only the stem segment the resolver reads: a `\`
+// folder prefix is kept, and so is the `\` that escapes a `|` inside a
+// table cell, so the alias stays in the cell.
+func TestMove_WikilinkKeepsBackslashPrefixAndTableEscape(t *testing.T) {
+	src := "See [[docs\\api]].\n\n| a |\n| - |\n| [[api\\|API]] |\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/api.md": "# API\n",
+		"index.md":    src,
+	})
+	plan, err := Move(ws, "docs/api.md", "docs/service.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[docs\\service]].\n\n| a |\n| - |\n| [[service\\|API]] |\n",
+		applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
 // TestMove_WikilinkKeepsMarkdownExtForTrailingSpaceStem locks that a
 // destination stem ending in a space keeps its Markdown extension: the
 // link target is trimmed, so `[[guide ]]` would look up `guide`, while

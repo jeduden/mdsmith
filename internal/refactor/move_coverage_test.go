@@ -275,6 +275,29 @@ func TestWikilinkStemBytes(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, "Page", string(row[s:e]))
 	})
+	// The resolver turns `\` into `/` and reads path.Base of the
+	// trimmed target, so the range is the last segment the same way.
+	for row, want := range map[string]string{
+		`[[docs\Page]]`:        "Page",
+		`[[Page\|alias]]`:      "Page",
+		"[[docs/Page/ ]]":      "Page",
+		`[[docs\Page\#f|a]]`:   "Page",
+		"[[ Page ]]":           "Page",
+		"[[x/Page.md#f]]":      "Page.md",
+		`[[a\b/c\Page.md|al]]`: "Page.md",
+		"[[x/ guide]]":         " guide",
+		"[[api /]]":            "api ",
+	} {
+		t.Run(row, func(t *testing.T) {
+			s, e, ok := wikilinkStemBytes([]byte(row), 0)
+			require.True(t, ok)
+			assert.Equal(t, want, row[s:e])
+		})
+	}
+	t.Run("only separators returns false", func(t *testing.T) {
+		_, _, ok := wikilinkStemBytes([]byte(`[[/\ ]]`), 0)
+		assert.False(t, ok)
+	})
 }
 
 // TestMove_SameDirOutboundIsNoOp covers destEdit's no-op branch: moving
