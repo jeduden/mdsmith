@@ -77,7 +77,7 @@ func TestCountFilesWithStem(t *testing.T) {
 		"upper-case markdown extension":  {[]string{"docs/Guide.MD"}, "guide", 1},
 		"non-markdown keeps extension":   {files, "api.png", 1},
 		"stem is not a prefix match":     {files, "ap", 0},
-		"mdx is not a wikilink stem":     {files, "b.mdx", 1},
+		"mdx keeps its extension":        {files, "b.mdx", 1},
 	} {
 		t.Run(name, func(t *testing.T) {
 			assert.Equal(t, tc.want, countFilesWithStem(stubWorkspace{files: tc.files}, tc.stem))
