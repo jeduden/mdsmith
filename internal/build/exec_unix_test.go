@@ -130,7 +130,17 @@ func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
 	// Models Windows with no Job Object and a recipe that ignores
 	// CTRL_BREAK: the group kill leaves the leader running. runRecipe
 	// must kill the leader itself after reapWait, not wait forever.
+	// That direct kill must go through forceKillLeader: on plan9
+	// (*os.Process).Kill posts a note the leader can catch, so a direct
+	// Process.Kill there would leave it running.
 	stubKillGroup(t, func(*exec.Cmd) {})
+	var forced atomic.Bool
+	old := forceKillLeaderFn
+	forceKillLeaderFn = func(cmd *exec.Cmd) {
+		forced.Store(true)
+		forceKillLeader(cmd)
+	}
+	t.Cleanup(func() { forceKillLeaderFn = old })
 	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 5`)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -144,32 +154,6 @@ func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, timedOut)
 	assert.Less(t, time.Since(start), 3*time.Second, "leader fallback kill should be prompt")
-}
-
-func TestRunRecipe_ReapFallbackUsesForceKillLeader(t *testing.T) {
-	// When the group kill leaves the leader running, runRecipe's direct
-	// kill must go through forceKillLeader: on plan9 (*os.Process).Kill
-	// posts a note the leader can catch, so a direct Process.Kill there
-	// would leave it running.
-	stubKillGroup(t, func(*exec.Cmd) {})
-	var forced atomic.Bool
-	old := forceKillLeaderFn
-	forceKillLeaderFn = func(cmd *exec.Cmd) {
-		forced.Store(true)
-		forceKillLeader(cmd)
-	}
-	t.Cleanup(func() { forceKillLeaderFn = old })
-	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 5`)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-	_, timedOut, err := runRecipe(ctx, runOpts{
-		argv:    []string{script},
-		dir:     t.TempDir(),
-		defExec: defaultExecConfig(),
-	})
-	require.Error(t, err)
-	assert.True(t, timedOut)
 	assert.True(t, forced.Load(), "the reap fallback must use forceKillLeader")
 }
 
@@ -178,8 +162,9 @@ func TestForceKillLeader_Unix_NilProcess(t *testing.T) {
 }
 
 func TestRunRecipe_SurvivorHoldingPipeDoesNotBlock(t *testing.T) {
-	// Models a kill that reaches only the leader (plan9 when the notepg
-	// file could not be opened, or a child that left the note group):
+	// Models a kill that reaches only the leader (plan9 when afterStart
+	// read no noteid, so neither notepg nor the sweep can find the
+	// group, or a child that left the note group):
 	// a background child keeps the captured stdout pipe open, so
 	// cmd.Wait would block until that child exits. runRecipe must stop
 	// waiting after reapWait.

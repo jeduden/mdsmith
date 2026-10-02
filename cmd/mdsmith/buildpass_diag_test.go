@@ -95,7 +95,7 @@ func TestDispatchOne_TimeoutPrintsDiagnosticBlock(t *testing.T) {
 	assert.Contains(t, out, "TIMEOUT book.html")
 	assert.Contains(t, out, "last 1 lines of stdout")
 	assert.Contains(t, out, "last 1 lines of stderr")
-	assert.Contains(t, out, "SIGTERM")
+	assert.Contains(t, out, buildexec.TimeoutKillAction)
 }
 
 // --- lastLines ---

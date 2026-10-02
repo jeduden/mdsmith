@@ -50,16 +50,6 @@ func killGroup(cmd *exec.Cmd) {
 	_ = signalGroup(pgid, syscall.SIGKILL)
 }
 
-// forceKillLeader kills only the recipe's leader with SIGKILL, which it
-// cannot catch. runRecipe uses it when the group kill left the leader
-// running. A nil Process (the command never started) is a no-op.
-func forceKillLeader(cmd *exec.Cmd) {
-	if cmd.Process == nil {
-		return
-	}
-	_ = cmd.Process.Kill()
-}
-
 // signalGroup sends sig to the process group pgid. It returns the syscall
 // error (nil on success); callers use a sig of 0 to probe whether the
 // group still exists.

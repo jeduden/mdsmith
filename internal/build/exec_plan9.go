@@ -22,8 +22,10 @@ func configureProcessGroup(cmd *exec.Cmd) {
 }
 
 // TimeoutKillAction names, for the timeout report, the kill a timed-out
-// recipe gets on this platform.
-const TimeoutKillAction = "killed note group"
+// recipe gets on this platform. afterStart can capture no group (the
+// leader exited first, or joined mdsmith's), and then only the leader
+// is killed, so the report says so.
+const TimeoutKillAction = "killed note group, or only the leader if none was captured"
 
 // procRoot is the process file system: afterStart opens the leader's
 // notepg and noteid files under it, and the forced sweep walks it. A
@@ -44,6 +46,11 @@ var killMember = killIfInGroup
 // (*os.Process).Kill, indirected so a test against a fake /proc never
 // sends a note to a real process that has a fake pid.
 var noteKill = (*os.Process).Kill
+
+// openProcFile opens a file under procRoot. It is os.OpenFile,
+// indirected so a test can change the fake /proc between an open and
+// the noteid re-check that follows it.
+var openProcFile = os.OpenFile
 
 // noteGroup is what afterStart captured while the leader was alive: the
 // group's noteid and, when it could be opened, the notepg file (nil
@@ -86,7 +93,7 @@ func afterStart(cmd *exec.Cmd) func() {
 		return nil
 	}
 	g := noteGroup{id: id}
-	if f, err := os.OpenFile(filepath.Join(dir, "notepg"), os.O_WRONLY, 0); err == nil {
+	if f, err := openProcFile(filepath.Join(dir, "notepg"), os.O_WRONLY, 0); err == nil {
 		if readNoteID(dir) == id {
 			g.pg = f
 		} else {
@@ -170,7 +177,7 @@ func killIfInGroup(dir, id string) bool {
 	if id == "" || readNoteID(dir) != id {
 		return false
 	}
-	ctl, err := os.OpenFile(filepath.Join(dir, "ctl"), os.O_WRONLY, 0)
+	ctl, err := openProcFile(filepath.Join(dir, "ctl"), os.O_WRONLY, 0)
 	if err != nil {
 		return false
 	}
@@ -220,7 +227,7 @@ func forceKillLeader(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return
 	}
-	ctl, err := os.OpenFile(filepath.Join(procDir(cmd.Process.Pid), "ctl"), os.O_WRONLY, 0)
+	ctl, err := openProcFile(filepath.Join(procDir(cmd.Process.Pid), "ctl"), os.O_WRONLY, 0)
 	if err == nil {
 		_, err = ctl.WriteString("kill")
 		_ = ctl.Close()

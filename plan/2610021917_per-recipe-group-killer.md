@@ -38,10 +38,17 @@ that deletes the entry.
 
 The PR left this design alone. Fixing it changes the
 seam that all four exec files and the
-`afterStartFn`/`killGroupFn` test hooks in
-[exec.go](../internal/build/exec.go) use. That is the
-Windows code too, which the PR did not touch, and no CI
-runner tests the Windows or plan9 kill path.
+`afterStartFn`, `killGroupFn`, and `forceKillLeaderFn`
+test hooks in [exec.go](../internal/build/exec.go) use.
+No CI runner tests the Windows or plan9 kill path.
+
+The PR's reap fallback also added `forceKillLeaderFn`.
+It calls `forceKillLeader` on every platform when the
+group kill left the leader running. That covers a Unix
+leader that left its group and Windows without a Job
+Object. plan9's `killGroup` already ends in the same
+uncatchable leader kill, so there it repeats one that
+failed.
 
 ## Tasks
 
@@ -64,11 +71,18 @@ runner tests the Windows or plan9 kill path.
    `afterStartFn`/`killGroupFn` hooks with one hook
    that returns a stub killer, and port the tests that
    use them.
+6. Move the reap fallback into the killer: give it a
+   `forceLeader()` method that is the leader kill on
+   Unix and Windows and a no-op on plan9, where `kill`
+   already ends in it. Delete `forceKillLeaderFn` and
+   the shared `exec_leader_kill.go`.
 
 ## Acceptance Criteria
 
 - [ ] No global map keyed by `*exec.Cmd` remains in
       `internal/build`.
+- [ ] No `forceKillLeaderFn` hook remains, and the
+      plan9 killer does not kill the leader twice.
 - [ ] The Unix kill-path tests and the plan9 fake-`/proc`
       tests pass unchanged in what they assert.
 - [ ] `GOOS=plan9 go vet ./...`, `GOOS=windows go vet

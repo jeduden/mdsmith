@@ -116,8 +116,9 @@ type runOpts struct {
 // matches, so a member that catches the note dies too, and repeats
 // that sweep until a pass finds no new member. Last it writes a forced
 // "kill" to the leader's own ctl file, falling back to a note only when
-// that file cannot be opened. rc's `&` starts a new note group, so a
-// job backgrounded that way escapes, as a setsid daemon does on Unix.
+// that file cannot be opened or written. rc's `&` starts a new note
+// group, so a job backgrounded that way escapes, as a setsid daemon
+// does on Unix.
 // A leader that exits before afterStart runs leaves nothing to find
 // its group by, so its children survive. On js/wasm and wasip1
 // (exec_other.go) no subprocess can start. So the orphan guarantee

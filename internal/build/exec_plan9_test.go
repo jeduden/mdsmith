@@ -240,8 +240,18 @@ func TestRunRecipe_Plan9_TimeoutKillsNoteCatchingLeader(t *testing.T) {
 	// must still end it. The deadline passes once the handler is set.
 	stage := t.TempDir()
 	pidFile := filepath.Join(stage, "leader.pid")
+	// The leader copies its noteid to noteDir/noteid before it records
+	// its pid, so readNoteID(noteDir) has it once the deadline passes.
+	noteDir := t.TempDir()
 	script := writeRC(t, t.TempDir(), "stubborn.rc",
-		"fn sigkill {}\necho $pid > "+rcQuote(pidFile)+"\nwhile(){ sleep 120 }")
+		"fn sigkill {}\ncat /proc/$pid/noteid > "+rcQuote(filepath.Join(noteDir, "noteid"))+
+			"\necho $pid > "+rcQuote(pidFile)+"\nwhile(){ sleep 120 }")
+	t.Cleanup(func() {
+		// The loop can fork one more sleep after the sweep's last pass
+		// listed /proc; sweep the group again so it does not outlive
+		// the test.
+		forceKillNoteGroup(readNoteID(noteDir))
+	})
 
 	ctx := deadlineWhen(t, pidRecorded(pidFile))
 	_, timedOut, err := runRecipe(ctx, runOpts{

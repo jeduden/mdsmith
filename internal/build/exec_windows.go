@@ -90,17 +90,6 @@ func killGroup(cmd *exec.Cmd) {
 	}
 }
 
-// forceKillLeader kills only the recipe's leader with TerminateProcess,
-// which it cannot refuse. runRecipe uses it when the group kill left
-// the leader running. A nil Process (the command never started) is a
-// no-op.
-func forceKillLeader(cmd *exec.Cmd) {
-	if cmd.Process == nil {
-		return
-	}
-	_ = cmd.Process.Kill()
-}
-
 // --- thin syscall wrappers over kernel32 ---
 
 var (

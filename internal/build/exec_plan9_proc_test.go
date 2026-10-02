@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
 
@@ -117,6 +118,11 @@ func TestAfterStart_Plan9_UnreadableNoteIDReturnsNil(t *testing.T) {
 func TestAfterStart_Plan9_RefusesOwnNoteGroup(t *testing.T) {
 	// A recipe that joined mdsmith's note group before afterStart ran
 	// must not turn the timeout kill on mdsmith and the user's shell.
+	// os.Getpid reads #c/pid, which on plan9 is the pid of whichever M
+	// (its own process) runs the goroutine, so pin it: the fake self
+	// entry and afterStart's lookup must use the same pid.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	root := stubProcRoot(t)
 	self := fakeProc(t, root, strconv.Itoa(os.Getpid()), "9")
 	fakeProc(t, root, "42", "9")
@@ -349,5 +355,59 @@ func TestKillIfInGroup_Plan9(t *testing.T) {
 }
 
 func TestTimeoutKillAction_Plan9(t *testing.T) {
-	assert.Equal(t, "killed note group", TimeoutKillAction)
+	assert.Equal(t, "killed note group, or only the leader if none was captured", TimeoutKillAction)
+}
+
+// stubOpenProcFile runs after(name) once openProcFile has opened name,
+// so a test can change the fake /proc between an open and the noteid
+// re-check that follows it.
+func stubOpenProcFile(t *testing.T, after func(name string)) {
+	t.Helper()
+	old := openProcFile
+	openProcFile = func(name string, flag int, perm os.FileMode) (*os.File, error) {
+		f, err := old(name, flag, perm)
+		if err == nil {
+			after(name)
+		}
+		return f, err
+	}
+	t.Cleanup(func() { openProcFile = old })
+}
+
+func TestKillIfInGroup_Plan9_NoteIDChangedAfterCtlOpen(t *testing.T) {
+	// The pid was reused (or the process changed group) between the
+	// first noteid read and the ctl open: the re-check must refuse.
+	root := t.TempDir()
+	ctl := fakeProc(t, root, "100", "7")
+	stubOpenProcFile(t, func(name string) {
+		if filepath.Base(name) == "ctl" {
+			require.NoError(t, os.WriteFile(filepath.Join(root, "100", "noteid"), []byte("8"), 0o600))
+		}
+	})
+	assert.False(t, killIfInGroup(filepath.Join(root, "100"), "7"))
+	assert.Empty(t, readFile(t, ctl), "a process no longer in the group is left alone")
+}
+
+func TestAfterStart_Plan9_DropsNotePgWhenNoteIDChangedAfterOpen(t *testing.T) {
+	// The leader changed note group after afterStart read its noteid
+	// and before the notepg open: the file is bound to the new group,
+	// so afterStart must not keep it, but keeps the id it read.
+	root := stubProcRoot(t)
+	fakeProc(t, root, "42", "9")
+	path := fakeNotePg(t, root, "42")
+	member := fakeProc(t, root, "100", "9")
+	stubNoteKill(t)
+	stubOpenProcFile(t, func(name string) {
+		if filepath.Base(name) == "notepg" {
+			require.NoError(t, os.WriteFile(filepath.Join(root, "42", "noteid"), []byte("10"), 0o600))
+		}
+	})
+
+	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
+	cleanup := afterStart(cmd)
+	require.NotNil(t, cleanup)
+	defer cleanup()
+	killGroup(cmd)
+	assert.Empty(t, readFile(t, path), "a notepg bound to another group must not get the kill")
+	assert.Equal(t, "kill", readFile(t, member), "the sweep still reaches the captured group")
 }

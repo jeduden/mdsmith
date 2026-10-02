@@ -68,8 +68,8 @@ which only had to make the package compile on wasm.
    mid-sweep dies too. Last, always write a forced
    `kill` to the leader's own `ctl` (`forceKillLeader`),
    falling back to the catchable `Process.Kill` note
-   only when `ctl` cannot be opened. `runRecipe`'s
-   leader-only reap fallback also calls
+   only when `ctl` cannot be opened or written.
+   `runRecipe`'s leader-only reap fallback also calls
    `forceKillLeader`, which on Unix and Windows is
    `Process.Kill`. The timeout report names the kill
    each platform sends (`TimeoutKillAction`), not
