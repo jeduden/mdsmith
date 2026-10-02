@@ -78,8 +78,20 @@ register once and take a session id first; each session holds
 `dispose` deletes the id from a Go-side registry, so every call
 through any reference takes the disposed path. This supersedes the
 release-and-swap design: nothing is released, so nothing can be
-reached after release. Size is within the budgets
-([size_test.go](../cmd/mdsmith-wasm/size_test.go) passes).
+reached after release. The standard Go artifact is within
+its budgets ([size_test.go](../cmd/mdsmith-wasm/size_test.go)
+measures 13.3 MiB raw, 4.1 MiB gzip, against 14 and 4.25
+MiB); the TinyGo budget is checked by the `tinygo-wasm` CI
+job only.
+
+The design trades two properties, each filed as a plan.
+The Go session now stays registered until `dispose()`,
+even once the JS object is collected (plan
+[2610021452](2610021452_wasm-collect-dropped-sessions.md)).
+A session id is a guessable integer, so a raw shared func
+that leaks through a patched `Reflect.apply` can drive any
+live session (plan
+[2610021439](2610021439_wasm-unforgeable-session-binding.md)).
 
 ## Acceptance Criteria
 
@@ -93,4 +105,6 @@ reached after release. Size is within the budgets
 - [x] `go run ./cmd/mdsmith-release test-js-wasm
       ./cmd/mdsmith-wasm` passes.
 - [x] All tests pass: `go test ./...`
-- [x] `go tool golangci-lint run` reports no issues
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
+      reports no issues, natively and with
+      `GOOS=js GOARCH=wasm`
