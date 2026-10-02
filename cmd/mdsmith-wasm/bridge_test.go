@@ -306,22 +306,30 @@ func TestNewSessionProxy_DisposeKeepsMethodShapes(t *testing.T) {
 	assertDisposedShapes(t, proxy)
 }
 
+// methodSampleArgs holds well-formed arguments for each forwarding
+// session method, so a test can call every method in sharedMethodImpls
+// on a live session and reach its real path, not only its argument
+// check.
+var methodSampleArgs = map[string][]any{
+	"check":        {"a.md", "# A\n"},
+	"fix":          {"a.md", "# A\n"},
+	"kinds":        {"a.md"},
+	"rename":       {"a.md", "# A\n", "", "A", "B"},
+	"move":         {"a.md", "b.md"},
+	"capabilities": {},
+	"invalidate":   {"a.md"},
+}
+
 // assertDisposedShapes checks the return shape of every method of a
 // disposed session object.
 func assertDisposedShapes(t *testing.T, proxy js.Value) {
 	t.Helper()
-	for _, m := range [][]any{
-		{"check", "a.md", "# A\n"},
-		{"fix", "a.md", "# A\n"},
-		{"kinds", "a.md"},
-		{"rename", "a.md", "1", "B", ""},
-		{"move", "a.md", "b.md"},
-	} {
-		p := proxy.Call(m[0].(string), m[1:]...)
-		require.Equal(t, js.TypeObject, p.Type(), "%s after dispose returns a Promise", m[0])
+	for _, name := range []string{"check", "fix", "kinds", "rename", "move"} {
+		p := proxy.Call(name, methodSampleArgs[name]...)
+		require.Equal(t, js.TypeObject, p.Type(), "%s after dispose returns a Promise", name)
 		v, rejected := awaitPromise(t, p)
-		assert.True(t, rejected, "%s after dispose rejects", m[0])
-		assert.Equal(t, "session disposed", v.Get("message").String(), m[0])
+		assert.True(t, rejected, "%s after dispose rejects", name)
+		assert.Equal(t, "session disposed", v.Get("message").String(), name)
 	}
 	caps := proxy.Call("capabilities")
 	require.True(t, caps.InstanceOf(js.Global().Get("Array")), "capabilities after dispose")
@@ -331,37 +339,46 @@ func assertDisposedShapes(t *testing.T, proxy js.Value) {
 }
 
 // TestNewSessionProxy_DisposedShapeMatchesLive checks, for every method
-// in sharedMethodImpls, that a disposed session returns a Promise exactly
-// when the live method does. A synchronous method that falls back to the
-// rejecting-Promise result after dispose fails here. Each method needs
-// an entry in sampleArgs, so a new method cannot skip the check.
+// in sharedMethodImpls, that a disposed session returns a result of the
+// same shape (Promise, array, or other JS type) as the live method. A
+// synchronous method that falls back to the rejecting-Promise result
+// after dispose fails here, and so does one whose disposed result is
+// undefined where the live one is an array. Each method needs an entry
+// in methodSampleArgs, so a new method cannot skip the check. An entry
+// with no call or disposed func, or a method left off the session
+// object, fails cleanly instead of panicking the test binary.
 func TestNewSessionProxy_DisposedShapeMatchesLive(t *testing.T) {
-	sampleArgs := map[string][]any{
-		"check":        {"a.md", "# A\n"},
-		"fix":          {"a.md", "# A\n"},
-		"kinds":        {"a.md"},
-		"rename":       {"a.md", "1", "B", ""},
-		"move":         {"a.md", "b.md"},
-		"capabilities": {},
-		"invalidate":   {"a.md"},
-	}
-	promise := js.Global().Get("Promise")
-	for name := range sharedMethodImpls {
-		args, ok := sampleArgs[name]
-		require.True(t, ok, "%s needs sample args in this test", name)
+	for name, impl := range sharedMethodImpls {
+		require.NotNil(t, impl.call, "%s has no call func", name)
+		require.NotNil(t, impl.disposed, "%s has no disposed func", name)
+		args, ok := methodSampleArgs[name]
+		require.True(t, ok, "%s needs sample args in methodSampleArgs", name)
 		proxy := newTestProxy(t)
-		live := proxy.Call(name, args...)
-		liveIsPromise := live.Type() == js.TypeObject && live.InstanceOf(promise)
-		if liveIsPromise {
-			awaitPromise(t, live)
+		if !assert.Equal(t, js.TypeFunction, proxy.Get(name).Type(), "%s is not on the session object", name) {
+			proxy.Call("dispose")
+			continue
 		}
+		live := settledShape(t, proxy.Call(name, args...))
 		proxy.Call("dispose")
-		disposed := proxy.Call(name, args...)
-		disposedIsPromise := disposed.Type() == js.TypeObject && disposed.InstanceOf(promise)
-		if disposedIsPromise {
-			awaitPromise(t, disposed)
-		}
-		assert.Equal(t, liveIsPromise, disposedIsPromise, "%s: Promise-ness after dispose", name)
+		disposed := settledShape(t, proxy.Call(name, args...))
+		assert.Equal(t, live, disposed, "%s: result shape after dispose", name)
+	}
+}
+
+// settledShape names the shape of a method result: "promise" for a
+// Promise, "array" for an array, and otherwise its JS type, such as
+// "undefined". A Promise is awaited first, so its executor and
+// callbacks finish before the next call.
+func settledShape(t *testing.T, v js.Value) string {
+	t.Helper()
+	switch {
+	case v.InstanceOf(js.Global().Get("Promise")):
+		awaitPromise(t, v)
+		return "promise"
+	case js.Global().Get("Array").Call("isArray", v).Bool():
+		return "array"
+	default:
+		return v.Type().String()
 	}
 }
 

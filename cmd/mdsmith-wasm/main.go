@@ -240,9 +240,10 @@ type methodImpl struct {
 }
 
 // sharedMethodImpls maps each forwarding session method to its
-// implementation and disposed result. The shared func only calls impl
-// for a live session; dispose is registered on its own (proxyDispose)
-// because it alone needs the id, to drop it from sessions.
+// implementation and disposed result. The shared func calls impl.call
+// only for a live session and impl.disposed otherwise; dispose is
+// registered on its own (proxyDispose) because it alone needs the id,
+// to drop it from sessions.
 var sharedMethodImpls = map[string]methodImpl{
 	"check":        {proxyCheck, disposedReject},
 	"fix":          {proxyFix, disposedReject},

@@ -38,8 +38,9 @@ of plan
 
 1. Add a failing js/wasm test that, for every name in
    `sharedMethodImpls`, calls the method on a disposed
-   session and checks that the result's shape (Promise
-   or not) matches the live method's result.
+   session and checks that the result's shape (Promise,
+   array, or other JS type) matches the live method's
+   result.
 2. Change `sharedMethodImpls` to map each name to a
    struct of the implementation and its disposed result,
    and delete the name switch in `disposedResult`.
