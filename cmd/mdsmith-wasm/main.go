@@ -328,22 +328,24 @@ func proxyInvalidate(sess *mdsmith.Session) js.Func {
 // shape (disposedFunc), so a late call through the session object
 // never reaches a released func. It releases its own func on the first
 // call (js.Func.Release is safe while the func runs), so a disposed
-// session leaves nothing in the handler table. A dispose reference
-// taken before the first call points at a released func, like the
-// other methods.
+// session leaves nothing in the handler table. Like the other methods,
+// a dispose reference taken before that first call points at a
+// released func once it has run.
+//
+// The handler table holds the only reference to this closure, so
+// releasing self also frees sess, proxy, and methods, and the closure
+// can never run a second time; it needs no nil guard. A re-entrant call
+// during the loop (a JS setter the caller put on the session object)
+// repeats only idempotent steps.
 func proxyDispose(sess *mdsmith.Session, proxy js.Value, methods map[string]js.Func) js.Func {
 	var self js.Func
 	self = funcOf(func(_ js.Value, _ []js.Value) any {
-		if sess == nil {
-			return js.Undefined()
-		}
 		sess.Dispose()
 		for name, f := range methods {
 			proxy.Set(name, disposedFunc(name))
 			releaseFunc(f)
 		}
 		proxy.Set("dispose", disposedFunc("dispose"))
-		sess, proxy, methods = nil, js.Undefined(), nil
 		releaseFunc(self)
 		return js.Undefined()
 	})
@@ -364,8 +366,9 @@ var (
 const disposedAsyncReason = "session disposed"
 
 // disposedFunc returns the stand-in for method name: capabilities()
-// returns an empty list, invalidate() does nothing, and every async
-// method returns a Promise that rejects with Error("session disposed").
+// returns an empty list, invalidate() and dispose() do nothing, and
+// every async method returns a Promise that rejects with
+// Error("session disposed").
 func disposedFunc(name string) js.Func {
 	disposedOnce.Do(func() {
 		disposedAsync = funcOf(func(js.Value, []js.Value) any {
