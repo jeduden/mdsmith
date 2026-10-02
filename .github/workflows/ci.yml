@@ -540,6 +540,20 @@ jobs:
       # vet-level static analysis.
       - name: Vet the WASM bridge
         run: GOOS=js GOARCH=wasm go vet ./cmd/mdsmith-wasm/...
+      - name: Unit-test the WASM bridge helpers under Node
+        run: |
+          tests='ResolveVersion|WorkspaceFromJS|URIAndSource|AllStrings'
+          # env -i: wasm_exec.js caps args plus environment at ~8 KB.
+          env -i PATH="$PATH" HOME="$HOME" \
+            GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)" \
+            GOTOOLCHAIN="$(go env GOTOOLCHAIN)" GOFLAGS="$(go env GOFLAGS)" \
+            GOOS=js GOARCH=wasm go test -v \
+            -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" \
+            -run "^Test($tests)\$" \
+            ./cmd/mdsmith-wasm/ > wasm-bridge.log || { cat wasm-bridge.log; exit 1; }
+          cat wasm-bridge.log
+          want=$(printf '%s\n' "$tests" | tr '|' '\n' | wc -l)
+          test "$(grep -c '^--- PASS: Test' wasm-bridge.log)" -eq "$want"
       - name: WASM smoke test, size budget, and method-set parity
         run: go test ./cmd/mdsmith-wasm/...
 

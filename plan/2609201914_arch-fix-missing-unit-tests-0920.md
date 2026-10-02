@@ -3,7 +3,7 @@ id: 2609201914
 title: >-
   Add dedicated unit tests for AdvancePastLine and the WASM
   bridge helpers
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   AdvancePastLine in internal/rules/astutil and four helpers
@@ -162,13 +162,13 @@ trivial accessor.
 - [x] `resolveVersion`, `workspaceFromJS`, `uriAndSource`,
       and `allStrings` each have a dedicated test in a
       `js && wasm` test file.
-- [ ] The CI `wasm` job runs those four tests under Node and
+- [x] The CI `wasm` job runs those four tests under Node and
       fails if any of them did not run.
 - [x] No production code changed.
-- [ ] `go test ./...` is green.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go test ./...` is green.
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` is green.
+- [x] `mdsmith check .` is green.
 
 [tests]: ../docs/development/architecture/tests.md
 [tests-exemptions]: ../docs/development/architecture/tests.md#exemptions
