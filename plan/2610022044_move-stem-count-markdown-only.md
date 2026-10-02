@@ -117,6 +117,14 @@ counts against the resolver's own index.
      then blocks the rewrite.
   - Replace `countFilesWithStem` and `countFilesWithName`
      with one pass, `wikilinkKeyHolders`.
+  - Also skip the rewrite when the new spelling has a newline
+     or a leading or trailing space. The target is trimmed, so
+     `[[guide.md ]]` would reach another `guide.md`.
+  - Skip a source with an empty stem (`docs/.md`). The
+     whole-name fallback keyed it as `.md` and rewrote
+     `[[.md.md]]` links to another file.
+  - Normalize listed paths before the source-listed check, so
+     a listed `./src` is not counted twice.
   - Document these cases in
      [move.md](../docs/reference/cli/move.md).
 
@@ -134,8 +142,10 @@ counts against the resolver's own index.
       `[[guide]]` unchanged while `a/guide.mdx` exists
 - [x] Moving `docs/v1.2.md` to `docs/v1.3.md` rewrites
       `[[v1.2.md]]` to `[[v1.3.md]]`
-- [x] No wikilink is rewritten to an empty name or to one
-      holding `#`, `|`, `[`, or `]`
+- [x] No wikilink is rewritten to an empty name, to one
+      holding `#`, `|`, `[`, `]`, or a newline, or to one with
+      a leading or trailing space
+- [x] Moving `docs/.md` leaves `[[.md.md]]` unchanged
 - [x] Moving an unlisted `a/b/guide.md` while
       `docs/guide.md` is listed leaves `[[guide]]` unchanged
 - [x] All tests pass: `go test ./...`

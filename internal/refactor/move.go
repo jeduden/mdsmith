@@ -60,9 +60,10 @@ func (e SourceNotFoundError) Error() string {
 //   - wikilink stems — `[[old-stem]]` → `[[new-stem]]`, but only when
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
-//     asymmetry with path links). Only a Markdown src is a stem target,
-//     and a dst no wikilink can name — no extension, an empty stem, or
-//     a `#`, `|`, `[`, `]` in the name — gets no rewrite;
+//     asymmetry with path links). Only a Markdown src with a non-empty
+//     stem is a stem target, and a dst no wikilink can name — no
+//     extension, an empty stem, a `#`, `|`, `[`, `]`, or newline in the
+//     name, or a leading or trailing space — gets no rewrite;
 //   - outbound destinations inside src, when it has a Markdown
 //     extension or the workspace lists it (an `.mdx` file that
 //     `files:` matches) — every `[t](path)`, `![a](path)` and
@@ -747,7 +748,13 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	if !mdpath.IsMarkdownPath(src) || path.Ext(dst) == "" {
 		return
 	}
-	oldStem := fileStem(src)
+	// A src with no wikilink stem (an empty one, as in `docs/.md`) is
+	// the target of no `[[stem]]` edge; fileStem's whole-name fallback
+	// would key it as `.md` and pick up `[[.md.md]]` links instead.
+	oldStem, ok := linkgraph.WikilinkStem(path.Base(src))
+	if !ok {
+		return
+	}
 	// A Markdown destination is addressed by stem, so keeping the stem
 	// keeps every link resolving. A typed destination (`guide.png`) is
 	// addressed by exact name, a different key space, so it always needs
@@ -759,10 +766,13 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 		return
 	}
 	// The rewritten token must still parse as a wikilink naming dst. An
-	// empty stem (`.md`) leaves `[[]]`, and `#`, `|`, `[`, or `]` would
-	// split or end the link, so no rewrite can reach such a name.
+	// empty stem (`.md`) leaves `[[]]`, and `#`, `|`, `[`, `]`, or a
+	// newline would split or end the link. A leading or trailing space
+	// is trimmed off the target, so `[[guide.md ]]` would reach another
+	// guide.md. No rewrite can reach such a name.
 	newSpelling := dstStemSpelling(dst)
-	if newSpelling == "" || strings.ContainsAny(newSpelling, "#|[]") {
+	if newSpelling == "" || strings.TrimSpace(newSpelling) != newSpelling ||
+		strings.ContainsAny(newSpelling, "#|[]\n") {
 		return
 	}
 	// A wikilink resolves by basename stem, and the index keys these
@@ -787,6 +797,13 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	// wikilinks alone, mirroring the source-side ambiguity guard.
 	// A Markdown destination is addressed by stem; a typed non-Markdown
 	// destination (`guide.mdx`) is addressed by exact file name.
+	//
+	// Most moves have no `[[oldStem]]` link at all, so the edges are
+	// fetched first and the scan over every workspace file is skipped.
+	edges := ws.IncomingWikilinkEdges(oldStem)
+	if len(edges) == 0 {
+		return
+	}
 	newKey := newStem
 	if !dstIsMarkdown {
 		newKey = strings.ToLower(path.Base(dst))
@@ -795,7 +812,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	if oldHolders > 1 || newHolders > 0 {
 		return
 	}
-	for _, e := range ws.IncomingWikilinkEdges(oldStem) {
+	for _, e := range edges {
 		key, source, ok := ws.Resolve(e.SourceFile)
 		if !ok {
 			continue
@@ -855,10 +872,12 @@ func wikilinkStemBytes(row []byte, bracketStart int) (int, int, bool) {
 // lowercased exact basename, since a typed wikilink such as
 // `[[guide.mdx]]` resolves by file name. src always counts as an
 // oldStem holder, listed or not, because Resolve reads it from disk.
+// files are normalized before the compare, as appendReferrerEdits does,
+// so a listed `./src` is not counted a second time.
 func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem bool) (oldN, newN int) {
 	srcListed := false
 	for _, f := range files {
-		if f == src {
+		if index.NormalizePath(f) == src {
 			srcListed = true
 		}
 		isMD := mdpath.IsMarkdownPath(f)

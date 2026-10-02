@@ -438,13 +438,19 @@ func TestMove_WikilinkNotRewrittenToExtensionlessName(t *testing.T) {
 
 // TestMove_WikilinkNotRewrittenToUnspellableName locks that a move to a
 // name no wikilink can spell rewrites nothing: an empty stem (`.md`)
-// leaves `[[]]`, and a `#`, `|`, `[`, or `]` in the stem splits or ends
-// the link, so the rewrite would not name the destination.
+// leaves `[[]]`, and a `#`, `|`, `[`, `]`, or newline in the stem splits
+// or ends the link, so the rewrite would not name the destination. A
+// leading or trailing space is trimmed off the link target, so
+// `[[guide.md ]]` would reach x/guide.md instead of the moved file.
 func TestMove_WikilinkNotRewrittenToUnspellableName(t *testing.T) {
-	for _, dst := range []string{"docs/.md", "docs/C#.md", "docs/a|b.md", "docs/[x].md", "docs/x].txt"} {
+	for _, dst := range []string{
+		"docs/.md", "docs/C#.md", "docs/a|b.md", "docs/[x].md", "docs/x].txt",
+		"docs/guide.md ", "docs/ notes.md", "docs/a\nb.md",
+	} {
 		t.Run(dst, func(t *testing.T) {
 			ws := newMemWorkspace(map[string]string{
 				"docs/api.md": "# API\n",
+				"x/guide.md":  "# Guide\n",
 				"index.md":    "See [[api]].\n",
 			})
 			plan, err := Move(ws, "docs/api.md", dst)
@@ -484,6 +490,19 @@ func TestMove_WikilinkRewrittenWhenTypedDestNameEqualsOldStem(t *testing.T) {
 	plan, err := Move(ws, "docs/guide.png.md", "docs/guide.png")
 	require.NoError(t, err)
 	assert.Equal(t, "See [[guide.png]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_EmptyStemSourceLeavesWikilinksAlone locks that a source with
+// an empty stem (`docs/.md`) rewrites no wikilink: no `[[stem]]` edge
+// keys to it, and `[[.md.md]]` names a different file, `.md.md`.
+func TestMove_EmptyStemSourceLeavesWikilinksAlone(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"docs/.md": "# Empty\n",
+		"index.md": "See [[.md.md]].\n",
+	})
+	plan, err := Move(ws, "docs/.md", "docs/x.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"])
 }
 
 // unlistedSource resolves one file that Files() does not list, as

@@ -116,6 +116,8 @@ func TestWikilinkKeyHolders_UnlistedSourceCounts(t *testing.T) {
 	assert.Equal(t, 2, oldN, "an unlisted source holds its own stem")
 	oldN, _ = wikilinkKeyHolders(append(files, "a/guide.md"), "a/guide.md", "guide", "manual", true)
 	assert.Equal(t, 2, oldN, "a listed source is not counted twice")
+	oldN, _ = wikilinkKeyHolders([]string{"./a/guide.md"}, "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 1, oldN, "a source listed with a ./ prefix is still listed")
 }
 
 func TestDstStemSpelling_NonMarkdownKeepsBase(t *testing.T) {

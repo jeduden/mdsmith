@@ -50,7 +50,11 @@ code 2.
   the basename stem changes. A move that keeps the basename
   (`docs/api.md` → `ref/api.md`) leaves wikilinks alone, because
   a stem still resolves to the file at its new path — an
-  asymmetry with path links that `--dry-run` makes visible.
+  asymmetry with path links that `--dry-run` makes visible. A
+  new stem that holds a dot keeps its extension, so a move to
+  `v1.3.md` writes `[[v1.3.md]]`: a bare `[[v1.3]]` would look
+  for a file named exactly `v1.3`. A new name with another
+  extension is written whole, as in `[[guide.mdx]]`.
 
 Each destination is found in the parsed document, so each one is
 rewritten exactly once. These forms are all handled:
@@ -115,13 +119,17 @@ cross-directory move, check them by hand.
 - **Ambiguous wikilinks.** When another Markdown file shares the
   old or the new basename stem, no `[[stem]]` is rewritten,
   because the rewrite could point it at the wrong file. For a new
-  name with another extension, such as `guide.mdx`, any file that
-  already has that name blocks the rewrite.
+  name with another extension, such as `guide.mdx`, a listed file
+  that already has that name blocks the rewrite. Only files the
+  `files:` patterns match are checked, so a same-named image or
+  other unlisted file does not block it. Check such a move with
+  `--dry-run`.
 - **Wikilinks to a name they cannot reach.** A move to a name
   with no extension, such as `COPYING`, leaves every `[[stem]]`
   as written, because a bare `[[name]]` finds only Markdown
-  files. So does a new name that holds `#`, `|`, `[`, or `]`, such
-  as `C#.md`, which a wikilink cannot spell. Those links break.
+  files. So does a new name that a wikilink cannot spell: an
+  empty stem such as `.md`, a `#`, `|`, `[`, or `]` as in `C#.md`,
+  or a leading or trailing space. Those links break.
 - **Footnote text that is a lone link.** mdsmith reads
   `[^1]: [z](a.md)` as a footnote definition and leaves its text
   as written, so the link inside it is not repointed. Longer
