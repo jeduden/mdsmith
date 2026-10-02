@@ -333,31 +333,32 @@ func proxyInvalidate(sess *mdsmith.Session) js.Func {
 // a released func once it has run (see plan 2610021237).
 //
 // On a frozen session object the Sets are silently ignored, so proxy
-// still points at this func. dispose then keeps it registered, drops
-// its references, and lets the nil guard turn a second session.dispose()
-// into a no-op instead of a call to a released func. The other methods
-// of a frozen session still point at their released funcs.
+// still points at this func. dispose then keeps it registered, and the
+// nil guard turns a second session.dispose() into a no-op instead of a
+// call to a released func. The other methods of a frozen session still
+// point at their released funcs.
 //
-// A re-entrant call during the loop (a JS setter the caller put on the
-// session object) repeats only idempotent steps.
+// dispose drops its references before it runs any JS, so a re-entrant
+// call (from a JS setter the caller put on the session object) returns
+// at the nil guard, and the outer call finishes on its own copies.
 func proxyDispose(sess *mdsmith.Session, proxy js.Value, methods map[string]js.Func) js.Func {
 	var self js.Func
 	self = funcOf(func(_ js.Value, _ []js.Value) any {
 		if sess == nil {
 			return js.Undefined()
 		}
-		sess.Dispose()
-		for name, f := range methods {
-			proxy.Set(name, disposedFunc(name))
+		s, p, m := sess, proxy, methods
+		sess, proxy, methods = nil, js.Undefined(), nil
+		s.Dispose()
+		for name, f := range m {
+			p.Set(name, disposedFunc(name))
 			releaseFunc(f)
 		}
 		noop := disposedFunc("dispose")
-		proxy.Set("dispose", noop)
-		if proxy.Get("dispose").Equal(noop.Value) {
+		p.Set("dispose", noop)
+		if p.Get("dispose").Equal(noop.Value) {
 			releaseFunc(self)
-			return js.Undefined()
 		}
-		sess, proxy, methods = nil, js.Undefined(), nil
 		return js.Undefined()
 	})
 	return self
