@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"fmt"
@@ -662,7 +663,14 @@ func envIsSet(name string) bool {
 	}
 }
 
-// collectBuildTargets parses each file, walks its <?build?> directives,
+// buildOpener is the byte prefix of a build directive opener. It must
+// stay in step with the "build" name targetsFromFile passes to
+// gensection.FindMarkerPairs; TestCollectBuildTargets_KeepsFilesWithDirective
+// guards the pair.
+var buildOpener = []byte("<?build")
+
+// collectBuildTargets parses each file that contains a "<?build" opener
+// (others cannot yield a target and are skipped unparsed), walks its <?build?> directives,
 // and turns each well-formed one into a buildTarget. A directive missing
 // its required recipe/outputs is skipped (MDS039 already reports it as a
 // lint error); a recipe filter restricts the set to one recipe name.
@@ -677,6 +685,12 @@ func collectBuildTargets(
 		src, err := bytelimit.ReadFileLimited(path, maxBytes)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("reading %s: %w", path, err))
+			continue
+		}
+		// A file with no "<?build" opener cannot yield a target; skip the
+		// parse (docs/development/high-performance-go.md, "Skip work you
+		// don't need").
+		if !bytes.Contains(src, buildOpener) {
 			continue
 		}
 		f, _ := lint.NewFile(path, src) // NewFile never errors; goldmark always produces an AST

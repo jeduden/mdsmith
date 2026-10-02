@@ -2,11 +2,8 @@ package metrics
 
 import (
 	"math"
-	"regexp"
 	"strings"
 )
-
-var tokenPattern = regexp.MustCompile(`[a-z0-9']+`)
 
 // Filler words and hedges reduce conciseness when overused.
 var fillerWords = map[string]struct{}{
@@ -45,32 +42,54 @@ var verbosePhrases = []string{
 	"in most cases",
 }
 
+// scanTokens calls fn with each maximal run of [a-z0-9'] bytes in s, as
+// regexp.FindAllString(`[a-z0-9']+`) would (conciseness_test.go keeps that
+// regexp as the oracle), but yields substrings of s instead of allocating
+// a match slice.
+func scanTokens(s string, fn func(tok string)) {
+	start := -1
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '\'' {
+			if start < 0 {
+				start = i
+			}
+			continue
+		}
+		if start >= 0 {
+			fn(s[start:i])
+			start = -1
+		}
+	}
+	if start >= 0 {
+		fn(s[start:])
+	}
+}
+
 func concisenessScore(text string, sentences int) float64 {
 	lower := strings.ToLower(text)
-	tokens := tokenPattern.FindAllString(lower, -1)
-	if len(tokens) == 0 {
-		return 100.0
-	}
-
-	contentWords := 0
-	fillerCount := 0
-	for _, tok := range tokens {
+	total, contentWords, fillerCount := 0, 0, 0
+	scanTokens(lower, func(tok string) {
+		total++
 		if _, ok := stopWords[tok]; !ok {
 			contentWords++
 		}
 		if _, ok := fillerWords[tok]; ok {
 			fillerCount++
 		}
+	})
+	if total == 0 {
+		return 100.0
 	}
 
-	lexicalDensity := float64(contentWords) / float64(len(tokens))
-	fillerRatio := float64(fillerCount) / float64(len(tokens))
+	lexicalDensity := float64(contentWords) / float64(total)
+	fillerRatio := float64(fillerCount) / float64(total)
 
 	if sentences < 1 {
 		sentences = 1
 	}
 
-	avgSentenceWords := float64(len(tokens)) / float64(sentences)
+	avgSentenceWords := float64(total) / float64(sentences)
 	lengthPenalty := clamp((avgSentenceWords-24.0)/24.0, 0, 1)
 
 	phraseHits := 0

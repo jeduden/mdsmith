@@ -423,7 +423,7 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *runcache.Cache, 
 		flog = &vlog.Logger{Enabled: true, W: &buf}
 		defer func() { out.log = bytes.Clone(buf.Bytes()) }()
 	}
-	flog.Printf("file: %s", path)
+	logFile(flog, path)
 
 	// Draw a pooled source buffer and read the file into it. The buffer
 	// rides the same lifetime boundary as the parse arena: the deferred
@@ -575,6 +575,14 @@ func populateGeneratedRanges(f *lint.File) {
 	}
 }
 
+// logFile logs the "file:" line only when l is enabled: Printf takes
+// ...any, so an unguarded call boxes path on every file even with -v off.
+func logFile(l *vlog.Logger, path string) {
+	if l.Enabled {
+		l.Printf("file: %s", path)
+	}
+}
+
 // configureFile wires the per-run filesystem references, gitignore, and
 // read-cache onto f. Extracted from lintFile to keep that function under the
 // statement-count threshold enforced by the funlen linter.
@@ -707,7 +715,7 @@ func (r *Runner) runSource(path string, source []byte, version int, useParseCach
 		return res
 	}
 
-	r.log().Printf("file: %s", path)
+	logFile(r.log(), path)
 
 	f, err := r.parseForSource(path, source, version, useParseCache)
 	if err != nil {
