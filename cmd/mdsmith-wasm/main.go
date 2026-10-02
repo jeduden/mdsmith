@@ -228,18 +228,29 @@ var (
 	nextSessionID int
 )
 
+// methodImpl pairs a forwarding session method's implementation with
+// the result it returns once its session is disposed, so a new method
+// states both in one table entry.
+type methodImpl struct {
+	// call runs the method for a live session; sess is never nil.
+	call func(sess *mdsmith.Session, args []js.Value) any
+	// disposed builds the method's result after dispose(). It runs per
+	// call because a Promise or array must be fresh each time.
+	disposed func() any
+}
+
 // sharedMethodImpls maps each forwarding session method to its
-// implementation. The shared func only calls it for a live session, so
-// sess is never nil; dispose is registered on its own (proxyDispose)
+// implementation and disposed result. The shared func only calls impl
+// for a live session; dispose is registered on its own (proxyDispose)
 // because it alone needs the id, to drop it from sessions.
-var sharedMethodImpls = map[string]func(sess *mdsmith.Session, args []js.Value) any{
-	"check":        proxyCheck,
-	"fix":          proxyFix,
-	"kinds":        proxyKinds,
-	"rename":       proxyRename,
-	"move":         proxyMove,
-	"capabilities": proxyCapabilities,
-	"invalidate":   proxyInvalidate,
+var sharedMethodImpls = map[string]methodImpl{
+	"check":        {proxyCheck, disposedReject},
+	"fix":          {proxyFix, disposedReject},
+	"kinds":        {proxyKinds, disposedReject},
+	"rename":       {proxyRename, disposedReject},
+	"move":         {proxyMove, disposedReject},
+	"capabilities": {proxyCapabilities, disposedEmptyList},
+	"invalidate":   {proxyInvalidate, disposedUndefined},
 }
 
 var (
@@ -260,9 +271,9 @@ func sharedMethods() map[string]js.Value {
 		for name, impl := range sharedMethodImpls {
 			sharedFuncs[name] = funcOf(func(_ js.Value, args []js.Value) any {
 				if _, sess, rest := boundSession(args); sess != nil {
-					return impl(sess, rest)
+					return impl.call(sess, rest)
 				}
-				return disposedResult(name)
+				return impl.disposed()
 			}).Value
 		}
 		sharedFuncs["dispose"] = funcOf(proxyDispose).Value
@@ -433,23 +444,21 @@ func proxyDispose(_ js.Value, args []js.Value) any {
 // rejection.
 const disposedAsyncReason = "session disposed"
 
-// disposedResult is what forwarding method name returns once its
-// session is disposed: capabilities() returns an empty list,
-// invalidate() does nothing, and every async method returns a Promise
-// that rejects with Error("session disposed"). A disposed dispose()
-// is handled by proxyDispose.
-func disposedResult(name string) any {
-	switch name {
-	case "capabilities":
-		return js.ValueOf([]any{})
-	case "invalidate":
-		return js.Undefined()
-	default:
-		return newPromise(func(_, reject func(any)) {
-			reject(jsError(disposedAsyncReason))
-		})
-	}
+// disposedReject is the disposed result of an async method: a Promise
+// that rejects with Error("session disposed"). A disposed dispose() is
+// handled by proxyDispose.
+func disposedReject() any {
+	return newPromise(func(_, reject func(any)) {
+		reject(jsError(disposedAsyncReason))
+	})
 }
+
+// disposedEmptyList is capabilities() after dispose: an empty array.
+func disposedEmptyList() any { return js.ValueOf([]any{}) }
+
+// disposedUndefined is the disposed result of a method that does
+// nothing, such as invalidate().
+func disposedUndefined() any { return js.Undefined() }
 
 // uriAndSource pulls a (uri string, source []byte) pair from JS args.
 // A JS string source crosses as Go []byte while the URI stays a

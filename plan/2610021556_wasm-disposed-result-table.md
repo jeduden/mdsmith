@@ -1,7 +1,7 @@
 ---
 id: 2610021556
 title: Declare each wasm method's disposed result next to its impl
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   `disposedResult` in the wasm entry point picks what a
@@ -49,11 +49,11 @@ of plan
 
 ## Acceptance Criteria
 
-- [ ] Each method's disposed result is declared in the
+- [x] Each method's disposed result is declared in the
       same table entry as its implementation
-- [ ] A test fails when a disposed method's result shape
+- [x] A test fails when a disposed method's result shape
       differs from its live result shape
-- [ ] All tests pass: `go test ./...` and the js/wasm
+- [x] All tests pass: `go test ./...` and the js/wasm
       suite
-- [ ] `go tool golangci-lint run` reports no issues,
+- [x] `go tool golangci-lint run` reports no issues,
       natively and with `GOOS=js GOARCH=wasm`
