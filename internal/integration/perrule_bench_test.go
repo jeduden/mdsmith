@@ -143,7 +143,7 @@ func perRuleBenchMakeFile(tb testing.TB, src []byte, mapFS fstest.MapFS) func() 
 		require.NoError(tb, err)
 		f.FS = mapFS
 		f.RootDir = "."
-		f.RunCache = runcache.NewRunCache()
+		f.RunCache = runcache.New()
 		return f
 	}
 }

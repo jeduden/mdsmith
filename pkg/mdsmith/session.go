@@ -137,7 +137,7 @@ type Session struct {
 	// LSP relies on this surviving across per-keystroke CheckVersion
 	// calls; Invalidate drops the changed path's entry. Created once in
 	// NewSession.
-	runCache *runcache.RunCache
+	runCache *runcache.Cache
 	// parseCache memoizes the parsed *lint.File for a document keyed by
 	// (uri, version). CheckVersion installs it on the runner so a repeat
 	// Check at the same version skips the parse — the plan-216 contract
@@ -200,7 +200,7 @@ func NewSession(opts SessionOptions) (*Session, error) {
 		rootDir:           rootDirOf(opts.Workspace),
 		maxBytes:          resolveSessionMaxBytes(cfg),
 		checkCache:        make(map[string]cachedCheck),
-		runCache:          runcache.NewRunCache(),
+		runCache:          runcache.New(),
 		parseCache:        lint.NewParseCache(),
 		sourceConfigCache: engine.NewSourceConfigCache(),
 	}, nil

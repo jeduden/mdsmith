@@ -17,7 +17,7 @@ import (
 func TestCheck_ConfiguredSteadyStateAllocs(t *testing.T) {
 	fsys := planFS()
 	r := planRule()
-	rc := runcache.NewRunCache()
+	rc := runcache.New()
 
 	clean := file(t, "plan/c.md", fsys)
 	clean.RunCache = rc
@@ -57,7 +57,7 @@ func TestCheck_InertAllocatesNothing(t *testing.T) {
 func TestCheck_OutOfScopeConfiguredStaysCheap(t *testing.T) {
 	fsys := planFS()
 	r := planRule()
-	rc := runcache.NewRunCache()
+	rc := runcache.New()
 
 	f := file(t, "other/d.md", fsys)
 	f.RunCache = rc

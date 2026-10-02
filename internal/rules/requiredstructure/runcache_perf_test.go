@@ -41,7 +41,7 @@ func TestDispatchSingleFileSchema_CachesRawSchemaAcrossHostFiles(t *testing.T) {
 		},
 		opens: &opens,
 	}
-	cache := runcache.NewRunCache()
+	cache := runcache.New()
 	r := &Rule{Schema: "schema.md", Sources: []SchemaSource{{File: "schema.md"}}}
 
 	for _, name := range []string{"a.md", "b.md", "c.md"} {
@@ -70,7 +70,7 @@ func TestDispatchSingleFileSchema_InvalidateRereadsSchema(t *testing.T) {
 		},
 		opens: &opens,
 	}
-	cache := runcache.NewRunCache()
+	cache := runcache.New()
 	r := &Rule{Schema: "schema.md", Sources: []SchemaSource{{File: "schema.md"}}}
 
 	newHost := func(name string) *lint.File {
@@ -102,7 +102,7 @@ func TestDispatchSingleFileSchema_InvalidateRereadsSchema(t *testing.T) {
 // schema path.
 func TestDispatchSingleFileSchema_MissingSchemaErrorUsesCallersOwnSpelling(t *testing.T) {
 	fsys := fstest.MapFS{}
-	cache := runcache.NewRunCache()
+	cache := runcache.New()
 
 	rA := &Rule{Schema: "docs/proto.md", Sources: []SchemaSource{{File: "docs/proto.md"}}}
 	rB := &Rule{Schema: "./docs/proto.md", Sources: []SchemaSource{{File: "./docs/proto.md"}}}

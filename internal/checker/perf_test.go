@@ -78,7 +78,7 @@ func TestCheckConfiguredRules_DiagCollectionAllocs(t *testing.T) {
 			t.Fatalf("NewFile: %v", err)
 		}
 		f.RootDir = "."
-		f.RunCache = runcache.NewRunCache()
+		f.RunCache = runcache.New()
 		return f
 	}
 
@@ -118,7 +118,7 @@ func TestCheckConfiguredRules_NoDiagnosticsReturnsNil(t *testing.T) {
 	f, err := lint.NewFile("doc.md", []byte("# Hello\n\nParagraph.\n"))
 	require.NoError(t, err)
 	f.RootDir = "."
-	f.RunCache = runcache.NewRunCache()
+	f.RunCache = runcache.New()
 
 	diags := CheckConfiguredRules(f, nil, true, 1)
 	require.Nil(t, diags)

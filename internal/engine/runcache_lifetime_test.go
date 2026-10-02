@@ -60,7 +60,7 @@ func TestRunner_AutoCreatedRunSourceCacheIsCallScoped(t *testing.T) {
 // (and leaves it intact) so the LSP's Invalidate seam controls
 // staleness across runLint calls.
 func TestRunner_CallerProvidedRunCacheIsHonored(t *testing.T) {
-	cache := runcache.NewRunCache()
+	cache := runcache.New()
 	r := &Runner{
 		Config:   config.Merge(config.Defaults(), nil),
 		Rules:    nil,
@@ -115,7 +115,7 @@ func TestRunCacheForCall_NilCallerBuildsFresh(t *testing.T) {
 // directly: an installed cache is returned unchanged so the LSP
 // keeps invalidation control.
 func TestRunCacheForCall_CallerProvidedReused(t *testing.T) {
-	cache := runcache.NewRunCache()
+	cache := runcache.New()
 	r := &Runner{RunCache: cache}
 	got := r.runCacheForCall()
 	assert.Samef(t, cache, got,

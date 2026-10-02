@@ -68,7 +68,7 @@ func (r schemaParseResult) SchemaCUESources() []string {
 func cachedParseSchema(
 	f *lint.File, data []byte, schemaPath string,
 ) (*parsedSchema, error) {
-	var cache *runcache.RunCache
+	var cache *runcache.Cache
 	if f != nil {
 		cache = f.RunCache
 	}
@@ -107,7 +107,7 @@ func cachedParseSchema(
 // Invalidate(absPath) calls byte-for-byte. An empty absRoot leaves
 // entries Clean'd-but-relative (the struct-literal test path).
 func cachedParseSchemaWith(
-	cache *runcache.RunCache, absPath, absRoot string,
+	cache *runcache.Cache, absPath, absRoot string,
 	build func() (*parsedSchema, []string, error),
 ) (*parsedSchema, error) {
 	if cache == nil || absPath == "" {
@@ -210,7 +210,7 @@ func schemaCUESources(sch *parsedSchema) []string {
 // parseSchema closure. The CompiledCUE slot adds a second-tier win:
 // two distinct schema files producing identical CUE source share one
 // compile.
-func cachedCompiledCUEWith(cache *runcache.RunCache, source string) *schema.CompiledCUE {
+func cachedCompiledCUEWith(cache *runcache.Cache, source string) *schema.CompiledCUE {
 	return schema.CachedCompile(cache, source)
 }
 

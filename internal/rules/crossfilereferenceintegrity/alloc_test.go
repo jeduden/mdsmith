@@ -69,7 +69,7 @@ func checkAllocsPerOp(tb testing.TB, r *Rule) float64 {
 		require.NoError(tb, err)
 		f.FS = mfs
 		f.RootDir = "."
-		f.RunCache = runcache.NewRunCache()
+		f.RunCache = runcache.New()
 		return f
 	}
 	_ = r.Check(makeFile("warm.md"))

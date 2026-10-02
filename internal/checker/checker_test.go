@@ -177,7 +177,7 @@ func newTestFile(t *testing.T, src string) *lint.File {
 	f, err := lint.NewFile("doc.md", []byte(src))
 	require.NoError(t, err)
 	f.RootDir = "."
-	f.RunCache = runcache.NewRunCache()
+	f.RunCache = runcache.New()
 	return f
 }
 
@@ -323,7 +323,7 @@ func TestCheckRulesWithIntraFile_nodeChecker(t *testing.T) {
 func TestCheckRulesWithIntraFile_nodeCheckerNilAST(t *testing.T) {
 	f := lint.NewFileLines("doc.md", []byte("# Hello\n\nParagraph.\n"))
 	f.RootDir = "."
-	f.RunCache = runcache.NewRunCache()
+	f.RunCache = runcache.New()
 	d := lint.Diagnostic{Line: 1, RuleID: "TST001", Message: "node hit"}
 	rules := []rule.Rule{&nodeCheckerRule{plainRule: plainRule{id: "TST001"}, diag: d}}
 	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST001"), true, 1)
@@ -339,7 +339,7 @@ func TestCheckRulesWithIntraFile_nodeCheckerNilAST(t *testing.T) {
 func TestCheckRulesWithIntraFile_inlineCheckerNilAST(t *testing.T) {
 	f := lint.NewFileLines("doc.md", []byte("# Hello\n\nParagraph.\n"))
 	f.RootDir = "."
-	f.RunCache = runcache.NewRunCache()
+	f.RunCache = runcache.New()
 	rules := []rule.Rule{&inlineCheckerRule{plainRule: plainRule{id: "TST001"}, message: "inline hit"}}
 	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST001"), true, 1)
 	assert.Empty(t, errs)
@@ -365,7 +365,7 @@ func TestCheckRulesWithIntraFile_inlineCheckerASTPath(t *testing.T) {
 func TestCheckRulesWithIntraFile_linesCheckerNilAST(t *testing.T) {
 	f := lint.NewFileLines("doc.md", []byte("- item\n- item two\n"))
 	f.RootDir = "."
-	f.RunCache = runcache.NewRunCache()
+	f.RunCache = runcache.New()
 	rules := []rule.Rule{&linesCheckerRule{plainRule: plainRule{id: "TST002"}, message: "lines hit"}}
 	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST002"), true, 1)
 	assert.Empty(t, errs)
@@ -380,7 +380,7 @@ func TestCheckRulesWithIntraFile_linesCheckerNilAST(t *testing.T) {
 func TestCheckRulesWithIntraFile_blockCheckerNilAST(t *testing.T) {
 	f := lint.NewFileLines("doc.md", []byte("para\n\n---\n\nmore\n"))
 	f.RootDir = "."
-	f.RunCache = runcache.NewRunCache()
+	f.RunCache = runcache.New()
 	rules := []rule.Rule{&blockCheckerRule{plainRule: plainRule{id: "TST001"}, message: "hr seen"}}
 	diags, errs := checker.CheckRulesWithIntraFile(f, rules, enabled("TST001"), true, 1)
 	assert.Empty(t, errs)
@@ -430,7 +430,7 @@ func TestCheckRulesWithIntraFile_AdjustsLineOffset(t *testing.T) {
 	f, err := lint.NewFileFromSource("doc.md", []byte(src), true)
 	require.NoError(t, err)
 	f.RootDir = "."
-	f.RunCache = runcache.NewRunCache()
+	f.RunCache = runcache.New()
 
 	d := lint.Diagnostic{Line: 1, RuleID: "TST001", Message: "raw line"}
 	rules := []rule.Rule{&diagRule{plainRule: plainRule{id: "TST001"}, diag: d}}

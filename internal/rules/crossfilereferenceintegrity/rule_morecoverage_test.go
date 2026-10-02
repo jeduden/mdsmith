@@ -264,7 +264,7 @@ func TestCheckRelativeTarget_AnchorBranchEscapesRoot(t *testing.T) {
 	require.NoError(t, err)
 	f.FS = os.DirFS(dir)
 	f.RootDir = dir
-	f.RunCache = runcache.NewRunCache()
+	f.RunCache = runcache.New()
 	r := &Rule{}
 	diags := r.Check(f)
 	require.Empty(t, diags, "link escaping root must be silently dropped, not flagged")
@@ -330,7 +330,7 @@ func TestCheckRelativeTarget_AnchorBranchMissingTargetInRoot(t *testing.T) {
 	require.NoError(t, err)
 	f.FS = os.DirFS(dir)
 	f.RootDir = dir
-	f.RunCache = runcache.NewRunCache()
+	f.RunCache = runcache.New()
 	r := &Rule{}
 	diags := r.Check(f)
 	require.Len(t, diags, 1)

@@ -161,7 +161,7 @@ func allocsForRule(tb testing.TB, r rule.Rule) float64 {
 		require.NoError(tb, err)
 		f.FS = mapFS
 		f.RootDir = "."
-		f.RunCache = runcache.NewRunCache()
+		f.RunCache = runcache.New()
 		return f
 	}
 	// Warm: prime any package-level singletons (tokenizer init,

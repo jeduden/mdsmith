@@ -200,7 +200,7 @@ func TestCheck_HonorsIncludeExcludePattern_WithRunCache(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "other.md"), "# Other\n\n"+p+"\n")
 	writeFile(t, filepath.Join(dir, "ignored.md"), "# Ignored\n\n"+p+"\n")
 
-	runCache := runcache.NewRunCache()
+	runCache := runcache.New()
 
 	f := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
 	f.RunCache = runCache
@@ -678,7 +678,7 @@ func TestCheck_MultipleMatchesSortDeterministically(t *testing.T) {
 
 // countingFS wraps an fs.FS and counts Open calls per name, so a test
 // can assert a file is read from disk at most once across several
-// Check calls that share one runcache.RunCache.
+// Check calls that share one runcache.Cache.
 type countingFS struct {
 	fs.FS
 	mu    sync.Mutex
@@ -706,7 +706,7 @@ func TestCheck_RunCacheReusesCorpusParseAcrossHostFiles(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "c.md"), "# C\n\nunrelated short text\n")
 
 	counting := &countingFS{FS: os.DirFS(dir), opens: map[string]int{}}
-	runCache := runcache.NewRunCache()
+	runCache := runcache.New()
 
 	for _, name := range []string{"a.md", "b.md", "c.md"} {
 		data, err := os.ReadFile(filepath.Join(dir, name))
@@ -751,7 +751,7 @@ func TestCheck_RunCacheReusesCorpusWalkAcrossHostFiles(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "sub", "c.md"), "# C\n\nunrelated short text\n")
 
 	counting := &countingFS{FS: os.DirFS(dir), opens: map[string]int{}}
-	runCache := runcache.NewRunCache()
+	runCache := runcache.New()
 
 	for _, name := range []string{"a.md", "b.md", filepath.Join("sub", "c.md")} {
 		data, err := os.ReadFile(filepath.Join(dir, name))
@@ -797,7 +797,7 @@ func TestCheck_RunCacheAppliesFrontMatterOffsetOnce(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "b.md"), fm+"\n# B\n\n"+p+"\n")
 	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
 
-	runCache := runcache.NewRunCache()
+	runCache := runcache.New()
 	data, err := os.ReadFile(filepath.Join(dir, "a.md"))
 	require.NoError(t, err)
 
@@ -837,7 +837,7 @@ func TestCheck_SelfExclusionSurvivesSharedRunCache(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
 	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
 
-	runCache := runcache.NewRunCache()
+	runCache := runcache.New()
 
 	fa := newLintFileWithRoot(t, filepath.Join(dir, "a.md"), dir)
 	fa.RunCache = runCache
@@ -873,7 +873,7 @@ func TestBuildCorpusIndex_MemoizedAcrossHostFiles(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "a.md"), "# A\n\n"+p+"\n")
 	writeFile(t, filepath.Join(dir, "b.md"), "# B\n\n"+p+"\n")
 
-	runCache := runcache.NewRunCache()
+	runCache := runcache.New()
 	cfg := corpusScanConfig{
 		runCache:  runCache,
 		rootDir:   dir,

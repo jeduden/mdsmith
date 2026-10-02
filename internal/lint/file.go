@@ -197,7 +197,7 @@ type File struct {
 	// directly, so lint importing engine for this field would cycle.
 	// The parse cache (parsecache.go) stays here as a facet of the
 	// parsed-file model. See plan/2608301919.
-	RunCache *runcache.RunCache
+	RunCache *runcache.Cache
 
 	// scratch backs Memo: per-Check rule memoization. A *File is
 	// built fresh for each Check and discarded after, so values

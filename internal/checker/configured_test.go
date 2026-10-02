@@ -20,10 +20,10 @@ func TestCheckConfiguredRules_MatchesCheckRules(t *testing.T) {
 	src := []byte("# Title\n\nSome  text with trailing spaces   \n\n## Next\nNo blank before.\n")
 	f, err := lint.NewFile("doc.md", src)
 	require.NoError(t, err)
-	f.RunCache = runcache.NewRunCache()
+	f.RunCache = runcache.New()
 	f2, err := lint.NewFile("doc.md", src)
 	require.NoError(t, err)
-	f2.RunCache = runcache.NewRunCache()
+	f2.RunCache = runcache.New()
 
 	rules := rule.All()
 	eff := map[string]config.RuleCfg{}
@@ -72,7 +72,7 @@ func BenchmarkCheckConfiguredRules_ManyDiagnostics(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		f.RunCache = runcache.NewRunCache()
+		f.RunCache = runcache.New()
 		_ = CheckConfiguredRules(f, configured, true, 1)
 	}
 }

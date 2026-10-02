@@ -23,7 +23,7 @@ import (
 // through cache.CompiledCUE — a fresh-context fallback would leave
 // the slot empty and the assertion would fail.
 func TestValidateFrontmatterDiags_CompilesSchemaOncePerRunCache(t *testing.T) {
-	cache := runcache.NewRunCache()
+	cache := runcache.New()
 	sch := &Schema{
 		Source: "kind shared",
 		Frontmatter: map[string]string{

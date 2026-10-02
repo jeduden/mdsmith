@@ -68,6 +68,10 @@ this scope mismatch:
    the `*RunCache` field, so `lint` would have to import
    `engine`. `schema` and `linkgraph` also call `RunCache`
    directly, and `engine` reaches `schema` via `config`.
+   Name the type `runcache.Cache` with constructor
+   `runcache.New`, so call sites do not stutter
+   (`runcache.RunCache`). The `RunCache` field names on
+   `lint.File` and `engine.Runner` stay.
 4. Update every import across the files listed in task 2.
 5. Keep `internal/lint`'s per-file `Memo` type in place;
    only the cross-file `RunCache` moves.

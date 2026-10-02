@@ -63,7 +63,7 @@ func BenchmarkCheck_ManyHostFilesSharedCorpus(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for iter := 0; iter < b.N; iter++ {
-		runCache := runcache.NewRunCache()
+		runCache := runcache.New()
 		for i := 0; i < n; i++ {
 			f, err := lint.NewFile(names[i], datas[i])
 			if err != nil {
@@ -106,7 +106,7 @@ func TestCheck_ManyHostFilesSharedCorpus_AllocBudget(t *testing.T) {
 
 	const runs = 3
 	allocs := testing.AllocsPerRun(runs, func() {
-		runCache := runcache.NewRunCache()
+		runCache := runcache.New()
 		for i := 0; i < n; i++ {
 			f, err := lint.NewFile(names[i], datas[i])
 			if err != nil {

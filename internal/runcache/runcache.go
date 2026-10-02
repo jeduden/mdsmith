@@ -1,9 +1,9 @@
 // Package runcache memoizes cross-file reads and derived values for one
-// whole lint pass. Its RunCache is shared by every host file an
+// whole lint pass. Its Cache is shared by every host file an
 // engine.Run (or a long-lived LSP session) processes, so a target read,
 // schema parse, or corpus walk runs once per pass instead of once per
 // host file. It is a leaf package that imports only the standard
-// library, so internal/lint can hold a *RunCache on File without an
+// library, so internal/lint can hold a *Cache on File without an
 // import cycle (plan/2608301919).
 package runcache
 
@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 )
 
-// RunCache memoizes per-target-file reads (front matter, include
+// Cache memoizes per-target-file reads (front matter, include
 // adjacency) across every host file processed in one engine.Run pass.
 // Cache keys are absolute filesystem paths, so two host files whose
 // catalogs match the same target share a single read of that target —
@@ -23,10 +23,10 @@ import (
 // pool and the LSP's concurrent request goroutines).
 //
 // A one-shot mdsmith check sees an immutable corpus, so the cache is
-// trivially safe there. The LSP keeps one RunCache for the server
+// trivially safe there. The LSP keeps one Cache for the server
 // lifetime and calls Invalidate when a document edit could change
 // what the next Check would read from disk.
-type RunCache struct {
+type Cache struct {
 	frontMatter         sync.Map // string (absPath) -> *runCacheEntry
 	rawSchemaFile       sync.Map // string (absPath) -> *runCacheEntry
 	includes            sync.Map // string (absPath) -> *runCacheEntry
@@ -96,7 +96,7 @@ type runCacheEntry struct {
 }
 
 // ParsedSchemaMetadata is the optional interface a parsed-schema
-// cache value (whatever its concrete type) implements so RunCache.
+// cache value (whatever its concrete type) implements so Cache.
 // Invalidate can drop downstream entries that depend on the
 // invalidated schema. The rule package's schemaParseResult satisfies
 // it; this package only sees the surface.
@@ -117,16 +117,16 @@ type ParsedSchemaMetadata interface {
 	SchemaCUESources() []string
 }
 
-// NewRunCache returns an empty cache ready to be installed on
+// New returns an empty cache ready to be installed on
 // engine.Runner.RunCache.
-func NewRunCache() *RunCache {
-	return &RunCache{schemaDependents: map[string]*sync.Map{}}
+func New() *Cache {
+	return &Cache{schemaDependents: map[string]*sync.Map{}}
 }
 
 // FrontMatter returns build's result for absPath, computed at most once
 // per absPath in this cache's lifetime. Concurrent callers with the
 // same key block on the same once and observe the same value.
-func (c *RunCache) FrontMatter(absPath string, build func() any) any {
+func (c *Cache) FrontMatter(absPath string, build func() any) any {
 	return load(&c.frontMatter, absPath, build)
 }
 
@@ -137,7 +137,7 @@ func (c *RunCache) FrontMatter(absPath string, build func() any) any {
 // deciding how to parse) so a schema referenced by many host files —
 // the common case for a workspace-wide kind — is read and inspected
 // once per run instead of once per host file.
-func (c *RunCache) RawSchemaFile(absPath string, build func() any) any {
+func (c *Cache) RawSchemaFile(absPath string, build func() any) any {
 	return load(&c.rawSchemaFile, absPath, build)
 }
 
@@ -155,7 +155,7 @@ type ScopeInvalidator interface {
 // built value implements ScopeInvalidator it is registered for
 // targeted invalidation; the registration happens after load
 // returns (post-once), so Invalidate's reads never race the build.
-func (c *RunCache) UniqueFieldIndex(key string, build func() any) any {
+func (c *Cache) UniqueFieldIndex(key string, build func() any) any {
 	v := load(&c.uniqueFieldIndex, key, build)
 	// Register (or refresh) the scope when missing or when the
 	// entry was rebuilt under the same key — a racing Invalidate
@@ -178,7 +178,7 @@ func (c *RunCache) UniqueFieldIndex(key string, build func() any) any {
 // an edit to an unrelated file must not force an index rebuild on
 // the next lint pass. Entries without a scope, or any call with an
 // empty absPath, drop unconditionally.
-func (c *RunCache) dropUniqueFieldIndexes(absPath string) {
+func (c *Cache) dropUniqueFieldIndexes(absPath string) {
 	c.uniqueFieldIndex.Range(func(k, _ any) bool {
 		if siv, ok := c.uniqueFieldScopes.Load(k); ok && absPath != "" {
 			if !siv.(ScopeInvalidator).MatchesInvalidatedPath(absPath) {
@@ -194,7 +194,7 @@ func (c *RunCache) dropUniqueFieldIndexes(absPath string) {
 // dropDuplicateParagraphs evicts every DuplicateParagraphs slot whose
 // key was built from absPath, regardless of the settings suffix
 // (e.g. min-chars) a caller appended after the "\x00" separator.
-func (c *RunCache) dropDuplicateParagraphs(absPath string) {
+func (c *Cache) dropDuplicateParagraphs(absPath string) {
 	prefix := absPath + "\x00"
 	c.duplicateParagraphs.Range(func(k, _ any) bool {
 		if key, ok := k.(string); ok && strings.HasPrefix(key, prefix) {
@@ -208,7 +208,7 @@ func (c *RunCache) dropDuplicateParagraphs(absPath string) {
 // of absolute filesystem paths every <?include?> in the file at
 // absPath resolves to. Position-independent so two host files whose
 // f.FS roots differ can still share the cached adjacency.
-func (c *RunCache) Includes(absPath string, build func() []string) []string {
+func (c *Cache) Includes(absPath string, build func() []string) []string {
 	v := load(&c.includes, absPath, func() any { return build() })
 	// v always carries dynamic type []string (the wrapper closure
 	// converts build's typed nil to a typed-nil any), so v == nil
@@ -228,7 +228,7 @@ func (c *RunCache) Includes(absPath string, build func() []string) []string {
 // per-target lookup; on link-heavy corpora it collapses the
 // per-host-file goldmark parse + AST walk to one walk per (Run,
 // target).
-func (c *RunCache) Anchors(absPath string, build func() (map[string]struct{}, error)) (map[string]struct{}, error) {
+func (c *Cache) Anchors(absPath string, build func() (map[string]struct{}, error)) (map[string]struct{}, error) {
 	ei, _ := c.anchors.LoadOrStore(absPath, &anchorEntry{})
 	e := ei.(*anchorEntry)
 	e.mu.Lock()
@@ -266,7 +266,7 @@ type anchorEntry struct {
 // match list, so the per-path Invalidate leaves these slots alone;
 // tree-shape changes (create/delete/rename) must drop them via
 // InvalidateGlobMatches, the same lifecycle the wikilink index uses.
-func (c *RunCache) GlobMatches(key string, build func() []string) []string {
+func (c *Cache) GlobMatches(key string, build func() []string) []string {
 	v := load(&c.globMatches, key, func() any { return build() })
 	return v.([]string)
 }
@@ -274,7 +274,7 @@ func (c *RunCache) GlobMatches(key string, build func() []string) []string {
 // InvalidateGlobMatches drops every cached glob match list. Call on
 // file create/delete/rename — the events that change what a glob can
 // match.
-func (c *RunCache) InvalidateGlobMatches() {
+func (c *Cache) InvalidateGlobMatches() {
 	c.globMatches.Range(func(k, _ any) bool {
 		c.globMatches.Delete(k)
 		return true
@@ -299,7 +299,7 @@ func (c *RunCache) InvalidateGlobMatches() {
 // "absPath\x00" so an LSP document edit evicts the right entries
 // regardless of which settings suffix produced them. A caller with
 // no stable absolute path (an in-memory FS) must not use this cache.
-func (c *RunCache) DuplicateParagraphs(key string, build func() any) any {
+func (c *Cache) DuplicateParagraphs(key string, build func() any) any {
 	return load(&c.duplicateParagraphs, key, build)
 }
 
@@ -319,7 +319,7 @@ func (c *RunCache) DuplicateParagraphs(key string, build func() any) any {
 // mirroring corpusFilesKey's shape — Invalidate(absPath) below drops
 // every slot unconditionally on any content edit, since any corpus
 // key's aggregate could include absPath.
-func (c *RunCache) CorpusIndex(key string, build func() any) any {
+func (c *Cache) CorpusIndex(key string, build func() any) any {
 	return load(&c.corpusIndex, key, build)
 }
 
@@ -331,7 +331,7 @@ func (c *RunCache) CorpusIndex(key string, build func() any) any {
 // MDS037 is opt-in and a one-shot `mdsmith check` never invalidates
 // (its corpus is immutable for the run), so this only costs a rebuild
 // on the LSP's edit-driven path.
-func (c *RunCache) dropCorpusIndex() {
+func (c *Cache) dropCorpusIndex() {
 	c.corpusIndex.Range(func(k, _ any) bool {
 		c.corpusIndex.Delete(k)
 		return true
@@ -351,7 +351,7 @@ func (c *RunCache) dropCorpusIndex() {
 // backlinks` calls the helper directly without a cache because
 // it is one-shot. Either way the build/cache contract sits in
 // one place.
-func (c *RunCache) Wikilinks(rootKey string, build func() any) any {
+func (c *Cache) Wikilinks(rootKey string, build func() any) any {
 	return load(&c.wikilinks, rootKey, build)
 }
 
@@ -380,7 +380,7 @@ func (c *RunCache) Wikilinks(rootKey string, build func() any) any {
 // chain (schema markdown parse, AST walk, frontmatter CUE-derive)
 // collapses from N runs to 1 — closing the parity-gap profile
 // that plan 195 documents as the biggest default-rule hot spot.
-func (c *RunCache) ParsedSchema(absPath string, build func() any) any {
+func (c *Cache) ParsedSchema(absPath string, build func() any) any {
 	v := load(&c.parsedSchema, absPath, build)
 	if meta, ok := v.(ParsedSchemaMetadata); ok {
 		c.registerSchemaMetadata(absPath, meta)
@@ -395,7 +395,7 @@ func (c *RunCache) ParsedSchema(absPath string, build func() any) any {
 // ParsedSchema calls for the same absPath: the inner sync.Map's
 // LoadOrStore re-uses the existing set and a re-Store of the same
 // metadata slice is a benign overwrite.
-func (c *RunCache) registerSchemaMetadata(absPath string, meta ParsedSchemaMetadata) {
+func (c *Cache) registerSchemaMetadata(absPath string, meta ParsedSchemaMetadata) {
 	includes := meta.SchemaIncludes()
 	c.schemaIncludes.Store(absPath, includes)
 	c.schemaCUESources.Store(absPath, meta.SchemaCUESources())
@@ -427,7 +427,7 @@ func (c *RunCache) registerSchemaMetadata(absPath string, meta ParsedSchemaMetad
 // fresh set and re-registers. The retry cap (8) is well above
 // any plausible race depth — register-vs-invalidate is bounded
 // by LSP edit rate.
-func (c *RunCache) registerSchemaIncludes(schemaPath string, includes []string) {
+func (c *Cache) registerSchemaIncludes(schemaPath string, includes []string) {
 	for _, frag := range includes {
 		if frag == "" {
 			continue
@@ -462,7 +462,7 @@ func (c *RunCache) registerSchemaIncludes(schemaPath string, includes []string) 
 // `cuecontext.New().CompileString(schema)` on every Check; with
 // this slot the compile runs once per unique CUE source per Run,
 // regardless of how many host files share the schema.
-func (c *RunCache) CompiledCUE(source string, build func() any) any {
+func (c *Cache) CompiledCUE(source string, build func() any) any {
 	return load(&c.compiledCUE, source, build)
 }
 
@@ -500,8 +500,8 @@ func (c *RunCache) CompiledCUE(source string, build func() any) any {
 // Wikilink indices are NOT invalidated per absPath because a file
 // rename or creation could change the resolution of any wikilink in
 // the workspace; the LSP must InvalidateWikilinks (or build a
-// fresh RunCache) when the filesystem layout changes.
-func (c *RunCache) Invalidate(absPath string) {
+// fresh Cache) when the filesystem layout changes.
+func (c *Cache) Invalidate(absPath string) {
 	c.invalidate(absPath, map[string]struct{}{})
 }
 
@@ -513,7 +513,7 @@ func (c *RunCache) Invalidate(absPath string) {
 // encounter. The set is per-call (allocated by the public
 // Invalidate entry point) so independent Invalidate calls do not
 // share visited state.
-func (c *RunCache) invalidate(absPath string, visited map[string]struct{}) {
+func (c *Cache) invalidate(absPath string, visited map[string]struct{}) {
 	if _, ok := visited[absPath]; ok {
 		return
 	}
@@ -547,7 +547,7 @@ func (c *RunCache) invalidate(absPath string, visited map[string]struct{}) {
 // never populated, or already dropped by a sibling Invalidate via the
 // dependents walk) leaves the slices nil and the rest of the eviction is a
 // no-op.
-func (c *RunCache) evictSchemaArtifacts(absPath string) (includes []string) {
+func (c *Cache) evictSchemaArtifacts(absPath string) (includes []string) {
 	if v, ok := c.schemaIncludes.Load(absPath); ok {
 		includes, _ = v.([]string)
 	}
@@ -575,7 +575,7 @@ func (c *RunCache) evictSchemaArtifacts(absPath string) (includes []string) {
 // with only the live dependents. The visited set carried through the recursion
 // is the cycle guard — a dependent already invalidated in this top-level call
 // is skipped.
-func (c *RunCache) invalidateDependents(absPath string, visited map[string]struct{}) {
+func (c *Cache) invalidateDependents(absPath string, visited map[string]struct{}) {
 	c.depsMu.Lock()
 	set, ok := c.schemaDependents[absPath]
 	c.depsMu.Unlock()
@@ -607,7 +607,7 @@ func (c *RunCache) invalidateDependents(absPath string, visited map[string]struc
 // or after the drop (so it re-creates a fresh set under the same lock) — the
 // mutex makes this the race-safe equivalent of the former
 // sync.Map.CompareAndDelete, which tinygo lacks (plan 240).
-func (c *RunCache) dropDependentBackPointers(absPath string, includes []string) {
+func (c *Cache) dropDependentBackPointers(absPath string, includes []string) {
 	for _, frag := range includes {
 		if frag == "" {
 			continue
@@ -634,7 +634,7 @@ func (c *RunCache) dropDependentBackPointers(absPath string, includes []string) 
 // dependentSet returns the dependent-schema set registered for fragment
 // under the depsMu guard, for tests that assert the reverse-include index
 // shape. It returns (nil, false) when no set is registered.
-func (c *RunCache) dependentSet(fragment string) (*sync.Map, bool) {
+func (c *Cache) dependentSet(fragment string) (*sync.Map, bool) {
 	c.depsMu.Lock()
 	defer c.depsMu.Unlock()
 	set, ok := c.schemaDependents[fragment]
@@ -644,14 +644,14 @@ func (c *RunCache) dependentSet(fragment string) (*sync.Map, bool) {
 // InvalidateWikilinks clears every cached wikilink index. The LSP
 // calls this when the workspace tree changes (file create/delete/
 // rename) so the next resolution walks afresh.
-func (c *RunCache) InvalidateWikilinks() {
+func (c *Cache) InvalidateWikilinks() {
 	c.wikilinks.Range(func(k, _ any) bool {
 		c.wikilinks.Delete(k)
 		return true
 	})
 }
 
-// load is the shared cache-slot primitive for every RunCache map. It
+// load is the shared cache-slot primitive for every Cache map. It
 // checks Load before LoadOrStore so the warm (already-built) path
 // never constructs the throwaway &runCacheEntry{} that LoadOrStore's
 // second argument would otherwise allocate on every call — the same

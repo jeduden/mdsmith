@@ -190,7 +190,7 @@ func validateFrontmatterDiags(
 	// front matter directly via CompileMap and meets it with the shared
 	// schema — reads the cached value without mutating it, safe under -race
 	// regardless of operand order.
-	var cache *runcache.RunCache
+	var cache *runcache.Cache
 	if f != nil {
 		cache = f.RunCache
 	}

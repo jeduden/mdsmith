@@ -13,12 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRunCache_FrontMatterBuildsOnce pins that the build closure runs
+// TestCache_FrontMatterBuildsOnce pins that the build closure runs
 // exactly once per absPath: the run-scoped cache's whole purpose is to
 // stop the catalog rule from re-reading the same target once per host
 // file that globs it.
-func TestRunCache_FrontMatterBuildsOnce(t *testing.T) {
-	c := NewRunCache()
+func TestCache_FrontMatterBuildsOnce(t *testing.T) {
+	c := New()
 
 	var calls int32
 	build := func() any {
@@ -34,10 +34,10 @@ func TestRunCache_FrontMatterBuildsOnce(t *testing.T) {
 		"build must run exactly once per absPath")
 }
 
-// TestRunCache_IncludesBuildsOnce pins the same single-build guarantee
+// TestCache_IncludesBuildsOnce pins the same single-build guarantee
 // for the include-adjacency cache.
-func TestRunCache_IncludesBuildsOnce(t *testing.T) {
-	c := NewRunCache()
+func TestCache_IncludesBuildsOnce(t *testing.T) {
+	c := New()
 
 	var calls int32
 	build := func() []string {
@@ -53,12 +53,12 @@ func TestRunCache_IncludesBuildsOnce(t *testing.T) {
 		"include-adjacency build must run exactly once per absPath")
 }
 
-// TestRunCache_RawSchemaFileBuildsOnce pins the same single-build
+// TestCache_RawSchemaFileBuildsOnce pins the same single-build
 // guarantee for the raw-schema-bytes cache: a schema referenced by
 // many host files (the common case for a workspace-wide kind) must
 // be read and inspected once per run, not once per host file.
-func TestRunCache_RawSchemaFileBuildsOnce(t *testing.T) {
-	c := NewRunCache()
+func TestCache_RawSchemaFileBuildsOnce(t *testing.T) {
+	c := New()
 
 	var calls int32
 	build := func() any {
@@ -74,12 +74,12 @@ func TestRunCache_RawSchemaFileBuildsOnce(t *testing.T) {
 		"build must run exactly once per absPath")
 }
 
-// TestRunCache_RawSchemaFileInvalidateForcesRebuild pins that
+// TestCache_RawSchemaFileInvalidateForcesRebuild pins that
 // Invalidate clears the raw-schema-bytes slot alongside the other
 // per-path caches, so an LSP edit to a schema file is picked up on
 // the next lookup instead of serving stale bytes forever.
-func TestRunCache_RawSchemaFileInvalidateForcesRebuild(t *testing.T) {
-	c := NewRunCache()
+func TestCache_RawSchemaFileInvalidateForcesRebuild(t *testing.T) {
+	c := New()
 
 	var calls int32
 	build := func(v string) func() any {
@@ -97,10 +97,10 @@ func TestRunCache_RawSchemaFileInvalidateForcesRebuild(t *testing.T) {
 		"build must run again after Invalidate")
 }
 
-// TestRunCache_DistinctKeysDoNotShare pins that two absPaths are
+// TestCache_DistinctKeysDoNotShare pins that two absPaths are
 // independent: caching one must not silently serve the other.
-func TestRunCache_DistinctKeysDoNotShare(t *testing.T) {
-	c := NewRunCache()
+func TestCache_DistinctKeysDoNotShare(t *testing.T) {
+	c := New()
 
 	c.FrontMatter("/abs/x.md", func() any { return "x-data" })
 	c.FrontMatter("/abs/y.md", func() any { return "y-data" })
@@ -111,12 +111,12 @@ func TestRunCache_DistinctKeysDoNotShare(t *testing.T) {
 		func() any { return "different" }))
 }
 
-// TestRunCache_InvalidateForcesRebuild pins the LSP invalidation seam:
+// TestCache_InvalidateForcesRebuild pins the LSP invalidation seam:
 // after Invalidate(absPath) the next FrontMatter / Includes call for
 // absPath must re-run build. Without this hook a long-lived server
 // would serve a stale catalog body after the user edits a target.
-func TestRunCache_InvalidateForcesRebuild(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateForcesRebuild(t *testing.T) {
+	c := New()
 
 	var fmCalls, incCalls int32
 	c.FrontMatter("/abs/x.md", func() any {
@@ -147,11 +147,11 @@ func TestRunCache_InvalidateForcesRebuild(t *testing.T) {
 		"include build must run again after Invalidate")
 }
 
-// TestRunCache_InvalidateMissingKeyIsNoop pins that Invalidate on a
+// TestCache_InvalidateMissingKeyIsNoop pins that Invalidate on a
 // path that was never cached does not panic and leaves other keys
 // untouched.
-func TestRunCache_InvalidateMissingKeyIsNoop(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateMissingKeyIsNoop(t *testing.T) {
+	c := New()
 	c.FrontMatter("/abs/x.md", func() any { return "kept" })
 
 	c.Invalidate("/abs/never-seen.md")
@@ -161,11 +161,11 @@ func TestRunCache_InvalidateMissingKeyIsNoop(t *testing.T) {
 		"Invalidate on a missing key must not evict unrelated entries")
 }
 
-// TestRunCache_ConcurrentSingleBuild pins that build runs exactly once
+// TestCache_ConcurrentSingleBuild pins that build runs exactly once
 // even when many goroutines race for the same key — the cache is read
 // by the parallel worker pool and by the LSP's concurrent readers.
-func TestRunCache_ConcurrentSingleBuild(t *testing.T) {
-	c := NewRunCache()
+func TestCache_ConcurrentSingleBuild(t *testing.T) {
+	c := New()
 
 	var calls int32
 	var wg sync.WaitGroup
@@ -185,13 +185,13 @@ func TestRunCache_ConcurrentSingleBuild(t *testing.T) {
 		"build must run exactly once under concurrent access")
 }
 
-// TestRunCache_AnchorsBuildsOnce pins that the anchor cache caches
+// TestCache_AnchorsBuildsOnce pins that the anchor cache caches
 // successful builds: the second call with the same absPath returns
 // the cached map without re-invoking build. Mirrors the
 // FrontMatter/Includes pattern but for the anchor slot the
 // cross-file rule consumes.
-func TestRunCache_AnchorsBuildsOnce(t *testing.T) {
-	c := NewRunCache()
+func TestCache_AnchorsBuildsOnce(t *testing.T) {
+	c := New()
 	var calls int32
 	anchors1, err := c.Anchors("/abs/target.md", func() (map[string]struct{}, error) {
 		atomic.AddInt32(&calls, 1)
@@ -210,13 +210,13 @@ func TestRunCache_AnchorsBuildsOnce(t *testing.T) {
 		"Anchors build must run exactly once per absPath")
 }
 
-// TestRunCache_AnchorsErrorIsRetryable pins that a failing build
+// TestCache_AnchorsErrorIsRetryable pins that a failing build
 // does not flip the done flag: the next caller's build runs again.
 // Matches the catalog-rule semantics where a transient read
 // failure on a missing target should produce a host-side
 // diagnostic without poisoning the cache for sibling host files.
-func TestRunCache_AnchorsErrorIsRetryable(t *testing.T) {
-	c := NewRunCache()
+func TestCache_AnchorsErrorIsRetryable(t *testing.T) {
+	c := New()
 	failure := assert.AnError
 	var calls int32
 	_, err := c.Anchors("/abs/oops.md", func() (map[string]struct{}, error) {
@@ -234,12 +234,12 @@ func TestRunCache_AnchorsErrorIsRetryable(t *testing.T) {
 		"a failed build must not be cached; the second caller's build must run again")
 }
 
-// TestRunCache_AnchorsInvalidateForcesRebuild pins that Invalidate
+// TestCache_AnchorsInvalidateForcesRebuild pins that Invalidate
 // drops the anchors slot alongside FrontMatter and Includes. Without
 // this the LSP edits-to-document → next-Check flow would serve stale
 // cross-file diagnostics from the cached anchor set.
-func TestRunCache_AnchorsInvalidateForcesRebuild(t *testing.T) {
-	c := NewRunCache()
+func TestCache_AnchorsInvalidateForcesRebuild(t *testing.T) {
+	c := New()
 	var calls int32
 	build := func(value string) func() (map[string]struct{}, error) {
 		return func() (map[string]struct{}, error) {
@@ -261,11 +261,11 @@ func TestRunCache_AnchorsInvalidateForcesRebuild(t *testing.T) {
 		"Anchors build must run again after Invalidate")
 }
 
-// TestRunCache_AnchorsConcurrentSingleBuild pins the per-key mutex:
+// TestCache_AnchorsConcurrentSingleBuild pins the per-key mutex:
 // concurrent callers race for the entry but the build runs exactly
 // once, and every caller observes the same map.
-func TestRunCache_AnchorsConcurrentSingleBuild(t *testing.T) {
-	c := NewRunCache()
+func TestCache_AnchorsConcurrentSingleBuild(t *testing.T) {
+	c := New()
 	var calls int32
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
@@ -285,8 +285,8 @@ func TestRunCache_AnchorsConcurrentSingleBuild(t *testing.T) {
 		"Anchors build must run exactly once under concurrent access")
 }
 
-func TestRunCache_WikilinksBuildsOnce(t *testing.T) {
-	c := NewRunCache()
+func TestCache_WikilinksBuildsOnce(t *testing.T) {
+	c := New()
 	var calls int32
 	build := func() any {
 		atomic.AddInt32(&calls, 1)
@@ -300,8 +300,8 @@ func TestRunCache_WikilinksBuildsOnce(t *testing.T) {
 		"Wikilinks must build exactly once per root key")
 }
 
-func TestRunCache_WikilinksConcurrent(t *testing.T) {
-	c := NewRunCache()
+func TestCache_WikilinksConcurrent(t *testing.T) {
+	c := New()
 	var calls int32
 	build := func() any {
 		atomic.AddInt32(&calls, 1)
@@ -320,8 +320,8 @@ func TestRunCache_WikilinksConcurrent(t *testing.T) {
 		"concurrent callers must share one build")
 }
 
-func TestRunCache_InvalidateWikilinks(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateWikilinks(t *testing.T) {
+	c := New()
 	var calls int32
 	build := func() any {
 		atomic.AddInt32(&calls, 1)
@@ -334,12 +334,12 @@ func TestRunCache_InvalidateWikilinks(t *testing.T) {
 		"InvalidateWikilinks must let the next call rebuild")
 }
 
-// TestRunCache_ParsedSchemaBuildsOnce pins that the parsed-schema cache
+// TestCache_ParsedSchemaBuildsOnce pins that the parsed-schema cache
 // closes MDS020's per-host-file re-parse hot spot: a schema file
 // referenced by N host files is parsed exactly once per run, matching
 // the FrontMatter / Includes single-build guarantee.
-func TestRunCache_ParsedSchemaBuildsOnce(t *testing.T) {
-	c := NewRunCache()
+func TestCache_ParsedSchemaBuildsOnce(t *testing.T) {
+	c := New()
 	var calls int32
 	build := func() any {
 		atomic.AddInt32(&calls, 1)
@@ -353,13 +353,13 @@ func TestRunCache_ParsedSchemaBuildsOnce(t *testing.T) {
 		"ParsedSchema build must run exactly once per absPath")
 }
 
-// TestRunCache_ParsedSchemaCachesErrors pins that ParsedSchema caches
+// TestCache_ParsedSchemaCachesErrors pins that ParsedSchema caches
 // the build result wholesale, including parse errors. A malformed
 // schema file must not be re-read on every host file that references
 // it; the cached value carries the error so the next caller's lookup
 // is a map hit.
-func TestRunCache_ParsedSchemaCachesErrors(t *testing.T) {
-	c := NewRunCache()
+func TestCache_ParsedSchemaCachesErrors(t *testing.T) {
+	c := New()
 	var calls int32
 	build := func() any {
 		atomic.AddInt32(&calls, 1)
@@ -373,12 +373,12 @@ func TestRunCache_ParsedSchemaCachesErrors(t *testing.T) {
 		"ParsedSchema must cache build results including errors")
 }
 
-// TestRunCache_ParsedSchemaInvalidateForcesRebuild pins that
+// TestCache_ParsedSchemaInvalidateForcesRebuild pins that
 // Invalidate drops the parsed-schema slot alongside FrontMatter,
 // Includes, and Anchors. Without this, an LSP edit to the schema
 // file would not refresh MDS020's view of it.
-func TestRunCache_ParsedSchemaInvalidateForcesRebuild(t *testing.T) {
-	c := NewRunCache()
+func TestCache_ParsedSchemaInvalidateForcesRebuild(t *testing.T) {
+	c := New()
 	var calls int32
 	c.ParsedSchema("/abs/schema.md", func() any {
 		atomic.AddInt32(&calls, 1)
@@ -394,11 +394,11 @@ func TestRunCache_ParsedSchemaInvalidateForcesRebuild(t *testing.T) {
 		"ParsedSchema build must run again after Invalidate")
 }
 
-// TestRunCache_ParsedSchemaConcurrentSingleBuild pins the per-key
+// TestCache_ParsedSchemaConcurrentSingleBuild pins the per-key
 // once: the parallel file worker pool may race for the same schema
 // path; the build must still run exactly once.
-func TestRunCache_ParsedSchemaConcurrentSingleBuild(t *testing.T) {
-	c := NewRunCache()
+func TestCache_ParsedSchemaConcurrentSingleBuild(t *testing.T) {
+	c := New()
 	var calls int32
 	var wg sync.WaitGroup
 	for i := 0; i < 32; i++ {
@@ -417,7 +417,7 @@ func TestRunCache_ParsedSchemaConcurrentSingleBuild(t *testing.T) {
 		"ParsedSchema build must run exactly once under concurrent access")
 }
 
-// TestRunCache_CompiledCUEBuildsOnce pins that compiling the same CUE
+// TestCache_CompiledCUEBuildsOnce pins that compiling the same CUE
 // source string twice returns the cached value: the schema-frontmatter
 // CUE expression is shared across every host file referencing the
 // schema, so compiling it once per Run closes the second half of
@@ -426,8 +426,8 @@ func TestRunCache_ParsedSchemaConcurrentSingleBuild(t *testing.T) {
 // The key is the source string itself, not a path, so an inline
 // `schema:` block and a schema file that produce the same CUE share
 // the slot.
-func TestRunCache_CompiledCUEBuildsOnce(t *testing.T) {
-	c := NewRunCache()
+func TestCache_CompiledCUEBuildsOnce(t *testing.T) {
+	c := New()
 	var calls int32
 	build := func() any {
 		atomic.AddInt32(&calls, 1)
@@ -442,11 +442,11 @@ func TestRunCache_CompiledCUEBuildsOnce(t *testing.T) {
 		"CompiledCUE build must run exactly once per source string")
 }
 
-// TestRunCache_CompiledCUEDistinctSourcesDoNotShare pins that two
+// TestCache_CompiledCUEDistinctSourcesDoNotShare pins that two
 // different CUE sources keep independent slots: caching one must
 // not silently serve the other.
-func TestRunCache_CompiledCUEDistinctSourcesDoNotShare(t *testing.T) {
-	c := NewRunCache()
+func TestCache_CompiledCUEDistinctSourcesDoNotShare(t *testing.T) {
+	c := New()
 	c.CompiledCUE(`{a: string}`, func() any { return "a-val" })
 	c.CompiledCUE(`{b: string}`, func() any { return "b-val" })
 	assert.Equal(t, "a-val", c.CompiledCUE(`{a: string}`,
@@ -455,11 +455,11 @@ func TestRunCache_CompiledCUEDistinctSourcesDoNotShare(t *testing.T) {
 		func() any { return "different" }))
 }
 
-// TestRunCache_CompiledCUEConcurrentSingleBuild pins the per-key
+// TestCache_CompiledCUEConcurrentSingleBuild pins the per-key
 // once: many goroutines compiling the same CUE source must observe
 // exactly one build.
-func TestRunCache_CompiledCUEConcurrentSingleBuild(t *testing.T) {
-	c := NewRunCache()
+func TestCache_CompiledCUEConcurrentSingleBuild(t *testing.T) {
+	c := New()
 	var calls int32
 	var wg sync.WaitGroup
 	const src = `{x: int}`
@@ -492,14 +492,14 @@ type testSchemaMeta struct {
 func (m testSchemaMeta) SchemaIncludes() []string   { return m.includes }
 func (m testSchemaMeta) SchemaCUESources() []string { return m.cueSources }
 
-// TestRunCache_InvalidateFragmentEvictsDependentSchema pins thread 1
+// TestCache_InvalidateFragmentEvictsDependentSchema pins thread 1
 // (PR #377): a ParsedSchema slot whose build returned
 // ParsedSchemaMetadata reporting fragmentB as an include must be
 // evicted when Invalidate(fragmentB) fires. Without this, the LSP
 // edits a schema include fragment and MDS020 keeps serving stale
 // headings until the parent schema itself is invalidated.
-func TestRunCache_InvalidateFragmentEvictsDependentSchema(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateFragmentEvictsDependentSchema(t *testing.T) {
+	c := New()
 	const schemaA = "/abs/schema.md"
 	const fragmentB = "/abs/fragment.md"
 
@@ -524,14 +524,14 @@ func TestRunCache_InvalidateFragmentEvictsDependentSchema(t *testing.T) {
 			"reached fragment via <?include?>")
 }
 
-// TestRunCache_InvalidateFragmentEvictsTransitively pins the
+// TestCache_InvalidateFragmentEvictsTransitively pins the
 // transitive case: schemaA includes fragmentB; fragmentB itself is
 // modelled as a schema with an include on fragmentC.
 // Invalidate(fragmentC) must drop both A and B's parsed-schema
 // slots because A's parse depends on B's parse which depends on
 // fragmentC.
-func TestRunCache_InvalidateFragmentEvictsTransitively(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateFragmentEvictsTransitively(t *testing.T) {
+	c := New()
 	const schemaA = "/abs/a.md"
 	const fragmentB = "/abs/b.md"
 	const fragmentC = "/abs/c.md"
@@ -565,14 +565,14 @@ func TestRunCache_InvalidateFragmentEvictsTransitively(t *testing.T) {
 		"transitive: Invalidate(fragmentC) must evict B")
 }
 
-// TestRunCache_InvalidateSchemaDropsCompiledCUE pins thread 2
+// TestCache_InvalidateSchemaDropsCompiledCUE pins thread 2
 // (PR #377): editing a schema's frontmatter produces a new CUE
 // source. Without per-schema CompiledCUE eviction the cache leaks
 // the old source's compiled value forever in long-lived LSP
 // sessions. Invalidate(schemaPath) must drop every CompiledCUE
 // entry the parsed schema produced.
-func TestRunCache_InvalidateSchemaDropsCompiledCUE(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateSchemaDropsCompiledCUE(t *testing.T) {
+	c := New()
 	const schemaA = "/abs/schema.md"
 	const cueSrc = `close({x: string})`
 
@@ -600,7 +600,7 @@ func TestRunCache_InvalidateSchemaDropsCompiledCUE(t *testing.T) {
 			"values")
 }
 
-// TestRunCache_InvalidateSharedCUESourceIsConservative documents
+// TestCache_InvalidateSharedCUESourceIsConservative documents
 // the design choice for shared CUE sources: two schemas declaring
 // the same `{x: string}` source share one CompiledCUE slot;
 // invalidating one schema drops the slot for both. The sibling
@@ -608,8 +608,8 @@ func TestRunCache_InvalidateSchemaDropsCompiledCUE(t *testing.T) {
 // time cost that is the safe default. The alternative
 // (refcounting CUE sources) is heavier infrastructure for a cheap
 // recompile.
-func TestRunCache_InvalidateSharedCUESourceIsConservative(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateSharedCUESourceIsConservative(t *testing.T) {
+	c := New()
 	const schemaA = "/abs/a.md"
 	const schemaB = "/abs/b.md"
 	const cueSrc = `{x: string}`
@@ -642,12 +642,12 @@ func TestRunCache_InvalidateSharedCUESourceIsConservative(t *testing.T) {
 			"on its next lookup; cheap and removes the leak risk")
 }
 
-// TestRunCache_InvalidateNonSchemaPathIsNoop pins that Invalidate
+// TestCache_InvalidateNonSchemaPathIsNoop pins that Invalidate
 // on a path that was never registered as a schema (no
 // ParsedSchema slot, no fragment-of-anything) does not panic and
 // does not affect CompiledCUE entries on the cache.
-func TestRunCache_InvalidateNonSchemaPathIsNoop(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateNonSchemaPathIsNoop(t *testing.T) {
+	c := New()
 	const cueSrc = `{kept: string}`
 	var compileCalls int32
 	_ = c.CompiledCUE(cueSrc, func() any {
@@ -668,13 +668,13 @@ func TestRunCache_InvalidateNonSchemaPathIsNoop(t *testing.T) {
 		"CompiledCUE build must not run again after a no-op Invalidate")
 }
 
-// TestRunCache_InvalidateSchemaDropsBackpointers pins that
+// TestCache_InvalidateSchemaDropsBackpointers pins that
 // Invalidate(schemaA) tears down the reverse-include edges where
 // schemaA appears as a dependent. A subsequent Invalidate on the
 // fragment must not re-evict schemaA (it is already gone), proving
 // the dependent set was cleaned up.
-func TestRunCache_InvalidateSchemaDropsBackpointers(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateSchemaDropsBackpointers(t *testing.T) {
+	c := New()
 	const schemaA = "/abs/a.md"
 	const fragmentB = "/abs/b.md"
 
@@ -707,7 +707,7 @@ func TestRunCache_InvalidateSchemaDropsBackpointers(t *testing.T) {
 			"rebuild is the cumulative second call")
 }
 
-// TestRunCache_InvalidateDoesNotRaceParsedSchemaBuild pins the race
+// TestCache_InvalidateDoesNotRaceParsedSchemaBuild pins the race
 // fix for Copilot thread `PRRT_kwDORLpjqs6EXfF6` on PR #377: Invalidate
 // must not read runCacheEntry.val (which is set under the slot's
 // sync.Once) while a concurrent ParsedSchema build is in flight. The
@@ -715,8 +715,8 @@ func TestRunCache_InvalidateSchemaDropsBackpointers(t *testing.T) {
 // schemaCUESources) and Invalidate reads from those — race-free.
 // Under `go test -race`, the old code would flag a data race; this
 // test pounds the path so any future regression fails the gate.
-func TestRunCache_InvalidateDoesNotRaceParsedSchemaBuild(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateDoesNotRaceParsedSchemaBuild(t *testing.T) {
+	c := New()
 	const schemaA = "/abs/schemaA.md"
 	const fragmentB = "/abs/fragmentB.md"
 
@@ -740,7 +740,7 @@ func TestRunCache_InvalidateDoesNotRaceParsedSchemaBuild(t *testing.T) {
 	wg.Wait()
 }
 
-// TestRunCache_InvalidateTerminatesOnCyclicReverseIncludes pins the
+// TestCache_InvalidateTerminatesOnCyclicReverseIncludes pins the
 // cycle guard added for Copilot thread PRRT_kwDORLpjqs6EXqUJ. After
 // plan 195 task 15's partial-includes-on-error fix, a cyclic include
 // (schemaA → schemaB → schemaA — a real LSP mid-edit state) registers
@@ -749,8 +749,8 @@ func TestRunCache_InvalidateDoesNotRaceParsedSchemaBuild(t *testing.T) {
 // Invalidate(A) → invalidate(B) → invalidate(A) → ... stack-overflows.
 // The fix carries a per-call visited set; this test pins that
 // Invalidate terminates and evicts both slots.
-func TestRunCache_InvalidateTerminatesOnCyclicReverseIncludes(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateTerminatesOnCyclicReverseIncludes(t *testing.T) {
+	c := New()
 	const schemaA = "/abs/schemaA.md"
 	const schemaB = "/abs/schemaB.md"
 
@@ -790,7 +790,7 @@ func TestRunCache_InvalidateTerminatesOnCyclicReverseIncludes(t *testing.T) {
 			"via the partial-includes-on-error register)")
 }
 
-// TestRunCache_RegisterInvalidateRaceDoesNotLoseDependents pins the
+// TestCache_RegisterInvalidateRaceDoesNotLoseDependents pins the
 // fix for Copilot thread PRRT_kwDORLpjqs6EXwfS: Invalidate's
 // CompareAndDelete on schemaDependents only compares the outer
 // pointer, which a concurrent register-into-inner-set does not
@@ -798,8 +798,8 @@ func TestRunCache_InvalidateTerminatesOnCyclicReverseIncludes(t *testing.T) {
 // the new dependent. The test pounds register and Invalidate on the
 // same key in parallel and asserts every "live" dependent the last
 // register left in place is still reachable via schemaDependents.
-func TestRunCache_RegisterInvalidateRaceDoesNotLoseDependents(t *testing.T) {
-	c := NewRunCache()
+func TestCache_RegisterInvalidateRaceDoesNotLoseDependents(t *testing.T) {
+	c := New()
 	const fragment = "/abs/fragment.md"
 
 	// Two pools of schema paths. Half are repeatedly invalidated;
@@ -856,14 +856,14 @@ func TestRunCache_RegisterInvalidateRaceDoesNotLoseDependents(t *testing.T) {
 	}
 }
 
-// TestRunCache_InvalidateDropsEmptyDependentSets pins the empty-set
+// TestCache_InvalidateDropsEmptyDependentSets pins the empty-set
 // cleanup added for Copilot thread PRRT_kwDORLpjqs6EXnIf. When a
 // schema's last dependent is removed, the *sync.Map entry in
 // schemaDependents must be deleted via CompareAndDelete so a
 // long-lived LSP session does not accumulate one empty *sync.Map per
 // fragment ever included.
-func TestRunCache_InvalidateDropsEmptyDependentSets(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateDropsEmptyDependentSets(t *testing.T) {
+	c := New()
 	const schemaA = "/abs/schemaA.md"
 	const fragmentB = "/abs/fragmentB.md"
 
@@ -887,15 +887,15 @@ func TestRunCache_InvalidateDropsEmptyDependentSets(t *testing.T) {
 			"must be CompareAndDelete'd so the *sync.Map does not leak")
 }
 
-// TestRunCache_EmptyFragmentSkippedBothDirections pins the empty-string
+// TestCache_EmptyFragmentSkippedBothDirections pins the empty-string
 // guard on both reverse-index sides. A schema whose include list
 // carries an empty entry (e.g. a parse path that produced a blank
 // before normalisation) must not register a back-pointer under the
 // empty key, and Invalidate must skip the same empty entry when tearing
 // back-pointers down. Without the guard, the schemaDependents map
 // would grow a "" key and Invalidate("") would later evict everything.
-func TestRunCache_EmptyFragmentSkippedBothDirections(t *testing.T) {
-	c := NewRunCache()
+func TestCache_EmptyFragmentSkippedBothDirections(t *testing.T) {
+	c := New()
 	const schemaA = "/abs/schemaA.md"
 	const fragmentB = "/abs/fragmentB.md"
 
@@ -923,10 +923,10 @@ func TestRunCache_EmptyFragmentSkippedBothDirections(t *testing.T) {
 	c.Invalidate(schemaA)
 }
 
-// TestRunCache_UniqueFieldIndexBuildsOnce pins the single-build
+// TestCache_UniqueFieldIndexBuildsOnce pins the single-build
 // guarantee for the MDS069 scope-index slot.
-func TestRunCache_UniqueFieldIndexBuildsOnce(t *testing.T) {
-	c := NewRunCache()
+func TestCache_UniqueFieldIndexBuildsOnce(t *testing.T) {
+	c := New()
 
 	var calls int32
 	build := func() any {
@@ -942,11 +942,11 @@ func TestRunCache_UniqueFieldIndexBuildsOnce(t *testing.T) {
 		"build must run exactly once per scope key")
 }
 
-// TestRunCache_InvalidateDropsEveryUniqueFieldIndex pins the
+// TestCache_InvalidateDropsEveryUniqueFieldIndex pins the
 // clear-all contract: the slot is keyed by rule scope, not path, so
 // invalidating ANY path must drop every index entry.
-func TestRunCache_InvalidateDropsEveryUniqueFieldIndex(t *testing.T) {
-	c := NewRunCache()
+func TestCache_InvalidateDropsEveryUniqueFieldIndex(t *testing.T) {
+	c := New()
 
 	var calls int32
 	build := func() any {
@@ -966,10 +966,10 @@ func TestRunCache_InvalidateDropsEveryUniqueFieldIndex(t *testing.T) {
 		"both scope entries must rebuild after any Invalidate")
 }
 
-// TestRunCache_DropUniqueFieldIndexesClearsAllEntries exercises the
+// TestCache_DropUniqueFieldIndexesClearsAllEntries exercises the
 // helper directly: every scope key must vanish in one call.
-func TestRunCache_DropUniqueFieldIndexesClearsAllEntries(t *testing.T) {
-	c := NewRunCache()
+func TestCache_DropUniqueFieldIndexesClearsAllEntries(t *testing.T) {
+	c := New()
 
 	var calls int32
 	build := func() any {
@@ -991,12 +991,12 @@ func (f fakeScope) MatchesInvalidatedPath(absPath string) bool {
 	return strings.HasPrefix(absPath, f.prefix)
 }
 
-// TestRunCache_ScopedInvalidationKeepsForeignScopes pins the
+// TestCache_ScopedInvalidationKeepsForeignScopes pins the
 // targeted-drop contract: an entry whose ScopeInvalidator rejects
 // the edited path survives Invalidate; a matching entry drops; an
 // entry without a scope drops unconditionally.
-func TestRunCache_ScopedInvalidationKeepsForeignScopes(t *testing.T) {
-	c := NewRunCache()
+func TestCache_ScopedInvalidationKeepsForeignScopes(t *testing.T) {
+	c := New()
 
 	var planCalls, docsCalls, bareCalls int32
 	plan := func() any {
@@ -1033,7 +1033,7 @@ func TestRunCache_ScopedInvalidationKeepsForeignScopes(t *testing.T) {
 // --- GlobMatches ---
 
 func TestGlobMatches_MemoizesPerKey(t *testing.T) {
-	c := NewRunCache()
+	c := New()
 	builds := 0
 	build := func() []string {
 		builds++
@@ -1051,7 +1051,7 @@ func TestGlobMatches_MemoizesPerKey(t *testing.T) {
 }
 
 func TestGlobMatches_NilResultCached(t *testing.T) {
-	c := NewRunCache()
+	c := New()
 	builds := 0
 	got := c.GlobMatches("k", func() []string { builds++; return nil })
 	assert.Nil(t, got)
@@ -1060,7 +1060,7 @@ func TestGlobMatches_NilResultCached(t *testing.T) {
 }
 
 func TestInvalidateGlobMatches_DropsAllSlots(t *testing.T) {
-	c := NewRunCache()
+	c := New()
 	builds := 0
 	build := func() []string { builds++; return []string{"x.md"} }
 	_ = c.GlobMatches("k1", build)
@@ -1076,7 +1076,7 @@ func TestInvalidatePath_LeavesGlobMatchesIntact(t *testing.T) {
 	// Content edits cannot change which files a glob matches, so the
 	// per-path Invalidate must not drop the match lists — the LSP
 	// calls it on every keystroke-driven save.
-	c := NewRunCache()
+	c := New()
 	builds := 0
 	_ = c.GlobMatches("k", func() []string { builds++; return nil })
 	c.Invalidate("/some/file.md")
@@ -1085,7 +1085,7 @@ func TestInvalidatePath_LeavesGlobMatchesIntact(t *testing.T) {
 }
 
 func TestDuplicateParagraphs_BuildsOncePerKey(t *testing.T) {
-	c := NewRunCache()
+	c := New()
 	builds := 0
 	build := func() any { builds++; return []string{"p1"} }
 	first := c.DuplicateParagraphs("/root/a.md\x0010", build)
@@ -1098,7 +1098,7 @@ func TestDuplicateParagraphs_BuildsOncePerKey(t *testing.T) {
 }
 
 func TestCorpusIndex_BuildsOncePerKey(t *testing.T) {
-	c := NewRunCache()
+	c := New()
 	builds := 0
 	build := func() any { builds++; return map[string]int{"fp": 1} }
 	first := c.CorpusIndex("/root\x0010", build)
@@ -1115,7 +1115,7 @@ func TestCorpusIndex_InvalidatePathDropsEveryKey(t *testing.T) {
 	// fingerprint to, and a corpus-index aggregate has no cheap way to
 	// know which keys summed over the edited path — so every key drops,
 	// unlike GlobMatches (which only tree-shape changes affect).
-	c := NewRunCache()
+	c := New()
 	builds := 0
 	build := func() any { builds++; return map[string]int{"fp": 1} }
 	_ = c.CorpusIndex("/root\x0010", build)
@@ -1130,7 +1130,7 @@ func TestCorpusIndex_InvalidatePathDropsEveryKey(t *testing.T) {
 }
 
 func TestCorpusIndex_InvalidateGlobMatchesDropsEveryKey(t *testing.T) {
-	c := NewRunCache()
+	c := New()
 	builds := 0
 	build := func() any { builds++; return map[string]int{"fp": 1} }
 	_ = c.CorpusIndex("/root\x0010", build)
@@ -1146,7 +1146,7 @@ func TestDuplicateParagraphs_InvalidateDropsEveryKeyForPath(t *testing.T) {
 	// A content edit to /root/a.md must drop every cached slot built
 	// from it, regardless of which min-chars suffix produced the key
 	// — Invalidate does not know which suffixes are in use.
-	c := NewRunCache()
+	c := New()
 	builds := 0
 	build := func() any { builds++; return []string{"p1"} }
 	_ = c.DuplicateParagraphs("/root/a.md\x0010", build)
@@ -1164,7 +1164,7 @@ func TestDuplicateParagraphs_InvalidateDropsEveryKeyForPath(t *testing.T) {
 }
 
 // TestLoad_WarmPathAllocatesNothing pins load's cache-hit cost at zero
-// allocs. Every RunCache accessor (FrontMatter, Includes, GlobMatches,
+// allocs. Every Cache accessor (FrontMatter, Includes, GlobMatches,
 // ParsedSchema, DuplicateParagraphs, Wikilinks, CompiledCUE,
 // UniqueFieldIndex) is called at least once per host file across a
 // workspace run, so a per-call allocation on the warm path multiplies
@@ -1191,7 +1191,7 @@ func TestLoad_WarmPathAllocatesNothing(t *testing.T) {
 	assert.Zero(t, allocs, "load's cache-hit path must not allocate")
 }
 
-// TestAnchorEntryFieldLayout_PointerFieldsLeading guards RunCache's
+// TestAnchorEntryFieldLayout_PointerFieldsLeading guards Cache's
 // anchorEntry against regressing to a layout where the map field trails
 // the scalar fields — see docs/development/high-performance-go.md
 // "Struct layout" and runCacheEntry's val/done/mu ordering a few lines

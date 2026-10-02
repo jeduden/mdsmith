@@ -255,7 +255,7 @@ func runRuleForAudit(tb testing.TB, r rule.Rule, in auditProbeInput, src []byte,
 	require.NoError(tb, err, "parsing %s fixture %s", r.ID(), in.label)
 	f.FS = allocBudgetFS()
 	f.RootDir = "."
-	f.RunCache = runcache.NewRunCache()
+	f.RunCache = runcache.New()
 	if nilAST {
 		f.AST = nil
 	}

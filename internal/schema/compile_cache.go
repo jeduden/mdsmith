@@ -42,7 +42,7 @@ func (c *CompiledCUE) Err() error {
 // rule's validateCUESchemaSyntax / validateFrontMatterCUE both call this
 // helper so two host files sharing a schema CUE source compile it exactly
 // once per Run.
-func CachedCompile(cache *runcache.RunCache, source string) *CompiledCUE {
+func CachedCompile(cache *runcache.Cache, source string) *CompiledCUE {
 	build := func() any {
 		// cuelite.Compile returns a bottom Value on a compile error; Err()
 		// (Validate) replays that error, so the failed compile is cached and

@@ -34,7 +34,7 @@ func TestRunCache_CrossHostCatalogReadsTargetOnce(t *testing.T) {
 		"docs/b.md": &fstest.MapFile{Data: []byte("---\ntitle: Beta\n---\n# B\n")},
 	}
 	cfs := newCountingFS(inner)
-	cache := runcache.NewRunCache()
+	cache := runcache.New()
 
 	for _, host := range []string{"host-a.md", "host-b.md"} {
 		runCheckOnHost(t, cfs, cache, host)
@@ -70,7 +70,7 @@ func TestRunCache_InvalidateForcesReread(t *testing.T) {
 		"docs/b.md": &fstest.MapFile{Data: []byte("---\ntitle: Beta\n---\n# B\n")},
 	}
 	cfs := newCountingFS(inner)
-	cache := runcache.NewRunCache()
+	cache := runcache.New()
 
 	runCheckOnHost(t, cfs, cache, "host.md")
 	baselineA := cfs.count("docs/a.md")
@@ -102,7 +102,7 @@ func TestRunCache_InvalidateForcesReread(t *testing.T) {
 // runCheckOnHost reads the host file from cfs and runs Catalog.Check
 // against it with the supplied RunCache attached. Shared by the
 // cross-host and invalidate tests so both exercise the same wiring.
-func runCheckOnHost(t *testing.T, cfs *countingFS, cache *runcache.RunCache, host string) {
+func runCheckOnHost(t *testing.T, cfs *countingFS, cache *runcache.Cache, host string) {
 	t.Helper()
 	data, err := cfs.ReadFile(host)
 	require.NoError(t, err)

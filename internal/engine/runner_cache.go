@@ -108,11 +108,11 @@ func (r *Runner) effectiveCached(
 // call only and never stored on r — a Runner re-used for a second
 // Run starts clean and cannot serve stale reads from the previous
 // corpus.
-func (r *Runner) runCacheForCall() *runcache.RunCache {
+func (r *Runner) runCacheForCall() *runcache.Cache {
 	if r.RunCache != nil {
 		return r.RunCache
 	}
-	return runcache.NewRunCache()
+	return runcache.New()
 }
 
 // cachedGitignore returns a *gitignore.Matcher for the given directory,
