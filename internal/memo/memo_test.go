@@ -55,6 +55,19 @@ func TestEntry_GetPanicMarksDone(t *testing.T) {
 	assert.Zero(t, calls)
 }
 
+// TestEntry_getSlow_SkipsBuildWhenDone pins the double-checked lock's
+// second check: a caller that lost the race to the mutex finds the
+// slot already done and returns the cached value without building.
+func TestEntry_getSlow_SkipsBuildWhenDone(t *testing.T) {
+	var e Entry
+	e.val = "cached"
+	e.done.Store(true)
+
+	calls := 0
+	assert.Equal(t, "cached", e.getSlow(func() any { calls++; return "v" }))
+	assert.Zero(t, calls)
+}
+
 // TestMap_EntryReturnsSameEntryPerKey pins that one key maps to one
 // Entry and distinct keys to distinct entries.
 func TestMap_EntryReturnsSameEntryPerKey(t *testing.T) {
