@@ -18,8 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
-	"go/parser"
-	"go/token"
 	"io"
 	"os"
 	"os/exec"
@@ -214,7 +212,7 @@ func JSOnlyTestFiles(jsFiles, nativeFiles []string) []string {
 // dot-imported). Comments are skipped by the parser, so a
 // commented-out test is never listed.
 func ListTestFuncs(src []byte) ([]string, error) {
-	f, err := parser.ParseFile(token.NewFileSet(), "", src, parser.SkipObjectResolution)
+	f, funcs, err := topLevelFuncs(src)
 	if err != nil {
 		return nil, err
 	}
@@ -223,12 +221,10 @@ func ListTestFuncs(src []byte) ([]string, error) {
 		return nil, nil
 	}
 	var names []string
-	for _, decl := range f.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Recv != nil || !isTestName(fn.Name.Name) || !takesTestingT(fn, pkgName) {
-			continue
+	for _, fn := range funcs {
+		if isTestName(fn.Name.Name) && takesTestingT(fn, pkgName) {
+			names = append(names, fn.Name.Name)
 		}
-		names = append(names, fn.Name.Name)
 	}
 	return names, nil
 }

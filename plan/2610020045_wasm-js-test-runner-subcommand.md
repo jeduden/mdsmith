@@ -79,6 +79,12 @@ deviations from the task text:
 - The parser is `ListTestFuncs`, not `TestNames`, so no
   production function in the package starts with `Test`.
   It honours an aliased `testing` import.
+- `ListTestFuncs` and `test-summary`'s `scanTestFuncNames`
+  share one go/parser scanner, `topLevelFuncs` in
+  [gofuncs.go][gofuncs]. The old `scanTestFuncNames` regex
+  counted functions inside comments and string literals,
+  including 19 fixture functions in this plan's own test
+  file. Each caller keeps its own name rule.
 - A `testJSONWriter` replaces `CountPasses`. The test run
   uses `go test -json`, not `-v`: test2json frames each
   result, so a test whose own output lacks a trailing
@@ -127,3 +133,4 @@ deviations from the task text:
 [rt]: ../docs/development/release-tooling.md
 [rmain]: ../cmd/mdsmith-release/main.go
 [impl]: ../internal/release/jswasmtests.go
+[gofuncs]: ../internal/release/gofuncs.go

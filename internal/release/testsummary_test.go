@@ -71,12 +71,21 @@ func TestScanTestFuncNames(t *testing.T) {
 		"func FuzzGamma(f *testing.F) {}\n" +
 		"func (r recv) TestMethodNotCounted() {}\n" +
 		"func helperNotCounted() {}\n" +
-		"func Outer() {\n\tfunc() { _ = \"not a TestNested\" }()\n}\n"
+		"func Outer() {\n\tfunc() { _ = \"not a TestNested\" }()\n}\n" +
+		"/*\nfunc TestBlockCommented(t *testing.T) {}\n*/\n" +
+		"var _ = `\nfunc TestInRawString(t *testing.T) {}\n`\n" +
+		"func TestDelta(\n\tt *testing.T,\n) {\n}\n"
 	require.NoError(t, os.WriteFile(path, []byte(src), 0o644))
 
 	names, err := scanTestFuncNames(path)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"TestAlpha", "ExampleBeta", "FuzzGamma"}, names)
+	assert.Equal(t, []string{"TestAlpha", "ExampleBeta", "FuzzGamma", "TestDelta"}, names)
+
+	// A file go test could not compile is reported, not half-counted.
+	broken := filepath.Join(dir, "broken_test.go")
+	require.NoError(t, os.WriteFile(broken, []byte("package x\nfunc TestX(\n"), 0o644))
+	_, err = scanTestFuncNames(broken)
+	assert.ErrorContains(t, err, "broken_test.go")
 
 	_, err = scanTestFuncNames(filepath.Join(dir, "missing_test.go"))
 	assert.Error(t, err)

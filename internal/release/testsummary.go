@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -50,12 +49,6 @@ type testKey struct {
 	pkg  string
 	name string
 }
-
-// testFuncRe matches a top-level test entry point at column zero:
-// Test*, Example*, or Fuzz*. A method (`func (r R) TestX`) has a
-// receiver between `func ` and the name, so it never matches —
-// only package-level functions are recorded.
-var testFuncRe = regexp.MustCompile(`^func ((?:Test|Example|Fuzz)[A-Za-z0-9_]*)\(`)
 
 // testEvent is the subset of a `go test -json` event we read.
 type testEvent struct {
@@ -366,24 +359,25 @@ func importPath(module, relDir string) string {
 }
 
 // scanTestFuncNames returns the names of every top-level test entry
-// point declared in a Go file.
+// point declared in a Go file: a package-level function (not a method)
+// whose name starts with Test, Example, or Fuzz. It reads declarations
+// through topLevelFuncs, the scanner test-js-wasm shares, so a function
+// inside a comment or a string literal is never counted.
 func scanTestFuncNames(path string) ([]string, error) {
-	f, err := os.Open(path)
+	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close() //nolint:errcheck // read-only
-
-	var names []string
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		if m := testFuncRe.FindSubmatch(sc.Bytes()); m != nil {
-			names = append(names, string(m[1]))
-		}
+	_, funcs, err := topLevelFuncs(src)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+	var names []string
+	for _, fn := range funcs {
+		name := fn.Name.Name
+		if strings.HasPrefix(name, "Test") || strings.HasPrefix(name, "Example") || strings.HasPrefix(name, "Fuzz") {
+			names = append(names, name)
+		}
 	}
 	return names, nil
 }
