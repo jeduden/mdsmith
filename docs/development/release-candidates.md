@@ -63,5 +63,15 @@ rejects a candidate. To check a candidate, put
 candidate at a time, so two runs never compute the
 same `-rc.N`. A burst of merges queues only the newest
 run, so it yields one candidate for the newest commit.
+
+A stable release can still ship while a candidate
+builds. The run picked `v0.56.0-rc.5`; then `v0.56.0`
+lands. Just before publishing,
+`mdsmith-release check-rc --discard-draft` re-reads the
+tags. If the version is no longer the next candidate,
+it deletes the run's draft and skips the publish. The
+run stays green with a notice, and the next merge cuts
+`v0.57.0-rc.1`.
+
 The build steps copy `release.yml`'s `build`, `vscode`,
 and `obsidian` jobs. Keep the two files in step.

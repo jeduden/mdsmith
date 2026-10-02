@@ -278,3 +278,63 @@ func postGenerateNotes(opts GitHubRepoOptions, payload map[string]string) (strin
 	}
 	return notes.Body, nil
 }
+
+// RCCheckOptions names the candidate to re-check just before it is
+// published. DiscardDraft deletes the candidate's draft release when
+// the version has gone stale, so no orphan draft is left behind.
+type RCCheckOptions struct {
+	GitHubRepoOptions
+	Version      string
+	DiscardDraft bool
+}
+
+// CheckRCCurrent reports whether Version is still the candidate
+// rc-version would pick now. A run computes its version when it
+// starts and builds for several minutes; a stable release that ships
+// meanwhile (v0.56.0 after this run picked v0.56.0-rc.5) makes the
+// candidate stale, and publishing it would tag a pre-release of a
+// version already released. When stale, reason says why.
+func CheckRCCurrent(opts RCCheckOptions) (bool, string, error) {
+	if !rcTagRE.MatchString(opts.Version) {
+		return false, "", fmt.Errorf("version %q is not a vX.Y.Z-rc.N candidate", opts.Version)
+	}
+	tags, err := ListTags(opts.GitHubRepoOptions)
+	if err != nil {
+		return false, "", err
+	}
+	next := NextRCVersion(tags)
+	if next == opts.Version {
+		return true, "", nil
+	}
+	reason := fmt.Sprintf("%s is stale: the next candidate is now %s", opts.Version, next)
+	if !opts.DiscardDraft {
+		return false, reason, nil
+	}
+	if err := discardDraft(opts.GitHubRepoOptions, opts.Version); err != nil {
+		return false, "", err
+	}
+	return false, reason, nil
+}
+
+// discardDraft deletes the draft release for tag, if one exists. A
+// published release with that tag is left alone.
+func discardDraft(opts GitHubRepoOptions, tag string) error {
+	client := opts.client()
+	rel, found, err := lookupReleaseRef(client, opts.apiBase(), opts.Repository, tag, opts.Token)
+	if err != nil || !found || !rel.Draft {
+		return err
+	}
+	u := fmt.Sprintf("%s/repos/%s/releases/%d", opts.apiBase(), opts.Repository, rel.ID)
+	// lookupReleaseRef already built a request against this base URL,
+	// so building this one cannot fail.
+	req, _ := newGitHubRequest(http.MethodDelete, u, nil, opts.Token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNoContent {
+		return unexpectedStatus("discard draft", u, resp)
+	}
+	return nil
+}

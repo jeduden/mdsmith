@@ -76,3 +76,57 @@ func runReleaseNotes(_ string, args []string) int {
 	}
 	return reportError(os.WriteFile(fs.Arg(0), []byte(body+"\n"), 0o644))
 }
+
+func runCheckRC(_ string, args []string) int {
+	fs := flag.NewFlagSet("check-rc", flag.ContinueOnError)
+	discard := fs.Bool("discard-draft", false, "delete the candidate's draft release when it is stale")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release check-rc [--discard-draft]\n\n"+
+			"Re-check, just before publishing, that RELEASE_TAG is still\n"+
+			"the candidate rc-version would pick. A stable release that\n"+
+			"shipped while this run was building makes it stale. Writes\n"+
+			"current=true|false to GITHUB_OUTPUT (stdout when unset).\n"+
+			"With --discard-draft, a stale candidate's draft release is\n"+
+			"deleted. Reads GITHUB_REPOSITORY, GITHUB_TOKEN, and\n"+
+			"GITHUB_API_URL.\n\n")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: check-rc"); code >= 0 {
+			return code
+		}
+	}
+	if fs.NArg() != 0 {
+		fs.Usage()
+		return 2
+	}
+	current, reason, err := release.CheckRCCurrent(release.RCCheckOptions{
+		GitHubRepoOptions: githubRepoFromEnv(),
+		Version:           os.Getenv("RELEASE_TAG"),
+		DiscardDraft:      *discard,
+	})
+	if err != nil {
+		return reportError(err)
+	}
+	if !current {
+		fmt.Fprintf(os.Stderr, "::notice::release candidate skipped: %s\n", reason)
+	}
+	return reportError(writeStepOutput(fmt.Sprintf("current=%t\n", current)))
+}
+
+// writeStepOutput appends line to the GITHUB_OUTPUT file, or prints
+// it to stdout when the variable is unset (a local run).
+func writeStepOutput(line string) error {
+	path := os.Getenv("GITHUB_OUTPUT")
+	if path == "" {
+		_, err := fmt.Print(line)
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	_, err = f.WriteString(line)
+	return err
+}

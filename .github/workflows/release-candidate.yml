@@ -289,7 +289,20 @@ jobs:
             mdsmith-*
             checksums.txt
             checksums.txt.bundle
+      - name: Re-check the candidate is still current
+        # The version was picked when this run started. If a stable
+        # release (or another tag) landed while the jobs above were
+        # building, publishing would tag a pre-release of a version
+        # that has already shipped. check-rc re-reads the tags; when
+        # the candidate is stale it deletes this run's draft and the
+        # publish below is skipped. The next merge cuts a fresh one.
+        id: fresh
+        env:
+          RELEASE_TAG: ${{ needs.version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go run ./cmd/mdsmith-release check-rc --discard-draft
       - name: Publish pre-release
+        if: steps.fresh.outputs.current == 'true'
         env:
           RELEASE_TAG: ${{ needs.version.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

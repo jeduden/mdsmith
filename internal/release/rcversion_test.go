@@ -286,3 +286,151 @@ func TestGenerateReleaseNotesReportsTransportError(t *testing.T) {
 	assert.ErrorContains(t, err, "connection reset")
 	assert.Positive(t, calls)
 }
+
+// rcCheckServer serves a tag list plus the list-releases and
+// delete-release endpoints, recording which release IDs were deleted.
+func rcCheckServer(t *testing.T, tags string, releases string) (*httptest.Server, *[]string) {
+	t.Helper()
+	var deleted []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/jeduden/mdsmith/tags":
+			_, _ = fmt.Fprint(w, tags)
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/jeduden/mdsmith/releases":
+			_, _ = fmt.Fprint(w, releases)
+		case r.Method == http.MethodDelete:
+			deleted = append(deleted, r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.Error(w, "unexpected", http.StatusTeapot)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &deleted
+}
+
+func rcCheckOpts(srv *httptest.Server, version string, discard bool) RCCheckOptions {
+	return RCCheckOptions{
+		GitHubRepoOptions: GitHubRepoOptions{
+			Repository: "jeduden/mdsmith", Token: "test-token", APIBaseURL: srv.URL,
+		},
+		Version:      version,
+		DiscardDraft: discard,
+	}
+}
+
+func TestCheckRCCurrentWhenStillNext(t *testing.T) {
+	srv, deleted := rcCheckServer(t, `[{"name":"v0.55.1"},{"name":"v0.56.0-rc.4"}]`, `[]`)
+	current, reason, err := CheckRCCurrent(rcCheckOpts(srv, "v0.56.0-rc.5", true))
+	require.NoError(t, err)
+	assert.True(t, current)
+	assert.Empty(t, reason)
+	assert.Empty(t, *deleted)
+}
+
+func TestCheckRCCurrentStaleAfterStableShips(t *testing.T) {
+	srv, deleted := rcCheckServer(t,
+		`[{"name":"v0.55.1"},{"name":"v0.56.0-rc.4"},{"name":"v0.56.0"}]`,
+		`[{"id":9,"draft":false,"tag_name":"v0.56.0"},{"id":42,"draft":true,"tag_name":"v0.56.0-rc.5"}]`)
+	current, reason, err := CheckRCCurrent(rcCheckOpts(srv, "v0.56.0-rc.5", true))
+	require.NoError(t, err)
+	assert.False(t, current)
+	assert.Contains(t, reason, "v0.57.0-rc.1")
+	assert.Equal(t, []string{"/repos/jeduden/mdsmith/releases/42"}, *deleted)
+}
+
+func TestCheckRCCurrentStaleWithoutDiscardKeepsDraft(t *testing.T) {
+	srv, deleted := rcCheckServer(t, `[{"name":"v0.56.0"}]`, `[]`)
+	current, _, err := CheckRCCurrent(rcCheckOpts(srv, "v0.56.0-rc.5", false))
+	require.NoError(t, err)
+	assert.False(t, current)
+	assert.Empty(t, *deleted)
+}
+
+func TestCheckRCCurrentStaleWhenTagAlreadyTaken(t *testing.T) {
+	srv, _ := rcCheckServer(t, `[{"name":"v0.55.1"},{"name":"v0.56.0-rc.5"}]`, `[]`)
+	current, reason, err := CheckRCCurrent(rcCheckOpts(srv, "v0.56.0-rc.5", false))
+	require.NoError(t, err)
+	assert.False(t, current)
+	assert.Contains(t, reason, "v0.56.0-rc.6")
+}
+
+func TestCheckRCCurrentDiscardIgnoresPublishedRelease(t *testing.T) {
+	// A published release with the candidate's tag is not ours to
+	// delete; only a draft is discarded.
+	srv, deleted := rcCheckServer(t, `[{"name":"v0.56.0"}]`,
+		`[{"id":42,"draft":false,"tag_name":"v0.56.0-rc.5"}]`)
+	current, _, err := CheckRCCurrent(rcCheckOpts(srv, "v0.56.0-rc.5", true))
+	require.NoError(t, err)
+	assert.False(t, current)
+	assert.Empty(t, *deleted)
+}
+
+func TestCheckRCCurrentDiscardWithNoDraft(t *testing.T) {
+	srv, deleted := rcCheckServer(t, `[{"name":"v0.56.0"}]`, `[]`)
+	current, _, err := CheckRCCurrent(rcCheckOpts(srv, "v0.56.0-rc.5", true))
+	require.NoError(t, err)
+	assert.False(t, current)
+	assert.Empty(t, *deleted)
+}
+
+func TestCheckRCCurrentRejectsNonCandidateVersion(t *testing.T) {
+	for _, v := range []string{"", "v0.56.0", "v0.56.0-beta.1"} {
+		_, _, err := CheckRCCurrent(RCCheckOptions{
+			GitHubRepoOptions: GitHubRepoOptions{Repository: "jeduden/mdsmith", Token: "t"},
+			Version:           v,
+		})
+		assert.Error(t, err, v)
+	}
+}
+
+func TestCheckRCCurrentPropagatesListError(t *testing.T) {
+	_, _, err := CheckRCCurrent(RCCheckOptions{Version: "v0.56.0-rc.1"})
+	assert.ErrorContains(t, err, "repository")
+}
+
+func TestCheckRCCurrentPropagatesReleaseLookupError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/repos/jeduden/mdsmith/tags" {
+			_, _ = fmt.Fprint(w, `[{"name":"v0.56.0"}]`)
+			return
+		}
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	_, _, err := CheckRCCurrent(rcCheckOpts(srv, "v0.56.0-rc.5", true))
+	assert.ErrorContains(t, err, "500")
+}
+
+func TestCheckRCCurrentReportsDeleteError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/jeduden/mdsmith/tags":
+			_, _ = fmt.Fprint(w, `[{"name":"v0.56.0"}]`)
+		case "/repos/jeduden/mdsmith/releases":
+			_, _ = fmt.Fprint(w, `[{"id":42,"draft":true,"tag_name":"v0.56.0-rc.5"}]`)
+		default:
+			http.Error(w, "forbidden", http.StatusForbidden)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	_, _, err := CheckRCCurrent(rcCheckOpts(srv, "v0.56.0-rc.5", true))
+	assert.ErrorContains(t, err, "403")
+}
+
+func TestCheckRCCurrentReportsDeleteTransportError(t *testing.T) {
+	srv, _ := rcCheckServer(t, `[{"name":"v0.56.0"}]`,
+		`[{"id":42,"draft":true,"tag_name":"v0.56.0-rc.5"}]`)
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodDelete {
+			return nil, fmt.Errorf("connection reset")
+		}
+		return http.DefaultTransport.RoundTrip(r)
+	})}
+	opts := rcCheckOpts(srv, "v0.56.0-rc.5", true)
+	opts.Client = client
+	_, _, err := CheckRCCurrent(opts)
+	assert.ErrorContains(t, err, "connection reset")
+}

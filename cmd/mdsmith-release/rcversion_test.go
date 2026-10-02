@@ -91,3 +91,89 @@ func TestRunReleaseNotesFlagParseError(t *testing.T) {
 func TestRunReleaseNotesRequiresOutPath(t *testing.T) {
 	assert.Equal(t, 2, run([]string{"release-notes"}))
 }
+
+func fakeRCCheckAPI(t *testing.T, tags string) *[]string {
+	t.Helper()
+	var deleted []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/jeduden/mdsmith/tags":
+			_, _ = fmt.Fprint(w, tags)
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/jeduden/mdsmith/releases":
+			_, _ = fmt.Fprint(w, `[{"id":42,"draft":true,"tag_name":"v0.56.0-rc.2"}]`)
+		case r.Method == http.MethodDelete:
+			deleted = append(deleted, r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.Error(w, "unexpected", http.StatusTeapot)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("GITHUB_REPOSITORY", "jeduden/mdsmith")
+	t.Setenv("GITHUB_TOKEN", "test-token")
+	t.Setenv("GITHUB_API_URL", srv.URL)
+	t.Setenv("RELEASE_TAG", "v0.56.0-rc.2")
+	return &deleted
+}
+
+func outputFile(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "github_output")
+	t.Setenv("GITHUB_OUTPUT", p)
+	return p
+}
+
+func TestRunCheckRCCurrent(t *testing.T) {
+	deleted := fakeRCCheckAPI(t, `[{"name":"v0.55.1"},{"name":"v0.56.0-rc.1"}]`)
+	out := outputFile(t)
+
+	assert.Equal(t, 0, run([]string{"check-rc", "--discard-draft"}))
+	got, err := os.ReadFile(out)
+	require.NoError(t, err)
+	assert.Equal(t, "current=true\n", string(got))
+	assert.Empty(t, *deleted)
+}
+
+func TestRunCheckRCStaleDiscardsDraft(t *testing.T) {
+	deleted := fakeRCCheckAPI(t, `[{"name":"v0.56.0"}]`)
+	out := outputFile(t)
+
+	assert.Equal(t, 0, run([]string{"check-rc", "--discard-draft"}))
+	got, err := os.ReadFile(out)
+	require.NoError(t, err)
+	assert.Equal(t, "current=false\n", string(got))
+	assert.Equal(t, []string{"/repos/jeduden/mdsmith/releases/42"}, *deleted)
+}
+
+func TestRunCheckRCWithoutGitHubOutput(t *testing.T) {
+	fakeRCCheckAPI(t, `[{"name":"v0.55.1"},{"name":"v0.56.0-rc.1"}]`)
+	t.Setenv("GITHUB_OUTPUT", "")
+	var code int
+	out := captureStdout(t, func() int {
+		code = run([]string{"check-rc"})
+		return code
+	})
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "current=true\n", out)
+}
+
+func TestRunCheckRCReportsAPIError(t *testing.T) {
+	fakeRCCheckAPI(t, `[]`)
+	t.Setenv("GITHUB_TOKEN", "")
+	assert.Equal(t, 1, run([]string{"check-rc"}))
+}
+
+func TestRunCheckRCReportsOutputWriteError(t *testing.T) {
+	fakeRCCheckAPI(t, `[{"name":"v0.55.1"},{"name":"v0.56.0-rc.1"}]`)
+	t.Setenv("GITHUB_OUTPUT", t.TempDir()) // a directory cannot be opened for append
+	assert.Equal(t, 1, run([]string{"check-rc"}))
+}
+
+func TestRunCheckRCFlagParseError(t *testing.T) {
+	assert.Equal(t, 2, run([]string{"check-rc", "--bogus"}))
+}
+
+func TestRunCheckRCRejectsPositionalArgs(t *testing.T) {
+	assert.Equal(t, 2, run([]string{"check-rc", "extra"}))
+}
