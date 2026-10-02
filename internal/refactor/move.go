@@ -280,18 +280,16 @@ type destRef struct {
 // workspace file list, read once per move and normalized, which the
 // referrer scan, the listed checks, and the wikilink holder count share.
 type destResolver struct {
-	ws     Workspace
-	src    string
-	list   []string
-	listOK bool
-	files  map[string]bool
+	ws    Workspace
+	src   string
+	list  []string // nil until paths first runs; never nil after
+	files map[string]bool
 }
 
 // paths returns the workspace's files, normalized as Resolve keys
 // them. It reads ws.Files() once, on the first call.
 func (r *destResolver) paths() []string {
-	if !r.listOK {
-		r.listOK = true
+	if r.list == nil {
 		files := r.ws.Files()
 		r.list = make([]string, len(files))
 		for i, f := range files {
@@ -757,10 +755,13 @@ func skipGap(src []byte, i int) int {
 	return i
 }
 
-// appendWikilinkStemEdits rewrites `[[old-stem]]` links to the new
-// basename stem, but only when the move changes the basename. A move
-// that keeps the basename leaves wikilinks alone: a stem still resolves
-// to the file at its new path.
+// appendWikilinkStemEdits rewrites the basename segment of each
+// `[[old-stem]]` link to the token dstWikilinkSpelling picks for dst:
+// the new stem, the whole basename, or either behind `./`. It runs only
+// when `[[old-stem]]` would stop reaching dst: a Markdown dst with
+// another stem, or a dst with a non-Markdown name. A move that keeps the
+// stem leaves wikilinks alone: a stem still resolves to the file at its
+// new path.
 func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destResolver, src, dst string) {
 	// Both ends are keyed the way NewWikilinkIndex keys files. Only a
 	// Markdown src has a stem key, so moving any other file retargets
@@ -782,10 +783,8 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 		return
 	}
 	// The rewritten token must parse back as a wikilink that resolves by
-	// dst's key. WikilinkReaches checks that against the wikilink
-	// grammar, so a name with no extension (`COPYING`), an empty stem,
-	// a `#`, `|`, `[`, `]`, backtick, CR, or newline, or a name that
-	// ends with a space gets no rewrite.
+	// dst's key; linkgraph.WikilinkReaches holds the list of names that
+	// cannot, and such a dst gets no rewrite.
 	newSpelling, ok := dstWikilinkSpelling(dst)
 	if !ok {
 		return
@@ -910,7 +909,8 @@ func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem b
 		if f == src {
 			srcListed = true
 		}
-		stem, isMD := linkgraph.FileStemKey(path.Base(f))
+		base := path.Base(f)
+		stem, isMD := linkgraph.FileStemKey(base)
 		if isMD && stem == oldStem {
 			oldN++
 		}
@@ -918,7 +918,7 @@ func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem b
 			if isMD && stem == newKey {
 				newN++
 			}
-		} else if linkgraph.FileNameKey(path.Base(f)) == newKey {
+		} else if linkgraph.FileNameKey(base) == newKey {
 			newN++
 		}
 	}
