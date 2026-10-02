@@ -85,6 +85,7 @@ func resolveVersion() string {
 // returning factory keeps the JS API ergonomic.
 func createSession(_ js.Value, args []js.Value) any {
 	return newPromise(func(resolve, reject func(any)) {
+		defer rejectOnJSError(reject)
 		if len(args) < 1 || !isRecord(args[0]) {
 			reject(jsError("createSession requires an options object"))
 			return

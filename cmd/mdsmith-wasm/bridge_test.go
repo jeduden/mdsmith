@@ -235,6 +235,36 @@ func TestCreateSession(t *testing.T) {
 	}
 }
 
+// TestCreateSession_RejectsThrowingObjects passes options and
+// workspace objects whose inspection throws in JS (a revoked Proxy, a
+// Proxy whose ownKeys trap throws). syscall/js raises that as a
+// js.Error panic, which unrecovered would end the Go program and every
+// session with it; createSession must reject with the thrown error.
+func TestCreateSession_RejectsThrowingObjects(t *testing.T) {
+	obj := func(m map[string]any) js.Value { return js.ValueOf(m) }
+	proxyCtor := js.Global().Get("Proxy")
+	revoked := proxyCtor.Call("revocable", obj(map[string]any{}), obj(map[string]any{}))
+	revoked.Call("revoke")
+	// An ownKeys trap must return an array-like object; Number returns
+	// NaN, so Object.keys on this proxy throws a TypeError.
+	throwingKeys := proxyCtor.New(obj(map[string]any{}),
+		obj(map[string]any{"ownKeys": js.Global().Get("Number")}))
+	for _, tt := range []struct {
+		name string
+		opts js.Value
+	}{
+		{"revoked proxy options", revoked.Get("proxy")},
+		{"revoked proxy workspace", obj(map[string]any{"workspace": revoked.Get("proxy")})},
+		{"throwing ownKeys workspace", obj(map[string]any{"workspace": throwingKeys})},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			v, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{tt.opts}).(js.Value))
+			require.True(t, rejected, "promise must reject")
+			assert.True(t, v.InstanceOf(js.Global().Get("TypeError")), "rejects with the thrown TypeError")
+		})
+	}
+}
+
 // newTestProxy resolves createSession over an empty workspace and
 // returns the session proxy.
 func newTestProxy(t *testing.T) js.Value {
@@ -398,6 +428,23 @@ func TestBoundSession(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRejectOnJSError checks that a deferred rejectOnJSError rejects
+// with the JS exception a js.Error panic carries, does nothing without
+// a panic, and re-raises any other panic.
+func TestRejectOnJSError(t *testing.T) {
+	run := func(body func()) (rejected []any) {
+		defer rejectOnJSError(func(v any) { rejected = append(rejected, v) })
+		body()
+		return rejected
+	}
+	jsErr := js.Global().Get("Error").New("boom")
+	got := run(func() { panic(js.Error{Value: jsErr}) })
+	require.Len(t, got, 1)
+	assert.True(t, got[0].(js.Value).Equal(jsErr), "rejects with the thrown JS value")
+	assert.Empty(t, run(func() {}), "no panic, no rejection")
+	assert.PanicsWithValue(t, "go bug", func() { run(func() { panic("go bug") }) })
 }
 
 func TestJSType(t *testing.T) {
