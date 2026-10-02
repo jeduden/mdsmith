@@ -95,7 +95,7 @@ func TestDispatchOne_TimeoutPrintsDiagnosticBlock(t *testing.T) {
 	assert.Contains(t, out, "TIMEOUT book.html")
 	assert.Contains(t, out, "last 1 lines of stdout")
 	assert.Contains(t, out, "last 1 lines of stderr")
-	assert.Contains(t, out, "SIGTERM")
+	assert.Contains(t, out, buildexec.TimeoutKillAction)
 }
 
 // --- lastLines ---
@@ -718,4 +718,12 @@ func TestVerifyTarget_StreamEnabled_ForwardsLiveOutput(t *testing.T) {
 	verifyTarget(builder, bt, id, buildPassOpts{stream: true}, time.Second, res, &buf)
 	assert.False(t, res.Unstable)
 	assert.Contains(t, buf.String(), "verify-live")
+}
+
+func TestReportTimeout_NamesThisPlatformsKill(t *testing.T) {
+	// SIGTERM is Unix only: the report must name the kill the recipe's
+	// platform actually sent.
+	var buf strings.Builder
+	reportTimeout("book.html", targetRunResult{}, &buf)
+	assert.Contains(t, buf.String(), "  "+buildexec.TimeoutKillAction+"\n")
 }

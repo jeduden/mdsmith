@@ -13,6 +13,10 @@ import (
 // is a var, not a const, so a kill-path test can shorten it.
 var gracePeriod = 5 * time.Second
 
+// TimeoutKillAction names, for the timeout report, the kill a timed-out
+// recipe gets on this platform.
+const TimeoutKillAction = "sent SIGTERM to process group"
+
 // configureProcessGroup puts the recipe in its own process group so a
 // timeout can signal the whole group, not just the leader. Setpgid makes
 // the child the leader of a new group whose pgid equals its pid.
