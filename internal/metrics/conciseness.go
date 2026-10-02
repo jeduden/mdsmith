@@ -43,8 +43,9 @@ var verbosePhrases = []string{
 }
 
 // scanTokens calls fn with each maximal run of [a-z0-9'] bytes in s, as
-// tokenPattern.FindAllString would, but yields substrings of s instead of
-// allocating a match slice.
+// regexp.FindAllString(`[a-z0-9']+`) would (conciseness_test.go keeps that
+// regexp as the oracle), but yields substrings of s instead of allocating
+// a match slice.
 func scanTokens(s string, fn func(tok string)) {
 	start := -1
 	for i := 0; i < len(s); i++ {
