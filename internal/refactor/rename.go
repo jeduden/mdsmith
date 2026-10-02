@@ -12,8 +12,8 @@
 // under GOOS=js GOARCH=wasm — so callers adapt the neutral values to
 // their surface and run any FileOp themselves. ApplyEdits is the
 // matching pure in-memory splice a host can use to turn a file's Edits
-// into rewritten bytes; FileOp.Execute (non-wasm only) is the one
-// helper that touches disk.
+// into rewritten bytes; FileOp.Execute is the one helper that touches
+// disk (under wasm it is a stub that always errors).
 package refactor
 
 import (

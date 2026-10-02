@@ -10,5 +10,5 @@ import (
 
 func TestFileOpExecute_WasmUnsupported(t *testing.T) {
 	err := FileOp{From: "a.md", To: "b.md"}.Execute(t.TempDir())
-	assert.ErrorContains(t, err, "not supported under wasm")
+	assert.EqualError(t, err, "moving a.md: file operations are not supported under wasm")
 }
