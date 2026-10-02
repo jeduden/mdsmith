@@ -46,15 +46,6 @@ func TestRecipeOutput_AttachFirstPipeFails(t *testing.T) {
 	requireDrained(t, ro)
 }
 
-func TestRecipeOutput_AttachSecondPipeFailsClosesFirst(t *testing.T) {
-	failPipeAfter(t, 1)
-	ro := &recipeOutput{}
-	err := ro.attach(&exec.Cmd{}, &strings.Builder{}, &strings.Builder{})
-	require.ErrorContains(t, err, "no pipes")
-	// The first pipe's copy goroutine must end: its read end is closed.
-	requireDrained(t, ro)
-}
-
 func TestRunRecipe_PipeErrorReported(t *testing.T) {
 	failPipeAfter(t, 0)
 	code, timedOut, err := runRecipe(context.Background(), runOpts{

@@ -26,11 +26,23 @@ func TestRecipeOutput_FileWritersGoDirect(t *testing.T) {
 	requireDrained(t, ro)
 }
 
+func TestRecipeOutput_AttachSecondPipeFailsClosesFirst(t *testing.T) {
+	// The first pipeFn call is the real os.Pipe, which js/wasm and
+	// wasip1 lack, so this test lives in the unix || windows file.
+	failPipeAfter(t, 1)
+	ro := &recipeOutput{}
+	err := ro.attach(&exec.Cmd{}, &strings.Builder{}, &strings.Builder{})
+	require.ErrorContains(t, err, "no pipes")
+	// The first pipe's copy goroutine must end: its read end is closed.
+	requireDrained(t, ro)
+}
+
 func TestRecipeOutput_OneWriterSharesOnePipe(t *testing.T) {
 	cmd := &exec.Cmd{}
 	out := &lockedBuffer{}
 	ro := &recipeOutput{}
 	require.NoError(t, ro.attach(cmd, out, out))
+	t.Cleanup(ro.closeChildEnds)
 	require.Len(t, ro.readers, 1)
 	assert.Same(t, cmd.Stdout, cmd.Stderr)
 
