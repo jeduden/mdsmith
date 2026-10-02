@@ -246,15 +246,29 @@ becomes a Go `ConfigSource` exactly as the `-c` flag's text does.
 is async, and any Go method returning `(T, error)` maps to a
 `Promise<T>` that rejects with `new Error(msg)`.
 
-`dispose()` releases the session's method functions, so the disposed
-session's caches and workspace can be freed. Each method keeps its
-shape afterwards: `check`, `fix`, `kinds`, `rename`, and `move` return
-a `Promise` that rejects with `Error("session disposed")`.
-`capabilities()` returns `[]`, and `invalidate()` does nothing. A
-second `dispose()` is a no-op. These stand-ins are reached through the
-session object only. A method reference taken before `dispose()` (such
-as `const { check } = session`) points at a released function: it
-returns `undefined` and logs "call to released function".
+`dispose()` releases the session's method functions and its own
+function, so the disposed session's caches and workspace can be freed
+and a create/dispose loop over writable session objects holds a fixed
+number of registered functions. Each method keeps its shape afterwards:
+`check`, `fix`, `kinds`, `rename`, and `move` return a `Promise` that
+rejects with `Error("session disposed")`. `capabilities()` returns
+`[]`, and `invalidate()` does nothing. A second `session.dispose()` is
+a no-op, because `dispose` points at a shared no-op stand-in too.
+
+These stand-ins are reached through a writable session object only. A
+method reference taken before `dispose()` (such as
+`const { check } = session`, or `const d = session.dispose`) points
+at a released function: it returns `undefined` and logs "call to
+released function". So does every method other than `dispose` of a
+session object frozen before `dispose()` (`Object.freeze(session)`),
+because `dispose()` cannot swap in the stand-ins. The same holds for
+one method made read-only
+(`Object.defineProperty(session, "check", { writable: false })`).
+A frozen session, or one whose `dispose` is read-only, keeps its own
+`dispose` function registered instead, so a second `dispose()` is
+still a no-op. That one function stays registered for each such
+session, so a create/dispose loop over frozen sessions grows by one
+function per cycle.
 
 `createSession` rejects when `opts` is not a plain object. It also
 rejects when `opts.workspace` is present but is not a plain object of

@@ -16,7 +16,7 @@ import (
 // synchronously during construction).
 func newPromise(executor func(resolve, reject func(any))) js.Value {
 	var handler js.Func
-	handler = js.FuncOf(func(_ js.Value, pArgs []js.Value) any {
+	handler = funcOf(func(_ js.Value, pArgs []js.Value) any {
 		resolveFn := pArgs[0]
 		rejectFn := pArgs[1]
 		resolve := func(v any) { resolveFn.Invoke(v) }
@@ -25,7 +25,7 @@ func newPromise(executor func(resolve, reject func(any))) js.Value {
 		// the resolve/reject functions; the executor runs to
 		// completion synchronously within Promise construction for
 		// our synchronous engine calls.
-		defer handler.Release()
+		defer releaseFunc(handler)
 		executor(resolve, reject)
 		return js.Undefined()
 	})

@@ -263,7 +263,7 @@ func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
 // table stops pinning the Session, while every method keeps its return
 // shape: async methods reject with "session disposed", capabilities()
 // is empty, invalidate() does nothing, and a second dispose() is a
-// no-op. No call reaches a released func.
+// no-op. No call through the session object reaches a released func.
 func TestNewSessionProxy_DisposeReleasesMethods(t *testing.T) {
 	proxy := newTestProxy(t)
 	require.Equal(t, js.TypeObject, proxy.Call("check", "a.md", "# A\n").Type(),
@@ -273,6 +273,12 @@ func TestNewSessionProxy_DisposeReleasesMethods(t *testing.T) {
 	liveCheck := proxy.Get("check")
 
 	proxy.Call("dispose")
+
+	// dispose now points at the shared no-op stand-in, so a second
+	// session.dispose() never reaches its own released func (which would
+	// return undefined too, but log "call to released function").
+	assert.True(t, proxy.Get("dispose").Equal(disposedFunc("dispose").Value),
+		"dispose points at the shared no-op stand-in")
 
 	// The session's own func is released: invoking it returns undefined
 	// (syscall/js logs "call to released function" for this one call).
@@ -296,4 +302,153 @@ func TestNewSessionProxy_DisposeReleasesMethods(t *testing.T) {
 	assert.Equal(t, 0, caps.Length())
 	assert.True(t, proxy.Call("invalidate", "a.md").IsUndefined(), "invalidate after dispose")
 	assert.NotPanics(t, func() { proxy.Call("dispose") }, "second dispose")
+}
+
+// TestNewSessionProxy_DisposeLeavesNoFuncs tracks the funcs a session's
+// lifecycle (proxy methods and Promise executors) registers and
+// releases through the funcOf and releaseFunc seams. After a warm-up
+// cycle, N more create/dispose cycles must leave the live set the same
+// size, so a restart loop does not grow syscall/js's handler table.
+// Each func is tracked by its JS wrapper rather than a bare counter, so
+// releasing the wrong func (or one twice) cannot cancel out a leak.
+// Not parallel: it swaps package seams.
+func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
+	oldOf, oldRelease := funcOf, releaseFunc
+	t.Cleanup(func() { funcOf, releaseFunc = oldOf, oldRelease })
+	var live []js.Value
+	// strays counts releases of a func not in live. It is asserted after
+	// the cycles, not reported with t.Errorf in releaseFunc: test output
+	// waits on the JS event loop, which a running callback blocks.
+	strays := 0
+	funcOf = func(fn func(js.Value, []js.Value) any) js.Func {
+		f := oldOf(fn)
+		live = append(live, f.Value)
+		return f
+	}
+	releaseFunc = func(f js.Func) {
+		oldRelease(f)
+		for i, v := range live {
+			if v.Equal(f.Value) {
+				live = append(live[:i], live[i+1:]...)
+				return
+			}
+		}
+		strays++
+	}
+
+	cycle := func() {
+		proxy := newTestProxy(t)
+		awaitPromise(t, proxy.Call("check", "a.md", "# A\n"))
+		proxy.Call("dispose")
+		// A late call reaches the shared stand-in, whose Promise
+		// executor must be released too.
+		awaitPromise(t, proxy.Call("check", "a.md", "# A\n"))
+	}
+	cycle() // warm-up: creates the shared disposed stand-ins if no earlier test did
+	base := len(live)
+	for i := 0; i < 5; i++ {
+		cycle()
+	}
+	assert.Len(t, live, base, "live funcs after 5 more create/dispose cycles")
+	assert.Zero(t, strays, "releases of a func that was not live (released twice, or registered outside funcOf)")
+}
+
+// TestNewSessionProxy_DisposeFrozenSessionKeepsDispose checks that a
+// session object frozen before dispose() (Object.freeze, or a store
+// that deep-freezes its state) keeps its dispose func registered:
+// proxy.Set cannot swap in the no-op stand-in there, so releasing it
+// would make a second session.dispose() reach a released func. The kept
+// func drops its references and a second call releases nothing more.
+// Not parallel: it swaps the releaseFunc seam.
+func TestNewSessionProxy_DisposeFrozenSessionKeepsDispose(t *testing.T) {
+	released := recordReleases(t)
+
+	proxy := newTestProxy(t)
+	ownDispose := proxy.Get("dispose")
+	js.Global().Get("Object").Call("freeze", proxy)
+	*released = nil // drop releases made while creating the session
+
+	proxy.Call("dispose")
+	require.True(t, proxy.Get("dispose").Equal(ownDispose), "frozen proxy keeps its own dispose")
+	assert.False(t, containsValue(*released, ownDispose), "dispose func of a frozen session must stay registered")
+	assert.Len(t, *released, len(sessionMethodNames())-1, "every other method func released")
+
+	// A released func also returns undefined, so IsUndefined alone cannot
+	// tell the no-op from a call to a released func; the checks after it
+	// show the second call went through the still-registered own func
+	// and released nothing.
+	n := len(*released)
+	assert.True(t, proxy.Call("dispose").IsUndefined(), "second dispose on a frozen session")
+	assert.Len(t, *released, n, "second dispose releases nothing more")
+	require.True(t, proxy.Get("dispose").Equal(ownDispose), "second dispose went through the own func")
+}
+
+// TestNewSessionProxy_DisposeReentrantIsNoop checks that a dispose()
+// re-entered from a JS setter on the session object (the swap loop's
+// proxy.Set runs it) returns at once. The outer call then finishes on
+// its own references: on a frozen session it must not reach a dropped
+// proxy, and on a writable one it releases each func exactly once.
+// Not parallel: it swaps the releaseFunc seam.
+func TestNewSessionProxy_DisposeReentrantIsNoop(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		freeze bool
+		want   int // funcs the dispose call releases
+	}{
+		{"writable", false, len(sessionMethodNames())},
+		{"frozen", true, len(sessionMethodNames()) - 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			released := recordReleases(t)
+
+			proxy := newTestProxy(t)
+			setterCalls := 0
+			setter := js.FuncOf(func(js.Value, []js.Value) any {
+				setterCalls++
+				if setterCalls == 1 {
+					proxy.Call("dispose")
+				}
+				return nil
+			})
+			t.Cleanup(setter.Release)
+			object := js.Global().Get("Object")
+			object.Call("defineProperty", proxy, "check",
+				map[string]any{"set": setter, "configurable": true})
+			if tt.freeze {
+				object.Call("freeze", proxy)
+			}
+			*released = nil // drop releases made while creating the session
+
+			assert.NotPanics(t, func() { proxy.Call("dispose") }, "dispose re-entered from a setter")
+			assert.Equal(t, 1, setterCalls, "the re-entrant dispose runs no swap of its own")
+			assert.Len(t, *released, tt.want, "each func released exactly once")
+		})
+	}
+}
+
+// recordReleases swaps the releaseFunc seam for one that appends each
+// released func's JS wrapper to the returned slice before releasing
+// it, and restores the seam when t ends. A caller must not run in
+// parallel.
+func recordReleases(t *testing.T) *[]js.Value {
+	t.Helper()
+	oldRelease := releaseFunc
+	t.Cleanup(func() { releaseFunc = oldRelease })
+	released := new([]js.Value)
+	releaseFunc = func(f js.Func) {
+		*released = append(*released, f.Value)
+		oldRelease(f)
+	}
+	return released
+}
+
+// containsValue reports whether vs holds a value strictly equal (===)
+// to v.
+func containsValue(vs []js.Value, v js.Value) bool {
+	for _, x := range vs {
+		if x.Equal(v) {
+			return true
+		}
+	}
+	return false
 }

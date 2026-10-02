@@ -1,7 +1,7 @@
 ---
 id: 2610021027
 title: Release a disposed wasm session's dispose func
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   `proxyDispose` in `cmd/mdsmith-wasm` never releases its
@@ -48,13 +48,24 @@ say it for `dispose` too.
 2. Release `dispose`'s own func on its first call and set
    `proxy.dispose` to a package-level no-op func.
 3. Update the engine API page's dispose paragraph.
+4. On a frozen session object `proxy.Set` cannot swap in
+   the no-op, so keep `dispose`'s func registered there
+   behind a nil guard; a second `dispose()` stays silent.
+5. Move `dispose`'s references into locals before it runs
+   any JS. Then a `dispose()` re-entered from a setter on
+   the session object returns at the nil guard.
 
 ## Acceptance Criteria
 
-- [ ] N create/dispose cycles leave the func count the
+- [x] N create/dispose cycles leave the func count the
       same as one cycle.
-- [ ] `session.dispose(); session.dispose()` stays a
+- [x] `session.dispose(); session.dispose()` stays a
       no-op.
-- [ ] `go run ./cmd/mdsmith-release test-js-wasm
+- [x] On a frozen session, a second `dispose()` reaches
+      no released func.
+- [x] A `dispose()` re-entered from a setter on the
+      session object neither panics nor releases a func
+      twice.
+- [x] `go run ./cmd/mdsmith-release test-js-wasm
       ./cmd/mdsmith-wasm` passes.
-- [ ] All tests pass: `go test ./...`
+- [x] All tests pass: `go test ./...`
