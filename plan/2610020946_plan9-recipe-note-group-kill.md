@@ -1,7 +1,7 @@
 ---
 id: 2610020946
 title: Kill a timed-out recipe's whole note group on plan9
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   On plan9, `internal/build` kills only a timed-out recipe's
@@ -49,20 +49,43 @@ which only had to make the package compile on wasm.
 2. Split plan9 out of `exec_other.go` into
    `exec_plan9.go`. Set `SysProcAttr{Rfork:
    syscall.RFNOTEG}` in `configureProcessGroup`. In
-   `killGroup`, write `kill` to `/proc/<pid>/notepg`,
-   and fall back to `cmd.Process.Kill()` if that write
-   fails.
-3. Narrow `exec_other.go` to `js || wasip1` and update
-   the `runRecipe` doc comment and
+   `afterStart`, read the leader's `noteid` first, and
+   keep nothing if it is unreadable or equals
+   mdsmith's own, so a recipe that joined its parent's
+   group cannot turn the kill on mdsmith. Then open
+   `/proc/<pid>/notepg` while the leader is alive: the
+   kernel binds the open file to the note group, so a
+   write still reaches it after the leader exits. Keep
+   the file only if the `noteid` is unchanged once it
+   is open. In `killGroup`, write `kill` to that file.
+   The note is catchable, so then sweep `/proc` and
+   write a forced `kill` to the `ctl` file of every
+   process with that `noteid` (checking `noteid` both
+   before and after opening `ctl`, so a sweep is cheap
+   and a reused pid is never hit). Repeat the sweep
+   until a pass kills no new process, at most 8 passes,
+   so a child that a note-catching member forks
+   mid-sweep dies too. Last, always write a forced
+   `kill` to the leader's own `ctl` (`forceKillLeader`),
+   falling back to the catchable `Process.Kill` note
+   only when `ctl` cannot be opened or written.
+   `runRecipe`'s leader-only reap fallback also calls
+   `forceKillLeader`, which on Unix and Windows is
+   `Process.Kill`. The timeout report names the kill
+   each platform sends (`TimeoutKillAction`), not
+   SIGTERM everywhere.
+3. Narrow `exec_other.go` to `!unix && !windows &&
+   !plan9` and update the `runRecipe` doc comment and
    [build.md](../docs/guides/directives/build.md) so they
-   say the orphan guarantee holds on plan9 too.
+   say the orphan guarantee holds on plan9 too, except
+   for an rc `&` job, which leads its own note group.
 
 ## Acceptance Criteria
 
 - [ ] On plan9, a timed-out recipe leaves no process from
       its note group running.
-- [ ] `GOOS=plan9 go vet ./...` (tests included) passes,
+- [x] `GOOS=plan9 go vet ./...` (tests included) passes,
       and CI still gates it.
-- [ ] `GOOS=js GOARCH=wasm go build ./...` still passes.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `GOOS=js GOARCH=wasm go build ./...` still passes.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

@@ -282,7 +282,7 @@ footer: |
 | 2610020233 | ✅     | haiku  | [Drop the unused rules? and link? keys from the feature kind schema](plan/2610020233_drop-unused-feature-rules-key.md)                                  |
 | 2610020305 | 🔲     | sonnet | [Homepage Tier 3 declutter: pillar numbers, tints, badges, eyebrows](plan/2610020305_homepage-tier3-declutter.md)                                       |
 | 2610020725 | ✅     | sonnet | [Make internal/build compile under GOOS=js GOARCH=wasm](plan/2610020725_build-exec-js-wasm-stub.md)                                                     |
-| 2610020946 | 🔲     | sonnet | [Kill a timed-out recipe's whole note group on plan9](plan/2610020946_plan9-recipe-note-group-kill.md)                                                  |
+| 2610020946 | 🔳     | sonnet | [Kill a timed-out recipe's whole note group on plan9](plan/2610020946_plan9-recipe-note-group-kill.md)                                                  |
 | 2610021026 | 🔲     | opus   | [Replace runRecipe's hand-rolled pipe reaping with Cmd.WaitDelay](plan/2610021026_recipe-exec-waitdelay.md)                                             |
 | 2610021027 | ✅     | sonnet | [Release a disposed wasm session's dispose func](plan/2610021027_wasm-dispose-func-release.md)                                                          |
 | 2610021028 | 🔲     | sonnet | [Gate untagged internal/build tests under js/wasm in CI](plan/2610021028_js-wasm-portable-test-gate.md)                                                 |
@@ -291,4 +291,6 @@ footer: |
 | 2610021452 | 🔲     | sonnet | [Free wasm sessions dropped without dispose](plan/2610021452_wasm-collect-dropped-sessions.md)                                                          |
 | 2610021556 | ✅     | sonnet | [Declare each wasm method's disposed result next to its impl](plan/2610021556_wasm-disposed-result-table.md)                                            |
 | 2610021800 | 🔲     | sonnet | [Contain wasm JS exceptions outside the executor guard](plan/2610021800_wasm-js-exception-outside-guard.md)                                             |
+| 2610021849 | 🔲     | sonnet | [Kill running build recipes when the CLI is interrupted](plan/2610021849_cancel-recipes-on-cli-interrupt.md)                                            |
+| 2610021917 | 🔲     | sonnet | [Replace the per-platform kill maps with a per-recipe group killer](plan/2610021917_per-recipe-group-killer.md)                                         |
 <?/catalog?>

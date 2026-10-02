@@ -112,7 +112,7 @@ func printStreamTail(label string, lines []string, w io.Writer) {
 
 // reportBuildFailure prints the rich diagnostic for a failed recipe. A
 // timeout prints the hung-recipe block (last lines of both streams before
-// SIGTERM); any other failure prints the six-field block plus the last 20
+// the kill); any other failure prints the six-field block plus the last 20
 // lines of stderr. When the recipe never ran (Argv is empty, e.g. ActionID
 // computation failed before dispatch), only the error is printed.
 func reportBuildFailure(bt buildTarget, res targetRunResult, w io.Writer) {
@@ -143,13 +143,13 @@ func reportBuildFailure(bt buildTarget, res targetRunResult, w io.Writer) {
 	printStreamTail("stderr", res.StderrTail, w)
 }
 
-// reportTimeout prints the hung-recipe diagnostic before the SIGTERM that
-// the context cancellation already sent.
+// reportTimeout prints the hung-recipe diagnostic and names the kill
+// the timeout sent on this platform (buildexec.TimeoutKillAction).
 func reportTimeout(name string, res targetRunResult, w io.Writer) {
 	_, _ = fmt.Fprintf(w, "TIMEOUT %s after %s\n", name, res.Duration.Round(time.Millisecond))
 	printStreamTail("stdout", res.StdoutTail, w)
 	printStreamTail("stderr", res.StderrTail, w)
-	_, _ = fmt.Fprintf(w, "  sent SIGTERM to process group\n")
+	_, _ = fmt.Fprintf(w, "  %s\n", buildexec.TimeoutKillAction)
 }
 
 // lastLines returns the last n elements of lines (or all if fewer).
