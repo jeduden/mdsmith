@@ -136,11 +136,8 @@ func readNoteID(dir string) string {
 // pass kills no process it had not killed already, at most
 // maxSweepPasses times. A child forked by a member still finishing an
 // rfork when the last pass lists procRoot can still escape. An empty id
-// matches nothing.
+// matches nothing, as killIfInGroup refuses it.
 func forceKillNoteGroup(id string) int {
-	if id == "" {
-		return 0
-	}
 	killed := map[string]bool{}
 	for range maxSweepPasses {
 		ents, err := os.ReadDir(procRoot)
@@ -198,11 +195,9 @@ func killIfInGroup(dir, id string) bool {
 // process still in the group. Last, and always, it force-kills the
 // leader (forceKillLeader), which also covers a leader that left the
 // group and one afterStart captured nothing for. A nil Process (the
-// command never started) is a no-op.
+// command never started) is a no-op: afterStart held no group for it,
+// and forceKillLeader skips it.
 func killGroup(cmd *exec.Cmd) {
-	if cmd.Process == nil {
-		return
-	}
 	notePgsMu.Lock()
 	g, held := notePgs[cmd]
 	notePgsMu.Unlock()

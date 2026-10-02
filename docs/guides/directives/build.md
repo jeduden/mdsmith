@@ -381,8 +381,8 @@ Each recipe runs in its own group (`Setpgid` on Unix, `RFNOTEG` on plan9,
 `CREATE_NEW_PROCESS_GROUP` plus a Job Object on Windows). On timeout, Unix sends
 the group `SIGTERM`, then `SIGKILL` after up to 5 s; plan9 writes `kill` to its
 `notepg`, then each member's and the leader's `ctl` (an rc `&` job escapes);
-Windows sends `CTRL_BREAK_EVENT` and ends the Job Object (else a daemon can
-survive). Waits for the leader, after a direct kill, and for output cap at 5 s.
+Windows sends `CTRL_BREAK_EVENT` and ends its Job Object; without one, a daemon
+can survive. Each later wait (leader, after a direct kill, output) caps at 5 s.
 
 ### Atomic-write hardening
 

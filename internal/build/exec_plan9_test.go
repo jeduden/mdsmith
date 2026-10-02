@@ -166,12 +166,15 @@ func TestKillGroup_Plan9_ForceKillsNoteCatchingLeaderWithoutGroup(t *testing.T) 
 	cmd := exec.Command(script)
 	configureProcessGroup(cmd)
 	require.NoError(t, cmd.Start())
-	pid := readPID(t, pidFile)
-	id := readNoteID("/proc/" + strconv.Itoa(pid))
+	// Register the cleanup before anything can fail the test: the leader
+	// catches the "kill" note, so nothing else would end its loop.
+	id := readNoteID(procDir(cmd.Process.Pid))
 	t.Cleanup(func() {
 		forceKillNoteGroup(id) // the loop's sleep outlives its leader
+		forceKillLeader(cmd)
 		_ = cmd.Wait()
 	})
+	pid := readPID(t, pidFile)
 
 	killGroup(cmd)
 	assert.Eventually(t, func() bool { return !procAlive(pid) },

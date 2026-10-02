@@ -99,7 +99,8 @@ func TestAfterStart_Plan9_NilProcess(t *testing.T) {
 	assert.Nil(t, afterStart(&exec.Cmd{}))
 }
 
-func TestAfterStart_Plan9_OpenFailsReturnsNil(t *testing.T) {
+func TestAfterStart_Plan9_NoProcEntryReturnsNil(t *testing.T) {
+	// A leader that exited before afterStart ran has no /proc entry.
 	stubProcRoot(t) // empty, so <root>/42 has neither noteid nor notepg
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
 	assert.Nil(t, afterStart(cmd))
@@ -158,6 +159,7 @@ func TestAfterStart_Plan9_RecordsNoteID(t *testing.T) {
 	root := stubProcRoot(t)
 	ctl := fakeProc(t, root, "42", "9")
 	path := fakeNotePg(t, root, "42")
+	stubNoteKill(t) // pid 42 is fake: no note may reach a real process
 
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
 	cleanup := afterStart(cmd)
