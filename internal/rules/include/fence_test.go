@@ -86,11 +86,39 @@ func TestRewriteSkippingCode(t *testing.T) {
 }
 
 // TestFenceScan_ScalarOnly pins that the scan cannot retain a line: the
-// lines it reads are zero-copy views of strings.
+// lines it reads are zero-copy views of strings, so no field at any
+// depth may hold a pointer, slice, string, map, or interface.
 func TestFenceScan_ScalarOnly(t *testing.T) {
-	typ := reflect.TypeOf(fenceScan{})
+	assertScalarFields(t, reflect.TypeOf(fenceScan{}))
+}
+
+// assertScalarFields fails when typ holds a non-scalar field at any
+// depth, recursing into nested structs such as mdfence.Fence.
+func assertScalarFields(t *testing.T, typ reflect.Type) {
+	t.Helper()
 	for i := 0; i < typ.NumField(); i++ {
-		assert.NotContains(t, []reflect.Kind{reflect.Pointer, reflect.Slice, reflect.String, reflect.Map, reflect.Interface},
-			typ.Field(i).Type.Kind(), typ.Field(i).Name)
+		f := typ.Field(i)
+		switch f.Type.Kind() {
+		case reflect.Struct:
+			assertScalarFields(t, f.Type)
+		case reflect.Bool, reflect.Int, reflect.Uint8:
+		default:
+			t.Errorf("%s.%s is %s, not a scalar", typ.Name(), f.Name, f.Type.Kind())
+		}
+	}
+}
+
+// TestFenceScan_StepLeavesLineIntact pins that step reads a line
+// without writing to it, which the read-only string view relies on.
+func TestFenceScan_StepLeavesLineIntact(t *testing.T) {
+	lines := []string{"- ```go", "  # c", "\t```", "x", "  ````  \r", "1. ~~~"}
+	var s fenceScan
+	for _, l := range lines {
+		b := []byte(l)
+		_ = s.step(b, false)
+		_ = s.step(b, true)
+		_ = s.leavesItem(b)
+		_, _, _ = listContent(b)
+		assert.Equal(t, l, string(b), "input mutated")
 	}
 }
