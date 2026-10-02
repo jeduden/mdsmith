@@ -74,6 +74,7 @@ func TestCountFilesWithStem(t *testing.T) {
 		"same stem in two directories":   {files, "api", 2},
 		"case-folded basename":           {[]string{"docs/API.md"}, "api", 1},
 		"markdown extension is stripped": {files, "c", 1},
+		"upper-case markdown extension":  {[]string{"docs/Guide.MD"}, "guide", 1},
 		"non-markdown keeps extension":   {files, "api.png", 1},
 		"stem is not a prefix match":     {files, "ap", 0},
 		"mdx is not a wikilink stem":     {files, "b.mdx", 1},
