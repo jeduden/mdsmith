@@ -4,12 +4,12 @@ package build
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -125,25 +125,6 @@ func stubKillGroup(t *testing.T, fn func(*exec.Cmd)) {
 	})
 }
 
-// lockedBuffer is a strings.Builder safe to read while os/exec's copy
-// goroutine may still write to it.
-type lockedBuffer struct {
-	mu sync.Mutex
-	b  strings.Builder
-}
-
-func (l *lockedBuffer) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.b.Write(p)
-}
-
-func (l *lockedBuffer) String() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.b.String()
-}
-
 func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
 	// Models Windows with no Job Object and a recipe that ignores
 	// CTRL_BREAK: the group kill leaves the leader running. runRecipe
@@ -187,14 +168,14 @@ func TestRunRecipe_SurvivorHoldingPipeDoesNotBlock(t *testing.T) {
 }
 
 func TestRunRecipe_AbandonedSurvivorCannotWriteAfterReturn(t *testing.T) {
-	// After runRecipe gives up on a survivor that holds the stdout pipe,
-	// os/exec's copy goroutine is still running. A line the survivor
-	// prints later must not reach the caller's writer: Build has already
-	// closed its log and moved on by then.
+	// A line a survivor prints after runRecipe gave up on it must not
+	// reach the caller's writer: Build has already closed its log and
+	// moved on by then. SIGPIPE is ignored so the survivor outlives its
+	// write to the closed pipe and can touch the marker.
 	stubKillGroup(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
 	marker := filepath.Join(t.TempDir(), "printed")
 	script := writeScript(t, t.TempDir(), "late.sh",
-		`(sleep 1; echo late; : > "`+marker+`") & sleep 5`)
+		`(trap '' PIPE; sleep 1; echo late; : > "`+marker+`") & sleep 5`)
 
 	out := &lockedBuffer{}
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -212,7 +193,68 @@ func TestRunRecipe_AbandonedSurvivorCannotWriteAfterReturn(t *testing.T) {
 		_, statErr := os.Stat(marker)
 		return statErr == nil
 	}, 5*time.Second, 20*time.Millisecond, "survivor should print after runRecipe returns")
-	// Give the copy goroutine time to forward the line it read.
+	// Give a still-running copy goroutine time to forward the line.
 	time.Sleep(200 * time.Millisecond)
 	assert.NotContains(t, out.String(), "late")
+}
+
+func TestRunRecipe_AbandonedSurvivorPipeIsClosed(t *testing.T) {
+	// Once runRecipe gives up on a survivor, it must close its read end
+	// of the captured pipe rather than leave a copy goroutine and the
+	// fd alive for as long as the survivor runs: the survivor's next
+	// write then fails with EPIPE (SIGPIPE is ignored so it can tell).
+	stubKillGroup(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
+	dir := t.TempDir()
+	okMark, failMark := filepath.Join(dir, "ok"), filepath.Join(dir, "failed")
+	script := writeScript(t, t.TempDir(), "epipe.sh",
+		`(trap '' PIPE; sleep 1; if echo late; then : > "`+okMark+
+			`"; else : > "`+failMark+`"; fi) & sleep 5`)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+		stdout:  &lockedBuffer{},
+	})
+	require.Error(t, err)
+	require.True(t, timedOut)
+
+	require.Eventually(t, func() bool {
+		_, okErr := os.Stat(okMark)
+		_, failErr := os.Stat(failMark)
+		return okErr == nil || failErr == nil
+	}, 5*time.Second, 20*time.Millisecond, "survivor should try to write")
+	assert.FileExists(t, failMark, "the survivor's write must hit a closed pipe")
+}
+
+func TestRunRecipe_SurvivorCostsOneReapWait(t *testing.T) {
+	// The leader dies at the group kill; only a background child holds
+	// the pipe. Waiting for the leader and draining output share one
+	// reapWait: a second wait after a pointless leader kill would add
+	// a full reapWait to every such timeout.
+	stubKillGroup(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
+	reapWait = time.Second
+	script := writeScript(t, t.TempDir(), "daemon.sh", `sleep 5 & sleep 5`)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+		stdout:  &lockedBuffer{},
+	})
+	require.Error(t, err)
+	assert.True(t, timedOut)
+	assert.Less(t, time.Since(start), 1800*time.Millisecond)
+}
+
+func TestExitCodeOf_ExitError(t *testing.T) {
+	err := exec.Command("/bin/sh", "-c", "exit 7").Run()
+	require.Error(t, err)
+	assert.Equal(t, 7, exitCodeOf(err))
+	assert.Equal(t, 7, exitCodeOf(fmt.Errorf("wrapped: %w", err)))
 }

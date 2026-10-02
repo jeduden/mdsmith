@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -112,12 +111,13 @@ type runOpts struct {
 // timeout kills only the leader, with no grace period, so the orphan
 // guarantee holds on Unix and on Windows with a Job Object only.
 //
-// After the kill, runRecipe waits at most reapWait for the recipe to
-// exit. If it has not, it kills the leader directly and waits at most
-// reapWait again, then returns anyway: a leader that ignored the group
-// kill, or a survivor that holds a captured output pipe open, cannot
-// hang mdsmith. Output such a survivor writes after runRecipe returns
-// is dropped (outputGate), never forwarded to o.stdout or o.stderr.
+// After the kill, runRecipe waits at most reapWait for the leader to
+// exit. If it has not (a leader that ignored the group kill), it kills
+// the leader directly and waits at most reapWait again. It then waits
+// at most reapWait for captured output to drain and closes its end of
+// the pipes (recipeOutput.abandon), so a survivor that holds a captured
+// pipe open can neither hang mdsmith nor pin a goroutine or fd; output
+// written after runRecipe returns is dropped, never forwarded.
 //
 // It returns the process exit code, whether the run timed out, and any
 // error. On success it returns (0, false, nil). On non-zero exit it
@@ -129,22 +129,21 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	// only kill the leader, not the group.
 	cmd := exec.Command(o.argv[0], o.argv[1:]...) //nolint:gosec // argv is explicit; user-declared recipe
 	cmd.Dir = o.dir
-	// A caller's writer is reached through os/exec's copy goroutines,
-	// which outlive runRecipe when the timeout path stops waiting on a
-	// survivor. The gate closes on return, so no write lands after it.
-	gate := &outputGate{}
-	defer gate.close()
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-	if o.stdout != nil {
-		cmd.Stdout = gate.wrap(o.stdout)
-	}
-	if o.stderr != nil {
-		cmd.Stderr = gate.wrap(o.stderr)
+	// The pipes are ours, not os/exec's, so cmd.Wait returns when the
+	// leader exits and the timeout path can close them on a survivor.
+	// The gate closes on return, so no output reaches a caller after it.
+	ro := &recipeOutput{}
+	defer ro.gate.close()
+	if err := ro.attach(cmd, o.stdout, o.stderr); err != nil {
+		return -1, false, fmt.Errorf("capturing recipe output: %w", err)
 	}
 	cmd.Env = buildEnv(o.exec, o.defExec)
 	configureProcessGroup(cmd)
 
-	if err := cmd.Start(); err != nil {
+	err := cmd.Start()
+	ro.closeChildEnds()
+	if err != nil {
+		ro.abandon()
 		return -1, false, fmt.Errorf("starting recipe: %w", err)
 	}
 
@@ -162,39 +161,70 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	// ctx.Done() we kill the whole group ourselves, then drain the Wait.
 	select {
 	case err := <-done:
-		if err == nil {
-			return 0, false, nil
+		// The leader exited; a child it left behind may still hold a
+		// captured pipe, so the deadline still applies to the drain.
+		select {
+		case <-ro.drained:
+			if err == nil {
+				err = ro.err()
+			}
+			return exitResult(err)
+		case <-ctx.Done():
+			killGroupFn(cmd)
+			return timeoutResult(ctx, ro, err)
 		}
-		exitCode := -1
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			exitCode = ee.ExitCode()
-		}
-		return exitCode, false, err
 	case <-ctx.Done():
 		killGroupFn(cmd)
 		reaped, waitErr := waitAtMost(done, reapWait)
 		if !reaped {
 			// The group kill left the leader running (Windows when the
 			// Job Object could not be set up and the recipe ignores
-			// CTRL_BREAK), or a surviving child still holds a captured
-			// output pipe, so Wait cannot return (targets with no group
-			// kill). Kill the leader directly, then give up waiting so
-			// mdsmith never hangs; done is buffered, so the Wait
-			// goroutine still exits once the pipe closes.
+			// CTRL_BREAK). Kill it directly; done is buffered, so the
+			// Wait goroutine exits whenever the leader does.
 			_ = cmd.Process.Kill()
 			_, waitErr = waitAtMost(done, reapWait)
 		}
-		exitCode := -1
-		var ee *exec.ExitError
-		if errors.As(waitErr, &ee) {
-			exitCode = ee.ExitCode()
-		}
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return exitCode, true, fmt.Errorf("recipe timed out: %w", ctx.Err())
-		}
-		return exitCode, true, fmt.Errorf("recipe cancelled: %w", ctx.Err())
+		return timeoutResult(ctx, ro, waitErr)
 	}
+}
+
+// exitResult maps a finished recipe's Wait (or output copy) error to
+// runRecipe's results: (0, false, nil) on success, else the exit code,
+// or -1 when err is not an *exec.ExitError.
+func exitResult(err error) (int, bool, error) {
+	if err == nil {
+		return 0, false, nil
+	}
+	return exitCodeOf(err), false, err
+}
+
+// timeoutResult finishes a run whose context ended after the kill: it
+// waits at most reapWait for captured output to drain, abandons the
+// pipes if a survivor still holds them, and reports the timeout or
+// cancellation with the exit code waitErr carries.
+func timeoutResult(ctx context.Context, ro *recipeOutput, waitErr error) (int, bool, error) {
+	t := time.NewTimer(reapWait)
+	select {
+	case <-ro.drained:
+	case <-t.C:
+		ro.abandon()
+	}
+	t.Stop()
+	exitCode := exitCodeOf(waitErr)
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return exitCode, true, fmt.Errorf("recipe timed out: %w", ctx.Err())
+	}
+	return exitCode, true, fmt.Errorf("recipe cancelled: %w", ctx.Err())
+}
+
+// exitCodeOf returns the exit code an *exec.ExitError in err carries,
+// or -1 when there is none.
+func exitCodeOf(err error) int {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode()
+	}
+	return -1
 }
 
 // afterStartFn indirects afterStart so a test can install a non-nil job
@@ -205,49 +235,10 @@ var afterStartFn = afterStart
 // leaves the recipe running.
 var killGroupFn = killGroup
 
-// reapWait bounds each wait for cmd.Wait after a timeout kill: once
-// after killGroup, and once more after the leader-only fallback kill.
-// It is a var so a test can shorten it.
+// reapWait bounds each wait after a timeout kill: for the leader after
+// killGroup, for it again after the leader-only fallback kill, and for
+// captured output to drain. It is a var so a test can shorten it.
 var reapWait = 5 * time.Second
-
-// outputGate forwards a recipe's stdout and stderr writes until close,
-// then drops them. One mutex covers both streams and is held across
-// each forwarded Write, so once close returns no write is in flight
-// and none follows. Sharing it also keeps the os/exec guarantee that a
-// writer passed as both stdout and stderr sees one Write at a time.
-type outputGate struct {
-	mu     sync.Mutex
-	closed bool
-}
-
-// wrap returns a writer that forwards to w while the gate is open. The
-// value is comparable, so os/exec still detects stdout == stderr.
-func (g *outputGate) wrap(w io.Writer) io.Writer { return gatedWriter{g: g, w: w} }
-
-// close stops forwarding, after any in-flight write completes.
-func (g *outputGate) close() {
-	g.mu.Lock()
-	g.closed = true
-	g.mu.Unlock()
-}
-
-// gatedWriter is one stream's side of an outputGate.
-type gatedWriter struct {
-	g *outputGate
-	w io.Writer
-}
-
-// Write forwards p to the wrapped writer, or reports it written and
-// drops it once the gate is closed, so the copy goroutine keeps
-// draining the pipe and the survivor never blocks on a full one.
-func (gw gatedWriter) Write(p []byte) (int, error) {
-	gw.g.mu.Lock()
-	defer gw.g.mu.Unlock()
-	if gw.g.closed {
-		return len(p), nil
-	}
-	return gw.w.Write(p)
-}
 
 // waitAtMost receives from done for up to d. It reports true and the
 // received error, or false and nil when d elapses first.

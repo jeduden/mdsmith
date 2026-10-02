@@ -238,27 +238,6 @@ func TestRunRecipe_CancellationReported(t *testing.T) {
 	assert.Contains(t, err.Error(), "cancelled")
 }
 
-func TestOutputGate(t *testing.T) {
-	var a, b strings.Builder
-	g := &outputGate{}
-	wa, wb := g.wrap(&a), g.wrap(&b)
-
-	n, err := wa.Write([]byte("kept"))
-	require.NoError(t, err)
-	assert.Equal(t, 4, n)
-
-	g.close()
-	n, err = wb.Write([]byte("dropped"))
-	require.NoError(t, err)
-	assert.Equal(t, 7, n, "a closed gate reports the write done so the copy keeps draining")
-
-	assert.Equal(t, "kept", a.String())
-	assert.Empty(t, b.String())
-	// os/exec compares Stdout == Stderr to share one pipe and serialize
-	// writes; wrapping one writer twice must keep that equality.
-	assert.True(t, g.wrap(&a) == g.wrap(&a))
-}
-
 func TestWaitAtMost(t *testing.T) {
 	done := make(chan error, 1)
 	want := errors.New("exit 1")
