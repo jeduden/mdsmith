@@ -183,6 +183,10 @@ func awaitPromise(t *testing.T, p js.Value) (js.Value, bool) {
 
 func TestCreateSession(t *testing.T) {
 	obj := func(m map[string]any) js.Value { return js.ValueOf(m) }
+	const (
+		wsMsg  = "createSession options.workspace must be an object of path to source strings"
+		cfgMsg = "createSession options.configYAML must be a string"
+	)
 
 	rejects := []struct {
 		name    string
@@ -193,13 +197,15 @@ func TestCreateSession(t *testing.T) {
 		{"string options", []js.Value{js.ValueOf("x")}, "createSession requires an options object"},
 		{"null options", []js.Value{js.Null()}, "createSession requires an options object"},
 		{"array options", []js.Value{js.ValueOf([]any{})}, "createSession requires an options object"},
-		{"empty array workspace", []js.Value{obj(map[string]any{"workspace": []any{}})}, "createSession options.workspace must be an object of path to source strings"},
-		{"array workspace", []js.Value{obj(map[string]any{"workspace": []any{"# A"}})}, "createSession options.workspace must be an object of path to source strings"},
-		{"null workspace", []js.Value{obj(map[string]any{"workspace": nil})}, "createSession options.workspace must be an object of path to source strings"},
-		{"string workspace", []js.Value{obj(map[string]any{"workspace": "a.md"})}, "createSession options.workspace must be an object of path to source strings"},
-		{"boxed string workspace", []js.Value{obj(map[string]any{"workspace": js.Global().Get("String").New("# A")})}, "createSession options.workspace must be an object of path to source strings"},
-		{"null configYAML", []js.Value{obj(map[string]any{"configYAML": nil})}, "createSession options.configYAML must be a string"},
-		{"byte configYAML", []js.Value{obj(map[string]any{"configYAML": js.Global().Get("Uint8Array").New(2)})}, "createSession options.configYAML must be a string"},
+		{"empty array workspace", []js.Value{obj(map[string]any{"workspace": []any{}})}, wsMsg},
+		{"array workspace", []js.Value{obj(map[string]any{"workspace": []any{"# A"}})}, wsMsg},
+		{"null workspace", []js.Value{obj(map[string]any{"workspace": nil})}, wsMsg},
+		{"string workspace", []js.Value{obj(map[string]any{"workspace": "a.md"})}, wsMsg},
+		{"boxed string workspace",
+			[]js.Value{obj(map[string]any{"workspace": js.Global().Get("String").New("# A")})}, wsMsg},
+		{"null configYAML", []js.Value{obj(map[string]any{"configYAML": nil})}, cfgMsg},
+		{"byte configYAML",
+			[]js.Value{obj(map[string]any{"configYAML": js.Global().Get("Uint8Array").New(2)})}, cfgMsg},
 	}
 	for _, tt := range rejects {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
