@@ -244,12 +244,15 @@ type methodImpl struct {
 
 // asyncMethod builds the entry for a method that returns a Promise.
 // fn runs inside the Promise executor; a non-nil error rejects with
-// Error(err.Error()), otherwise the Promise resolves to toJS(value).
+// Error(err.Error()), otherwise the Promise resolves to toJS(value). A
+// JS exception raised on the way (a js.Error panic) rejects with that
+// exception, as in createSession, instead of ending the Go program.
 // After dispose the Promise rejects with Error("session disposed").
 func asyncMethod(fn func(sess *mdsmith.Session, args []js.Value) (any, error)) methodImpl {
 	return methodImpl{
 		call: func(sess *mdsmith.Session, args []js.Value) any {
 			return newPromise(func(resolve, reject func(any)) {
+				defer rejectOnJSError(reject)
 				v, err := fn(sess, args)
 				if err != nil {
 					reject(jsError(err.Error()))

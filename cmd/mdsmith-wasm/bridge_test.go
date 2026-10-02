@@ -293,6 +293,18 @@ func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
 	assert.Equal(t, sessionMethodNames(), got)
 }
 
+// TestSharedMethodImpls_Complete checks that every table entry carries
+// both funcs. A nil one panics inside a js.FuncOf callback, which ends
+// the js/wasm test binary, so this test sits before the first test that
+// calls a method in the table: go test runs a file's tests in source
+// order, and this failure is then reported before that crash.
+func TestSharedMethodImpls_Complete(t *testing.T) {
+	for name, impl := range sharedMethodImpls {
+		assert.NotNil(t, impl.call, "%s has no call func", name)
+		assert.NotNil(t, impl.disposed, "%s has no disposed func", name)
+	}
+}
+
 // TestNewSessionProxy_DisposeKeepsMethodShapes checks that after
 // dispose() every method keeps its return shape: async methods reject
 // with "session disposed", capabilities() is empty, invalidate() does
@@ -346,9 +358,11 @@ func assertDisposedShapes(t *testing.T, proxy js.Value) {
 // synchronous method that falls back to the rejecting-Promise result
 // after dispose fails here, and so does one whose disposed result is
 // undefined where the live one is an array. Each method needs an entry
-// in methodSampleArgs, so a new method cannot skip the check. An entry
-// with no call or disposed func, or a method left off the session
-// object, fails cleanly instead of panicking the test binary.
+// in methodSampleArgs, so a new method cannot skip the check. A method
+// left off the session object fails cleanly instead of panicking the
+// test binary, and so does an entry with no call or disposed func when
+// this test runs on its own (-run); in a full run
+// TestSharedMethodImpls_Complete reports that first.
 func TestNewSessionProxy_DisposedShapeMatchesLive(t *testing.T) {
 	for name, impl := range sharedMethodImpls {
 		require.NotNil(t, impl.call, "%s has no call func", name)
@@ -384,16 +398,6 @@ func settledShape(t *testing.T, v js.Value) string {
 	}
 }
 
-// TestSharedMethodImpls_Complete checks that every table entry carries
-// both funcs, so a nil one fails here instead of panicking inside a
-// js.FuncOf callback, which hangs the js/wasm suite.
-func TestSharedMethodImpls_Complete(t *testing.T) {
-	for name, impl := range sharedMethodImpls {
-		assert.NotNil(t, impl.call, "%s has no call func", name)
-		assert.NotNil(t, impl.disposed, "%s has no disposed func", name)
-	}
-}
-
 func TestAsyncMethod(t *testing.T) {
 	t.Run("resolves the value as JS", func(t *testing.T) {
 		var gotArgs []js.Value
@@ -415,14 +419,31 @@ func TestAsyncMethod(t *testing.T) {
 		require.True(t, rejected)
 		assert.Equal(t, "boom", v.Get("message").String())
 	})
+	// fn runs inside a Promise executor, a JS callback, where t.Fatal
+	// would block on the JS event loop and hang the suite; record the
+	// call and assert after the Promise settles instead.
 	t.Run("disposed result rejects", func(t *testing.T) {
+		ran := false
 		m := asyncMethod(func(*mdsmith.Session, []js.Value) (any, error) {
-			t.Fatal("fn must not run after dispose")
+			ran = true
 			return nil, nil
 		})
 		v, rejected := awaitPromise(t, m.disposed().(js.Value))
 		require.True(t, rejected)
 		assert.Equal(t, disposedAsyncReason, v.Get("message").String())
+		assert.False(t, ran, "fn must not run after dispose")
+	})
+	// A JS exception fn raises (syscall/js panics with js.Error) must
+	// reject the Promise, as in createSession, rather than end the Go
+	// program and every session with it.
+	t.Run("rejects with a thrown JS exception", func(t *testing.T) {
+		m := asyncMethod(func(*mdsmith.Session, []js.Value) (any, error) {
+			js.Global().Get("JSON").Call("parse", "{")
+			return nil, nil
+		})
+		v, rejected := awaitPromise(t, m.call(nil, nil).(js.Value))
+		require.True(t, rejected)
+		assert.True(t, v.InstanceOf(js.Global().Get("SyntaxError")), "rejects with the thrown SyntaxError")
 	})
 }
 

@@ -49,7 +49,8 @@ of plan
    `voidMethod`), so no entry has a nil func and the
    disposed result always has the live shape. The async
    constructor also owns the Promise boilerplate the five
-   async methods repeated.
+   async methods repeated, and rejects with any JS
+   exception raised in it, as `createSession` does.
 3. Run `go run ./cmd/mdsmith-release test-js-wasm
    ./cmd/mdsmith-wasm` and the WASM size check in
    [size_test.go](../cmd/mdsmith-wasm/size_test.go).
