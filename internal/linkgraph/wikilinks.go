@@ -234,11 +234,9 @@ func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 			return skipHeavyDirs(p)
 		}
 		base := path.Base(p)
-		lcName := strings.ToLower(base)
+		lcName := FileNameKey(base)
 		idx.names[lcName] = append(idx.names[lcName], p)
-		if mdpath.IsMarkdownPath(base) {
-			stem := strings.TrimSuffix(base, path.Ext(base))
-			lcStem := strings.ToLower(stem)
+		if lcStem, ok := FileStemKey(base); ok {
 			idx.stems[lcStem] = append(idx.stems[lcStem], p)
 		}
 		return nil
@@ -262,23 +260,18 @@ func (idx *WikilinkIndex) Resolve(target string) (string, bool) {
 	if idx == nil || target == "" {
 		return "", false
 	}
-	target = strings.TrimSpace(target)
-	if target == "" || pathutil.IsAbsOrDriveOrUNC(target) {
-		return "", false
-	}
-	target = strings.ReplaceAll(target, `\`, `/`)
-	cleaned := path.Clean(target)
-	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+	target, ok := normalizeTarget(target)
+	if !ok {
 		return "", false
 	}
 	wantName, wantStem, stemMode := wikilinkSearchKey(target)
 	if stemMode {
-		if matches, ok := idx.stems[strings.ToLower(wantStem)]; ok && len(matches) > 0 {
+		if matches, ok := idx.stems[FileNameKey(wantStem)]; ok && len(matches) > 0 {
 			return matches[0], true
 		}
 		return "", false
 	}
-	if matches, ok := idx.names[strings.ToLower(wantName)]; ok && len(matches) > 0 {
+	if matches, ok := idx.names[FileNameKey(wantName)]; ok && len(matches) > 0 {
 		return matches[0], true
 	}
 	return "", false
@@ -345,19 +338,15 @@ func ResolveWikiLink(root fs.FS, _ string, target string) (string, bool) {
 // never point at the Markdown files a move relocates. A traversal or
 // absolute target also returns ok=false.
 func WikilinkStem(target string) (string, bool) {
-	target = strings.TrimSpace(strings.ReplaceAll(target, `\`, `/`))
-	if target == "" || pathutil.IsAbsOrDriveOrUNC(target) {
-		return "", false
-	}
-	cleaned := path.Clean(target)
-	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+	target, ok := normalizeTarget(target)
+	if !ok {
 		return "", false
 	}
 	_, stem, stemMode := wikilinkSearchKey(target)
 	if !stemMode || stem == "" {
 		return "", false
 	}
-	return strings.ToLower(stem), true
+	return FileNameKey(stem), true
 }
 
 // wikilinkSearchKey splits target into the lookup parameters
@@ -378,4 +367,71 @@ func wikilinkSearchKey(target string) (wantName, wantStem string, stemMode bool)
 		return "", strings.TrimSuffix(base, ext), true
 	}
 	return base, "", false
+}
+
+// normalizeTarget trims target, turns backslashes into slashes, and
+// reports ok=false for a target the resolver never looks up: an empty,
+// absolute, drive-letter, or UNC one, or one that cleans to `.` or
+// climbs out with `..`. Resolve, WikilinkStem, and WikilinkReaches all
+// read targets through it, so they agree on which ones resolve.
+func normalizeTarget(target string) (string, bool) {
+	target = strings.TrimSpace(target)
+	if target == "" || pathutil.IsAbsOrDriveOrUNC(target) {
+		return "", false
+	}
+	target = strings.ReplaceAll(target, `\`, `/`)
+	cleaned := path.Clean(target)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", false
+	}
+	return target, true
+}
+
+// FileNameKey returns the key NewWikilinkIndex files base under by
+// exact name: the lowercased basename. A typed wikilink such as
+// `[[guide.mdx]]` resolves through this key. strings.ToLower, not
+// strings.EqualFold, defines the match, so callers comparing names
+// must key both sides with this function.
+func FileNameKey(base string) string {
+	return strings.ToLower(base)
+}
+
+// FileStemKey returns the lowercased stem that NewWikilinkIndex keys a
+// file named base under, with ok=true when base is a Markdown file. A
+// non-Markdown base has no stem key (ok=false): a bare `[[name]]`
+// never reaches it. The stem is not trimmed, so ` guide.md` keys as
+// ` guide`, which no trimmed `[[guide]]` target matches. An empty stem
+// (`.md`) returns "" with ok=true; no wikilink spells it.
+func FileStemKey(base string) (string, bool) {
+	if !mdpath.IsMarkdownPath(base) {
+		return "", false
+	}
+	return FileNameKey(strings.TrimSuffix(base, path.Ext(base))), true
+}
+
+// WikilinkReaches reports whether writing `[[spelling]]` yields a
+// wikilink that resolves by the key of a file named base. The token
+// must be read back by ExtractWikiLinks whole, with no anchor or alias
+// split off and no whitespace trimmed, and the resolver must accept the
+// target. A stem-mode target must equal base's FileStemKey; a typed one
+// must equal base by name, ignoring case.
+func WikilinkReaches(spelling, base string) bool {
+	token := "[[" + spelling + "]]"
+	m := wikilinkRE.FindStringSubmatchIndex(token)
+	if m == nil || m[0] != 0 || m[1] != len(token) || m[6] >= 0 || m[8] >= 0 {
+		return false
+	}
+	if strings.TrimSpace(token[m[4]:m[5]]) != spelling {
+		return false
+	}
+	target, ok := normalizeTarget(spelling)
+	if !ok {
+		return false
+	}
+	wantName, wantStem, stemMode := wikilinkSearchKey(target)
+	if !stemMode {
+		return FileNameKey(wantName) == FileNameKey(base)
+	}
+	stem, ok := FileStemKey(base)
+	return ok && stem != "" && FileNameKey(wantStem) == stem
 }
