@@ -1,14 +1,15 @@
 ---
 id: 2608301343
 title: "Reduce mdsmith.dev homepage clutter and coined words"
-status: "🔳"
+status: "✅"
 summary: >-
   Replace coined forge-metaphor copy on mdsmith.dev with plain
   words the target audience knows on first read — the hero
   "smithed", the "Forged whole" section title, and its "forges
-  the whole tree" lead — then thin the homepage's decorative
-  chrome: opaque MDS### rule chips, pillar numbers, icon-tile
-  hue variety, and the four-badge hero row.
+  the whole tree" lead — then drop the opaque MDS### rule chips
+  from the homepage feature cards. Thinning the rest of the
+  decorative chrome (pillar numbers, icon-tile hue variety, the
+  four-badge hero row) is an optional Tier 3, deferred here.
 model: sonnet
 ---
 # Reduce mdsmith.dev homepage clutter and coined words
@@ -28,10 +29,12 @@ This plan changes homepage copy and the homepage feature grid.
 Interior docs pages already read cleanly and keep their bodies.
 The one exception is feature-page front matter: the homepage
 cards render each `summary:`, so the two summaries that named a
-rule ID are reworded, and the now-unread `rules:` keys are
-dropped. Those summaries also lead their feature pages. No rule
-config changes: [`.mdsmith.yml`](../.mdsmith.yml) is out of
-scope; plan 2610020233 drops the dead `rules?` schema key.
+rule ID are reworded, and the unread `rules:` and `link:` keys
+are dropped. Those summaries also lead their feature pages.
+
+No rule config changes: [`.mdsmith.yml`](../.mdsmith.yml) is out
+of scope; plan 2610020233 drops the dead `rules?` and `link?`
+schema keys.
 
 ## Snapshot
 
@@ -78,8 +81,8 @@ meaning and drops the puzzle.
   [feature grid](../website/layouts/partials/feature-grid.html)
   (`.card-rules` / `.rule-chip`). A first-time visitor cannot
   decode "MDS034". Recommended: drop the chip row from the
-  homepage cards. The codes stay on each feature's own page and
-  the Rules index, where they are defined. This contradicts the
+  homepage cards. The codes stay cited on each feature's own
+  page and defined on the Rules index. This contradicts the
   current [design-system](../docs/development/design-system.md)
   card rule ("use a rule-ID chip instead" of an accent stripe),
   so update that line too.
@@ -143,7 +146,10 @@ meaning and drops the puzzle.
    keys from `docs/features/*.md`, and guard the result with an
    e2e test on the card copy. Remove the unused `.bento` /
    `.bento-card` CSS and its design-system entry, which no
-   template emits.
+   template emits, plus the `--grad-steel` token that only
+   `.bento-card.is-dark` used. Drop the `link:` key from
+   `docs/features/*.md` too: nothing reads it, since each card
+   links to its page's permalink.
 4. Tier 3 (optional, confirm first): drop `.pillar-num`, collapse
    the icon-tile tints to one, trim the hero badge row, and drop
    the two homepage section eyebrows. Deferred, not taken in
@@ -163,4 +169,6 @@ meaning and drops the puzzle.
 - [x] The [design-system](../docs/development/design-system.md)
       doc matches the shipped markup (card chips, and any Tier 3
       changes taken).
-- [ ] `mdsmith check .` passes and the website build is green.
+- [x] `mdsmith check .` passes and the website build is green
+      (Hugo v0.161.1 renders 162 pages; all 31 Playwright e2e
+      tests pass).
