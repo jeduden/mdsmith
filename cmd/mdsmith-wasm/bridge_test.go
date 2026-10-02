@@ -5,6 +5,7 @@ package main
 import (
 	"errors"
 	"maps"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"syscall/js"
@@ -185,6 +186,44 @@ func awaitPromise(t *testing.T, p js.Value) (js.Value, bool) {
 	return r.v, r.rejected
 }
 
+// jsValue returns v as a js.Value, failing t when v is anything else,
+// so a js.FuncOf-shaped result (typed any) of the wrong type fails the
+// test cleanly instead of panicking the js/wasm test binary. Call it
+// only from the test goroutine, never inside a JS callback.
+func jsValue(t helperT, v any) js.Value {
+	t.Helper()
+	jv, ok := v.(js.Value)
+	require.True(t, ok, "got %T, want js.Value", v)
+	return jv
+}
+
+// helperT is the part of *testing.T that jsValue uses.
+type helperT interface {
+	require.TestingT
+	Helper()
+}
+
+// recordingT is a helperT that records a failure; FailNow ends the
+// calling goroutine as *testing.T's does.
+type recordingT struct{ failed bool }
+
+func (r *recordingT) Errorf(string, ...any) { r.failed = true }
+func (r *recordingT) FailNow()              { r.failed = true; runtime.Goexit() }
+func (r *recordingT) Helper()               {}
+
+func TestJSValue(t *testing.T) {
+	want := js.ValueOf("x")
+	assert.True(t, jsValue(t, want).Equal(want))
+	inner := &recordingT{}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		jsValue(inner, "not a js.Value")
+	}()
+	<-done
+	assert.True(t, inner.failed, "a non-js.Value fails t")
+}
+
 func TestCreateSession(t *testing.T) {
 	obj := func(m map[string]any) js.Value { return js.ValueOf(m) }
 	const (
@@ -213,7 +252,7 @@ func TestCreateSession(t *testing.T) {
 	}
 	for _, tt := range rejects {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
-			v, rejected := awaitPromise(t, createSession(js.Undefined(), tt.args).(js.Value))
+			v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), tt.args)))
 			require.True(t, rejected, "promise must reject")
 			assert.Equal(t, tt.wantMsg, v.Get("message").String())
 		})
@@ -229,7 +268,7 @@ func TestCreateSession(t *testing.T) {
 	}
 	for _, tt := range resolves {
 		t.Run("resolves "+tt.name, func(t *testing.T) {
-			v, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{obj(tt.opts)}).(js.Value))
+			v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{obj(tt.opts)})))
 			require.False(t, rejected, "promise must resolve: %v", v)
 			assert.Equal(t, js.TypeFunction, v.Get("check").Type())
 			v.Call("dispose")
@@ -260,7 +299,7 @@ func TestCreateSession_RejectsThrowingObjects(t *testing.T) {
 		{"throwing ownKeys workspace", obj(map[string]any{"workspace": throwingKeys})},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			v, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{tt.opts}).(js.Value))
+			v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{tt.opts})))
 			require.True(t, rejected, "promise must reject")
 			assert.True(t, v.InstanceOf(js.Global().Get("TypeError")), "rejects with the thrown TypeError")
 		})
@@ -272,7 +311,7 @@ func TestCreateSession_RejectsThrowingObjects(t *testing.T) {
 func newTestProxy(t *testing.T) js.Value {
 	t.Helper()
 	opts := js.ValueOf(map[string]any{})
-	v, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{opts}).(js.Value))
+	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
 	require.False(t, rejected, "promise must resolve: %v", v)
 	return v
 }
@@ -327,7 +366,7 @@ func TestAsyncMethodNames_MatchTable(t *testing.T) {
 		if !assertImplComplete(t, name, impl) {
 			continue
 		}
-		isPromise := settledShape(t, impl.disposed().(js.Value)) == "promise"
+		isPromise := settledShape(t, impl.disposed()) == "promise"
 		assert.Equal(t, slices.Contains(asyncMethodNames, name), isPromise,
 			"%s: disposed result is a Promise iff it is in asyncMethodNames", name)
 	}
@@ -435,7 +474,7 @@ func TestAsyncMethod(t *testing.T) {
 			gotArgs = args
 			return map[string]any{"n": 1}, nil
 		})
-		v, rejected := awaitPromise(t, m.call(nil, []js.Value{js.ValueOf("x")}).(js.Value))
+		v, rejected := awaitPromise(t, m.call(nil, []js.Value{js.ValueOf("x")}))
 		require.False(t, rejected)
 		assert.Equal(t, 1, v.Get("n").Int())
 		require.Len(t, gotArgs, 1)
@@ -445,7 +484,7 @@ func TestAsyncMethod(t *testing.T) {
 		m := asyncMethod(func(*mdsmith.Session, []js.Value) (any, error) {
 			return nil, errors.New("boom")
 		})
-		v, rejected := awaitPromise(t, m.call(nil, nil).(js.Value))
+		v, rejected := awaitPromise(t, m.call(nil, nil))
 		require.True(t, rejected)
 		assert.Equal(t, "boom", v.Get("message").String())
 	})
@@ -458,7 +497,7 @@ func TestAsyncMethod(t *testing.T) {
 			ran = true
 			return nil, nil
 		})
-		v, rejected := awaitPromise(t, m.disposed().(js.Value))
+		v, rejected := awaitPromise(t, m.disposed())
 		require.True(t, rejected)
 		assert.Equal(t, disposedAsyncReason, v.Get("message").String())
 		assert.False(t, ran, "fn must not run after dispose")
@@ -471,7 +510,7 @@ func TestAsyncMethod(t *testing.T) {
 			js.Global().Get("JSON").Call("parse", "{")
 			return nil, nil
 		})
-		v, rejected := awaitPromise(t, m.call(nil, nil).(js.Value))
+		v, rejected := awaitPromise(t, m.call(nil, nil))
 		require.True(t, rejected)
 		assert.True(t, v.InstanceOf(js.Global().Get("SyntaxError")), "rejects with the thrown SyntaxError")
 	})
@@ -481,12 +520,12 @@ func TestStringListMethod(t *testing.T) {
 	m := stringListMethod(func(*mdsmith.Session, []js.Value) []string {
 		return []string{"a", "b"}
 	})
-	live := m.call(nil, nil).(js.Value)
+	live := m.call(nil, nil)
 	require.Equal(t, "array", settledShape(t, live))
 	assert.Equal(t, 2, live.Length())
 	assert.Equal(t, "b", live.Index(1).String())
 
-	gone := m.disposed().(js.Value)
+	gone := m.disposed()
 	require.Equal(t, "array", settledShape(t, gone))
 	assert.Equal(t, 0, gone.Length())
 }
@@ -504,9 +543,9 @@ func TestMethodConstructors_PanicOnNilFn(t *testing.T) {
 func TestVoidMethod(t *testing.T) {
 	calls := 0
 	m := voidMethod(func(*mdsmith.Session, []js.Value) { calls++ })
-	assert.True(t, m.call(nil, nil).(js.Value).IsUndefined())
+	assert.True(t, m.call(nil, nil).IsUndefined())
 	assert.Equal(t, 1, calls)
-	assert.True(t, m.disposed().(js.Value).IsUndefined())
+	assert.True(t, m.disposed().IsUndefined())
 	assert.Equal(t, 1, calls, "disposed result must not run fn")
 }
 
@@ -636,7 +675,7 @@ func TestRejectOnJSError(t *testing.T) {
 	jsErr := js.Global().Get("Error").New("boom")
 	got := run(func() { panic(js.Error{Value: jsErr}) })
 	require.Len(t, got, 1)
-	assert.True(t, got[0].(js.Value).Equal(jsErr), "rejects with the thrown JS value")
+	assert.True(t, jsValue(t, got[0]).Equal(jsErr), "rejects with the thrown JS value")
 	assert.Empty(t, run(func() {}), "no panic, no rejection")
 	assert.PanicsWithValue(t, "go bug", func() { run(func() { panic("go bug") }) })
 }
@@ -673,7 +712,7 @@ func TestBigIntArgs(t *testing.T) {
 			obj(map[string]any{"configYAML": big}),
 			obj(map[string]any{"workspace": big}),
 		} {
-			_, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{opts}).(js.Value))
+			_, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
 			assert.True(t, rejected)
 		}
 	})

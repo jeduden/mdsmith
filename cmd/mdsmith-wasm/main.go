@@ -236,10 +236,10 @@ var (
 // fails when the table is built at package init, not on its first call.
 type methodImpl struct {
 	// call runs the method for a live session; sess is never nil.
-	call func(sess *mdsmith.Session, args []js.Value) any
+	call func(sess *mdsmith.Session, args []js.Value) js.Value
 	// disposed builds the method's result after dispose(). It runs per
 	// call because a Promise or array must be fresh each time.
-	disposed func() any
+	disposed func() js.Value
 }
 
 // asyncMethod builds the entry for a method that returns a Promise.
@@ -253,7 +253,7 @@ func asyncMethod(fn func(sess *mdsmith.Session, args []js.Value) (any, error)) m
 		panic("asyncMethod: nil fn")
 	}
 	return methodImpl{
-		call: func(sess *mdsmith.Session, args []js.Value) any {
+		call: func(sess *mdsmith.Session, args []js.Value) js.Value {
 			return newPromise(func(resolve, reject func(any)) {
 				v, err := fn(sess, args)
 				if err != nil {
@@ -274,7 +274,7 @@ func stringListMethod(fn func(sess *mdsmith.Session, args []js.Value) []string) 
 		panic("stringListMethod: nil fn")
 	}
 	return methodImpl{
-		call: func(sess *mdsmith.Session, args []js.Value) any {
+		call: func(sess *mdsmith.Session, args []js.Value) js.Value {
 			list := fn(sess, args)
 			arr := make([]any, len(list))
 			for i, s := range list {
@@ -293,7 +293,7 @@ func voidMethod(fn func(sess *mdsmith.Session, args []js.Value)) methodImpl {
 		panic("voidMethod: nil fn")
 	}
 	return methodImpl{
-		call: func(sess *mdsmith.Session, args []js.Value) any {
+		call: func(sess *mdsmith.Session, args []js.Value) js.Value {
 			fn(sess, args)
 			return js.Undefined()
 		},
@@ -472,18 +472,18 @@ const disposedAsyncReason = "session disposed"
 // disposedReject is the disposed result of an async method: a Promise
 // that rejects with Error("session disposed"). A disposed dispose() is
 // handled by proxyDispose.
-func disposedReject() any {
+func disposedReject() js.Value {
 	return newPromise(func(_, reject func(any)) {
 		reject(jsError(disposedAsyncReason))
 	})
 }
 
 // disposedEmptyList is capabilities() after dispose: an empty array.
-func disposedEmptyList() any { return js.ValueOf([]any{}) }
+func disposedEmptyList() js.Value { return js.ValueOf([]any{}) }
 
 // disposedUndefined is the disposed result of a method that does
 // nothing, such as invalidate().
-func disposedUndefined() any { return js.Undefined() }
+func disposedUndefined() js.Value { return js.Undefined() }
 
 // uriAndSource pulls a (uri string, source []byte) pair from JS args.
 // A JS string source crosses as Go []byte while the URI stays a
