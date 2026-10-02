@@ -330,6 +330,41 @@ func assertDisposedShapes(t *testing.T, proxy js.Value) {
 	assert.True(t, proxy.Call("dispose").IsUndefined(), "second dispose")
 }
 
+// TestNewSessionProxy_DisposedShapeMatchesLive checks, for every method
+// in sharedMethodImpls, that a disposed session returns a Promise exactly
+// when the live method does. A synchronous method that falls back to the
+// rejecting-Promise result after dispose fails here. Each method needs
+// an entry in sampleArgs, so a new method cannot skip the check.
+func TestNewSessionProxy_DisposedShapeMatchesLive(t *testing.T) {
+	sampleArgs := map[string][]any{
+		"check":        {"a.md", "# A\n"},
+		"fix":          {"a.md", "# A\n"},
+		"kinds":        {"a.md"},
+		"rename":       {"a.md", "1", "B", ""},
+		"move":         {"a.md", "b.md"},
+		"capabilities": {},
+		"invalidate":   {"a.md"},
+	}
+	promise := js.Global().Get("Promise")
+	for name := range sharedMethodImpls {
+		args, ok := sampleArgs[name]
+		require.True(t, ok, "%s needs sample args in this test", name)
+		proxy := newTestProxy(t)
+		live := proxy.Call(name, args...)
+		liveIsPromise := live.Type() == js.TypeObject && live.InstanceOf(promise)
+		if liveIsPromise {
+			awaitPromise(t, live)
+		}
+		proxy.Call("dispose")
+		disposed := proxy.Call(name, args...)
+		disposedIsPromise := disposed.Type() == js.TypeObject && disposed.InstanceOf(promise)
+		if disposedIsPromise {
+			awaitPromise(t, disposed)
+		}
+		assert.Equal(t, liveIsPromise, disposedIsPromise, "%s: Promise-ness after dispose", name)
+	}
+}
+
 // TestNewSessionProxy_DisposeLeavesNoFuncs tracks the funcs a session's
 // lifecycle (Promise executors, plus the shared method funcs on first
 // use) registers and releases through the funcOf and releaseFunc seams.
