@@ -279,4 +279,5 @@ footer: |
 | 2609271913 | ✅     | haiku  | [Remove dead front-matter parse helpers in internal/index](plan/2609271913_arch-fix-remove-dead-frontmatter-helpers.md)                                 |
 | 2610020045 | ✅     | sonnet | [Move the WASM bridge test-runner shell into mdsmith-release](plan/2610020045_wasm-js-test-runner-subcommand.md)                                        |
 | 2610020046 | ✅     | sonnet | [Harden WASM bridge workspace input and version lookup](plan/2610020046_wasm-bridge-input-hardening.md)                                                 |
+| 2610020233 | 🔲     | haiku  | [Drop the unused rules? key from the feature kind schema](plan/2610020233_drop-unused-feature-rules-key.md)                                             |
 <?/catalog?>
