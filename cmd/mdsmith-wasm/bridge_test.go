@@ -300,8 +300,39 @@ func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
 // order, and this failure is then reported before that crash.
 func TestSharedMethodImpls_Complete(t *testing.T) {
 	for name, impl := range sharedMethodImpls {
-		assert.NotNil(t, impl.call, "%s has no call func", name)
-		assert.NotNil(t, impl.disposed, "%s has no disposed func", name)
+		assertImplComplete(t, name, impl)
+	}
+}
+
+// assertImplComplete reports whether impl carries both a call and a
+// disposed func, failing t for each one that is nil.
+func assertImplComplete(t *testing.T, name string, impl methodImpl) bool {
+	t.Helper()
+	hasCall := assert.NotNil(t, impl.call, "%s has no call func", name)
+	hasDisposed := assert.NotNil(t, impl.disposed, "%s has no disposed func", name)
+	return hasCall && hasDisposed
+}
+
+// asyncMethodNames lists the session methods engine-api.md documents
+// as returning a Promise. Tests that check the "session disposed"
+// rejection range over it; TestAsyncMethodNames_MatchTable keeps it in
+// step with sharedMethodImpls.
+var asyncMethodNames = []string{"check", "fix", "kinds", "rename", "move"}
+
+// TestAsyncMethodNames_MatchTable checks that a table entry's disposed
+// result is a Promise exactly when its name is in asyncMethodNames, so
+// a new async method cannot skip the tests that range over that list.
+func TestAsyncMethodNames_MatchTable(t *testing.T) {
+	for name, impl := range sharedMethodImpls {
+		if !assertImplComplete(t, name, impl) {
+			continue
+		}
+		isPromise := settledShape(t, impl.disposed().(js.Value)) == "promise"
+		assert.Equal(t, slices.Contains(asyncMethodNames, name), isPromise,
+			"%s: disposed result is a Promise iff it is in asyncMethodNames", name)
+	}
+	for _, name := range asyncMethodNames {
+		assert.Contains(t, sharedMethodImpls, name)
 	}
 }
 
@@ -338,7 +369,7 @@ var methodSampleArgs = map[string][]any{
 // disposed session object.
 func assertDisposedShapes(t *testing.T, proxy js.Value) {
 	t.Helper()
-	for _, name := range []string{"check", "fix", "kinds", "rename", "move"} {
+	for _, name := range asyncMethodNames {
 		p := proxy.Call(name, methodSampleArgs[name]...)
 		require.Equal(t, js.TypeObject, p.Type(), "%s after dispose returns a Promise", name)
 		v, rejected := awaitPromise(t, p)
@@ -365,8 +396,7 @@ func assertDisposedShapes(t *testing.T, proxy js.Value) {
 // TestSharedMethodImpls_Complete reports that first.
 func TestNewSessionProxy_DisposedShapeMatchesLive(t *testing.T) {
 	for name, impl := range sharedMethodImpls {
-		require.NotNil(t, impl.call, "%s has no call func", name)
-		require.NotNil(t, impl.disposed, "%s has no disposed func", name)
+		require.True(t, assertImplComplete(t, name, impl))
 		args, ok := methodSampleArgs[name]
 		require.True(t, ok, "%s needs sample args in methodSampleArgs", name)
 		proxy := newTestProxy(t)
@@ -637,7 +667,7 @@ func TestBigIntArgs(t *testing.T) {
 	t.Run("session methods", func(t *testing.T) {
 		proxy := newTestProxy(t)
 		defer proxy.Call("dispose")
-		for _, m := range []string{"check", "fix", "kinds", "rename", "move"} {
+		for _, m := range asyncMethodNames {
 			args := []any{big, big, big, big, big}
 			_, rejected := awaitPromise(t, proxy.Call(m, args...))
 			assert.True(t, rejected, "%s(BigInt...) rejects", m)
@@ -676,7 +706,7 @@ func TestSharedMethods_NoSessionID(t *testing.T) {
 	shared := sharedMethods()
 	require.ElementsMatch(t, sessionMethodNames(), slices.Collect(maps.Keys(shared)))
 	before := len(sessions)
-	for _, name := range []string{"check", "fix", "kinds", "rename", "move"} {
+	for _, name := range asyncMethodNames {
 		v, rejected := awaitPromise(t, shared[name].Invoke("a.md", "# A\n"))
 		assert.True(t, rejected, "%s without an id rejects", name)
 		assert.Equal(t, "session disposed", v.Get("message").String(), name)
