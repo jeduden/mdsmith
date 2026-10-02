@@ -1,7 +1,7 @@
 ---
 id: 2610021237
 title: Silence a stale wasm session dispose reference
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Since plan 2610021027, a wasm session's `dispose`
@@ -72,16 +72,42 @@ against the WASM budgets on the engine API page.
    record why the current trade-off stays.
 3. Update the engine API page's dispose paragraph.
 
+Design chosen: the JS-side wrapper option. Shared method funcs
+register once and take a session id first; each session holds
+`Function.prototype.bind` of them (no `eval`, no per-session func).
+`dispose` deletes the id from a Go-side registry, so every call
+through any reference takes the disposed path. This supersedes the
+release-and-swap design: nothing is released, so nothing can be
+reached after release. The standard Go artifact is within
+its budgets ([size_test.go](../cmd/mdsmith-wasm/size_test.go)
+measures 13.3 MiB raw, 4.1 MiB gzip, against 14 and 4.25
+MiB); the TinyGo budget is checked by the `tinygo-wasm` CI
+job only.
+
+The design leaves two gaps, each filed as a plan. The
+Go session stays registered until `dispose()`, even
+once the JS object is collected (plan
+[2610021452](2610021452_wasm-collect-dropped-sessions.md)).
+That gap is not new: before, each session's own funcs
+held it in the `syscall/js` handler table until
+`dispose()`. The second gap is new. A session id is a
+guessable integer, so a raw shared func
+that leaks through a patched `Reflect.apply` can drive any
+live session (plan
+[2610021439](2610021439_wasm-unforgeable-session-binding.md)).
+
 ## Acceptance Criteria
 
-- [ ] `const d = session.dispose; d(); d()` logs nothing,
+- [x] `const d = session.dispose; d(); d()` logs nothing,
       or the engine API page states why it still does.
-- [ ] Calls to a frozen session's methods, or to one
+- [x] Calls to a frozen session's methods, or to one
       read-only method, after `dispose()` log nothing, or
       the engine API page states why they still do.
-- [ ] N create/dispose cycles leave the func count the
+- [x] N create/dispose cycles leave the func count the
       same as one cycle.
-- [ ] `go run ./cmd/mdsmith-release test-js-wasm
+- [x] `go run ./cmd/mdsmith-release test-js-wasm
       ./cmd/mdsmith-wasm` passes.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
+      reports no issues, natively and with
+      `GOOS=js GOARCH=wasm`
