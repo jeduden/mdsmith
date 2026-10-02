@@ -563,6 +563,52 @@ func TestCache_ParsedSchemaHitReRegistersAfterInvalidate(t *testing.T) {
 		"fragment edit must evict the schema once the edge is healed")
 }
 
+// TestCache_registerParsedSchema_RebuiltSlotRegistersOwnMetadata pins
+// that a rebuilt slot always registers its own metadata. The race it
+// replays: T1's ParsedSchema reads the old slot, T2's Invalidate runs
+// to completion, then T1 registers the old value under the new
+// generation. A generation-only skip then let the rebuilt slot reuse
+// that stale registration, so an include the edit added never gained
+// its dependent edge and a later edit to it left the schema stale.
+func TestCache_registerParsedSchema_RebuiltSlotRegistersOwnMetadata(t *testing.T) {
+	c := New()
+	const schema = "/abs/schema.md"
+	oldMeta := testSchemaMeta{includes: []string{"/abs/old-frag.md"}}
+	const newFrag = "/abs/new-frag.md"
+
+	_ = c.ParsedSchema(schema, func() any { return oldMeta })
+	stale := c.parsedSchema.Entry(schema) // T1 holds the old slot
+	c.Invalidate(schema)                  // T2 runs to completion
+	c.registerParsedSchema(schema, stale, oldMeta)
+
+	var calls int32
+	build := func() any {
+		atomic.AddInt32(&calls, 1)
+		return testSchemaMeta{includes: []string{newFrag}}
+	}
+	_ = c.ParsedSchema(schema, build) // rebuild: must register newFrag
+	c.Invalidate(newFrag)
+	_ = c.ParsedSchema(schema, build)
+	assert.Equal(t, int32(2), atomic.LoadInt32(&calls),
+		"an edit to an include the rebuilt schema added must evict it")
+}
+
+// TestCache_InvalidateDropsRegistrationMark pins that Invalidate
+// drops a schema's registration mark with its slot, so the mark does
+// not pin the dropped slot (and its parsed value) in a long-lived
+// LSP session.
+func TestCache_InvalidateDropsRegistrationMark(t *testing.T) {
+	c := New()
+	const schema = "/abs/schema.md"
+	_ = c.ParsedSchema(schema, func() any { return testSchemaMeta{} })
+	_, ok := c.registered.Load(schema)
+	require.True(t, ok, "ParsedSchema must record a registration mark")
+
+	c.Invalidate(schema)
+	_, ok = c.registered.Load(schema)
+	assert.False(t, ok, "Invalidate must drop the registration mark")
+}
+
 // TestCache_InvalidateFragmentEvictsDependentSchema pins thread 1
 // (PR #377): a ParsedSchema slot whose build returned
 // ParsedSchemaMetadata reporting fragmentB as an include must be
@@ -863,12 +909,13 @@ func TestCache_InvalidateTerminatesOnCyclicReverseIncludes(t *testing.T) {
 
 // TestCache_RegisterInvalidateRaceDoesNotLoseDependents pins the
 // fix for Copilot thread PRRT_kwDORLpjqs6EXwfS: Invalidate's
-// CompareAndDelete on schemaDependents only compares the outer
-// pointer, which a concurrent register-into-inner-set does not
-// change. Without the retry on register, this sequence would lose
-// the new dependent. The test pounds register and Invalidate on the
-// same key in parallel and asserts every "live" dependent the last
-// register left in place is still reachable via schemaDependents.
+// empty-set cleanup must never unlink a set a concurrent register is
+// adding to, or the new dependent lands on an orphaned set. depsMu
+// makes register's lookup-or-create plus Store and the cleanup's
+// empty-check plus drop atomic with respect to each other. The test
+// pounds register and Invalidate on the same fragment in parallel
+// and asserts every "live" dependent stays reachable via
+// schemaDependents.
 func TestCache_RegisterInvalidateRaceDoesNotLoseDependents(t *testing.T) {
 	c := New()
 	const fragment = "/abs/fragment.md"
@@ -899,14 +946,16 @@ func TestCache_RegisterInvalidateRaceDoesNotLoseDependents(t *testing.T) {
 		}()
 	}
 
-	// Concurrently register-then-invalidate the churn schema —
-	// each Invalidate may empty fragment's set and trip the
-	// CompareAndDelete.
+	// Concurrently register-then-invalidate the churn schema. It goes
+	// through registerSchemaMetadata so schemaIncludes records the
+	// fragment; Invalidate then drops churn's back-pointer and may
+	// empty fragment's set, tripping the empty-set cleanup.
+	churnMeta := testSchemaMeta{includes: []string{fragment}}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for i := 0; i < churnIters; i++ {
-			c.registerSchemaIncludes(churn, []string{fragment})
+			c.registerSchemaMetadata(churn, churnMeta)
 			c.Invalidate(churn)
 		}
 	}()
@@ -916,9 +965,8 @@ func TestCache_RegisterInvalidateRaceDoesNotLoseDependents(t *testing.T) {
 	set, ok := c.dependentSet(fragment)
 	require.True(t, ok,
 		"after all live registers, fragment must still have a "+
-			"dependent set — the retry-and-verify loop in "+
-			"registerSchemaIncludes is what prevents the outer "+
-			"entry from being lost under churn")
+			"dependent set — depsMu keeps the empty-set cleanup "+
+			"from unlinking a set a register is adding to")
 	for _, s := range live {
 		_, hit := set.Load(s)
 		assert.True(t, hit,
@@ -930,7 +978,7 @@ func TestCache_RegisterInvalidateRaceDoesNotLoseDependents(t *testing.T) {
 // TestCache_InvalidateDropsEmptyDependentSets pins the empty-set
 // cleanup added for Copilot thread PRRT_kwDORLpjqs6EXnIf. When a
 // schema's last dependent is removed, the *sync.Map entry in
-// schemaDependents must be deleted via CompareAndDelete so a
+// schemaDependents must be deleted (under depsMu) so a
 // long-lived LSP session does not accumulate one empty *sync.Map per
 // fragment ever included.
 func TestCache_InvalidateDropsEmptyDependentSets(t *testing.T) {
@@ -955,7 +1003,7 @@ func TestCache_InvalidateDropsEmptyDependentSets(t *testing.T) {
 	assert.False(t, presentAfter,
 		"after Invalidate(schemaA) removes the last dependent from "+
 			"fragmentB's set, the schemaDependents entry for fragmentB "+
-			"must be CompareAndDelete'd so the *sync.Map does not leak")
+			"must be deleted so the *sync.Map does not leak")
 }
 
 // TestCache_EmptyFragmentSkippedBothDirections pins the empty-string

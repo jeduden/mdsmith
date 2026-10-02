@@ -83,16 +83,19 @@ type Cache struct {
 	schemaIncludes   sync.Map // string (absPath) -> []string
 	schemaCUESources sync.Map // string (absPath) -> []string
 
-	// invalidateGen counts completed Invalidate calls. registeredGen
-	// records, per schema path, the invalidateGen value read before
-	// its last metadata registration. A ParsedSchema hit re-registers
-	// only when the two differ, so the warm path is one sync.Map Load
-	// plus one atomic load. Any Invalidate may drop a dependent edge
+	// invalidateGen counts completed Invalidate calls. registered
+	// records, per schema path, the slot whose metadata was last
+	// registered and the invalidateGen value read before that
+	// registration. A ParsedSchema hit re-registers only when either
+	// differs, so the warm path is one sync.Map Load plus one atomic
+	// load. Any Invalidate may drop a dependent edge
 	// (invalidateDependents deletes a fragment's whole set, including
 	// an edge a concurrent ParsedSchema just added), so the first hit
-	// after one re-registers and heals the lost edge.
+	// after one re-registers and heals the lost edge. The slot half of
+	// the mark makes a rebuilt slot register even when a stale reader
+	// already stamped the current generation with the old value.
 	invalidateGen atomic.Uint64
-	registeredGen sync.Map // string (absPath) -> uint64
+	registered    sync.Map // string (absPath) -> schemaRegistration
 }
 
 // ParsedSchemaMetadata is the optional interface a parsed-schema
@@ -377,8 +380,8 @@ func (c *Cache) Wikilinks(rootKey string, build func() any) any {
 // SchemaIncludes() on the reverse-include index. Invalidate(fragment)
 // then evicts every schema that reached fragment, closing the
 // stale-fragment gap the LSP would otherwise observe. Registration
-// runs on the first lookup and on the first lookup after each
-// Invalidate (see invalidateGen), not on every warm hit.
+// runs on the first lookup of each slot and on the first lookup after
+// each Invalidate (see invalidateGen), not on every warm hit.
 //
 // MDS020 reaches this slot via f.RunCache; on a corpus where N
 // host files all reference one schema, the per-Check parseSchema
@@ -386,15 +389,36 @@ func (c *Cache) Wikilinks(rootKey string, build func() any) any {
 // collapses from N runs to 1 — closing the parity-gap profile
 // that plan 195 documents as the biggest default-rule hot spot.
 func (c *Cache) ParsedSchema(absPath string, build func() any) any {
-	v := c.parsedSchema.Get(absPath, build)
-	if meta, ok := v.(ParsedSchemaMetadata); ok {
-		gen := c.invalidateGen.Load()
-		if r, ok := c.registeredGen.Load(absPath); !ok || r.(uint64) != gen {
-			c.registerSchemaMetadata(absPath, meta)
-			c.registeredGen.Store(absPath, gen)
-		}
-	}
+	e := c.parsedSchema.Entry(absPath)
+	v := e.Get(build)
+	c.registerParsedSchema(absPath, e, v)
 	return v
+}
+
+// registerParsedSchema registers v's metadata for absPath unless it
+// was already registered for slot e in the current invalidateGen.
+// Keying the mark on e as well as the generation means a rebuilt slot
+// always registers its own metadata, even when a reader still holding
+// the dropped slot registered the old value under the new generation.
+func (c *Cache) registerParsedSchema(absPath string, e *memo.Entry, v any) {
+	meta, ok := v.(ParsedSchemaMetadata)
+	if !ok {
+		return
+	}
+	mark := schemaRegistration{entry: e, gen: c.invalidateGen.Load()}
+	if r, ok := c.registered.Load(absPath); ok && r.(schemaRegistration) == mark {
+		return
+	}
+	c.registerSchemaMetadata(absPath, meta)
+	c.registered.Store(absPath, mark)
+}
+
+// schemaRegistration is the per-schema mark registerParsedSchema
+// compares against: the slot it registered and the invalidateGen
+// value read before that registration.
+type schemaRegistration struct {
+	entry *memo.Entry
+	gen   uint64
 }
 
 // registerSchemaMetadata captures the parsed schema's includes and
@@ -529,10 +553,13 @@ func (c *Cache) invalidate(absPath string, visited map[string]struct{}) {
 	includes := c.evictSchemaArtifacts(absPath)
 	c.invalidateDependents(absPath, visited)
 
-	// Drop the parsed-schema slot and its mirrored metadata.
+	// Drop the parsed-schema slot, its mirrored metadata, and its
+	// registration mark (which would otherwise pin the dropped slot
+	// and its parsed value for the session's lifetime).
 	c.parsedSchema.Delete(absPath)
 	c.schemaIncludes.Delete(absPath)
 	c.schemaCUESources.Delete(absPath)
+	c.registered.Delete(absPath)
 
 	c.dropDependentBackPointers(absPath, includes)
 }
