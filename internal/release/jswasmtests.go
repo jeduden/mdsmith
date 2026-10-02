@@ -6,13 +6,15 @@
 // selects, so those tests need their own run. The runner finds them by
 // diffing the test files `go list` reports under GOOS=js GOARCH=wasm
 // against a native `go list`, parses each file with go/parser to list
-// its TestXxx(*testing.T) functions, runs exactly those under Node, and
-// fails unless every one of them reports `--- PASS`. A skipped test
-// therefore fails the step by name; a commented-out one is not listed.
+// its TestXxx(*testing.T) functions, runs exactly those under Node with
+// `go test -json`, and fails unless every one of them reports a "pass"
+// event. A skipped test therefore fails the step by name; a
+// commented-out one is not listed.
 package release
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -21,7 +23,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -36,10 +37,6 @@ var jsWasmEnv = []string{"GOOS=js", "GOARCH=wasm"}
 const testFilesTemplate = `{{range .TestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}` +
 	`{{range .XTestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}`
 
-// passLineRE matches a top-level `--- PASS: TestX (0.00s)` line from
-// `go test -v`. Subtest lines are indented, so the anchor skips them.
-var passLineRE = regexp.MustCompile(`(?m)^--- PASS: (Test\S*) \(`)
-
 // goRunFunc runs `go args...` with env appended to the process
 // environment and returns its stdout. Stderr is the caller's.
 type goRunFunc func(env []string, args ...string) ([]byte, error)
@@ -50,12 +47,12 @@ type jsWasmDeps struct {
 	run      goRunFunc
 	readFile func(string) ([]byte, error)
 	path     string    // PATH handed to the Node runtime
-	out      io.Writer // receives the go test -v log
+	out      io.Writer // receives the go test console log
 }
 
 // RunJSWasmTests runs pkg's js/wasm-only tests under Node from root
-// and fails unless every listed test passes. The go test -v log is
-// written to out.
+// and fails unless every listed test passes. The go test console log
+// (the -v text, rebuilt from the -json stream) is written to out.
 func RunJSWasmTests(root, pkg string, out io.Writer) error {
 	return runJSWasmTestsWith(jsWasmDeps{
 		run:      osGoRunner(root),
@@ -100,14 +97,17 @@ func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
 	}
 	// env -i in -exec: wasm_exec.js caps args plus environment at
 	// ~8 KB. It wraps only the Node runtime, so the go command keeps
-	// the full Go and proxy environment.
-	log, runErr := d.run(jsWasmEnv, "test", "-v", "-exec="+execFlag,
+	// the full Go and proxy environment. -json, not -v: test2json frames
+	// each result, so a test whose output lacks a trailing newline still
+	// reports its own pass event instead of a glued `x--- PASS` line.
+	stream, runErr := d.run(jsWasmEnv, "test", "-json", "-exec="+execFlag,
 		"-run", "^("+strings.Join(names, "|")+")$", pkg)
+	log, passed := ReadTestJSON(stream)
 	_, _ = d.out.Write(log)
 	if runErr != nil {
 		return fmt.Errorf("go test %s under js/wasm: %w", pkg, runErr)
 	}
-	return checkAllPassed(names, PassedTests(log))
+	return checkAllPassed(names, passed)
 }
 
 // jsOnlyFilesOf lists pkg's test files that only a js/wasm build
@@ -118,7 +118,10 @@ func jsOnlyFilesOf(d jsWasmDeps, pkg string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("go list (js/wasm) %s: %w", pkg, err)
 	}
-	nativeOut, err := d.run(nil, "list", "-f", testFilesTemplate, pkg)
+	// -e: a package whose non-test files are all js/wasm-only has no
+	// native build, and plain `go list` exits 1 on it. Every one of its
+	// test files is then js/wasm-only.
+	nativeOut, err := d.run(nil, "list", "-e", "-f", testFilesTemplate, pkg)
 	if err != nil {
 		return nil, fmt.Errorf("go list (native) %s: %w", pkg, err)
 	}
@@ -183,8 +186,9 @@ func JSOnlyTestFiles(jsFiles, nativeFiles []string) []string {
 // ListTestFuncs parses a Go source file and returns, in source order,
 // the top-level functions `go test` runs as tests: named Test or
 // TestX where X is not a lowercase letter, with exactly one parameter
-// of type *T from the file's "testing" import. Comments are skipped by
-// the parser, so a commented-out test is never listed.
+// of type *T from the file's "testing" import (`*T` when it is
+// dot-imported). Comments are skipped by the parser, so a
+// commented-out test is never listed.
 func ListTestFuncs(src []byte) ([]string, error) {
 	f, err := parser.ParseFile(token.NewFileSet(), "", src, parser.SkipObjectResolution)
 	if err != nil {
@@ -206,7 +210,8 @@ func ListTestFuncs(src []byte) ([]string, error) {
 }
 
 // testingImportName returns the name the file refers to the "testing"
-// package by, or "" when it is not imported by a usable name.
+// package by: "." for a dot import, or "" when it is not imported by a
+// usable name.
 func testingImportName(f *ast.File) string {
 	for _, imp := range f.Imports {
 		if p, err := strconv.Unquote(imp.Path.Value); err != nil || p != "testing" {
@@ -215,7 +220,7 @@ func testingImportName(f *ast.File) string {
 		if imp.Name == nil {
 			return "testing"
 		}
-		if imp.Name.Name == "_" || imp.Name.Name == "." {
+		if imp.Name.Name == "_" {
 			return ""
 		}
 		return imp.Name.Name
@@ -231,7 +236,7 @@ func isTestName(name string) bool {
 }
 
 // takesTestingT reports whether fn has exactly one parameter, of type
-// *<pkgName>.T.
+// *<pkgName>.T, or of type *T when pkgName is "." (a dot import).
 func takesTestingT(fn *ast.FuncDecl, pkgName string) bool {
 	params := fn.Type.Params.List
 	if len(params) != 1 || len(params[0].Names) > 1 {
@@ -241,6 +246,10 @@ func takesTestingT(fn *ast.FuncDecl, pkgName string) bool {
 	if !ok {
 		return false
 	}
+	if pkgName == "." {
+		id, ok := star.X.(*ast.Ident)
+		return ok && id.Name == "T"
+	}
 	sel, ok := star.X.(*ast.SelectorExpr)
 	if !ok || sel.Sel.Name != "T" {
 		return false
@@ -249,18 +258,27 @@ func takesTestingT(fn *ast.FuncDecl, pkgName string) bool {
 	return ok && id.Name == pkgName
 }
 
-// PassedTests returns the top-level test names that `go test -v`
-// reported as `--- PASS` in log, in log order.
-func PassedTests(log []byte) []string {
-	matches := passLineRE.FindAllSubmatch(log, -1)
-	if len(matches) == 0 {
-		return nil
+// ReadTestJSON decodes a `go test -json` stream. It returns the
+// console log the stream carries (every event's Output in order, which
+// is the `go test -v` text) and the top-level tests that reported a
+// "pass" event, in stream order. A line that is not a JSON event, such
+// as a `go: downloading` notice, passes through to the log unchanged.
+func ReadTestJSON(stream []byte) (log []byte, passed []string) {
+	for _, line := range bytes.Split(stream, []byte("\n")) {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var ev testEvent
+		if err := json.Unmarshal(line, &ev); err != nil {
+			log = append(append(log, line...), '\n')
+			continue
+		}
+		log = append(log, ev.Output...)
+		if ev.Action == "pass" && ev.Test != "" && !strings.Contains(ev.Test, "/") {
+			passed = append(passed, ev.Test)
+		}
 	}
-	out := make([]string, 0, len(matches))
-	for _, m := range matches {
-		out = append(out, string(m[1]))
-	}
-	return out
+	return log, passed
 }
 
 // jsWasmExecFlag builds the go test -exec value that runs the Node

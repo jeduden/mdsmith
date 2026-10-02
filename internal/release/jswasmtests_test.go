@@ -2,12 +2,14 @@ package release
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -94,6 +96,16 @@ func (s) TestMethod(t *testing.T) {}
 		nil,
 	},
 	{
+		"dot-imported testing",
+		`package p
+import . "testing"
+func TestDot(t *T) {}
+func TestQualified(t *testing.T) {}
+func TestMain(m *M) {}
+`,
+		[]string{"TestDot"},
+	},
+	{
 		"aliased testing import",
 		`package p
 import tst "testing"
@@ -137,24 +149,58 @@ func TestListTestFuncs(t *testing.T) {
 	})
 }
 
-func TestPassedTests(t *testing.T) {
-	log := []byte(`=== RUN   TestA
-=== RUN   TestA/sub
---- PASS: TestA (0.00s)
-    --- PASS: TestA/sub (0.00s)
-=== RUN   TestB
---- SKIP: TestB (0.00s)
-=== RUN   TestC
---- FAIL: TestC (0.01s)
-    --- PASS: TestC/inner (0.00s)
---- PASS: TestD (1.25s)
-x--- PASS: TestE (0.00s)
---- PASS: TestF
-PASS
-ok  	example.com/p	0.2s
-`)
-	assert.Equal(t, []string{"TestA", "TestD"}, PassedTests(log))
-	assert.Nil(t, PassedTests(nil))
+// goTestJSON renders events as a `go test -json` stream, one JSON
+// object per line.
+func goTestJSON(t *testing.T, evs ...testEvent) string {
+	t.Helper()
+	var b strings.Builder
+	for _, ev := range evs {
+		line, err := json.Marshal(ev)
+		require.NoError(t, err)
+		b.Write(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// result is the output-plus-terminal event pair go test -json emits
+// when a test resolves with action ("pass", "skip", "fail").
+func result(action, test string) []testEvent {
+	return []testEvent{
+		{Action: "output", Test: test, Output: "--- " + strings.ToUpper(action) + ": " + test + " (0.00s)\n"},
+		{Action: action, Test: test},
+	}
+}
+
+func TestReadTestJSON(t *testing.T) {
+	evs := slices.Concat(
+		[]testEvent{{Action: "run", Test: "TestA"}},
+		result("pass", "TestA/sub"),
+		result("pass", "TestA"),
+		result("skip", "TestB"),
+		result("pass", "TestC/inner"),
+		result("fail", "TestC"),
+		// Output without a trailing newline: the -v text glues the
+		// result line onto it, but the pass event still stands alone.
+		[]testEvent{{Action: "output", Test: "TestD", Output: "partial"}},
+		result("pass", "TestD"),
+		[]testEvent{
+			{Action: "output", Output: "PASS\n"},
+			{Action: "pass"}, // package-level: no Test
+		},
+	)
+	stream := "go: downloading example.com/m v1.0.0\n\n" + goTestJSON(t, evs...)
+
+	log, passed := ReadTestJSON([]byte(stream))
+	assert.Equal(t, []string{"TestA", "TestD"}, passed)
+	assert.Contains(t, string(log), "go: downloading example.com/m v1.0.0\n")
+	assert.Contains(t, string(log), "partial--- PASS: TestD (0.00s)\n")
+	assert.Contains(t, string(log), "--- SKIP: TestB (0.00s)\n")
+	assert.True(t, strings.HasSuffix(string(log), "PASS\n"))
+
+	log, passed = ReadTestJSON(nil)
+	assert.Nil(t, log)
+	assert.Nil(t, passed)
 }
 
 func TestJSWasmExecFlag(t *testing.T) {
@@ -306,7 +352,7 @@ func TestRunJSWasmTestsWith(t *testing.T) {
 	x := newJSWasmPkg(t)
 
 	t.Run("all pass", func(t *testing.T) {
-		f := x.fake("--- PASS: TestA (0.00s)\n--- PASS: TestB (0.00s)\nPASS\n", nil)
+		f := x.fake(goTestJSON(t, append(result("pass", "TestA"), result("pass", "TestB")...)...), nil)
 		var out bytes.Buffer
 		require.NoError(t, runJSWasmTestsWith(x.deps(f, &out), "./p"))
 		assert.Contains(t, out.String(), "--- PASS: TestB")
@@ -314,10 +360,11 @@ func TestRunJSWasmTestsWith(t *testing.T) {
 		require.Len(t, f.calls, 4)
 		assert.Equal(t, []string{"env", "GOROOT"}, f.calls[0])
 		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm"}, f.envs[1])
-		assert.Equal(t, "list", f.calls[1][0])
+		assert.Equal(t, []string{"list", "-f", testFilesTemplate, "./p"}, f.calls[1])
 		assert.Nil(t, f.envs[2])
+		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[2])
 		assert.Equal(t, []string{
-			"test", "-v",
+			"test", "-json",
 			"-exec=env -i 'PATH=/bin' '/go/lib/wasm/go_js_wasm_exec'",
 			"-run", "^(TestA|TestB)$",
 			"./p",
@@ -326,7 +373,7 @@ func TestRunJSWasmTestsWith(t *testing.T) {
 	})
 
 	t.Run("skipped test is named", func(t *testing.T) {
-		f := x.fake("--- PASS: TestA (0.00s)\n--- SKIP: TestB (0.00s)\nPASS\n", nil)
+		f := x.fake(goTestJSON(t, append(result("pass", "TestA"), result("skip", "TestB")...)...), nil)
 		var out bytes.Buffer
 		err := runJSWasmTestsWith(x.deps(f, &out), "./p")
 		require.Error(t, err)
@@ -336,7 +383,7 @@ func TestRunJSWasmTestsWith(t *testing.T) {
 	})
 
 	t.Run("failing go test fails and still prints the log", func(t *testing.T) {
-		f := x.fake("--- FAIL: TestA (0.00s)\nFAIL\n", errors.New("exit status 1"))
+		f := x.fake(goTestJSON(t, result("fail", "TestA")...), errors.New("exit status 1"))
 		var out bytes.Buffer
 		err := runJSWasmTestsWith(x.deps(f, &out), "./p")
 		require.Error(t, err)
@@ -487,7 +534,7 @@ func TestTestingImportName(t *testing.T) {
 		{"default", `import "testing"`, "testing"},
 		{"alias", `import tt "testing"`, "tt"},
 		{"blank", `import _ "testing"`, ""},
-		{"dot", `import . "testing"`, ""},
+		{"dot", `import . "testing"`, "."},
 		{"absent", `import "fmt"`, ""},
 		{"among others", "import (\n\"fmt\"\n\"testing\"\n)", "testing"},
 	}
@@ -531,10 +578,20 @@ func TestTakesTestingT(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.sig, func(t *testing.T) {
-			f, err := parser.ParseFile(token.NewFileSet(), "", "package p\n"+tt.sig+" {}\n", 0)
-			require.NoError(t, err)
-			fn := f.Decls[0].(*ast.FuncDecl)
-			assert.Equal(t, tt.want, takesTestingT(fn, "testing"))
+			assert.Equal(t, tt.want, takesTestingT(parseFuncDecl(t, tt.sig), "testing"))
 		})
 	}
+
+	// A dot import refers to the type as a bare T.
+	assert.True(t, takesTestingT(parseFuncDecl(t, "func F(t *T)"), "."))
+	assert.False(t, takesTestingT(parseFuncDecl(t, "func F(t *testing.T)"), "."))
+	assert.False(t, takesTestingT(parseFuncDecl(t, "func F(m *M)"), "."))
+}
+
+// parseFuncDecl parses one function declaration with an empty body.
+func parseFuncDecl(t *testing.T, sig string) *ast.FuncDecl {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), "", "package p\n"+sig+" {}\n", 0)
+	require.NoError(t, err)
+	return f.Decls[0].(*ast.FuncDecl)
 }

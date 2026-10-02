@@ -92,9 +92,11 @@ trivial accessor.
    `Main.Version` that `debug.ReadBuildInfo` reports. On Go
    1.25.11 that is `(devel)` in a test binary, both native
    and `js/wasm`, even inside this Git checkout. So the final
-   `(devel)` fallback is not reachable from a test; do not
-   add a seam for it. The test writes a package variable, so
-   it must not call `t.Parallel`.
+   `(devel)` fallback is not reachable from a test without a
+   seam. ([Plan 2610020046][p0046] later added a
+   `readBuildInfo` seam so each branch is pinned.) The test
+   writes a package variable, so it must not call
+   `t.Parallel`.
 
    `TestWorkspaceFromJS`: a non-object gives `nil`, and an
    object keeps its string entries and drops a non-string
@@ -123,7 +125,7 @@ trivial accessor.
    lists each file's `TestXxx(*testing.T)` functions, so a
    commented-out test is not listed.
 
-   It runs `go test -v` with `-exec` set to `env -i` plus
+   It runs `go test -json` with `-exec` set to `env -i` plus
    `go_js_wasm_exec`, because `wasm_exec.js` caps arguments
    plus environment at about 8 KB. With a full shell
    environment the test binary exits with "total length of
@@ -133,8 +135,8 @@ trivial accessor.
    job's full environment: caches, `GOTOOLCHAIN`, `GOFLAGS`,
    and any proxy settings.
 
-   It then fails unless every listed test reports
-   `--- PASS`, naming the ones that did not. A `-run` filter
+   It then fails unless every listed test reports a `pass`
+   event, naming the ones that did not. A `-run` filter
    that matches no test prints `[no tests to run]` and exits
    0, and a skipped test also exits 0, so the exit code alone
    is not enough.

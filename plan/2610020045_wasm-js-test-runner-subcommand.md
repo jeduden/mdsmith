@@ -79,10 +79,20 @@ deviations from the task text:
 - The parser is `ListTestFuncs`, not `TestNames`, so no
   production function in the package starts with `Test`.
   It honours an aliased `testing` import.
-- `PassedTests(log) []string` replaces `CountPasses`. It
-  returns the top-level passing names, so the error names
-  each listed test that did not pass rather than comparing
-  two counts.
+- `ReadTestJSON(stream) (log, passed)` replaces
+  `CountPasses`. The test run uses `go test -json`, not
+  `-v`: test2json frames each result, so a test whose own
+  output lacks a trailing newline still reports a pass
+  (with `-v` its `--- PASS` line is glued onto that
+  output). It returns the top-level passing names, so the
+  error names each listed test that did not pass rather
+  than comparing two counts, plus the console text rebuilt
+  from the events.
+- The native `go list` passes `-e`, so a package whose
+  non-test files are all js/wasm-only (no native build)
+  still lists, with every test file js/wasm-only.
+- A dot-imported `testing` counts: `func TestX(t *T)` is
+  listed, as `go test` runs it.
 - The command runner is a `goRunFunc` that returns stdout.
   The existing `Runner` interface only streams output, and
   `go list` output has to be captured. The orchestrator is
