@@ -49,9 +49,12 @@ red/green.
    is not available, test the callback directly with a
    live id instead.
 3. Register each new session object with its id in
-   `newSessionProxy`, and unregister it in
-   `proxyDispose` so an explicit dispose does not run
-   twice.
+   `newSessionProxy`. Do not keep the session object
+   on the Go side as an unregister token: a `js.Value`
+   held in Go pins the object, so it is never
+   collected. `proxyDispose` gets only the bound id.
+   A callback after an explicit dispose finds no id
+   and does nothing, since ids are never reused.
 4. Check the WASM size budgets with
    [size_test.go](../cmd/mdsmith-wasm/size_test.go), and
    update the engine-api page to describe the fallback.
