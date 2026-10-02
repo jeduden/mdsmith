@@ -63,17 +63,16 @@ jobs:
           cache-dependency-path: |
             go.sum
             tools/go.sum
-      - run: go tool -modfile=tools/go.mod golangci-lint run
-      # The run above type-checks only the native (linux) GOOS, so files
-      # tagged js && wasm, !unix && !windows, or windows were never
-      # linted. `go tool` would compile the linter itself for the
-      # target GOOS, so build it once for the host, then lint the
-      # js/wasm (which also covers the shared !unix && !windows
-      # fallback files) and windows views of the module. Files tagged
-      # wasip1 or plan9 alone, such as the wasip1 spike guest, get only
-      # the go vet runs in the wasm job.
+      # `go tool` would compile the linter for the target GOOS, so
+      # build it once for the host and run that one binary for every
+      # view of the module: native (linux), js/wasm (which also covers
+      # the shared !unix && !windows fallback files), and windows.
+      # Files tagged wasip1 or plan9 alone, such as the wasip1 spike
+      # guest, get only the go vet runs in the wasm job.
       - name: Build golangci-lint for the host
         run: go build -modfile=tools/go.mod -o "$RUNNER_TEMP/golangci-lint" github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+      - name: Lint the native build
+        run: '"$RUNNER_TEMP/golangci-lint" run'
       - name: Lint the js/wasm build
         run: GOOS=js GOARCH=wasm "$RUNNER_TEMP/golangci-lint" run
       - name: Lint the windows build
