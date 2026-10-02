@@ -3,7 +3,7 @@ id: 2609201914
 title: >-
   Add dedicated unit tests for AdvancePastLine and the WASM
   bridge helpers
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   AdvancePastLine in internal/rules/astutil and four helpers
@@ -158,7 +158,7 @@ trivial accessor.
 
 ## Acceptance Criteria
 
-- [ ] `AdvancePastLine` has a dedicated `TestAdvancePastLine`.
+- [x] `AdvancePastLine` has a dedicated `TestAdvancePastLine`.
 - [ ] `resolveVersion`, `workspaceFromJS`, `uriAndSource`,
       and `allStrings` each have a dedicated test in a
       `js && wasm` test file.
