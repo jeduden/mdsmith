@@ -1,7 +1,7 @@
 ---
 id: 2610020233
 title: "Drop the unused rules? and link? keys from the feature kind schema"
-status: "🔳"
+status: "✅"
 summary: >-
   The homepage feature grid no longer renders rule-ID chips, and
   no feature page sets `rules:` any more, so the optional
@@ -49,9 +49,9 @@ that file needs explicit user consent to edit.
 
 ## Acceptance Criteria
 
-- [ ] The `feature` kind schema has no `rules?` or `link?`
+- [x] The `feature` kind schema has no `rules?` or `link?`
       key.
-- [ ] `mdsmith list query 'rules: _' docs/features/` and
+- [x] `mdsmith list query 'rules: _' docs/features/` and
       `mdsmith list query 'link: _' docs/features/` print
       nothing (front matter only, so code blocks do not match).
-- [ ] `mdsmith check .` passes.
+- [x] `mdsmith check .` passes.
