@@ -47,28 +47,85 @@ func procAlive(pid int) bool {
 	return err == nil
 }
 
+// pidIn returns the decimal pid pidFile holds, and whether it held one.
+func pidIn(pidFile string) (int, bool) {
+	b, err := os.ReadFile(pidFile)
+	if err != nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	return n, err == nil
+}
+
 // readPID waits for pidFile to hold a decimal pid and returns it.
 func readPID(t *testing.T, pidFile string) int {
 	t.Helper()
 	var pid int
 	require.Eventually(t, func() bool {
-		b, rerr := os.ReadFile(pidFile)
-		if rerr != nil {
-			return false
-		}
-		n, perr := strconv.Atoi(strings.TrimSpace(string(b)))
+		n, ok := pidIn(pidFile)
 		pid = n
-		return perr == nil
-	}, 6*time.Second, 50*time.Millisecond, "child pid should be recorded")
+		return ok
+	}, 6*time.Second, 50*time.Millisecond, "pid should be recorded")
 	return pid
 }
 
-// stubNotePgPath points notePgPath at path for one test.
-func stubNotePgPath(t *testing.T, path string) {
+// readyDeadline is a context whose deadline passes once a test's ready
+// check holds, not after a fixed time, so the timeout kill never lands
+// before a slow machine has run the recipe far enough for the test to
+// mean anything. Err reports context.DeadlineExceeded, as a timeout
+// does. at is when the deadline passed; read it after Done is closed.
+type readyDeadline struct {
+	context.Context
+	done chan struct{}
+	at   time.Time
+}
+
+func (c *readyDeadline) Done() <-chan struct{} { return c.done }
+
+func (c *readyDeadline) Err() error {
+	select {
+	case <-c.done:
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
+// firedAt waits for the deadline and returns when it passed.
+func (c *readyDeadline) firedAt() time.Time {
+	<-c.done
+	return c.at
+}
+
+// deadlineWhen returns a readyDeadline that passes once ready reports
+// true, or after 30 s if it never does.
+func deadlineWhen(t *testing.T, ready func() bool) *readyDeadline {
 	t.Helper()
-	old := notePgPath
-	notePgPath = func(int) string { return path }
-	t.Cleanup(func() { notePgPath = old })
+	c := &readyDeadline{Context: context.Background(), done: make(chan struct{})}
+	go func() {
+		defer close(c.done)
+		limit := time.After(30 * time.Second)
+		tick := time.NewTicker(20 * time.Millisecond)
+		defer tick.Stop()
+		for !ready() {
+			select {
+			case <-tick.C:
+			case <-limit:
+				c.at = time.Now()
+				return
+			}
+		}
+		c.at = time.Now()
+	}()
+	return c
+}
+
+// pidRecorded reports whether pidFile holds a pid yet.
+func pidRecorded(pidFile string) func() bool {
+	return func() bool {
+		_, ok := pidIn(pidFile)
+		return ok
+	}
 }
 
 func TestConfigureProcessGroup_Plan9_SetsRFNOTEG(t *testing.T) {
@@ -78,144 +135,10 @@ func TestConfigureProcessGroup_Plan9_SetsRFNOTEG(t *testing.T) {
 	assert.NotZero(t, cmd.SysProcAttr.Rfork&syscall.RFNOTEG)
 }
 
-func TestAfterStart_Plan9_NilProcess(t *testing.T) {
-	assert.Nil(t, afterStart(&exec.Cmd{}))
-}
-
-func TestAfterStart_Plan9_OpenFailsReturnsNil(t *testing.T) {
-	stubProcRoot(t)
-	stubNotePgPath(t, "/no/such/notepg")
-	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	assert.Nil(t, afterStart(cmd))
-	notePgsMu.Lock()
-	_, held := notePgs[cmd]
-	notePgsMu.Unlock()
-	assert.False(t, held)
-}
-
-func TestKillGroup_Plan9_WritesKillToHeldFile(t *testing.T) {
-	// killGroup must write to the file afterStart opened, not reopen
-	// /proc/<pid>/notepg, which is gone once the leader has exited.
-	// An empty fake /proc keeps the sweep off real pid 42.
-	stubProcRoot(t)
-	path := filepath.Join(t.TempDir(), "notepg")
-	require.NoError(t, os.WriteFile(path, nil, 0o600))
-	stubNotePgPath(t, path)
-
-	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	cleanup := afterStart(cmd)
-	require.NotNil(t, cleanup)
-	killGroup(cmd)
-	cleanup()
-
-	b, err := os.ReadFile(path)
-	require.NoError(t, err)
-	assert.Equal(t, "kill", string(b))
-	notePgsMu.Lock()
-	_, held := notePgs[cmd]
-	notePgsMu.Unlock()
-	assert.False(t, held, "cleanup must forget the file")
-}
-
-// fakeProc builds a fake /proc entry with the given noteid and an
-// empty ctl file, and returns the ctl path.
-func fakeProc(t *testing.T, root, pid, noteid string) string {
-	t.Helper()
-	dir := filepath.Join(root, pid)
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "noteid"), []byte(noteid), 0o600))
-	ctl := filepath.Join(dir, "ctl")
-	require.NoError(t, os.WriteFile(ctl, nil, 0o600))
-	return ctl
-}
-
-// stubProcRoot points procRoot at a temp dir for one test.
-func stubProcRoot(t *testing.T) string {
-	t.Helper()
-	root := t.TempDir()
-	old := procRoot
-	procRoot = root
-	t.Cleanup(func() { procRoot = old })
-	return root
-}
-
-func readFile(t *testing.T, p string) string {
-	t.Helper()
-	b, err := os.ReadFile(p)
-	require.NoError(t, err)
-	return string(b)
-}
-
-func TestForceKillNoteGroup_Plan9_KillsOnlyMatchingNoteID(t *testing.T) {
-	root := stubProcRoot(t)
-	member := fakeProc(t, root, "100", "7")
-	padded := fakeProc(t, root, "102", "      7 ")
-	other := fakeProc(t, root, "101", "8")
-	// A non-numeric entry and an entry with no noteid are skipped.
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "trace"), 0o755))
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "103"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "103", "ctl"), nil, 0o600))
-
-	assert.Equal(t, 2, forceKillNoteGroup("7"))
-	assert.Equal(t, "kill", readFile(t, member))
-	assert.Equal(t, "kill", readFile(t, padded))
-	assert.Empty(t, readFile(t, other))
-	assert.Empty(t, readFile(t, filepath.Join(root, "103", "ctl")))
-}
-
-func TestForceKillNoteGroup_Plan9_UnreadableRootKillsNone(t *testing.T) {
-	old := procRoot
-	procRoot = "/no/such/proc"
-	t.Cleanup(func() { procRoot = old })
-	assert.Zero(t, forceKillNoteGroup("7"))
-}
-
-func TestForceKillNoteGroup_Plan9_EmptyIDKillsNone(t *testing.T) {
-	// afterStart records "" when it could not read the noteid. An entry
-	// whose noteid is also unreadable must not match it.
-	root := stubProcRoot(t)
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "100"), 0o755))
-	ctl := filepath.Join(root, "100", "ctl")
-	require.NoError(t, os.WriteFile(ctl, nil, 0o600))
-	assert.Zero(t, forceKillNoteGroup(""))
-	assert.Empty(t, readFile(t, ctl))
-}
-
-func TestForceKillNoteGroup_Plan9_NoCtlSkipped(t *testing.T) {
-	// An entry whose ctl cannot be opened (the process exited during
-	// the sweep) is skipped, not counted.
-	root := stubProcRoot(t)
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "100"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "100", "noteid"), []byte("7"), 0o600))
-	assert.Zero(t, forceKillNoteGroup("7"))
-}
-
-func TestAfterStart_Plan9_RecordsNoteID(t *testing.T) {
-	// killGroup's forced sweep needs the noteid afterStart read while
-	// the leader was alive.
-	root := stubProcRoot(t)
-	ctl := fakeProc(t, root, "42", "9")
-	path := filepath.Join(t.TempDir(), "notepg")
-	require.NoError(t, os.WriteFile(path, nil, 0o600))
-	stubNotePgPath(t, path)
-
-	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	cleanup := afterStart(cmd)
-	require.NotNil(t, cleanup)
-	defer cleanup()
-	killGroup(cmd)
-	assert.Equal(t, "kill", readFile(t, path))
-	assert.Equal(t, "kill", readFile(t, ctl), "the group member must get a forced ctl kill")
-}
-
-func TestKillGroup_Plan9_NilProcess(t *testing.T) {
-	assert.NotPanics(t, func() { killGroup(&exec.Cmd{}) })
-}
-
 func TestKillGroup_Plan9_FallsBackToLeaderKill(t *testing.T) {
 	// When afterStart could not open the notepg file, killGroup must
 	// still kill the leader. exec leaves no rc parent behind to leak.
-	stubNotePgPath(t, "/no/such/notepg")
+	stubProcRoot(t) // empty, so the notepg open fails
 
 	script := writeRC(t, t.TempDir(), "slow.rc", `exec sleep 120`)
 	cmd := exec.Command(script)
@@ -233,33 +156,26 @@ func TestKillGroup_Plan9_FallsBackToLeaderKill(t *testing.T) {
 		6*time.Second, 100*time.Millisecond, "leader should be killed")
 }
 
-func TestKillGroup_Plan9_FailedWriteFallsBackToLeaderKill(t *testing.T) {
-	// The held notepg write fails and the sweep finds no member (an
-	// empty fake /proc), so killGroup must still kill the leader.
-	stubProcRoot(t)
-	path := filepath.Join(t.TempDir(), "notepg")
-	require.NoError(t, os.WriteFile(path, nil, 0o600))
-	stubNotePgPath(t, path)
-
-	script := writeRC(t, t.TempDir(), "slow.rc", `exec sleep 120`)
+func TestKillGroup_Plan9_ForceKillsNoteCatchingLeaderWithoutGroup(t *testing.T) {
+	// With no note group held (afterStart failed), killGroup kills only
+	// the leader. Process.Kill posts a "kill" note, which a leader with
+	// fn sigkill catches, so killGroup must use the leader's ctl file.
+	pidFile := filepath.Join(t.TempDir(), "leader.pid")
+	script := writeRC(t, t.TempDir(), "stubborn.rc",
+		"fn sigkill {}\necho $pid > "+rcQuote(pidFile)+"\nwhile(){ sleep 120 }")
 	cmd := exec.Command(script)
 	configureProcessGroup(cmd)
 	require.NoError(t, cmd.Start())
-	pid := cmd.Process.Pid
+	pid := readPID(t, pidFile)
+	id := readNoteID("/proc/" + strconv.Itoa(pid))
 	t.Cleanup(func() {
-		_ = cmd.Process.Kill()
+		forceKillNoteGroup(id) // the loop's sleep outlives its leader
 		_ = cmd.Wait()
 	})
-	cleanup := afterStart(cmd)
-	require.NotNil(t, cleanup)
-	defer cleanup()
-	notePgsMu.Lock()
-	_ = notePgs[cmd].pg.Close() // make the write fail
-	notePgsMu.Unlock()
 
 	killGroup(cmd)
 	assert.Eventually(t, func() bool { return !procAlive(pid) },
-		6*time.Second, 100*time.Millisecond, "leader should be killed")
+		6*time.Second, 100*time.Millisecond, "a note-catching leader must still die")
 }
 
 func TestRunRecipe_Plan9_TimeoutKillsNoteGroup(t *testing.T) {
@@ -267,12 +183,11 @@ func TestRunRecipe_Plan9_TimeoutKillsNoteGroup(t *testing.T) {
 	pidFile := filepath.Join(stage, "child.pid")
 	// The parent backgrounds a long-lived child in its note group,
 	// records its pid, then sleeps. On timeout the whole note group
-	// must die, including the child.
+	// must die, including the child. The deadline passes only once the
+	// child is back in the group.
 	script := writeRC(t, t.TempDir(), "spawn.rc", spawnInGroup(pidFile)+"\nsleep 120")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-	_, timedOut, err := runRecipe(ctx, runOpts{
+	_, timedOut, err := runRecipe(deadlineWhen(t, pidRecorded(pidFile)), runOpts{
 		argv:    []string{script},
 		dir:     stage,
 		exec:    ExecConfig{},
@@ -287,17 +202,23 @@ func TestRunRecipe_Plan9_TimeoutKillsNoteGroup(t *testing.T) {
 }
 
 func TestRunRecipe_Plan9_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
-	// The leader exits at once, but a child it left in its note group
-	// keeps the captured stdout pipe open, and /proc/<leader> is gone
-	// by the deadline. The kill must still reach the child through the
-	// notepg file afterStart opened while the leader was alive.
+	// The leader exits, but a child it left in its note group keeps the
+	// captured stdout pipe open, and /proc/<leader> is gone by the
+	// deadline. The kill must still reach the child through what
+	// afterStart captured while the leader was alive. The deadline
+	// passes only once the leader is gone.
 	stage := t.TempDir()
+	leaderFile := filepath.Join(stage, "leader.pid")
 	pidFile := filepath.Join(stage, "child.pid")
-	script := writeRC(t, t.TempDir(), "orphan.rc", spawnInGroup(pidFile)+"\necho started")
+	script := writeRC(t, t.TempDir(), "orphan.rc",
+		"echo started\necho $pid > "+rcQuote(leaderFile)+"\n"+spawnInGroup(pidFile))
 
 	out := &bytes.Buffer{}
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
+	ctx := deadlineWhen(t, func() bool {
+		leader, ok := pidIn(leaderFile)
+		_, child := pidIn(pidFile)
+		return ok && child && !procAlive(leader)
+	})
 	_, timedOut, err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
 		dir:     stage,
@@ -316,15 +237,13 @@ func TestRunRecipe_Plan9_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
 func TestRunRecipe_Plan9_TimeoutKillsNoteCatchingLeader(t *testing.T) {
 	// The leader rc catches the "kill" note (fn sigkill), so the
 	// notepg write alone would leave it looping. The forced ctl kill
-	// must still end it.
+	// must still end it. The deadline passes once the handler is set.
 	stage := t.TempDir()
 	pidFile := filepath.Join(stage, "leader.pid")
 	script := writeRC(t, t.TempDir(), "stubborn.rc",
 		"fn sigkill {}\necho $pid > "+rcQuote(pidFile)+"\nwhile(){ sleep 120 }")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer cancel()
-	start := time.Now()
+	ctx := deadlineWhen(t, pidRecorded(pidFile))
 	_, timedOut, err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
 		dir:     stage,
@@ -332,7 +251,7 @@ func TestRunRecipe_Plan9_TimeoutKillsNoteCatchingLeader(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.True(t, timedOut)
-	assert.Less(t, time.Since(start), reapWait, "the leader must die on the group kill, not the fallback")
+	assert.Less(t, time.Since(ctx.firedAt()), reapWait, "the leader must die on the group kill, not the fallback")
 
 	leader := readPID(t, pidFile)
 	assert.Eventually(t, func() bool { return !procAlive(leader) },

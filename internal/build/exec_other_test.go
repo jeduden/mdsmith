@@ -40,3 +40,11 @@ func TestKillGroup_Other_KillsLeaderAndIgnoresError(t *testing.T) {
 	assert.NotPanics(t, func() { killGroup(cmd) })
 	assert.Same(t, cmd.Process, got, "killGroup must kill the leader")
 }
+
+func TestForceKillLeader_Other_NilProcess(t *testing.T) {
+	assert.NotPanics(t, func() { forceKillLeader(&exec.Cmd{}) })
+}
+
+func TestTimeoutKillAction_Other(t *testing.T) {
+	assert.Equal(t, "killed recipe process", TimeoutKillAction)
+}

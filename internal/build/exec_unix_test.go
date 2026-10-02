@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -143,6 +144,37 @@ func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, timedOut)
 	assert.Less(t, time.Since(start), 3*time.Second, "leader fallback kill should be prompt")
+}
+
+func TestRunRecipe_ReapFallbackUsesForceKillLeader(t *testing.T) {
+	// When the group kill leaves the leader running, runRecipe's direct
+	// kill must go through forceKillLeader: on plan9 (*os.Process).Kill
+	// posts a note the leader can catch, so a direct Process.Kill there
+	// would leave it running.
+	stubKillGroup(t, func(*exec.Cmd) {})
+	var forced atomic.Bool
+	old := forceKillLeaderFn
+	forceKillLeaderFn = func(cmd *exec.Cmd) {
+		forced.Store(true)
+		forceKillLeader(cmd)
+	}
+	t.Cleanup(func() { forceKillLeaderFn = old })
+	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 5`)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	assert.True(t, timedOut)
+	assert.True(t, forced.Load(), "the reap fallback must use forceKillLeader")
+}
+
+func TestForceKillLeader_Unix_NilProcess(t *testing.T) {
+	assert.NotPanics(t, func() { forceKillLeader(&exec.Cmd{}) })
 }
 
 func TestRunRecipe_SurvivorHoldingPipeDoesNotBlock(t *testing.T) {
@@ -295,4 +327,8 @@ func TestRunRecipe_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
 	require.NoError(t, perr)
 	assert.Eventually(t, func() bool { return !processAlive(pid) },
 		5*time.Second, 50*time.Millisecond, "the group kill must reach the child")
+}
+
+func TestTimeoutKillAction_Unix(t *testing.T) {
+	assert.Equal(t, "sent SIGTERM to process group", TimeoutKillAction)
 }

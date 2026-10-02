@@ -14,6 +14,10 @@ import (
 // other GOOS (zos, say) still compiles, killing only the leader.
 func configureProcessGroup(*exec.Cmd) {}
 
+// TimeoutKillAction names, for the timeout report, the kill a timed-out
+// recipe gets on this platform.
+const TimeoutKillAction = "killed recipe process"
+
 // afterStart is a no-op on these targets. It returns nil so runRecipe
 // installs no cleanup defer.
 func afterStart(*exec.Cmd) func() { return nil }
@@ -21,7 +25,12 @@ func afterStart(*exec.Cmd) func() { return nil }
 // killGroup terminates only the recipe's leader process: there is no
 // group kill on these targets. A nil Process (the command never
 // started) is a no-op.
-func killGroup(cmd *exec.Cmd) {
+func killGroup(cmd *exec.Cmd) { forceKillLeader(cmd) }
+
+// forceKillLeader kills the recipe's leader process with killLeader.
+// runRecipe also uses it when the group kill left the leader running.
+// A nil Process is a no-op.
+func forceKillLeader(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return
 	}

@@ -18,6 +18,10 @@ func configureProcessGroup(cmd *exec.Cmd) {
 	}
 }
 
+// TimeoutKillAction names, for the timeout report, the kill a timed-out
+// recipe gets on this platform.
+const TimeoutKillAction = "sent CTRL_BREAK to process group and terminated its job object, if any"
+
 // windowsCreateNewProcessGroup is CREATE_NEW_PROCESS_GROUP. Defined
 // locally so the file does not depend on x/sys/windows.
 const windowsCreateNewProcessGroup = 0x00000200
@@ -84,6 +88,17 @@ func killGroup(cmd *exec.Cmd) {
 	if ok {
 		_ = terminateJob(job)
 	}
+}
+
+// forceKillLeader kills only the recipe's leader with TerminateProcess,
+// which it cannot refuse. runRecipe uses it when the group kill left
+// the leader running. A nil Process (the command never started) is a
+// no-op.
+func forceKillLeader(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+	_ = cmd.Process.Kill()
 }
 
 // --- thin syscall wrappers over kernel32 ---

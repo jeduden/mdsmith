@@ -292,4 +292,5 @@ footer: |
 | 2610021556 | ✅     | sonnet | [Declare each wasm method's disposed result next to its impl](plan/2610021556_wasm-disposed-result-table.md)                                            |
 | 2610021800 | 🔲     | sonnet | [Contain wasm JS exceptions outside the executor guard](plan/2610021800_wasm-js-exception-outside-guard.md)                                             |
 | 2610021849 | 🔲     | sonnet | [Kill running build recipes when the CLI is interrupted](plan/2610021849_cancel-recipes-on-cli-interrupt.md)                                            |
+| 2610021917 | 🔲     | sonnet | [Replace the per-platform kill maps with a per-recipe group killer](plan/2610021917_per-recipe-group-killer.md)                                         |
 <?/catalog?>

@@ -13,6 +13,10 @@ import (
 // is a var, not a const, so a kill-path test can shorten it.
 var gracePeriod = 5 * time.Second
 
+// TimeoutKillAction names, for the timeout report, the kill a timed-out
+// recipe gets on this platform.
+const TimeoutKillAction = "sent SIGTERM to process group"
+
 // configureProcessGroup puts the recipe in its own process group so a
 // timeout can signal the whole group, not just the leader. Setpgid makes
 // the child the leader of a new group whose pgid equals its pid.
@@ -44,6 +48,16 @@ func killGroup(cmd *exec.Cmd) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	_ = signalGroup(pgid, syscall.SIGKILL)
+}
+
+// forceKillLeader kills only the recipe's leader with SIGKILL, which it
+// cannot catch. runRecipe uses it when the group kill left the leader
+// running. A nil Process (the command never started) is a no-op.
+func forceKillLeader(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+	_ = cmd.Process.Kill()
 }
 
 // signalGroup sends sig to the process group pgid. It returns the syscall

@@ -67,12 +67,11 @@ jobs:
       # build it once for the host and run that one binary for every
       # view of the module: native (linux), js/wasm (which also covers
       # the shared !unix && !windows && !plan9 fallback files), windows,
-      # and plan9 (internal/build/exec_plan9.go). The plan9 run prints
-      # type errors for third-party packages that do not build there
-      # (afero, charmbracelet/x/term) and exits zero on them; it still
-      # lints internal/build and exits non-zero on a finding there. Files tagged wasip1
-      # alone, such as the wasip1 spike guest, get only the go vet
-      # runs in the wasm job.
+      # and plan9 (internal/build/exec_plan9.go). The linter's own deps
+      # (afero, charmbracelet/x/term) do not build for plan9, which is
+      # one more reason not to compile it per target; the module itself
+      # does. Files tagged wasip1 alone, such as the wasip1 spike guest,
+      # get only the go vet runs in the wasm job.
       - name: Build golangci-lint for the host
         run: go build -modfile=tools/go.mod -o "$RUNNER_TEMP/golangci-lint" github.com/golangci/golangci-lint/v2/cmd/golangci-lint
       - name: Lint the native build
