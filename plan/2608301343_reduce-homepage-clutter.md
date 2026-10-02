@@ -24,10 +24,14 @@ box.
 
 ## Scope
 
-This plan changes homepage copy and the homepage feature grid
-only. Interior docs pages already read cleanly and stay as they
-are. No rule config changes: [`.mdsmith.yml`](../.mdsmith.yml) is
-out of scope.
+This plan changes homepage copy and the homepage feature grid.
+Interior docs pages already read cleanly and keep their bodies.
+The one exception is feature-page front matter: the homepage
+cards render each `summary:`, so the two summaries that named a
+rule ID are reworded, and the now-unread `rules:` keys are
+dropped. Those summaries also lead their feature pages. No rule
+config changes: [`.mdsmith.yml`](../.mdsmith.yml) is out of
+scope; plan 2610020233 drops the dead `rules?` schema key.
 
 ## Snapshot
 
@@ -132,11 +136,18 @@ meaning and drops the puzzle.
    the lead.
 3. Tier 2: remove the `.card-rules` chip block from the
    [feature grid](../website/layouts/partials/feature-grid.html)
-   and update the matching card rule in
+   and its CSS, and update the matching card rule in
    [`design-system.md`](../docs/development/design-system.md).
+   Reword the `build-artifacts` and `markdown-conventions`
+   summaries that name `MDS040` / `MDS034`, drop the `rules:`
+   keys from `docs/features/*.md`, and guard the result with an
+   e2e test on the card copy. Remove the unused `.bento` /
+   `.bento-card` CSS and its design-system entry, which no
+   template emits.
 4. Tier 3 (optional, confirm first): drop `.pillar-num`, collapse
    the icon-tile tints to one, trim the hero badge row, and drop
-   the two homepage section eyebrows.
+   the two homepage section eyebrows. Deferred, not taken in
+   this PR: it needs a separate design confirmation.
 5. Rebuild the site locally, re-capture the homepage, and check
    the before/after side by side. Run `mdsmith check .`.
 

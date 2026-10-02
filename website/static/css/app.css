@@ -1505,53 +1505,6 @@ a.install-label:hover { color: var(--forge-300); text-decoration: underline; }
 .icon-tile.is-slate { background: var(--tint-slate-bg); color: var(--tint-slate-fg); border-color: var(--tint-slate-line); }
 .icon-tile.is-forge-grad { background: var(--grad-forge); color: #fff; border-color: var(--forge-600); }
 
-/* ========== BENTO ========== */
-
-/* 6-col feature bento from the design system. Cells rest on
-   bg-raised + 1px border and lift to shadow-md on hover; at most
-   one is-glow and one is-dark cell per bento. */
-.bento {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 14px;
-}
-.bento-card {
-  grid-column: span 2;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 24px;
-  display: flex; flex-direction: column; gap: 10px;
-  position: relative;
-  overflow: hidden;
-  transition: border-color var(--dur-fast) var(--ease-out),
-              box-shadow var(--dur-fast) var(--ease-out);
-}
-.bento-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
-.bento-card.is-wide { grid-column: span 3; }
-.bento-card.is-hero { grid-column: span 4; }
-.bento-card.is-full { grid-column: span 6; }
-.bento-card.is-tall { grid-row: span 2; }
-.bento-card h3 { font-size: 16px; font-weight: 600; margin: 2px 0 0; letter-spacing: -0.01em; }
-.bento-card p { font-size: 13.5px; color: var(--fg-muted); line-height: 1.55; margin: 0; }
-.bento-card.is-glow::before {
-  content: "";
-  position: absolute; inset: 0;
-  background: var(--grad-glow);
-  pointer-events: none;
-}
-.bento-card.is-glow > * { position: relative; }
-.bento-card.is-dark { background: var(--grad-steel); border-color: var(--steel-800); color: var(--term-fg); }
-.bento-card.is-dark h3 { color: var(--canvas); }
-.bento-card.is-dark p { color: var(--steel-400); }
-.bento-card.is-dark .icon-tile { background: var(--steel-800); color: var(--forge-300); border-color: var(--steel-700); }
-
-@media (max-width: 880px) {
-  .bento { grid-template-columns: 1fr; }
-  .bento-card, .bento-card.is-wide, .bento-card.is-hero,
-  .bento-card.is-full, .bento-card.is-tall { grid-column: auto; grid-row: auto; }
-}
-
 /* ========== SCREENSHOT SHOWCASE ========== */
 
 /* A stage cell with a floating window/screenshot on it — the
