@@ -92,6 +92,9 @@ deviations from the task text:
 - The native `go list` passes `-e`, so a package whose
   non-test files are all js/wasm-only (no native build)
   still lists, with every test file js/wasm-only.
+- `<pkg>` must match exactly one package. The pass check
+  matches bare test names, so across packages a same-named
+  test that passed in one could hide a skip in another.
 - A dot-imported `testing` counts: `func TestX(t *T)` is
   listed, as `go test` runs it.
 - The command runner is a `goRunFunc` that writes stdout

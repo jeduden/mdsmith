@@ -403,8 +403,10 @@ func newJSWasmPkg(t *testing.T) jsWasmFixture {
 // fake returns a fakeGo whose go env and go list answers describe x.
 func (x jsWasmFixture) fake(testLog string, testErr error) *fakeGo {
 	return &fakeGo{
-		goroot: "/go", jsList: x.bridge + "\n" + x.native + "\n", nativeList: x.native + "\n",
-		testLog: testLog, testErr: testErr,
+		goroot:     "/go",
+		jsList:     "#pkg example.com/p\n" + x.bridge + "\n" + x.native + "\n",
+		nativeList: "#pkg example.com/p\n" + x.native + "\n",
+		testLog:    testLog, testErr: testErr,
 	}
 }
 
@@ -463,7 +465,7 @@ func TestRunJSWasmTestsWithErrors(t *testing.T) {
 
 	t.Run("no js-only files", func(t *testing.T) {
 		f := x.fake("", nil)
-		f.jsList = x.native + "\n"
+		f.jsList = "#pkg example.com/p\n" + x.native + "\n"
 		err := runJSWasmTestsWith(x.deps(f, &bytes.Buffer{}), "./p")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no js/wasm-only test files")
@@ -473,7 +475,7 @@ func TestRunJSWasmTestsWithErrors(t *testing.T) {
 		emptyDir, _ := newJSWasmFixture(t, map[string]string{
 			"helper_test.go": "//go:build js && wasm\npackage p\n",
 		})
-		f := &fakeGo{goroot: "/go", jsList: filepath.Join(emptyDir, "helper_test.go") + "\n"}
+		f := &fakeGo{goroot: "/go", jsList: "#pkg example.com/p\n" + filepath.Join(emptyDir, "helper_test.go") + "\n"}
 		err := runJSWasmTestsWith(x.deps(f, &bytes.Buffer{}), "./p")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no Test functions")
@@ -560,14 +562,37 @@ func TestRunJSWasmTests(t *testing.T) {
 }
 
 func TestJSOnlyFilesOf(t *testing.T) {
-	f := &fakeGo{jsList: "/p/a_test.go\n/p/b_test.go\n", nativeList: "/p/b_test.go\n"}
+	f := &fakeGo{
+		jsList:     "#pkg example.com/p\n/p/a_test.go\n/p/b_test.go\n",
+		nativeList: "#pkg example.com/p\n/p/b_test.go\n",
+	}
 	got, err := jsOnlyFilesOf(jsWasmDeps{run: f.run}, "./p")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/p/a_test.go"}, got)
 
-	f = &fakeGo{jsList: "/p/b_test.go\n", nativeList: "/p/b_test.go\n"}
+	f = &fakeGo{jsList: "#pkg example.com/p\n/p/b_test.go\n", nativeList: "#pkg example.com/p\n/p/b_test.go\n"}
 	_, err = jsOnlyFilesOf(jsWasmDeps{run: f.run}, "./p")
 	assert.ErrorContains(t, err, "no js/wasm-only test files in ./p")
+
+	// Pass checks match bare test names, so a pattern that spans
+	// packages could count another package's same-named test.
+	f = &fakeGo{jsList: "#pkg example.com/a\n/a/x_test.go\n#pkg example.com/b\n/b/x_test.go\n"}
+	_, err = jsOnlyFilesOf(jsWasmDeps{run: f.run}, "./...")
+	assert.EqualError(t, err, "test-js-wasm needs exactly one package; ./... matches 2")
+
+	f = &fakeGo{jsList: ""}
+	_, err = jsOnlyFilesOf(jsWasmDeps{run: f.run}, "./none")
+	assert.EqualError(t, err, "test-js-wasm needs exactly one package; ./none matches 0")
+}
+
+func TestSplitListOutput(t *testing.T) {
+	pkgs, files := splitListOutput([]byte("#pkg a\n/a/x_test.go\n\n#pkg b\n/b/y_test.go\n"))
+	assert.Equal(t, []string{"a", "b"}, pkgs)
+	assert.Equal(t, []string{"/a/x_test.go", "/b/y_test.go"}, files)
+
+	pkgs, files = splitListOutput(nil)
+	assert.Nil(t, pkgs)
+	assert.Nil(t, files)
 }
 
 func TestTestsInFiles(t *testing.T) {

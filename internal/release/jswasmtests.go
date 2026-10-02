@@ -32,9 +32,15 @@ import (
 // `go test` calls.
 var jsWasmEnv = []string{"GOOS=js", "GOARCH=wasm"}
 
-// testFilesTemplate makes `go list` print one absolute path per test
-// file, internal (TestGoFiles) and external (XTestGoFiles) alike.
-const testFilesTemplate = `{{range .TestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}` +
+// pkgLinePrefix starts the line testFilesTemplate prints for each
+// package matched, ahead of that package's test files.
+const pkgLinePrefix = "#pkg "
+
+// testFilesTemplate makes `go list` print, per package, a
+// pkgLinePrefix line with its import path, then one absolute path per
+// test file, internal (TestGoFiles) and external (XTestGoFiles) alike.
+const testFilesTemplate = pkgLinePrefix + `{{.ImportPath}}{{"\n"}}` +
+	`{{range .TestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}` +
 	`{{range .XTestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}`
 
 // goRunFunc runs `go args...` with env appended to the process
@@ -123,11 +129,17 @@ func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
 
 // jsOnlyFilesOf lists pkg's test files that only a js/wasm build
 // compiles, erroring when there are none so a broken lookup cannot
-// pass vacuously.
+// pass vacuously. pkg must match exactly one package: the pass check
+// matches bare test names, so across packages a same-named test that
+// passed elsewhere could stand in for a skipped one.
 func jsOnlyFilesOf(d jsWasmDeps, pkg string) ([]string, error) {
 	jsOut, err := d.output(jsWasmEnv, "list", "-f", testFilesTemplate, pkg)
 	if err != nil {
 		return nil, fmt.Errorf("go list (js/wasm) %s: %w", pkg, err)
+	}
+	pkgs, jsFiles := splitListOutput(jsOut)
+	if len(pkgs) != 1 {
+		return nil, fmt.Errorf("test-js-wasm needs exactly one package; %s matches %d", pkg, len(pkgs))
 	}
 	// -e: a package whose non-test files are all js/wasm-only has no
 	// native build, and plain `go list` exits 1 on it. Every one of its
@@ -136,7 +148,8 @@ func jsOnlyFilesOf(d jsWasmDeps, pkg string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("go list (native) %s: %w", pkg, err)
 	}
-	files := JSOnlyTestFiles(splitLines(jsOut), splitLines(nativeOut))
+	_, nativeFiles := splitListOutput(nativeOut)
+	files := JSOnlyTestFiles(jsFiles, nativeFiles)
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no js/wasm-only test files in %s", pkg)
 	}
@@ -349,6 +362,19 @@ func quoteExecArg(s string) (string, error) {
 		return `"` + s + `"`, nil
 	}
 	return "", fmt.Errorf("cannot quote %q for go test -exec: it holds both quote kinds", s)
+}
+
+// splitListOutput splits testFilesTemplate output into the import
+// paths of the packages it covers and their test file paths.
+func splitListOutput(b []byte) (pkgs, files []string) {
+	for _, line := range splitLines(b) {
+		if p, ok := strings.CutPrefix(line, pkgLinePrefix); ok {
+			pkgs = append(pkgs, p)
+			continue
+		}
+		files = append(files, line)
+	}
+	return pkgs, files
 }
 
 // splitLines splits go list output into non-empty, CR-trimmed lines.

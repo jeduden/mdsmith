@@ -17,7 +17,8 @@ func runTestJSWasm(root string, args []string) int {
 			"files only a GOOS=js GOARCH=wasm build compiles, parse their\n"+
 			"TestXxx(*testing.T) functions, run exactly those with go test\n"+
 			"-json through go_js_wasm_exec, and fail unless every one passes\n"+
-			"(a skipped test fails by name). Needs node on PATH.\n")
+			"(a skipped test fails by name). <pkg> must match exactly one\n"+
+			"package. Needs node on PATH.\n")
 	}
 	if err := fs.Parse(args); err != nil {
 		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: test-js-wasm"); code >= 0 {
