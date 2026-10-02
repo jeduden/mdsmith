@@ -61,6 +61,7 @@ func TestRecipeOutput_TwoWritersGetTwoPipes(t *testing.T) {
 	o, e := &lockedBuffer{}, &lockedBuffer{}
 	ro := &recipeOutput{}
 	require.NoError(t, ro.attach(cmd, o, e))
+	t.Cleanup(ro.closeChildEnds)
 	require.Len(t, ro.readers, 2)
 
 	_, err := cmd.Stdout.Write([]byte("out"))
@@ -83,6 +84,7 @@ func TestRecipeOutput_WriterErrorRecordedAndPipeClosed(t *testing.T) {
 	want := errors.New("disk full")
 	ro := &recipeOutput{}
 	require.NoError(t, ro.attach(cmd, failingWriter{want}, nil))
+	t.Cleanup(ro.closeChildEnds)
 	child := cmd.Stdout.(*os.File)
 
 	_, err := child.WriteString("x")
@@ -93,7 +95,6 @@ func TestRecipeOutput_WriterErrorRecordedAndPipeClosed(t *testing.T) {
 	// than blocking once the pipe buffer fills.
 	_, err = child.WriteString("y")
 	require.Error(t, err)
-	ro.closeChildEnds()
 }
 
 func TestRecipeOutput_AbandonEndsCopyWhileWriterOpen(t *testing.T) {
