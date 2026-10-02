@@ -1,20 +1,8 @@
 package include
 
 import (
-	"regexp"
 	"strings"
 )
-
-// atxRe matches an ATX heading line: one or more '#' followed by a space or end of line.
-var atxRe = regexp.MustCompile(`^(#{1,6})([ \t].*)?$`)
-
-// setextH1Re matches a setext h1 underline: up to three spaces of
-// indentation, then one or more '=' characters.
-var setextH1Re = regexp.MustCompile(`^ {0,3}=+\s*$`)
-
-// setextH2Re matches a setext h2 underline: up to three spaces of
-// indentation, then one or more '-' characters.
-var setextH2Re = regexp.MustCompile(`^ {0,3}-+\s*$`)
 
 // adjustHeadings shifts all heading levels in content so that the minimum
 // heading level becomes parentLevel+1. If parentLevel is 0 or the computed
@@ -95,15 +83,69 @@ func findMinHeadingLevel(lines []string) int {
 }
 
 // setextLevel returns 1 when line is a setext h1 underline (`=` run),
-// 2 when it is a setext h2 underline (`-` run), and 0 otherwise.
+// 2 when it is a setext h2 underline (`-` run), and 0 otherwise: up to
+// three spaces, a run of one character, then only whitespace. It reads
+// the bytes directly and bails on the first non-matching byte, since it
+// runs on every line outside a fence.
 func setextLevel(line string) int {
-	if setextH1Re.MatchString(line) {
+	i := leadingSpaces(line)
+	if i > 3 || i >= len(line) {
+		return 0
+	}
+	c := line[i]
+	if c != '=' && c != '-' {
+		return 0
+	}
+	for i < len(line) && line[i] == c {
+		i++
+	}
+	for ; i < len(line); i++ {
+		switch line[i] {
+		case ' ', '\t', '\n', '\f', '\r':
+		default:
+			return 0
+		}
+	}
+	if c == '=' {
 		return 1
 	}
-	if setextH2Re.MatchString(line) {
-		return 2
+	return 2
+}
+
+// atxHeading reports an ATX heading line as goldmark reads one: up to
+// three spaces of indentation, one to six '#', then whitespace or the
+// line end. It returns the heading level (0 when line is no ATX
+// heading) and the indentation's byte count.
+func atxHeading(line string) (level, indent int) {
+	indent = leadingSpaces(line)
+	if indent > 3 {
+		return 0, 0
 	}
-	return 0
+	n := indent
+	for n < len(line) && line[n] == '#' {
+		n++
+	}
+	level = n - indent
+	if level == 0 || level > 6 {
+		return 0, 0
+	}
+	if n < len(line) {
+		switch line[n] {
+		case ' ', '\t', '\n', '\r':
+		default:
+			return 0, 0
+		}
+	}
+	return level, indent
+}
+
+// leadingSpaces returns the number of leading space bytes of line.
+func leadingSpaces(line string) int {
+	n := 0
+	for n < len(line) && line[n] == ' ' {
+		n++
+	}
+	return n
 }
 
 // applyShift applies the heading level shift to all headings, converting
@@ -125,11 +167,14 @@ func applyShift(lines []string, shift int) []string {
 			heading := strings.Repeat("#", clampLevel(level+shift)) + " " + setextText(lines[i-text:i])
 			result = append(result[:len(result)-text], heading)
 		default:
-			rest := atxRe.FindStringSubmatch(line)[2]
+			// The scan reported an ATX heading of level '#'s after indent
+			// spaces; keep the indentation and the text after the run.
+			indent := leadingSpaces(line)
+			rest := line[indent+level:]
 			if rest == "" {
 				rest = " "
 			}
-			result = append(result, strings.Repeat("#", clampLevel(level+shift))+rest)
+			result = append(result, line[:indent]+strings.Repeat("#", clampLevel(level+shift))+rest)
 		}
 	}
 

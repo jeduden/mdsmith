@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/internal/mdhtml"
 	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
@@ -36,9 +35,9 @@ const (
 // It tracks no list or block-quote nesting: a list item or block quote
 // line only marks the paragraph it opens as one a document-level
 // underline cannot turn into a heading. See fence.go for how fence
-// lines are read without containers.
+// lines are read, including a fence opened on a list-marker line.
 type headingScan struct {
-	fence mdfence.Tracker
+	fence fenceScan
 	html  mdhtml.Kind
 	pi    bool
 	para  paraKind
@@ -62,7 +61,7 @@ func (h *headingScan) step(line string) (level, text int) {
 	case h.pi:
 		h.pi = strings.TrimSpace(line) != "?>"
 		return 0, 0
-	case stepFence(&h.fence, line):
+	case h.fence.step(b, wasPara != paraNone):
 		return 0, 0
 	}
 	if level := setextLevel(line); level > 0 {
@@ -82,8 +81,8 @@ func (h *headingScan) step(line string) (level, text int) {
 		}
 		return 0, 0
 	}
-	if atxRe.MatchString(line) {
-		return atxLevel(line), 0
+	if level, _ := atxHeading(line); level > 0 {
+		return level, 0
 	}
 	if strings.TrimSpace(line) == "" {
 		return 0, 0
@@ -139,15 +138,6 @@ func nextPara(b []byte, prev paraKind) paraKind {
 		return paraContainer
 	}
 	return paraRoot
-}
-
-// atxLevel returns the number of leading '#' of a line atxRe matched.
-func atxLevel(line string) int {
-	n := 0
-	for n < len(line) && line[n] == '#' {
-		n++
-	}
-	return n
 }
 
 // piStart mirrors the processing-instruction block parser in

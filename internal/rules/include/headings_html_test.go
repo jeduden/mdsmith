@@ -158,9 +158,3 @@ func TestHeadingScan_Step(t *testing.T) {
 		assert.Equal(t, l.want, verdict{level, text}, "%q", l.line)
 	}
 }
-
-func TestAtxLevel(t *testing.T) {
-	assert.Equal(t, 1, atxLevel("# A"))
-	assert.Equal(t, 6, atxLevel("######"))
-	assert.Equal(t, 0, atxLevel("A"))
-}

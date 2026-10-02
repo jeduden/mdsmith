@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/jeduden/mdsmith/internal/mdfence"
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 // linkRe matches Markdown links [text](target) and images ![alt](target).
@@ -60,17 +60,22 @@ func adjustLinks(content string, includedFilePath string, includingFilePath stri
 // rewriteSkippingCode applies rewriteFn to non-code portions of content,
 // leaving fenced code block lines unchanged. Link rewriting is applied on
 // full lines so that backticks inside link text (e.g. [`name`](target))
-// do not prevent matching.
+// do not prevent matching. Fences are read as the heading scan reads
+// them (fenceScan), with an open paragraph approximated as "the line
+// before was non-blank text outside a fence".
 func rewriteSkippingCode(content string, rewriteFn func(string) string) string {
 	var b strings.Builder
-	var fence mdfence.Tracker
+	var fence fenceScan
+	text := false
 
 	lines := strings.SplitAfter(content, "\n")
 	for _, line := range lines {
-		if stepFence(&fence, line) {
+		if fence.step(util.StringToReadOnlyBytes(line), text) {
+			text = false
 			b.WriteString(line)
 			continue
 		}
+		text = strings.TrimSpace(line) != ""
 
 		b.WriteString(rewriteFn(line))
 	}
