@@ -73,8 +73,8 @@ type Cache struct {
 	// schemaIncludes / schemaCUESources mirror ParsedSchemaMetadata
 	// into dedicated sync.Maps so Invalidate reads metadata without
 	// peeking at memo.Entry.val — that would race with the slot's
-	// sync.Once during a first-time build. The slots are written
-	// AFTER ParsedSchema's load returns (so after the once completes)
+	// mutex-guarded first-time build. The slots are written
+	// AFTER ParsedSchema's load returns (so after the build completes)
 	// and read by Invalidate via sync.Map.Load, which gives the
 	// happens-before guarantee. A missing entry just means no
 	// metadata is registered yet; eviction degrades to a no-op rather
@@ -198,10 +198,13 @@ func (c *Cache) dropDuplicateParagraphs(absPath string) {
 // f.FS roots differ can still share the cached adjacency.
 func (c *Cache) Includes(absPath string, build func() []string) []string {
 	v := load(&c.includes, absPath, func() any { return build() })
-	// v always carries dynamic type []string (the wrapper closure
-	// converts build's typed nil to a typed-nil any), so v == nil
-	// cannot fire — the assertion succeeds for nil and non-nil
-	// slices alike.
+	// v carries dynamic type []string (the wrapper closure converts
+	// build's typed nil to a typed-nil any), so the assertion succeeds
+	// for nil and non-nil slices alike. The one exception: a build that
+	// panicked leaves the slot done with an untyped nil (memo.Entry's
+	// sync.Once-style contract), and this assertion then panics on every
+	// later call until Invalidate drops the slot. That stays loud on
+	// purpose — a silent nil would read as "no includes".
 	return v.([]string)
 }
 
@@ -217,7 +220,13 @@ func (c *Cache) Includes(absPath string, build func() []string) []string {
 // per-host-file goldmark parse + AST walk to one walk per (Run,
 // target).
 func (c *Cache) Anchors(absPath string, build func() (map[string]struct{}, error)) (map[string]struct{}, error) {
-	ei, _ := c.anchors.LoadOrStore(absPath, &anchorEntry{})
+	// Load before LoadOrStore, as memo.Load does: LoadOrStore's
+	// &anchorEntry{} argument (and the boxed key) would otherwise be
+	// built and discarded on every cache hit.
+	ei, ok := c.anchors.Load(absPath)
+	if !ok {
+		ei, _ = c.anchors.LoadOrStore(absPath, &anchorEntry{})
+	}
 	e := ei.(*anchorEntry)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -392,39 +401,21 @@ func (c *Cache) registerSchemaMetadata(absPath string, meta ParsedSchemaMetadata
 
 // registerSchemaIncludes adds schemaPath as a dependent of every
 // fragment in includes on the reverse-include index. Idempotent
-// under concurrent ParsedSchema calls for the same schemaPath: the
-// inner sync.Map's LoadOrStore re-uses the existing set, and
-// re-adding the same dependent key is a no-op.
+// under concurrent ParsedSchema calls for the same schemaPath: an
+// existing set is re-used, and re-adding the same dependent key is
+// a no-op.
 //
-// The verify-and-retry loop closes a race with Invalidate's
-// empty-set cleanup: Invalidate's CompareAndDelete on the outer
-// schemaDependents map only compares the outer-value pointer,
-// which stays the same even when a concurrent register adds to
-// the inner *sync.Map. Without the retry, this sequence loses
-// the new dependent:
-//
-//  1. T1 register: LoadOrStore("frag") → setI (existing)
-//  2. T2 invalidate: empty-check on setI → empty → CompareAndDelete
-//     drops the outer entry
-//  3. T1 register: set.Store(schemaPath) → lands on the orphaned
-//     setI, never reachable from schemaDependents again
-//
-// The retry detects step 3's orphaning by re-Loading the outer
-// entry after Store and confirming it still points at setI.
-// On mismatch, the loop re-issues LoadOrStore, which creates a
-// fresh set and re-registers. The retry cap (8) is well above
-// any plausible race depth — register-vs-invalidate is bounded
-// by LSP edit rate.
+// The set lookup-or-create and the inner Store run together under
+// depsMu, the same lock dropDependentBackPointers holds for its
+// empty-check and drop. A register can therefore never land on a set
+// the empty-set cleanup has already unlinked from schemaDependents —
+// the orphaning race the former lock-free sync.Map version had to
+// detect with a verify-and-retry loop.
 func (c *Cache) registerSchemaIncludes(schemaPath string, includes []string) {
 	for _, frag := range includes {
 		if frag == "" {
 			continue
 		}
-		// Under depsMu the load-or-store and the inner Store are one atomic
-		// step, so the empty-set cleanup in invalidate (also under depsMu)
-		// cannot orphan the dependent the way the lock-free sync.Map version's
-		// CompareAndDelete race could — the retry loop that guarded that race is
-		// no longer needed.
 		c.depsMu.Lock()
 		set, ok := c.schemaDependents[frag]
 		if !ok {
@@ -454,8 +445,11 @@ func (c *Cache) CompiledCUE(source string, build func() any) any {
 	return load(&c.compiledCUE, source, build)
 }
 
-// Invalidate drops the front-matter, include, anchor, and
-// parsed-schema entries for absPath. The LSP calls this from
+// Invalidate drops absPath's front-matter, raw-schema, include,
+// anchor, duplicate-paragraph, and parsed-schema entries, every
+// corpus-index aggregate, and each unique-field index whose scope
+// absPath can fall in (an index with no registered scope always
+// drops). The LSP calls this from
 // didChange / didSave / didChangeWatchedFiles so the next Check
 // that crosses absPath re-reads from disk.
 //
@@ -531,7 +525,8 @@ func (c *Cache) invalidate(absPath string, visited map[string]struct{}) {
 // absPath produced and returns the schema's include fragments and CUE sources
 // for the rest of the eviction. The includes/cueSources are read from the
 // dedicated sync.Maps; both are written AFTER ParsedSchema's load returns
-// (post-sync.Once), so there is no race with an in-flight build. A miss (slot
+// (after the slot's build completes), so there is no race with an in-flight
+// build. A miss (slot
 // never populated, or already dropped by a sibling Invalidate via the
 // dependents walk) leaves the slices nil and the rest of the eviction is a
 // no-op.

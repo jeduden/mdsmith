@@ -78,8 +78,9 @@ this scope mismatch:
    `internal/memo` (`memo.Entry`, `memo.Load`,
    `memo.GetWith`).
 4. Update every import across the files listed in task 2.
-5. Keep `internal/lint`'s per-file `Memo` type in place;
-   only the cross-file `RunCache` moves.
+5. Keep `internal/lint`'s per-file `Memo` and `MemoFile`
+   methods in place; only the cross-file `RunCache` and the
+   shared build-once slot (now `internal/memo`) move.
 6. `go build ./...` passes.
 7. `go test ./...` passes.
 8. `go tool -modfile=tools/go.mod golangci-lint run` reports

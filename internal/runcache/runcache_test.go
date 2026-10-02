@@ -210,6 +210,25 @@ func TestCache_AnchorsBuildsOnce(t *testing.T) {
 		"Anchors build must run exactly once per absPath")
 }
 
+// TestCache_AnchorsWarmPathAllocatesNothing pins the cache-hit cost of
+// Anchors at zero allocs. A LoadOrStore-only lookup builds a throwaway
+// &anchorEntry{} (and boxes the key) on every hit, because Go
+// evaluates LoadOrStore's arguments before it can report that the key
+// already exists — the same gap memo.Load closes for the other slots.
+func TestCache_AnchorsWarmPathAllocatesNothing(t *testing.T) {
+	c := New()
+	build := func() (map[string]struct{}, error) {
+		return map[string]struct{}{"intro": {}}, nil
+	}
+	_, err := c.Anchors("/abs/target.md", build)
+	require.NoError(t, err)
+
+	allocs := testing.AllocsPerRun(200, func() {
+		_, _ = c.Anchors("/abs/target.md", build)
+	})
+	assert.Zero(t, allocs, "Anchors' cache-hit path must not allocate")
+}
+
 // TestCache_AnchorsErrorIsRetryable pins that a failing build
 // does not flip the done flag: the next caller's build runs again.
 // Matches the catalog-rule semantics where a transient read
@@ -710,7 +729,7 @@ func TestCache_InvalidateSchemaDropsBackpointers(t *testing.T) {
 // TestCache_InvalidateDoesNotRaceParsedSchemaBuild pins the race
 // fix for Copilot thread `PRRT_kwDORLpjqs6EXfF6` on PR #377: Invalidate
 // must not read memo.Entry.val (which is set under the slot's
-// sync.Once) while a concurrent ParsedSchema build is in flight. The
+// mutex) while a concurrent ParsedSchema build is in flight. The
 // fix stores metadata in dedicated sync.Maps (schemaIncludes /
 // schemaCUESources) and Invalidate reads from those — race-free.
 // Under `go test -race`, the old code would flag a data race; this
