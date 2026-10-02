@@ -414,10 +414,12 @@ func FileStemKey(base string) (string, bool) {
 // must be read back by ExtractWikiLinks whole, with no anchor or alias
 // split off and no whitespace trimmed, and the resolver must accept the
 // target. A CR is refused too: CommonMark ends a line at a lone CR, so
-// the link would be split across lines. A stem-mode target must equal
+// the link would be split across lines. So is a backtick, which can
+// pair with a later backtick on the line and open a code span that
+// swallows the closing `]]`. A stem-mode target must equal
 // base's FileStemKey; a typed one must equal base by name, ignoring case.
 func WikilinkReaches(spelling, base string) bool {
-	if strings.TrimSpace(spelling) != spelling || strings.ContainsRune(spelling, '\r') {
+	if strings.TrimSpace(spelling) != spelling || strings.ContainsAny(spelling, "\r`") {
 		return false
 	}
 	token := "[[" + spelling + "]]"

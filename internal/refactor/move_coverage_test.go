@@ -133,12 +133,15 @@ func TestDstWikilinkSpelling_FallsBackToBase(t *testing.T) {
 		"docs/v1.3.md":     "v1.3.md",
 		"docs/guide.md.md": "guide.md.md",
 		"docs/guide .md":   "guide .md",
+		"docs/C:x.md":      "./C:x",
+		"img/C:x.png":      "./C:x.png",
+		"docs/ notes.md":   "./ notes",
 	} {
 		got, ok := dstWikilinkSpelling(dst)
 		assert.True(t, ok, dst)
 		assert.Equal(t, want, got, dst)
 	}
-	for _, dst := range []string{"docs/.md", "docs/COPYING", "docs/ notes.md", "docs/C#.md"} {
+	for _, dst := range []string{"docs/.md", "docs/COPYING", "docs/guide.md ", "docs/C#.md"} {
 		_, ok := dstWikilinkSpelling(dst)
 		assert.False(t, ok, dst)
 	}

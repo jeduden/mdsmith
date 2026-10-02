@@ -440,12 +440,12 @@ func TestMove_WikilinkNotRewrittenToExtensionlessName(t *testing.T) {
 // name no wikilink can spell rewrites nothing: an empty stem (`.md`)
 // leaves `[[]]`, and a `#`, `|`, `[`, `]`, or newline in the stem splits
 // or ends the link, so the rewrite would not name the destination. A
-// leading or trailing space is trimmed off the link target, so
-// `[[guide.md ]]` would reach x/guide.md instead of the moved file.
+// trailing space is trimmed off the link target, so `[[guide.md ]]`
+// would reach x/guide.md instead of the moved file.
 func TestMove_WikilinkNotRewrittenToUnspellableName(t *testing.T) {
 	for _, dst := range []string{
 		"docs/.md", "docs/C#.md", "docs/a|b.md", "docs/[x].md", "docs/x].txt",
-		"docs/guide.md ", "docs/ notes.md", "docs/a\nb.md", "docs/a\rb.md", "docs/C:x.md",
+		"docs/guide.md ", "docs/a\nb.md", "docs/a\rb.md", "docs/a`b.md",
 	} {
 		t.Run(dst, func(t *testing.T) {
 			ws := newMemWorkspace(map[string]string{
@@ -473,6 +473,23 @@ func TestMove_WikilinkKeepsMarkdownExtForDottedStem(t *testing.T) {
 	plan, err := Move(ws, "docs/v1.2.md", "docs/v1.3.md")
 	require.NoError(t, err)
 	assert.Equal(t, "See [[v1.3.md]] and [[v1.3.md#notes|old]].\n",
+		applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_WikilinkDriveShapedNameGetsDotSlash locks that a destination
+// whose name reads as a drive letter (`C:x.md`) is still reached: a
+// bare `[[C:x]]` is refused as a drive path, so it is written
+// `[[./C:x]]`, while a link with a folder prefix already starts with
+// that folder and keeps the bare name.
+func TestMove_WikilinkDriveShapedNameGetsDotSlash(t *testing.T) {
+	src := "See [[api]] and [[ref/api|R]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/api.md": "# API\n",
+		"index.md":    src,
+	})
+	plan, err := Move(ws, "docs/api.md", "docs/C:x.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[./C:x]] and [[ref/C:x|R]].\n",
 		applyEditsToSource(t, src, plan.Edits["index.md"]))
 }
 

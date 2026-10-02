@@ -139,6 +139,16 @@ counts against the resolver's own index.
      first, else the whole basename. This covers a dotted stem
      and a stem ending in a space (`[[guide .md]]`). Refuse a
      CR in the spelling, since CommonMark ends a line there.
+  - When no bare spelling reaches dst, try it behind `./`:
+     `[[./C:x]]` reaches `C:x.md` and `[[./ notes]]` reaches
+     ` notes.md`. Drop the `./` for a link that already has a
+     folder prefix.
+  - Refuse a backtick in the spelling. It can pair with a
+     later backtick on the line and open a code span.
+  - Replace only the stem segment the resolver reads: split
+     on `\` as well as `/`, and drop trailing whitespace and
+     separators, so `[[docs\api]]` keeps its prefix and a
+     table-escaped `[[api\|alias]]` keeps its `\`.
   - Document these cases in
      [move.md](../docs/reference/cli/move.md).
 
@@ -157,15 +167,19 @@ counts against the resolver's own index.
 - [x] Moving `docs/v1.2.md` to `docs/v1.3.md` rewrites
       `[[v1.2.md]]` to `[[v1.3.md]]`
 - [x] No wikilink is rewritten to an empty name, to one
-      holding `#`, `|`, `[`, `]`, a CR, or a newline, or to one
-      with a leading or trailing space
+      holding `#`, `|`, `[`, `]`, a backtick, a CR, or a
+      newline, or to one with a trailing space
 - [x] Moving `docs/api.md` to `docs/guide .md` rewrites
       `[[api]]` to `[[guide .md]]`
 - [x] Moving `docs/.md` leaves `[[.md.md]]` unchanged
 - [x] A listed `x/ guide.md` does not block moving
       `docs/guide.md` to `docs/manual.md`
-- [x] Moving `docs/api.md` to `docs/C:x.md` leaves `[[api]]`
-      unchanged
+- [x] Moving `docs/api.md` to `docs/C:x.md` rewrites
+      `[[api]]` to `[[./C:x]]` and `[[ref/api]]` to
+      `[[ref/C:x]]`
+- [x] Moving `docs/api.md` to `docs/manual.md` rewrites
+      `[[docs\api]]` to `[[docs\manual]]` and keeps the `\`
+      in a table-escaped `[[api\|alias]]`
 - [x] Moving an unlisted `a/b/guide.md` while
       `docs/guide.md` is listed leaves `[[guide]]` unchanged
 - [x] All tests pass: `go test ./...`

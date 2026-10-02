@@ -63,9 +63,10 @@ func (e SourceNotFoundError) Error() string {
 //     wikilinks alone because a stem still resolves (a documented
 //     asymmetry with path links). Only a Markdown src with a non-empty
 //     stem is a stem target, and a dst no wikilink can name — no
-//     extension, an empty stem, a `#`, `|`, `[`, `]`, CR, or newline in
-//     the name, or a name that starts or ends with a space — gets no
-//     rewrite;
+//     extension, an empty stem, a `#`, `|`, `[`, `]`, backtick, CR, or
+//     newline in the name, or a name that ends with a space — gets no
+//     rewrite. A name that starts with a space or reads as a drive path
+//     (`C:x.md`) is written behind `./`;
 //   - outbound destinations inside src, when it has a Markdown
 //     extension or the workspace lists it (an `.mdx` file that
 //     `files:` matches) — every `[t](path)`, `![a](path)` and
@@ -766,8 +767,8 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	// The rewritten token must parse back as a wikilink that resolves by
 	// dst's key. WikilinkReaches checks that against the wikilink
 	// grammar, so a name with no extension (`COPYING`), an empty stem,
-	// a `#`, `|`, `[`, `]`, CR, or newline, a name that starts or ends
-	// with a space, or a drive-letter shape (`C:x.md`) gets no rewrite.
+	// a `#`, `|`, `[`, `]`, backtick, CR, or newline, or a name that
+	// ends with a space gets no rewrite.
 	newSpelling, ok := dstWikilinkSpelling(dst)
 	if !ok {
 		return
@@ -823,12 +824,18 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 		if !ok {
 			continue
 		}
+		text := newSpelling
+		if start > 0 && (row[start-1] == '/' || row[start-1] == '\\') {
+			// A folder prefix already keeps the name from reading as
+			// a drive path, so the `./` guard is not needed.
+			text = strings.TrimPrefix(text, "./")
+		}
 		changes[key] = append(changes[key], Edit{
 			Range: Range{
 				Start: Position{Line: e.SourceLine - 1, Character: mdtext.UTF16FromByteOffset(row, start)},
 				End:   Position{Line: e.SourceLine - 1, Character: mdtext.UTF16FromByteOffset(row, end)},
 			},
-			NewText: newSpelling,
+			NewText: text,
 		})
 	}
 }
@@ -912,16 +919,26 @@ func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem b
 // not reach dst, the whole basename is tried: `[[v1.3]]` reads `.3` as
 // a typed extension and `[[guide ]]` loses its space to the target
 // trim, while `[[v1.3.md]]` and `[[guide .md]]` reach the file. Any
-// other name is only ever spelled whole.
+// other name is only ever spelled whole. A name the resolver refuses as
+// a drive path (`C:x.md`) is tried last behind a `./` prefix, which the
+// resolver drops when it reads the basename; the caller strips that
+// prefix again for a link that already has a folder prefix.
 func dstWikilinkSpelling(dst string) (string, bool) {
 	base := path.Base(dst)
+	var candidates [2]string
+	n := 0
 	if ext := path.Ext(base); mdpath.HasMarkdownExt(ext) {
-		if stem := strings.TrimSuffix(base, ext); linkgraph.WikilinkReaches(stem, base) {
-			return stem, true
-		}
+		candidates[n] = strings.TrimSuffix(base, ext)
+		n++
 	}
-	if linkgraph.WikilinkReaches(base, base) {
-		return base, true
+	candidates[n] = base
+	n++
+	for _, prefix := range [...]string{"", "./"} {
+		for _, c := range candidates[:n] {
+			if linkgraph.WikilinkReaches(prefix+c, base) {
+				return prefix + c, true
+			}
+		}
 	}
 	return "", false
 }
