@@ -103,7 +103,7 @@ func (s *scopeIndex) hostKey(f *lint.File) string {
 	return filepath.Clean(p)
 }
 
-// MatchesInvalidatedPath implements lint.ScopeInvalidator. In-root
+// MatchesInvalidatedPath implements runcache.ScopeInvalidator. In-root
 // paths match by the scope's globs. Paths the matcher cannot relate
 // to the root — Rel errors and dot-dot escapes, e.g. a macOS /tmp
 // workspace root receiving /private/tmp document paths — return

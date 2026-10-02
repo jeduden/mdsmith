@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 
 	"github.com/jeduden/mdsmith/internal/gitignore"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
@@ -190,14 +191,12 @@ type File struct {
 	// times. nil for struct-literal Files in unit tests; the
 	// catalog rule then takes the per-Check fallback path.
 	//
-	// RunCache (runcache.go) and the parse cache (parsecache.go) stay in
-	// this package rather than moving to siblings like the gitignore,
-	// bytelimit, and piparser splits: File embeds *RunCache here, so a
-	// dedicated internal/runcache package would import lint for File
-	// while lint imports it for the field — a circular import. They are
-	// facets of the parsed-file model, not standalone utilities, so
-	// they belong with File anyway. See plan/224.
-	RunCache *RunCache
+	// The type lives in internal/runcache, a leaf package with no lint
+	// dependency, so lint can hold the field without an import cycle
+	// (engine imports schema, which imports lint, so engine cannot
+	// host it). The parse cache (parsecache.go) stays here as a facet
+	// of the parsed-file model. See plan/224 and plan/2608301919.
+	RunCache *runcache.RunCache
 
 	// scratch backs Memo: per-Check rule memoization. A *File is
 	// built fresh for each Check and discarded after, so values

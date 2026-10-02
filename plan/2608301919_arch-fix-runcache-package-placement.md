@@ -2,10 +2,10 @@
 id: 2608301919
 title: >-
   Relocate RunCache out of internal/lint
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
-  internal/lint/runcache.go's RunCache memoizes state across
+  internal/runcache/runcache.go's RunCache memoizes state across
   every host file in one engine.Run pass — a cross-file,
   whole-run scope that answers a different question than
   internal/lint's stated charter of modeling one parsed
@@ -61,11 +61,11 @@ this scope mismatch:
    [internal/linkgraph/wikilinks.go][wikilinks], and
    [pkg/mdsmith/session.go][session].
 3. Move `RunCache` and its dependent types from
-   `internal/lint` to `internal/engine` (the package that
-   already owns the run loop `RunCache` is scoped to), or to
-   a new peer package if `internal/engine` would create an
-   import cycle with a current `RunCache` caller — check
-   this before choosing.
+   `internal/lint` to a new leaf package, `internal/runcache`.
+   `internal/engine` would create an import cycle:
+   `engine` imports `schema`, `schema` imports `lint`, and
+   `lint.File` holds the `*RunCache` field; `schema` and
+   `linkgraph` also call `RunCache` directly.
 4. Update every import across the files listed in task 2.
 5. Keep `internal/lint`'s per-file `Memo` type in place;
    only the cross-file `RunCache` moves.
@@ -76,20 +76,22 @@ this scope mismatch:
 
 ## Acceptance Criteria
 
-- [ ] `internal/lint`'s package doc no longer lists a
+- [x] `internal/lint`'s package doc no longer lists a
       cross-file, whole-run cache among its responsibilities.
-- [ ] `RunCache` lives in the package whose stated charter is
-      "orchestrate rules over files."
-- [ ] No behavior change: `mdsmith check .` and `mdsmith lsp`
+- [x] `RunCache` lives in a package whose charter matches its
+      whole-run scope: `internal/runcache`, a leaf package.
+      (`internal/engine` was ruled out by an import cycle; see
+      task 3.)
+- [x] No behavior change: `mdsmith check .` and `mdsmith lsp`
       produce identical diagnostics before and after the
       move.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [go]: ../docs/development/architecture/go.md
 [lint]: ../internal/lint/
-[runcache]: ../internal/lint/runcache.go
+[runcache]: ../internal/runcache/runcache.go
 [schema-cc]: ../internal/schema/compile_cache.go
 [schema-validate]: ../internal/schema/validate.go
 [runner-cache]: ../internal/engine/runner_cache.go

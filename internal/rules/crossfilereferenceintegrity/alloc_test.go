@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/stretchr/testify/require"
 )
 
@@ -68,7 +69,7 @@ func checkAllocsPerOp(tb testing.TB, r *Rule) float64 {
 		require.NoError(tb, err)
 		f.FS = mfs
 		f.RootDir = "."
-		f.RunCache = lint.NewRunCache()
+		f.RunCache = runcache.NewRunCache()
 		return f
 	}
 	_ = r.Check(makeFile("warm.md"))

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/config"
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -60,7 +60,7 @@ func TestRunner_AutoCreatedRunSourceCacheIsCallScoped(t *testing.T) {
 // (and leaves it intact) so the LSP's Invalidate seam controls
 // staleness across runLint calls.
 func TestRunner_CallerProvidedRunCacheIsHonored(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 	r := &Runner{
 		Config:   config.Merge(config.Defaults(), nil),
 		Rules:    nil,
@@ -115,7 +115,7 @@ func TestRunCacheForCall_NilCallerBuildsFresh(t *testing.T) {
 // directly: an installed cache is returned unchanged so the LSP
 // keeps invalidation control.
 func TestRunCacheForCall_CallerProvidedReused(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 	r := &Runner{RunCache: cache}
 	got := r.runCacheForCall()
 	assert.Samef(t, cache, got,

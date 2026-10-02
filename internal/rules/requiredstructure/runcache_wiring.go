@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/internal/schema"
 )
 
@@ -27,7 +28,7 @@ type schemaParseResult struct {
 	cueSources []string
 }
 
-// SchemaIncludes implements lint.ParsedSchemaMetadata so
+// SchemaIncludes implements runcache.ParsedSchemaMetadata so
 // RunCache.Invalidate can read the include chain without a
 // dependency on this package's private types. Returns nil for a
 // schema that reached no <?include?> directives.
@@ -35,7 +36,7 @@ func (r schemaParseResult) SchemaIncludes() []string {
 	return r.includes
 }
 
-// SchemaCUESources implements lint.ParsedSchemaMetadata. Returns
+// SchemaCUESources implements runcache.ParsedSchemaMetadata. Returns
 // every distinct CUE source string the schema's frontmatter
 // produced; nil when the schema declared no frontmatter
 // constraints.
@@ -62,7 +63,7 @@ func (r schemaParseResult) SchemaCUESources() []string {
 func cachedParseSchema(
 	f *lint.File, data []byte, schemaPath string,
 ) (*parsedSchema, error) {
-	var cache *lint.RunCache
+	var cache *runcache.RunCache
 	if f != nil {
 		cache = f.RunCache
 	}
@@ -101,7 +102,7 @@ func cachedParseSchema(
 // Invalidate(absPath) calls byte-for-byte. An empty absRoot leaves
 // entries Clean'd-but-relative (the struct-literal test path).
 func cachedParseSchemaWith(
-	cache *lint.RunCache, absPath, absRoot string,
+	cache *runcache.RunCache, absPath, absRoot string,
 	build func() (*parsedSchema, []string, error),
 ) (*parsedSchema, error) {
 	if cache == nil || absPath == "" {
@@ -204,7 +205,7 @@ func schemaCUESources(sch *parsedSchema) []string {
 // parseSchema closure. The CompiledCUE slot adds a second-tier win:
 // two distinct schema files producing identical CUE source share one
 // compile.
-func cachedCompiledCUEWith(cache *lint.RunCache, source string) *schema.CompiledCUE {
+func cachedCompiledCUEWith(cache *runcache.RunCache, source string) *schema.CompiledCUE {
 	return schema.CachedCompile(cache, source)
 }
 

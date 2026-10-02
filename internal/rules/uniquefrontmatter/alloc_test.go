@@ -3,7 +3,7 @@ package uniquefrontmatter
 import (
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +17,7 @@ import (
 func TestCheck_ConfiguredSteadyStateAllocs(t *testing.T) {
 	fsys := planFS()
 	r := planRule()
-	rc := lint.NewRunCache()
+	rc := runcache.NewRunCache()
 
 	clean := file(t, "plan/c.md", fsys)
 	clean.RunCache = rc
@@ -57,7 +57,7 @@ func TestCheck_InertAllocatesNothing(t *testing.T) {
 func TestCheck_OutOfScopeConfiguredStaysCheap(t *testing.T) {
 	fsys := planFS()
 	r := planRule()
-	rc := lint.NewRunCache()
+	rc := runcache.NewRunCache()
 
 	f := file(t, "other/d.md", fsys)
 	f.RunCache = rc

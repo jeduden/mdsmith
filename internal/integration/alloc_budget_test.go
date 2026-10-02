@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/stretchr/testify/require"
 )
 
@@ -160,7 +161,7 @@ func allocsForRule(tb testing.TB, r rule.Rule) float64 {
 		require.NoError(tb, err)
 		f.FS = mapFS
 		f.RootDir = "."
-		f.RunCache = lint.NewRunCache()
+		f.RunCache = runcache.NewRunCache()
 		return f
 	}
 	// Warm: prime any package-level singletons (tokenizer init,

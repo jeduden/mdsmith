@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/gitignore"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -147,7 +148,7 @@ func TestIncludeTargetsOfAbs_NoIncludesReturnsNil(t *testing.T) {
 	fsys := fstest.MapFS{
 		"a.md": &fstest.MapFile{Data: []byte("# A\n")},
 	}
-	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: lint.NewRunCache()}
+	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: runcache.NewRunCache()}
 
 	got := includeTargetsOfAbs(cf, fsys, tmp, filepath.Join(tmp, "a.md"), 1024)
 	assert.Nil(t, got)
@@ -164,7 +165,7 @@ func TestIncludeTargetsOfAbs_BuildsAbsoluteTargets(t *testing.T) {
 		"sub/a.md":      &fstest.MapFile{Data: []byte(body)},
 		"sub/target.md": &fstest.MapFile{Data: []byte("# T\n")},
 	}
-	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: lint.NewRunCache()}
+	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: runcache.NewRunCache()}
 
 	absA := filepath.Join(tmp, "sub", "a.md")
 	got := includeTargetsOfAbs(cf, fsys, tmp, absA, 1024)
@@ -180,7 +181,7 @@ func TestIncludeTargetsOfAbs_PathOutsideHostReturnsNil(t *testing.T) {
 	fsys := fstest.MapFS{
 		"a.md": &fstest.MapFile{Data: []byte("# A\n")},
 	}
-	cf := &lint.File{Path: "/host/host.md", FS: fsys, RunCache: lint.NewRunCache()}
+	cf := &lint.File{Path: "/host/host.md", FS: fsys, RunCache: runcache.NewRunCache()}
 
 	got := includeTargetsOfAbs(cf, fsys, "/host", "/elsewhere/a.md", 1024)
 	assert.Nil(t, got,
@@ -196,7 +197,7 @@ func TestIncludeTargetsOfAbs_PathOutsideHostReturnsNil(t *testing.T) {
 // nil and silently skip parsing real include directives, producing
 // order-dependent false negatives in cycle detection.
 func TestIncludeTargetsOfAbs_OutsideHostDoesNotPoisonCache(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 
 	// Host A: hostAbsDir=/repo/a; the target lives at /repo/shared
 	// which is OUTSIDE host A's directory. relToHost rejects the
@@ -235,7 +236,7 @@ func TestScanIncludesForTargetAbs_DepthLimit(t *testing.T) {
 	fsys := fstest.MapFS{
 		"a.md": &fstest.MapFile{Data: []byte("# A\n")},
 	}
-	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: lint.NewRunCache()}
+	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: runcache.NewRunCache()}
 	visited := map[string]struct{}{}
 	got := scanIncludesForTargetAbs(cf, fsys, "/host",
 		"/host/a.md", "/host/target.md",
@@ -253,7 +254,7 @@ func TestScanIncludesForTargetAbs_DirectMatch(t *testing.T) {
 		"a.md":      &fstest.MapFile{Data: []byte(body)},
 		"target.md": &fstest.MapFile{Data: []byte("# T\n")},
 	}
-	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: lint.NewRunCache()}
+	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: runcache.NewRunCache()}
 	visited := map[string]struct{}{filepath.Join(tmp, "a.md"): {}}
 	got := scanIncludesForTargetAbs(cf, fsys, tmp,
 		filepath.Join(tmp, "a.md"),
@@ -272,7 +273,7 @@ func TestScanIncludesForTargetAbs_VisitedCycleSkipped(t *testing.T) {
 	fsys := fstest.MapFS{
 		"a.md": &fstest.MapFile{Data: []byte(body)},
 	}
-	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: lint.NewRunCache()}
+	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: runcache.NewRunCache()}
 	absA := filepath.Join(tmp, "a.md")
 	absB := filepath.Join(tmp, "b.md")
 	absTarget := filepath.Join(tmp, "target.md")
@@ -297,7 +298,7 @@ func TestScanIncludesForTargetAbs_IndirectMatch(t *testing.T) {
 		"b.md":      &fstest.MapFile{Data: []byte(bBody)},
 		"target.md": &fstest.MapFile{Data: []byte("# T\n")},
 	}
-	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: lint.NewRunCache()}
+	cf := &lint.File{Path: "host.md", FS: fsys, RunCache: runcache.NewRunCache()}
 	visited := map[string]struct{}{filepath.Join(tmp, "a.md"): {}}
 	got := scanIncludesForTargetAbs(cf, fsys, tmp,
 		filepath.Join(tmp, "a.md"),
@@ -725,7 +726,7 @@ func TestCachedGlobMatches_FallsBackWithoutRunCacheOrBase(t *testing.T) {
 
 	// RunCache present but no gitignoreBase: the fs has no stable
 	// identity for a cache key, so resolution stays direct.
-	f.RunCache = lint.NewRunCache()
+	f.RunCache = runcache.NewRunCache()
 	got = cachedGlobMatches(res, f, map[string]string{})
 	assert.ElementsMatch(t, []string{"a.md", "b.md"}, got)
 }
@@ -737,7 +738,7 @@ func TestCachedGlobMatches_CachesPerKeyAxes(t *testing.T) {
 	f, err := lint.NewFile("host.md", []byte("# H\n"))
 	require.NoError(t, err)
 	f.FS = fsys
-	f.RunCache = lint.NewRunCache()
+	f.RunCache = runcache.NewRunCache()
 
 	base := globResolution{fs: fsys, includes: []string{"*.md"}, gitignoreBase: "/abs/dir"}
 	first := cachedGlobMatches(base, f, map[string]string{})

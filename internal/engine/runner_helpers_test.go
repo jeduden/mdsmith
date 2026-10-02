@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -114,8 +115,8 @@ func TestRunFiles_SequentialMatchesParallel(t *testing.T) {
 			Concurrency: c,
 		}
 	}
-	seq := mk(1).runFiles(work, lint.NewRunCache()) // workers<=1 branch
-	par := mk(4).runFiles(work, lint.NewRunCache()) // parallel + cloneRules branch
+	seq := mk(1).runFiles(work, runcache.NewRunCache()) // workers<=1 branch
+	par := mk(4).runFiles(work, runcache.NewRunCache()) // parallel + cloneRules branch
 	require.Len(t, seq, len(work))
 	require.Len(t, par, len(work))
 	for i := range work {
@@ -138,7 +139,7 @@ func (r *Runner) newRunResolve() runResolve {
 
 func TestLintFile_ReadErrorReturnsErrs(t *testing.T) {
 	r := &Runner{Config: &config.Config{}}
-	out := r.lintFile(filepath.Join(t.TempDir(), "missing.md"), 1, lint.NewRunCache(), r.newRunResolve())
+	out := r.lintFile(filepath.Join(t.TempDir(), "missing.md"), 1, runcache.NewRunCache(), r.newRunResolve())
 	assert.Empty(t, out.diags)
 	require.Len(t, out.errs, 1)
 	assert.Contains(t, out.errs[0].Error(), "reading")
@@ -152,7 +153,7 @@ func TestLintFile_HappyReturnsDiags(t *testing.T) {
 		Config: &config.Config{Rules: map[string]config.RuleCfg{"mock-rule": {Enabled: true}}},
 		Rules:  []rule.Rule{&mockRule{id: "MDS999", name: "mock-rule"}},
 	}
-	out := r.lintFile(p, 1, lint.NewRunCache(), r.newRunResolve())
+	out := r.lintFile(p, 1, runcache.NewRunCache(), r.newRunResolve())
 	require.Len(t, out.diags, 1)
 	assert.Empty(t, out.errs)
 	assert.Equal(t, p, out.diags[0].File)

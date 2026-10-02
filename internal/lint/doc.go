@@ -2,7 +2,7 @@
 // matter, diagnostics, caches, and prose ranges. Every type here is a
 // facet of that one subject — File and Diagnostic value types, the
 // code-block and prose-range AST projections, front-matter extraction,
-// workspace file discovery, and the parse and run caches.
+// workspace file discovery, and the parse cache.
 //
 // The three standalone utilities that once lived here — gitignore
 // matching, byte-limit guards, and processing-instruction parsing — now

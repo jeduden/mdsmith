@@ -71,7 +71,7 @@ expression. Both are caches the existing
 [`lint.RunCache`][runcache] already proves the shape
 for (front matter, includes).
 
-[runcache]: ../internal/lint/runcache.go
+[runcache]: ../internal/runcache/runcache.go
 
 ## Approach
 

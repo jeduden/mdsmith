@@ -7,6 +7,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/stretchr/testify/require"
 )
 
@@ -77,7 +78,7 @@ func TestCheckConfiguredRules_DiagCollectionAllocs(t *testing.T) {
 			t.Fatalf("NewFile: %v", err)
 		}
 		f.RootDir = "."
-		f.RunCache = lint.NewRunCache()
+		f.RunCache = runcache.NewRunCache()
 		return f
 	}
 
@@ -117,7 +118,7 @@ func TestCheckConfiguredRules_NoDiagnosticsReturnsNil(t *testing.T) {
 	f, err := lint.NewFile("doc.md", []byte("# Hello\n\nParagraph.\n"))
 	require.NoError(t, err)
 	f.RootDir = "."
-	f.RunCache = lint.NewRunCache()
+	f.RunCache = runcache.NewRunCache()
 
 	diags := CheckConfiguredRules(f, nil, true, 1)
 	require.Nil(t, diags)

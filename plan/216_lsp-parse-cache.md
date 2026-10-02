@@ -55,7 +55,7 @@ edit. Examples: codeAction, documentSymbol,
 definition.
 
 The cross-file
-[RunCache](../internal/lint/runcache.go) proves
+[RunCache](../internal/runcache/runcache.go) proves
 the seam. It lives for the server lifetime.
 Several edit events drop a cached entry. The
 parse cache mirrors that shape. The key is denser:

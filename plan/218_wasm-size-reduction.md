@@ -213,7 +213,7 @@ join shape.
 - **Compile once, share freely.** Regexes compile at
   schema-compile time and cache on the node. The immutable
   `Value` is reused across files and goroutines through the
-  [RunCache](../internal/lint/runcache.go).
+  [RunCache](../internal/runcache/runcache.go).
 - **Budget.** Validation stays within an absolute allocs/op
   guard (`cue/cuelite/bench_test.go`).
 
@@ -251,7 +251,7 @@ CUE was removed in phase 4 (plan 240), once the diff was clean.
 
 With CUE gone, the engine is pure stdlib. One more change is
 needed for tinygo: replace `sync.Map.CompareAndDelete` in
-[runcache.go](../internal/lint/runcache.go) with a mutex-guarded
+[runcache.go](../internal/runcache/runcache.go) with a mutex-guarded
 map (the tinygo lever). Then `tinygo build -target wasm
 ./cmd/mdsmith-wasm` is reachable. `go.mod` sheds ~95 packages
 plus apd and protobuf; `Capabilities()` is unchanged.

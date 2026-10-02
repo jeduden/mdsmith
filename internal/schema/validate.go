@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/cue/cuelite"
 	"github.com/jeduden/mdsmith/cue/cuelite/yamltime"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
@@ -189,7 +190,7 @@ func validateFrontmatterDiags(
 	// front matter directly via CompileMap and meets it with the shared
 	// schema — reads the cached value without mutating it, safe under -race
 	// regardless of operand order.
-	var cache *lint.RunCache
+	var cache *runcache.RunCache
 	if f != nil {
 		cache = f.RunCache
 	}

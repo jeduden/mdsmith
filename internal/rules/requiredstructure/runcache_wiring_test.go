@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,7 +25,7 @@ func TestCachedParseSchema_BuildsOncePerRunCache(t *testing.T) {
 	schemaBody := []byte("# Title\n\n## Section\n")
 	const absPath = "/abs/schema.md"
 
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 	var calls int32
 	build := func() (*parsedSchema, []string, error) {
 		atomic.AddInt32(&calls, 1)
@@ -62,7 +63,7 @@ func TestCachedParseSchema_NilRunCacheStillParses(t *testing.T) {
 // is parsed from raw bytes without a filesystem identity). The build
 // still runs and returns a result.
 func TestCachedParseSchema_EmptyAbsPathFallsThroughToBuild(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 	var calls int32
 	for i := 0; i < 2; i++ {
 		got, err := cachedParseSchemaWith(cache, "", "", func() (*parsedSchema, []string, error) {
@@ -81,7 +82,7 @@ func TestCachedParseSchema_EmptyAbsPathFallsThroughToBuild(t *testing.T) {
 // not re-parsed on every host file. A subsequent caller observes the
 // same error from the cache.
 func TestCachedParseSchema_CachesParseErrors(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 	var calls int32
 	expectedErr := assert.AnError
 	for i := 0; i < 3; i++ {
@@ -100,7 +101,7 @@ func TestCachedParseSchema_CachesParseErrors(t *testing.T) {
 // same CUE source twice returns the same cached wrapper. Plan 195 task
 // 15.
 func TestCachedCompiledCUE_BuildsOncePerSource(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 	const src = `close({id: string})`
 	v1 := cachedCompiledCUEWith(cache, src)
 	v2 := cachedCompiledCUEWith(cache, src)
@@ -122,7 +123,7 @@ func TestCachedCompiledCUE_NilCacheStillCompiles(t *testing.T) {
 // TestCachedCompiledCUE_DistinctSourcesDoNotShare pins that two
 // different CUE source strings produce independent entries.
 func TestCachedCompiledCUE_DistinctSourcesDoNotShare(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 	v1 := cachedCompiledCUEWith(cache, `{a: string}`)
 	v2 := cachedCompiledCUEWith(cache, `{b: string}`)
 	require.NotNil(t, v1)
@@ -134,7 +135,7 @@ func TestCachedCompiledCUE_DistinctSourcesDoNotShare(t *testing.T) {
 // TestCachedCompiledCUE_ConcurrentSingleBuild pins that concurrent
 // callers compiling the same source share one compile.
 func TestCachedCompiledCUE_ConcurrentSingleBuild(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 	const src = `{shared: string}`
 	var wg sync.WaitGroup
 	results := make([]*schema.CompiledCUE, 16)
@@ -163,7 +164,7 @@ func TestRule_SchemaParsedOncePerRunCache(t *testing.T) {
 	schemaSrc := "# {id}: {name}\n\n## Section\n"
 	doc := "---\nid: doc\nname: Sample\n---\n# doc: Sample\n\n## Section\n"
 
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 	inner := fstest.MapFS{
 		"schema.md": &fstest.MapFile{
 			Data:    []byte(schemaSrc),
@@ -272,7 +273,7 @@ func TestRule_FragmentInvalidationEvictsParsedSchema(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 	r := &Rule{Schema: "schema.md", Sources: []SchemaSource{{File: "schema.md"}}}
 
 	f, err := lint.NewFile("doc.md", []byte(doc))
@@ -413,7 +414,7 @@ func TestRule_FragmentInvalidationFromSubdirSchema(t *testing.T) {
 
 	t.Chdir(tmpDir)
 
-	cache := lint.NewRunCache()
+	cache := runcache.NewRunCache()
 	r := &Rule{
 		Schema:  "schemas/schema.md",
 		Sources: []SchemaSource{{File: "schemas/schema.md"}},

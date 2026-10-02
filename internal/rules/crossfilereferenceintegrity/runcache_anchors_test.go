@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +23,7 @@ var errReadFailed = errors.New("simulated target read failure")
 // and read-error tests do not reach (the existing tests pass
 // `host == nil` so the RunCache branch never fires).
 func TestAnchorsForFile_RunCacheHit(t *testing.T) {
-	rc := lint.NewRunCache()
+	rc := runcache.NewRunCache()
 	host := &lint.File{RunCache: rc}
 
 	target := targetFile{
@@ -60,7 +61,7 @@ func TestAnchorsForFile_RunCacheHit(t *testing.T) {
 // semantics, where an unreadable target produced a host-side
 // diagnostic without silencing siblings.
 func TestAnchorsForFile_RunCacheReadError(t *testing.T) {
-	rc := lint.NewRunCache()
+	rc := runcache.NewRunCache()
 	host := &lint.File{RunCache: rc}
 
 	calls := 0
@@ -89,7 +90,7 @@ func TestAnchorsForFile_RunCacheReadError(t *testing.T) {
 // stable on-disk path to invalidate against), anchorsForFile
 // uses the per-Check cache only and never reaches RunCache.
 func TestAnchorsForFile_EmptyRunCacheKeySkipsRunCache(t *testing.T) {
-	rc := lint.NewRunCache()
+	rc := runcache.NewRunCache()
 	host := &lint.File{RunCache: rc}
 
 	target := targetFile{

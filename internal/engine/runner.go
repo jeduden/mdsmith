@@ -21,6 +21,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/runcache"
 )
 
 // sourceBufPool recycles the per-file source-read buffer across the
@@ -111,7 +112,7 @@ type Runner struct {
 	// for one process). Callers with a long-lived process — the LSP
 	// — install a shared instance so it survives across runLint
 	// calls and call its Invalidate seam on document edits.
-	RunCache *lint.RunCache
+	RunCache *runcache.RunCache
 	// BlockOnlyParse, when true, makes lintFile parse only goldmark's
 	// block phase (lint.NewFileBlockOnlyPooled) instead of the full
 	// parse, so no inline nodes are built. It is a measurement-only
@@ -334,7 +335,7 @@ func resolveIntraFileWorkers(setting, fileWorkers int) int {
 // cache is the run-scoped read cache resolved by the caller; every
 // File built by lintFile receives it so directives in different host
 // files share one read per target across the pass.
-func (r *Runner) runFiles(work []string, cache *lint.RunCache) []fileOutcome {
+func (r *Runner) runFiles(work []string, cache *runcache.RunCache) []fileOutcome {
 	outcomes := make([]fileOutcome, len(work))
 	workers := ResolveWorkers(r.Concurrency, len(work))
 	intraCap := resolveIntraFileWorkers(r.IntraFileConcurrency, workers)
@@ -404,7 +405,7 @@ func cloneRules(rules []rule.Rule) []rule.Rule {
 // Runner.IntraFileConcurrency. cache is installed on the per-File so
 // catalog/include rules share one target read across every host file in
 // this pass.
-func (r *Runner) lintFile(path string, intraFileCap int, cache *lint.RunCache, rr runResolve) (out fileOutcome) {
+func (r *Runner) lintFile(path string, intraFileCap int, cache *runcache.RunCache, rr runResolve) (out fileOutcome) {
 	// Registered first so it runs last: out.log is set by the log defer before this fires.
 	defer func() {
 		if rv := recover(); rv != nil {
@@ -577,7 +578,7 @@ func populateGeneratedRanges(f *lint.File) {
 // configureFile wires the per-run filesystem references, gitignore, and
 // read-cache onto f. Extracted from lintFile to keep that function under the
 // statement-count threshold enforced by the funlen linter.
-func (r *Runner) configureFile(f *lint.File, path string, cache *lint.RunCache) {
+func (r *Runner) configureFile(f *lint.File, path string, cache *runcache.RunCache) {
 	f.MaxInputBytes = r.MaxInputBytes
 	f.RunCache = cache
 	dir := filepath.Dir(path)

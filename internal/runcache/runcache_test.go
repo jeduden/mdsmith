@@ -1,12 +1,14 @@
-package lint
+package runcache
 
 import (
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/jeduden/mdsmith/internal/structlayout"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1187,4 +1189,13 @@ func TestLoad_WarmPathAllocatesNothing(t *testing.T) {
 		load(&m, "k", build)
 	})
 	assert.Zero(t, allocs, "load's cache-hit path must not allocate")
+}
+
+// TestAnchorEntryFieldLayout_PointerFieldsLeading guards RunCache's
+// anchorEntry against regressing to a layout where the map field trails
+// the scalar fields — see docs/development/high-performance-go.md
+// "Struct layout" and runCacheEntry's val/done/mu ordering a few lines
+// above it in runcache.go, which anchorEntry did not follow.
+func TestAnchorEntryFieldLayout_PointerFieldsLeading(t *testing.T) {
+	structlayout.AssertPointerFieldsFirst(t, reflect.TypeOf(anchorEntry{}))
 }
