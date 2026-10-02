@@ -158,25 +158,23 @@ var objectToString js.Value
 // pkg/mdsmith.Session's capability list, and a js/wasm test asserts
 // the proxy's keys equal sessionMethodNames.
 func newSessionProxy(sess *mdsmith.Session) js.Value {
-	methods := []js.Func{
-		proxyCheck(sess),
-		proxyFix(sess),
-		proxyKinds(sess),
-		proxyRename(sess),
-		proxyMove(sess),
-		proxyCapabilities(sess),
-		proxyInvalidate(sess),
+	methods := map[string]js.Func{
+		"check":        proxyCheck(sess),
+		"fix":          proxyFix(sess),
+		"kinds":        proxyKinds(sess),
+		"rename":       proxyRename(sess),
+		"move":         proxyMove(sess),
+		"capabilities": proxyCapabilities(sess),
+		"invalidate":   proxyInvalidate(sess),
 	}
-	return js.ValueOf(map[string]any{
-		"check":        methods[0],
-		"fix":          methods[1],
-		"kinds":        methods[2],
-		"rename":       methods[3],
-		"move":         methods[4],
-		"capabilities": methods[5],
-		"invalidate":   methods[6],
-		"dispose":      proxyDispose(sess, methods),
-	})
+	proxy := make(map[string]any, len(methods)+1)
+	others := make([]js.Func, 0, len(methods))
+	for name, f := range methods {
+		proxy[name] = f
+		others = append(others, f)
+	}
+	proxy["dispose"] = proxyDispose(sess, others)
+	return js.ValueOf(proxy)
 }
 
 // proxyCheck builds session.check(uri, src) → Promise<Diagnostic[]>.

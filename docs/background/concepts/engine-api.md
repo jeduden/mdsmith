@@ -246,6 +246,13 @@ becomes a Go `ConfigSource` exactly as the `-c` flag's text does.
 is async, and any Go method returning `(T, error)` maps to a
 `Promise<T>` that rejects with `new Error(msg)`.
 
+`dispose()` releases the session's other method functions, so the
+disposed session's caches and workspace can be freed. After it, a call
+to any other method returns `undefined`, not a `Promise`, and the Go
+runtime logs `call to released function` to the console. A host must
+drop its reference instead of calling the session again. A second
+`dispose()` is a no-op.
+
 `createSession` rejects when `opts` is not a plain object. It also
 rejects when `opts.workspace` is present but is not a plain object of
 path-to-source strings: `null`, a string, an array, and a boxed
