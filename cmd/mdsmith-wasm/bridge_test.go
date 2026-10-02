@@ -461,6 +461,16 @@ func TestStringListMethod(t *testing.T) {
 	assert.Equal(t, 0, gone.Length())
 }
 
+// TestMethodConstructors_PanicOnNilFn checks that each constructor
+// rejects a nil fn when the table is built (package init), so an entry
+// such as asyncMethod(nil) fails at startup with a named cause instead
+// of on the first live call, inside a js.FuncOf callback.
+func TestMethodConstructors_PanicOnNilFn(t *testing.T) {
+	assert.PanicsWithValue(t, "asyncMethod: nil fn", func() { asyncMethod(nil) })
+	assert.PanicsWithValue(t, "stringListMethod: nil fn", func() { stringListMethod(nil) })
+	assert.PanicsWithValue(t, "voidMethod: nil fn", func() { voidMethod(nil) })
+}
+
 func TestVoidMethod(t *testing.T) {
 	calls := 0
 	m := voidMethod(func(*mdsmith.Session, []js.Value) { calls++ })

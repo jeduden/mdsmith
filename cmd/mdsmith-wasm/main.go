@@ -233,7 +233,8 @@ var (
 // the result it returns once its session is disposed. Build one with
 // asyncMethod, stringListMethod, or voidMethod, which fix both funcs
 // from the method's result shape, so the two cannot disagree and
-// neither is nil.
+// neither is nil. Each constructor panics on a nil fn, so a bad entry
+// fails when the table is built at package init, not on its first call.
 type methodImpl struct {
 	// call runs the method for a live session; sess is never nil.
 	call func(sess *mdsmith.Session, args []js.Value) any
@@ -249,6 +250,9 @@ type methodImpl struct {
 // exception, as in createSession, instead of ending the Go program.
 // After dispose the Promise rejects with Error("session disposed").
 func asyncMethod(fn func(sess *mdsmith.Session, args []js.Value) (any, error)) methodImpl {
+	if fn == nil {
+		panic("asyncMethod: nil fn")
+	}
 	return methodImpl{
 		call: func(sess *mdsmith.Session, args []js.Value) any {
 			return newPromise(func(resolve, reject func(any)) {
@@ -268,6 +272,9 @@ func asyncMethod(fn func(sess *mdsmith.Session, args []js.Value) (any, error)) m
 // stringListMethod builds the entry for a synchronous method that
 // returns string[]. After dispose it returns an empty array.
 func stringListMethod(fn func(sess *mdsmith.Session, args []js.Value) []string) methodImpl {
+	if fn == nil {
+		panic("stringListMethod: nil fn")
+	}
 	return methodImpl{
 		call: func(sess *mdsmith.Session, args []js.Value) any {
 			list := fn(sess, args)
@@ -284,6 +291,9 @@ func stringListMethod(fn func(sess *mdsmith.Session, args []js.Value) []string) 
 // voidMethod builds the entry for a synchronous method that returns
 // undefined. After dispose it returns undefined without running fn.
 func voidMethod(fn func(sess *mdsmith.Session, args []js.Value)) methodImpl {
+	if fn == nil {
+		panic("voidMethod: nil fn")
+	}
 	return methodImpl{
 		call: func(sess *mdsmith.Session, args []js.Value) any {
 			fn(sess, args)
