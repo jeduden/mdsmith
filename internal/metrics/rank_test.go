@@ -72,6 +72,7 @@ func TestFormatValue(t *testing.T) {
 // metric up in a map per comparison; see
 // docs/development/high-performance-go.md, "Patterns to avoid".
 func TestSortRows_AllocsBounded(t *testing.T) {
+	skipAllocGate(t)
 	def, ok := LookupScope(ScopeFile, "bytes")
 	require.True(t, ok)
 	const n = 500

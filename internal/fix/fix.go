@@ -702,7 +702,7 @@ func (f *Fixer) parsedFileForPass(
 // false (internal/log.Logger.Printf), so nothing ever mutates this
 // instance; sharing it instead of allocating a fresh &vlog.Logger{}
 // on every call avoids one allocation per file per fix pass (log runs
-// via f.log().Printf in Fix's per-file, per-pass loop). Mirrors
+// via logFile/logPass in Fix's per-file, per-pass loop). Mirrors
 // internal/engine's identical (*Runner).log fix.
 var disabledFixerLogger = &vlog.Logger{}
 

@@ -10,6 +10,9 @@ import (
 // With -v off, the per-file and per-pass log lines must not box their
 // arguments; see docs/development/high-performance-go.md, "Allocations".
 func TestFixerLogHelpers_DisabledDoNotAllocate(t *testing.T) {
+	if testing.Short() || raceEnabled {
+		t.Skip("alloc gate skipped under -short and -race")
+	}
 	f := &Fixer{}
 	path := "docs/a.md"
 	allocs := testing.AllocsPerRun(100, func() {

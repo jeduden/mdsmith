@@ -668,8 +668,9 @@ func BenchmarkClassify(b *testing.B) {
 // so Classify only pays for the per-paragraph matching, not the
 // per-phrase tokenization. Measured baseline after the fix: 97
 // allocs/op (down from 248) on the embedded artifact's 13 hedge + 11
-// verbose phrases.
-const classifyAllocBudget = 100
+// verbose phrases. Lazy cue storage in countTokenMatches and the
+// cue-free action count later brought it to 59 allocs/op.
+const classifyAllocBudget = 64
 
 // TestClassifyAllocBudget pins Model.Classify's allocation count under
 // a normal `go test` run, not only under `-bench`, so a regression
@@ -707,6 +708,9 @@ func TestClassifyAllocBudget(t *testing.T) {
 // A paragraph with no lexicon hits must not allocate cue storage; see
 // docs/development/high-performance-go.md, "Allocations".
 func TestCountTokenMatches_NoHitsDoesNotAllocate(t *testing.T) {
+	if testing.Short() || raceEnabled {
+		t.Skip("alloc gate skipped under -short and -race")
+	}
 	tokens := []string{"parse", "the", "file", "now"}
 	set := map[string]struct{}{"basically": {}}
 	allocs := testing.AllocsPerRun(50, func() {

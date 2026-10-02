@@ -2,11 +2,8 @@ package metrics
 
 import (
 	"math"
-	"regexp"
 	"strings"
 )
-
-var tokenPattern = regexp.MustCompile(`[a-z0-9']+`)
 
 // Filler words and hedges reduce conciseness when overused.
 var fillerWords = map[string]struct{}{

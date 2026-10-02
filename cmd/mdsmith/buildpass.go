@@ -663,9 +663,14 @@ func envIsSet(name string) bool {
 	}
 }
 
+// buildOpener is the byte prefix of a build directive opener. It must
+// stay in step with the "build" name targetsFromFile passes to
+// gensection.FindMarkerPairs; TestCollectBuildTargets_KeepsFilesWithDirective
+// guards the pair.
 var buildOpener = []byte("<?build")
 
-// collectBuildTargets parses each file, walks its <?build?> directives,
+// collectBuildTargets parses each file that contains a "<?build" opener
+// (others cannot yield a target and are skipped unparsed), walks its <?build?> directives,
 // and turns each well-formed one into a buildTarget. A directive missing
 // its required recipe/outputs is skipped (MDS039 already reports it as a
 // lint error); a recipe filter restricts the set to one recipe name.
