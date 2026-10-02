@@ -93,13 +93,26 @@ not catch this. The wasm job in
    waits at most `reapWait` again, then returns. So a
    Windows run with no Job Object, or a plan9 survivor
    holding the output pipe, can no longer hang mdsmith.
+10. Added in review round 3. `runRecipe` owns its output
+    pipes, so `cmd.Wait` returns when the leader exits.
+    A survivor that holds a pipe now costs one bounded
+    drain wait, not two. Its read ends are then closed,
+    so no goroutine or fd leaks, and output after return
+    is dropped. A disposed wasm session's methods keep
+    their shape: async ones reject with "session
+    disposed". The spike's guest/host ABI moves to a
+    tested `abi` package that decodes an output address
+    at or above 2 GiB. CI builds golangci-lint once.
+    plan9's note-group kill is out of scope and moves to
+    plan [2610020946](2610020946_plan9-recipe-note-group-kill.md).
 
 ## Acceptance Criteria
 
 - [x] `GOOS=js GOARCH=wasm go build ./...` exits 0.
 - [x] CI runs that whole-module wasm build on every PR.
 - [x] Unix and Windows kill signals in `runRecipe` are
-      unchanged; only the post-kill wait is now bounded.
+      unchanged; only the post-kill wait is now bounded,
+      and an abandoned survivor's pipes are closed.
 - [x] `go vet ./...` (tests included) passes for js/wasm,
       wasip1, and plan9, and CI gates it.
 - [x] golangci-lint passes for js/wasm and windows, and
