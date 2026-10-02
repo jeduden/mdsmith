@@ -630,8 +630,7 @@ jobs:
         # The workflow is dispatched from a branch, not a tag, so the
         # tag does not exist yet: `tag_name` + `target_commitish`
         # make this step create it at the dispatched commit.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # The action's `token` input defaults to github.token.
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
           draft: true
