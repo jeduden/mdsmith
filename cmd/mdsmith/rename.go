@@ -200,7 +200,7 @@ func runRename(args []string) int {
 
 // buildRenameWorkspace discovers the workspace, builds the transient
 // index, and reads the target file's bytes. A non-negative return
-// code means stop (0 = empty workspace, 2 = error); src is the target
+// code means stop (1 = empty workspace, 2 = error); src is the target
 // source on the success path.
 func buildRenameWorkspace(opts renameOptions, target string) (cliRenameWorkspace, []byte, int) {
 	ws, code := buildWorkspace(opts)

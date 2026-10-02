@@ -106,16 +106,30 @@ type runOpts struct {
 // once, with no wait. Either way a recipe that spawns daemons cannot
 // leave orphans behind. If the Job Object could not be created, Windows
 // falls back to CTRL_BREAK alone, which reaches the leader's group but
-// cannot guarantee that. On the other targets (exec_other.go) the
-// timeout kills only the leader, with no grace period: js/wasm and
-// wasip1 cannot start a subprocess at all, and plan9's note-group kill
-// is not wired up yet (plan 2610020946). So the orphan guarantee holds
-// on Unix and on Windows with a Job Object only.
+// cannot guarantee that. On plan9 the recipe leads its own note group
+// (RFNOTEG). afterStart reads the noteid and opens /proc/<pid>/notepg
+// while the leader is alive, and keeps nothing if the noteid is
+// unreadable or is mdsmith's own. The timeout writes "kill" to that
+// file, which reaches every process still in the group at once, with
+// no grace period, even after the leader exited; it then writes a
+// forced "kill" to the ctl file of every process whose noteid still
+// matches, so a member that catches the note dies too, and repeats
+// that sweep until a pass finds no new member. Last it writes a forced
+// "kill" to the leader's own ctl file, falling back to a note only when
+// that file cannot be opened or written. rc's `&` starts a new note
+// group, so a job backgrounded that way escapes, as a setsid daemon
+// does on Unix.
+// A leader that exits before afterStart runs leaves nothing to find
+// its group by, so its children survive. On js/wasm and wasip1
+// (exec_other.go) no subprocess can start. So the orphan guarantee
+// holds on Unix, on plan9 for processes that stay in the note group,
+// and on Windows with a Job Object.
 //
 // After the kill, runRecipe waits at most reapWait for the leader to
 // exit. If it has not (a leader that ignored the group kill), it kills
-// the leader directly and waits at most reapWait again. It then waits
-// at most reapWait for captured output to drain and closes its end of
+// the leader directly with forceKillLeader, a kill it cannot catch,
+// and waits at most reapWait again. It then waits at most reapWait
+// for captured output to drain and closes its end of
 // the pipes (recipeOutput.abandon), so a survivor that holds a captured
 // pipe open cannot hang mdsmith. On Unix and Windows the close also
 // ends the copy goroutine and frees the fd; plan9 cannot cancel a
@@ -185,9 +199,10 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		if !reaped {
 			// The group kill left the leader running (Windows when the
 			// Job Object could not be set up and the recipe ignores
-			// CTRL_BREAK). Kill it directly; done is buffered, so the
-			// Wait goroutine exits whenever the leader does.
-			_ = cmd.Process.Kill()
+			// CTRL_BREAK). Kill it directly with a kill it cannot
+			// catch; done is buffered, so the Wait goroutine exits
+			// whenever the leader does.
+			forceKillLeaderFn(cmd)
 			_, waitErr = waitAtMost(done, reapWait)
 		}
 		return timeoutResult(ctx, ro, waitErr)
@@ -236,6 +251,10 @@ var afterStartFn = afterStart
 // killGroupFn indirects killGroup so a test can model a group kill that
 // leaves the recipe running.
 var killGroupFn = killGroup
+
+// forceKillLeaderFn indirects forceKillLeader so a test can check that
+// runRecipe's leader-only fallback uses it.
+var forceKillLeaderFn = forceKillLeader
 
 // reapWait bounds each wait after a timeout kill: for the leader after
 // killGroup, for it again after the leader-only fallback kill, and for

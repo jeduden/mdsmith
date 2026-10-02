@@ -146,3 +146,44 @@ func TestFileOpExecute_GitMvFailureAbortsNoHalfMove(t *testing.T) {
 	require.Error(t, err)
 	assert.FileExists(t, filepath.Join(dir, "a.md"))
 }
+
+func TestGitTracked(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "u.md"), []byte("# U\n"), 0o644))
+	gitRun(t, dir, "add", "a.md")
+
+	assert.True(t, gitTracked(dir, "a.md"), "staged file is tracked")
+	assert.False(t, gitTracked(dir, "u.md"), "untracked file is not tracked")
+	assert.False(t, gitTracked(dir, "missing.md"), "missing path is not tracked")
+	// A directory that is not a repository reports false, even when
+	// the file exists.
+	plain := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(plain, "a.md"), []byte("# A\n"), 0o644))
+	assert.False(t, gitTracked(plain, "a.md"))
+}
+
+func TestGitMove(t *testing.T) {
+	// git translates its messages; pin the C locale so the substring
+	// assertion below is stable.
+	t.Setenv("LC_ALL", "C")
+	dir := t.TempDir()
+	gitInit(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"), []byte("# B\n"), 0o644))
+	gitRun(t, dir, "add", "a.md", "b.md")
+	gitRun(t, dir, "commit", "-q", "-m", "init")
+
+	require.NoError(t, gitMove(dir, "a.md", "c.md"))
+	assert.NoFileExists(t, filepath.Join(dir, "a.md"))
+	assert.FileExists(t, filepath.Join(dir, "c.md"))
+	assert.Contains(t, gitRun(t, dir, "ls-files"), "c.md")
+
+	// A destination collision surfaces git's own message.
+	err := gitMove(dir, "c.md", "b.md")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "git mv:")
+	assert.Contains(t, err.Error(), "destination exists")
+	assert.FileExists(t, filepath.Join(dir, "c.md"))
+}

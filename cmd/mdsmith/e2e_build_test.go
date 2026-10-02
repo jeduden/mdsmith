@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"testing"
 
+	buildexec "github.com/jeduden/mdsmith/internal/build"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -157,7 +158,9 @@ func TestE2E_Build_TimeoutKillsRecipe(t *testing.T) {
 		"--build-only", "--build-timeout", "200ms", "doc.md")
 	assert.Equal(t, 2, code)
 	assert.Contains(t, stderr, "TIMEOUT")
-	assert.Contains(t, stderr, "SIGTERM")
+	// Only Windows is skipped, so name the kill this platform sends:
+	// plan9 has no SIGTERM.
+	assert.Contains(t, stderr, buildexec.TimeoutKillAction)
 }
 
 // --- Plan 103: staleness and dependency tracking ---

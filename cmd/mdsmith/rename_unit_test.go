@@ -194,18 +194,155 @@ func TestBuildRenameWorkspace_DiscoveryPaths(t *testing.T) {
 			[]byte("files:\n  - \"nope/*.md\"\n"), 0o644))
 		t.Chdir(dir)
 		_, _, code := buildRenameWorkspace(renameOptions{}, "a.md")
-		assert.Equal(t, 1, code)
-	})
-	t.Run("bad max-input-size exits 2", func(t *testing.T) {
-		renameWorkspace(t)
-		_, _, code := buildRenameWorkspace(renameOptions{maxInputSize: "notabytes"}, "a.md")
-		assert.Equal(t, 2, code)
+		assert.Equal(t, 1, code, "buildWorkspace's exit 1 propagates")
 	})
 	t.Run("unreadable target exits 2", func(t *testing.T) {
 		renameWorkspace(t)
 		_, _, code := buildRenameWorkspace(renameOptions{}, "missing.md")
 		assert.Equal(t, 2, code)
 	})
+}
+
+func TestBuildWorkspace(t *testing.T) {
+	t.Run("missing config exits 2", func(t *testing.T) {
+		renameWorkspace(t)
+		_, code := buildWorkspace(renameOptions{configPath: "/no/such/.mdsmith.yml"})
+		assert.Equal(t, 2, code)
+	})
+	t.Run("empty workspace exits 1", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+			[]byte("files:\n  - \"nope/*.md\"\n"), 0o644))
+		t.Chdir(dir)
+		_, code := buildWorkspace(renameOptions{})
+		assert.Equal(t, 1, code)
+	})
+	t.Run("bad max-input-size exits 2", func(t *testing.T) {
+		renameWorkspace(t)
+		_, code := buildWorkspace(renameOptions{maxInputSize: "notabytes"})
+		assert.Equal(t, 2, code)
+	})
+	t.Run("success indexes every workspace file", func(t *testing.T) {
+		dir := renameWorkspace(t)
+		ws, code := buildWorkspace(renameOptions{})
+		require.Equal(t, -1, code)
+		assert.ElementsMatch(t, []string{"a.md", "b.md"}, ws.Files())
+		assert.Contains(t, ws.relToAbs, "a.md")
+		assert.Equal(t, dir, ws.rootDir)
+		assert.Positive(t, ws.maxBytes)
+	})
+}
+
+func TestDetectRenameMode(t *testing.T) {
+	src := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
+	mode, code := detectRenameMode("a.md", src, "Setup", "Install")
+	assert.Equal(t, "heading", mode)
+	assert.Equal(t, -1, code)
+
+	mode, code = detectRenameMode("a.md", src, "docs", "manual")
+	assert.Equal(t, "label", mode)
+	assert.Equal(t, -1, code)
+
+	both := []byte("# docs\n\nSee [docs].\n\n[docs]: u\n")
+	stderr := captureStderr(func() {
+		_, code = detectRenameMode("a.md", both, "docs", "x")
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "matches both a heading and a link-ref label")
+
+	stderr = captureStderr(func() {
+		_, code = detectRenameMode("a.md", src, "ghost", "x")
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, `no heading or link-ref label "ghost"`)
+
+	// A path-shaped request with no matching symbol is steered to move.
+	stderr = captureStderr(func() {
+		_, code = detectRenameMode("a.md", src, "old.md", "new.md")
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "mdsmith move old.md new.md")
+}
+
+func TestHeadingPlan(t *testing.T) {
+	renameWorkspace(t)
+	ws, src, code := buildRenameWorkspace(renameOptions{}, "a.md")
+	require.Equal(t, -1, code)
+
+	plan, c := headingPlan(ws, "a.md", src, "Setup", "Install")
+	assert.Equal(t, -1, c)
+	assert.Contains(t, plan.Edits, "a.md")
+	// The anchor link in b.md is rewritten too.
+	assert.Contains(t, plan.Edits, "b.md")
+
+	// A no-op rename produces no edits and exits 1.
+	_, c = headingPlan(ws, "a.md", src, "Setup", "Setup")
+	assert.Equal(t, 1, c, "no edits exits 1")
+
+	_, c = headingPlan(ws, "a.md", src, "Ghost", "X")
+	assert.Equal(t, 1, c, "missing heading exits 1")
+
+	// A new name that slugs onto an existing heading is an engine error.
+	two := []byte("# Setup\n\n# Other\n")
+	stderr := captureStderr(func() {
+		_, c = headingPlan(ws, "a.md", two, "Setup", "Other")
+	})
+	assert.Equal(t, 2, c)
+	assert.Contains(t, stderr, "collide")
+}
+
+func TestLinkRefPlan(t *testing.T) {
+	src := []byte("See [docs].\n\n[docs]: u\n")
+	plan, c := linkRefPlan("a.md", src, "docs", "manual")
+	assert.Equal(t, -1, c)
+	assert.Len(t, plan.Edits["a.md"], 2)
+
+	_, c = linkRefPlan("a.md", src, "ghost", "x")
+	assert.Equal(t, 1, c, "missing label exits 1")
+
+	stderr := captureStderr(func() {
+		_, c = linkRefPlan("a.md", src, "docs", "bad]name")
+	})
+	assert.Equal(t, 2, c, "invalid label rune exits 2")
+	assert.Contains(t, stderr, "label cannot contain")
+}
+
+func TestLooksLikePath(t *testing.T) {
+	assert.True(t, looksLikePath("docs/a.md"))
+	assert.True(t, looksLikePath("a.md"))
+	assert.True(t, looksLikePath("a.markdown"))
+	assert.True(t, looksLikePath("dir/name"))
+	assert.False(t, looksLikePath("Setup"))
+	assert.False(t, looksLikePath("a.txt"))
+	assert.False(t, looksLikePath(""))
+}
+
+func TestFirstPathish(t *testing.T) {
+	assert.Equal(t, "a.md", firstPathish("a.md", "b.md"), "a wins when both look like paths")
+	assert.Equal(t, "b.md", firstPathish("Setup", "b.md"))
+	assert.Equal(t, "Other", firstPathish("Setup", "Other"), "falls back to b")
+}
+
+func TestResolveWriteMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits and symlinks are not portable to Windows")
+	}
+	dir := t.TempDir()
+	f := filepath.Join(dir, "f.md")
+	require.NoError(t, os.WriteFile(f, []byte("x"), 0o600))
+	assert.Equal(t, os.FileMode(0o600), resolveWriteMode(f))
+
+	// A missing path falls back to 0o644.
+	assert.Equal(t, os.FileMode(0o644), resolveWriteMode(filepath.Join(dir, "none.md")))
+
+	link := filepath.Join(dir, "link.md")
+	require.NoError(t, os.Symlink(f, link))
+	assert.Equal(t, os.FileMode(0o600), resolveWriteMode(link), "symlink follows to its target")
+
+	dangling := filepath.Join(dir, "dangling.md")
+	require.NoError(t, os.Symlink(filepath.Join(dir, "gone.md"), dangling))
+	assert.Equal(t, os.FileMode(0o644), resolveWriteMode(dangling))
 }
 
 func TestComputeRenamePlan(t *testing.T) {

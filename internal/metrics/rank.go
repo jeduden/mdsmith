@@ -3,8 +3,9 @@ package metrics
 import (
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
@@ -46,28 +47,43 @@ func Collect(paths []string, defs []Definition, maxBytes int64) ([]Row, error) {
 
 // SortRows sorts rows deterministically by a metric and path tiebreaker.
 func SortRows(rows []Row, by Definition, order Order) {
-	sort.Slice(rows, func(i, j int) bool {
-		a := rows[i].Metrics[by.Name]
-		b := rows[j].Metrics[by.Name]
+	// Look the metric up once per row, then sort concrete values with
+	// slices.SortFunc: no reflect.Swapper, no map lookup per comparison.
+	type keyed struct {
+		row Row
+		val Value
+	}
+	items := make([]keyed, len(rows))
+	for i := range rows {
+		items[i] = keyed{row: rows[i], val: rows[i].Metrics[by.Name]}
+	}
+	slices.SortFunc(items, func(x, y keyed) int {
+		a, b := x.val, y.val
 
 		// Available values sort before unavailable values.
 		if a.Available != b.Available {
-			return a.Available
+			if a.Available {
+				return -1
+			}
+			return 1
 		}
 
 		if a.Available && b.Available {
 			diff := a.Number - b.Number
 			if math.Abs(diff) > 1e-9 {
-				if order == OrderAsc {
-					return diff < 0
+				if (order == OrderAsc) == (diff < 0) {
+					return -1
 				}
-				return diff > 0
+				return 1
 			}
 		}
 
 		// Stable deterministic tie-break.
-		return rows[i].Path < rows[j].Path
+		return strings.Compare(x.row.Path, y.row.Path)
 	})
+	for i := range items {
+		rows[i] = items[i].row
+	}
 }
 
 // LimitRows returns at most top rows (if top > 0).

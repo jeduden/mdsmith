@@ -59,6 +59,9 @@ var ErrEmptyLabel = fmt.Errorf("label cannot be empty")
 type InvalidLabelRuneError struct{ Rune rune }
 
 func (e InvalidLabelRuneError) Error() string {
+	if e.Rune == '\\' {
+		return "label cannot end with an unescaped backslash"
+	}
 	return fmt.Sprintf("label cannot contain %q", e.Rune)
 }
 
@@ -145,13 +148,19 @@ func BodyAndFMOffset(source []byte) ([]byte, int) {
 // longer parses. `]` ends the label early. `[` is technically
 // escapable, but emitting a raw `[` would still confuse most
 // CommonMark renderers and the ref-def regex, so both bracket forms
-// are rejected outright rather than auto-escaped.
+// are rejected outright rather than auto-escaped. A trailing
+// unescaped backslash (an odd-length run at the end) escapes the
+// closing `]`, so it is reported as '\\'.
 func invalidLinkRefRune(s string) rune {
 	for _, r := range s {
 		switch r {
 		case '\n', '\r', '[', ']':
 			return r
 		}
+	}
+	trailing := len(s) - len(strings.TrimRight(s, `\`))
+	if trailing%2 == 1 {
+		return '\\'
 	}
 	return 0
 }
@@ -298,8 +307,8 @@ func refDefEditsInBody(
 	return out
 }
 
-// refUseEditsInBody walks the AST for ast.Link nodes whose Reference
-// matches oldLabel and emits one Edit per use.
+// refUseEditsInBody walks the AST for ast.Link and ast.Image nodes
+// whose Reference matches oldLabel and emits one Edit per use.
 func refUseEditsInBody(
 	root ast.Node, body []byte, lines [][]byte, fmOffset int,
 	oldLabel, newName string,
@@ -310,14 +319,11 @@ func refUseEditsInBody(
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		l, ok := n.(*ast.Link)
-		if !ok || l.Reference == nil {
+		ref := referenceOf(n)
+		if ref == nil || NormalizedLabel(ref.Value) != oldLabel {
 			return ast.WalkContinue, nil
 		}
-		if NormalizedLabel(l.Reference.Value) != oldLabel {
-			return ast.WalkContinue, nil
-		}
-		edit, ok := refUseEdit(l, body, lines, fmOffset, newName, idx)
+		edit, ok := refUseEdit(n, ref, body, lines, fmOffset, newName, idx)
 		if ok {
 			out = append(out, edit)
 		}
@@ -326,15 +332,27 @@ func refUseEditsInBody(
 	return out
 }
 
-// refUseEdit converts one link node into an Edit, or false when the
-// source position can't be recovered (e.g. an empty-text reference
-// like `[][id]` that linkTextBounds can't anchor).
+// referenceOf returns the reference of a reference-style link or
+// image, or nil for any other node (inline links included).
+func referenceOf(n ast.Node) *ast.ReferenceLink {
+	switch t := n.(type) {
+	case *ast.Link:
+		return t.Reference
+	case *ast.Image:
+		return t.Reference
+	}
+	return nil
+}
+
+// refUseEdit converts one reference-style link or image node into an
+// Edit, or false when the source position can't be recovered (a node
+// with no recorded position, or brackets that don't match ref.Type).
 func refUseEdit(
-	l *ast.Link, body []byte, lines [][]byte, fmOffset int, newName string,
-	bodyIdx bodyLineIndex,
+	n ast.Node, ref *ast.ReferenceLink, body []byte, lines [][]byte,
+	fmOffset int, newName string, bodyIdx bodyLineIndex,
 ) (Edit, bool) {
-	textStart, textEnd := linkTextBounds(l, body)
-	labelStart, labelEnd, ok := labelBoundsInBody(body, textStart, textEnd, l.Reference.Type)
+	textStart, textEnd := linkTextBounds(n, body)
+	labelStart, labelEnd, ok := labelBoundsInBody(body, textStart, textEnd, ref.Type)
 	if !ok {
 		return Edit{}, false
 	}
@@ -391,27 +409,185 @@ func labelBoundsInBody(body []byte, textStart, textEnd int, refType ast.Referenc
 }
 
 // linkTextBounds returns the [start, end) absolute byte offsets of
-// the link's display-text run inside body, or (-1, -1) when the link
-// has no parsed text segment.
-func linkTextBounds(l *ast.Link, body []byte) (int, int) {
-	start, end := -1, -1
-	_ = ast.Walk(l, func(cur ast.Node, entering bool) (ast.WalkStatus, error) {
+// the display-text run of a reference-style link or image inside
+// body, or (-1, -1) when the node has no recorded source position or
+// no closing `]` can be confirmed. The parser records Pos() at the `[`
+// (at the `!` for an image), so the bounds hold for any text content:
+// emphasis, code spans, nested images, raw HTML, or none (`[][id]`).
+//
+// A node with a nil Reference is an inline link or image: its close is
+// the first `]` past the content that is followed by `(`.
+func linkTextBounds(n ast.Node, body []byte) (int, int) {
+	open := n.Pos()
+	if _, ok := n.(*ast.Image); ok && open >= 0 {
+		open++
+	}
+	if open < 0 || open >= len(body) || body[open] != '[' {
+		return -1, -1
+	}
+	end := closingTextBracket(body, open+1, contentEnd(n, body, open+1), referenceOf(n))
+	if end < 0 {
+		return -1, -1
+	}
+	return open + 1, end
+}
+
+// contentEnd returns the offset just past the last source byte the
+// parser placed inside n — text, raw HTML, an autolink, or a whole
+// nested image — or from when n has no such content. The closing `]`
+// of the link text sits at or after it, so a `]` inside a nested
+// image's destination or reference, a code span, or an HTML attribute
+// is never taken for it.
+func contentEnd(n ast.Node, body []byte, from int) int {
+	end := from
+	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		t, ok := cur.(*ast.Text)
-		if !ok {
-			return ast.WalkContinue, nil
+		stop := -1
+		switch t := c.(type) {
+		case *ast.Image:
+			if c != n {
+				if e := imageEnd(t, body); e > end {
+					end = e
+				}
+				return ast.WalkSkipChildren, nil
+			}
+		case *ast.Text:
+			stop = t.Segment.Stop
+		case *ast.RawHTML:
+			if k := t.Segments.Len(); k > 0 {
+				stop = t.Segments.At(k - 1).Stop
+			}
+		case *ast.AutoLink:
+			if t.Pos() >= 0 {
+				stop = t.Pos() + len(t.Label(body)) + 2
+			}
 		}
-		if start < 0 || t.Segment.Start < start {
-			start = t.Segment.Start
-		}
-		if t.Segment.Stop > end {
-			end = t.Segment.Stop
+		if stop > end {
+			end = stop
 		}
 		return ast.WalkContinue, nil
 	})
-	return start, end
+	return end
+}
+
+// imageEnd returns the offset just past a nested image's full source
+// — `![alt](dest)`, `![alt][label]`, `![alt][]`, or `![alt]` — or -1
+// when its text bracket can't be confirmed. contentEnd uses it to keep
+// the image's own `][label]` from closing the enclosing link.
+func imageEnd(img *ast.Image, body []byte) int {
+	_, closeIdx := linkTextBounds(img, body)
+	if closeIdx < 0 {
+		return -1
+	}
+	if img.Reference == nil {
+		return parenEnd(body, closeIdx+1)
+	}
+	switch img.Reference.Type {
+	case ast.ReferenceLinkFull:
+		// linkTextBounds confirmed the `[label]` that follows, so its
+		// closing `]` is present.
+		return closeIdx + 2 + bytes.IndexByte(body[closeIdx+2:], ']') + 1
+	case ast.ReferenceLinkCollapsed:
+		return closeIdx + 3
+	}
+	return closeIdx + 1
+}
+
+// parenEnd returns the offset just past the `)` that balances the `(`
+// at open, honoring backslash escapes and nested parentheses, or -1
+// when there is none.
+func parenEnd(body []byte, open int) int {
+	depth := 0
+	for i := open; i < len(body); i++ {
+		switch body[i] {
+		case '\\':
+			i++
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return -1
+}
+
+// closingTextBracket returns the offset of the `]` that closes the
+// link text starting at textStart, scanning from the content end
+// `from`. A candidate `]` must be followed by what ref.Type requires
+// (`[label]` for full, `[]` for collapsed), and the label — the bracket
+// after it for full, the text itself otherwise — must normalize to
+// ref.Value. A nil ref means an inline link or image: the candidate
+// must be followed by `(`. Backslash escapes are skipped and a blank
+// line ends the search. Returns -1 when no candidate qualifies.
+func closingTextBracket(body []byte, textStart, from int, ref *ast.ReferenceLink) int {
+	if ref == nil {
+		return inlineTextBracket(body, from)
+	}
+	want := NormalizedLabel(ref.Value)
+	for p := from; p < len(body); p++ {
+		switch body[p] {
+		case '\\':
+			p++
+			continue
+		case '\n':
+			if p+1 < len(body) && body[p+1] == '\n' {
+				return -1
+			}
+			continue
+		case ']':
+		default:
+			continue
+		}
+		var label []byte
+		switch ref.Type {
+		case ast.ReferenceLinkFull:
+			if p+1 >= len(body) || body[p+1] != '[' {
+				continue
+			}
+			q := bytes.IndexByte(body[p+2:], ']')
+			if q < 0 {
+				return -1
+			}
+			label = body[p+2 : p+2+q]
+		case ast.ReferenceLinkCollapsed:
+			if !bytes.HasPrefix(body[p+1:], []byte("[]")) {
+				continue
+			}
+			label = body[textStart:p]
+		default:
+			label = body[textStart:p]
+		}
+		if NormalizedLabel(label) == want {
+			return p
+		}
+	}
+	return -1
+}
+
+// inlineTextBracket returns the offset of the first `]` at or after
+// from that is followed by `(` — the close of an inline link's text —
+// skipping backslash escapes and stopping at a blank line, or -1.
+func inlineTextBracket(body []byte, from int) int {
+	for p := from; p < len(body); p++ {
+		switch body[p] {
+		case '\\':
+			p++
+		case '\n':
+			if p+1 < len(body) && body[p+1] == '\n' {
+				return -1
+			}
+		case ']':
+			if p+1 < len(body) && body[p+1] == '(' {
+				return p
+			}
+		}
+	}
+	return -1
 }
 
 // RefDefBracketBytes returns the [start, end) byte offsets of the
