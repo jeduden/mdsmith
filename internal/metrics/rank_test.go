@@ -67,3 +67,25 @@ func TestFormatValue(t *testing.T) {
 		t.Fatalf("unavailable format = %q, want -", got)
 	}
 }
+
+// SortRows must not go through reflect.Swapper (sort.Slice) or look the
+// metric up in a map per comparison; see
+// docs/development/high-performance-go.md, "Patterns to avoid".
+func TestSortRows_AllocsBounded(t *testing.T) {
+	def, ok := LookupScope(ScopeFile, "bytes")
+	require.True(t, ok)
+	const n = 500
+	base := make([]Row, n)
+	for i := range base {
+		base[i] = Row{
+			Path:    string(rune('a'+i%26)) + string(rune('a'+i/26%26)) + ".md",
+			Metrics: map[string]Value{"bytes": AvailableValue(float64(i % 17))},
+		}
+	}
+	rows := make([]Row, n)
+	allocs := testing.AllocsPerRun(10, func() {
+		copy(rows, base)
+		SortRows(rows, def, OrderDesc)
+	})
+	require.LessOrEqual(t, allocs, 1.0)
+}
