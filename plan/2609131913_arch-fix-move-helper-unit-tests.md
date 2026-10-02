@@ -5,18 +5,19 @@ title: >-
 status: "✅"
 model: sonnet
 summary: >-
-  internal/refactor/move.go's recomputeToken, encodePathToken,
-  pathEdit, and countFilesWithStem carry real path-rewriting
-  logic with no dedicated test symbol by name — only indirect
-  coverage via the TestMove_* behavior suite. Flagged by the
-  2026-09-13 audit as tax.
+  Of the internal/refactor/move.go helpers the 2026-09-13 audit
+  flagged as tax for lacking a test by name, only
+  countFilesWithStem still needed one; it now has
+  TestCountFilesWithStem. recomputeToken is gone, and pathEdit
+  and encodePathToken became destEdit and encodeLike, which
+  already had tests.
 ---
 # Add unit tests for untested move.go helper functions
 
 ## Goal
 
-Give each of the four listed helpers in
-`internal/refactor/move.go` a dedicated unit test by name.
+Give each listed helper in `internal/refactor/move.go`
+that still exists a dedicated unit test by name.
 
 This follows [tests.md][tests]'s per-function test rule,
 without changing any behavior.
@@ -69,10 +70,9 @@ pair. The new `TestCountFilesWithStem` sits in
 1. Read each function's current behavior and existing indirect
    coverage in [internal/refactor/move_test.go][move-test] and
    [internal/refactor/move_coverage_test.go][move-coverage-test].
-2. Add `TestRecomputeToken`, `TestEncodePathToken`,
-   `TestPathEdit`, and `TestCountFilesWithStem` as table-driven
-   tests in `internal/refactor/move_test.go` (or
-   `move_coverage_test.go`, matching the existing split).
+2. Add `TestCountFilesWithStem` as a table-driven test in
+   `move_coverage_test.go`. The other three need no new test;
+   see the status note.
 3. `go build ./...` passes.
 4. `go test ./...` passes.
 5. `go tool -modfile=tools/go.mod golangci-lint run` reports
