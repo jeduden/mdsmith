@@ -344,7 +344,7 @@ func (f *Fixer) fixOnce(paths []string) *Result {
 			continue
 		}
 		res.FilesChecked++
-		f.log().Printf("file: %s", path)
+		f.logFile(path)
 		beforeDiags, remainingDiags, modified, bytesChanged, errs := f.fixFile(path)
 		allBefore = append(allBefore, beforeDiags...)
 		allAfter = append(allAfter, remainingDiags...)
@@ -643,7 +643,7 @@ func (f *Fixer) applyFixPasses(
 	const maxPasses = 10
 	current := source
 	for pass := 0; pass < maxPasses; pass++ {
-		f.log().Printf("fix: pass %d on %s", pass+1, path)
+		f.logPass(pass+1, path)
 		before := current
 		var parsedFile *lint.File
 		for _, fr := range fixable {
@@ -663,7 +663,7 @@ func (f *Fixer) applyFixPasses(
 			parsedFile = nil
 		}
 		if bytes.Equal(before, current) {
-			f.log().Printf("fix: %s stable after %d passes", path, pass+1)
+			f.logStable(path, pass+1)
 			break
 		}
 	}
@@ -713,6 +713,28 @@ func (f *Fixer) log() *vlog.Logger {
 		return f.Logger
 	}
 	return disabledFixerLogger
+}
+
+// logFile, logPass and logStable guard the per-file and per-pass log
+// lines on Enabled at the call site. Logger.Printf takes ...any, so
+// without the guard each call boxes its arguments (an allocation) even
+// when -v is off.
+func (f *Fixer) logFile(path string) {
+	if l := f.log(); l.Enabled {
+		l.Printf("file: %s", path)
+	}
+}
+
+func (f *Fixer) logPass(pass int, path string) {
+	if l := f.log(); l.Enabled {
+		l.Printf("fix: pass %d on %s", pass, path)
+	}
+}
+
+func (f *Fixer) logStable(path string, passes int) {
+	if l := f.log(); l.Enabled {
+		l.Printf("fix: %s stable after %d passes", path, passes)
+	}
 }
 
 // logRules logs each enabled fixable rule in the effective config.
