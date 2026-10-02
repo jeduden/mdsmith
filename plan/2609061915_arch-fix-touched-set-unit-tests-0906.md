@@ -90,8 +90,9 @@ Left out, with the reason:
   [perf_test.go][perf-test] already calls it directly.
 - `recomputeToken`, `encodePathToken`, `pathEdit`, and
   `countFilesWithStem` in [move.go][move]:
-  [plan 2609131913][plan-2609131913] gives these four their
-  own tests.
+  [plan 2609131913][plan-2609131913] closed these four:
+  `countFilesWithStem` got its own test, and the other three
+  became the tested `destEdit` and `encodeLike`.
 - `sortEdgesBySource` in [index.go][index]: PR #838 added
   `TestSortEdgesBySource_NoReflectSort` and
   `TestSortEdgesBySource_DeterministicAcrossInputOrders`.

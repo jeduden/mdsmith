@@ -8,9 +8,9 @@ summary: >-
   Of the internal/refactor/move.go helpers the 2026-09-13 audit
   flagged as tax for lacking a test by name, only
   countFilesWithStem still needed one; it now has
-  TestCountFilesWithStem. recomputeToken is gone, and pathEdit
-  and encodePathToken became destEdit and encodeLike, which
-  already had tests.
+  TestCountFilesWithStem. recomputeToken was folded into
+  destEdit, and pathEdit and encodePathToken became destEdit
+  and encodeLike, which already had tests.
 ---
 # Add unit tests for untested move.go helper functions
 
@@ -57,9 +57,10 @@ Each has a named test in
 
 ## Status note
 
-Only `countFilesWithStem` still needs a test. The other three
+Only `countFilesWithStem` still needed a test. The other three
 were changed by commit c689bb309. `pathEdit` is now `destEdit`.
-`encodePathToken` is now `encodeLike`. `recomputeToken` is gone.
+`encodePathToken` is now `encodeLike`. `recomputeToken` is gone:
+its `./`-prefix handling now lives inside `destEdit`.
 
 `TestDestEdit` and `TestEncodeLike` already cover the renamed
 pair. The new `TestCountFilesWithStem` sits in

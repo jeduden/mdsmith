@@ -136,13 +136,15 @@ None.
   differs by design) — [plan/2609131911][2609131911].
 - `internal/refactor/move.go` helpers lack tests by name
   ([tests.md][tests]) — [plan/2609131913][2609131913].
-  Resolved: `countFilesWithStem` has `TestCountFilesWithStem`.
+  Resolved: `countFilesWithStem` has `TestCountFilesWithStem`;
+  the other three became the tested `destEdit` and `encodeLike`.
 
 ### nice-to-have (2026-09-13)
 
 - Four `cmd/mdsmith` move/rename helpers lack test
   symbols but are covered indirectly; optional —
-  [plan/2609131913][2609131913].
+  [plan/2609131913][2609131913]. Resolved: all four
+  have named tests or were replaced by tested code.
 
 [2609131911]: ../../plan/2609131911_arch-fix-refactor-workspace-duplication.md
 [2609131913]: ../../plan/2609131913_arch-fix-move-helper-unit-tests.md
