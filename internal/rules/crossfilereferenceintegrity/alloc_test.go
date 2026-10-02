@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,7 +18,7 @@ import (
 //
 // Plan 2606130838 (memoize link extraction) raised this to 12,
 // because linkgraph.Links() adds two cold-path allocations: the
-// *memoEntry and the boxed []Link header.
+// *memo.Entry and the boxed []Link header.
 //
 // Back down to the published ceiling now that the link walk no longer
 // materialises each link's visible text and ParseTargetBytes resolves
@@ -68,7 +69,7 @@ func checkAllocsPerOp(tb testing.TB, r *Rule) float64 {
 		require.NoError(tb, err)
 		f.FS = mfs
 		f.RootDir = "."
-		f.RunCache = lint.NewRunCache()
+		f.RunCache = runcache.New()
 		return f
 	}
 	_ = r.Check(makeFile("warm.md"))

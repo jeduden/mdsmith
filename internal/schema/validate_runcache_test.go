@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +23,7 @@ import (
 // through cache.CompiledCUE — a fresh-context fallback would leave
 // the slot empty and the assertion would fail.
 func TestValidateFrontmatterDiags_CompilesSchemaOncePerRunCache(t *testing.T) {
-	cache := lint.NewRunCache()
+	cache := runcache.New()
 	sch := &Schema{
 		Source: "kind shared",
 		Frontmatter: map[string]string{

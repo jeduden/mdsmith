@@ -7,7 +7,7 @@ summary: >-
   With every surface flipped, delete cue/cuelite's CUE
   delegation and remove cuelang.org/go from go.mod; replace the
   tinygo-incompatible sync.Map.CompareAndDelete in
-  internal/lint/runcache.go; get the standard-Go WASM build
+  internal/runcache/runcache.go; get the standard-Go WASM build
   under the plan-215 budget (the tinygo build still fails on
   unimplemented os.* calls — criterion unmet); update the
   engine-api page and the layering map.
@@ -82,7 +82,7 @@ above the `sonnet` band.
    or the new parser's tree before the module leaves. Re-run
    `grep -rl cuelang.org/ --include=*_test.go` until it is empty.
 5. Replace `sync.Map.CompareAndDelete` in
-   [runcache.go](../internal/lint/runcache.go) with a
+   [runcache.go](../internal/runcache/runcache.go) with a
    mutex-guarded map, red/green.
 6. Get the standard-Go and `tinygo build -target wasm
    ./cmd/mdsmith-wasm` builds passing; tighten

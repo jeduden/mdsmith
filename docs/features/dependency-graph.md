@@ -8,7 +8,6 @@ summary: >-
 icon: network
 weight: 10
 group: "A connected docs tree"
-link: "/reference/cli/deps/"
 ---
 # See the dependency graph
 

@@ -652,3 +652,39 @@ func TestInlineCapable(t *testing.T) {
 	r := &Rule{}
 	assert.True(t, r.InlineCapable())
 }
+
+func TestFixSpans_SingleAllocWithoutNesting(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	src := []byte("a [ x ] b [ y ] c\n")
+	spans := []span{{open: 2, close: 6}, {open: 10, close: 14}}
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = fixSpans(src, spans, 0, len(src))
+	})
+	// One pre-sized result; nested calls with no inner span return a sub-slice.
+	assert.LessOrEqual(t, allocs, 1.0)
+	assert.Equal(t, "a [x] b [y] c\n", string(fixSpans(src, spans, 0, len(src))))
+}
+
+func TestFix_RewrittenOutputDoesNotAliasSource(t *testing.T) {
+	const src = "a [ x ](u) b\n"
+	f, err := lint.NewFile("t.md", []byte(src))
+	require.NoError(t, err)
+	out := (&Rule{}).Fix(f)
+	require.Equal(t, "a [x](u) b\n", string(out))
+	out[0] = 'Z'
+	assert.Equal(t, src, string(f.Source))
+}
+
+// TestFixSpans_NoRewriteReturnsCapLimitedSubslice pins the no-rewrite
+// contract: the result equals the source range and its capacity stops at
+// its length, so an append by a caller cannot write into the source.
+func TestFixSpans_NoRewriteReturnsCapLimitedSubslice(t *testing.T) {
+	src := []byte("plain text\n")
+	out := fixSpans(src, nil, 0, len(src))
+	assert.Equal(t, string(src), string(out))
+	assert.Equal(t, len(out), cap(out))
+	_ = append(out, 'X')
+	assert.Equal(t, "plain text\n", string(src))
+}

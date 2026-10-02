@@ -228,14 +228,17 @@ interface Session {
   check(uri: string, src: string): Promise<Diagnostic[]>;
   fix(uri: string, src: string): Promise<FixResult>;
   kinds(uri: string): Promise<KindResolution>;
+  rename(uri: string, src: string, as: string, oldName: string,
+    newName: string): Promise<Plan>;
+  move(src: string, dst: string): Promise<Plan>;
   capabilities(): string[];
   invalidate(uri: string, content?: string): void;
   dispose(): void;
 }
 
 interface SessionOptions {
-  workspace: Record<string, string>;
-  configYAML: string;
+  workspace?: Record<string, string>;
+  configYAML?: string;
 }
 ```
 
@@ -245,6 +248,59 @@ becomes a Go `ConfigSource` exactly as the `-c` flag's text does.
 `createSession` returns a `Promise` because `WebAssembly.instantiate`
 is async, and any Go method returning `(T, error)` maps to a
 `Promise<T>` that rejects with `new Error(msg)`.
+
+No session registers a function of its own. The method functions
+are shared by all sessions and registered once. Each method on a
+session object is a `bind` of one of them with a session id, so the
+binding is collected once that method is unreachable. A method taken
+off the object, such as `const { check } = session`, keeps its binding
+after the object is gone. The Go session is not collected: it stays
+live until `dispose()`, so call `dispose()` before you drop a session.
+
+`dispose()` drops the id, so the disposed session's caches and
+workspace can be freed, and a create/dispose loop holds a fixed number
+of registered functions. Each method keeps its shape afterwards:
+`check`, `fix`, `kinds`, `rename`, and `move` return a `Promise` that
+rejects with `Error("session disposed")`.
+`capabilities()` returns `[]`, and `invalidate()` and a second
+`dispose()` do nothing.
+
+These hold through every reference, because the shared function looks
+the id up on each call. Three cases reach the same disposed path. One
+is a method taken before `dispose()`, such as
+`const { check } = session` or `const d = session.dispose`. Another is
+a session object frozen with `Object.freeze(session)`. The last is a
+method made read-only with
+`Object.defineProperty(session, "check", { writable: false })`. None
+of them logs "call to released function".
+
+The id is a small sequential integer, not a secret. A script in the
+same page that reaches a raw shared function can call it with any
+live id. The engine binds through a `bind` captured at load, so a
+later patch of `Function.prototype.bind` or `call` never sees one.
+`wasm_exec.js` looks up `Reflect.apply` on every Go-to-JS call, though,
+so a patched `Reflect.apply` does. Plan
+[2610021439](../../../plan/2610021439_wasm-unforgeable-session-binding.md)
+tracks closing that gap.
+
+An argument of the wrong type, a `BigInt` included, makes an async
+method reject and `invalidate()` do nothing. So does an options object
+that throws when `createSession` inspects it, such as a revoked
+`Proxy`. In the standard Go build this does not stop the Go runtime,
+so other sessions keep working. Two cases still stop it. One is a
+getter or `Proxy` `get` trap on the options object that throws, because
+`wasm_exec.js` does not catch an exception from a property read. The
+other is a `BigInt` passed to the TinyGo build, because TinyGo does not
+implement `recover()` on WebAssembly.
+
+`createSession` rejects when `opts` is not a plain object. It also
+rejects when `opts.workspace` is present but is not a plain object of
+path-to-source strings: `null`, a string, an array, and a boxed
+`String` all reject. An array-like is rejected because its indices
+would otherwise become file paths `"0"`, `"1"`, and so on. An absent
+`workspace` means an empty workspace, and a non-string entry value is
+skipped. A present `configYAML` that is not a string, such as `null` or
+a `Buffer`, rejects too; an absent one means the default config.
 
 ## WASM limits and size budgets
 
@@ -269,9 +325,9 @@ result matches the native engine on the same in-memory fixture.
 
 Both target budgets are met and CI-verified:
 
-- The standard Go WASM artifact is about 13.1 MiB uncompressed (about
-  3.2 MiB gzipped at standard compression, the figure that crosses the
-  wire; `cmd/mdsmith-wasm/size_test.go` measures about 4.0 MiB at the
+- The standard Go WASM artifact is about 13.3 MiB uncompressed (about
+  3.3 MiB gzipped at standard compression, the figure that crosses the
+  wire; `cmd/mdsmith-wasm/size_test.go` measures about 4.1 MiB at the
   pessimistic BestSpeed level and fails above 4.25 MiB). It was about
   40 MB before
   `cuelang.org/go` was removed: CUE (95 packages) plus `cockroachdb/apd`

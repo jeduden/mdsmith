@@ -1,12 +1,21 @@
-package lint
+// Package runcache memoizes cross-file reads and derived values for one
+// whole lint pass. Its Cache is shared by every host file an
+// engine.Run (or a long-lived LSP session) processes, so a target read,
+// schema parse, or corpus walk runs once per pass instead of once per
+// host file. It imports only the standard library and the leaf
+// internal/memo, so internal/lint can hold a *Cache on File without
+// an import cycle (plan/2608301919).
+package runcache
 
 import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/jeduden/mdsmith/internal/memo"
 )
 
-// RunCache memoizes per-target-file reads (front matter, include
+// Cache memoizes per-target-file reads (front matter, include
 // adjacency) across every host file processed in one engine.Run pass.
 // Cache keys are absolute filesystem paths, so two host files whose
 // catalogs match the same target share a single read of that target —
@@ -16,20 +25,20 @@ import (
 // pool and the LSP's concurrent request goroutines).
 //
 // A one-shot mdsmith check sees an immutable corpus, so the cache is
-// trivially safe there. The LSP keeps one RunCache for the server
+// trivially safe there. The LSP keeps one Cache for the server
 // lifetime and calls Invalidate when a document edit could change
 // what the next Check would read from disk.
-type RunCache struct {
-	frontMatter         sync.Map // string (absPath) -> *runCacheEntry
-	rawSchemaFile       sync.Map // string (absPath) -> *runCacheEntry
-	includes            sync.Map // string (absPath) -> *runCacheEntry
+type Cache struct {
+	frontMatter         memo.Map // string (absPath)
+	rawSchemaFile       memo.Map // string (absPath)
+	includes            memo.Map // string (absPath)
 	anchors             sync.Map // string (absPath) -> *anchorEntry
-	wikilinks           sync.Map // string (root key) -> *runCacheEntry
-	globMatches         sync.Map // string (base+patterns key) -> *runCacheEntry
-	parsedSchema        sync.Map // string (absPath) -> *runCacheEntry
-	compiledCUE         sync.Map // string (CUE source) -> *runCacheEntry
-	duplicateParagraphs sync.Map // string (absPath+"\x00"+settings key) -> *runCacheEntry
-	corpusIndex         sync.Map // string (corpus+settings key) -> *runCacheEntry
+	wikilinks           memo.Map // string (root key)
+	globMatches         memo.Map // string (base+patterns key)
+	parsedSchema        memo.Map // string (absPath)
+	compiledCUE         memo.Map // string (CUE source)
+	duplicateParagraphs memo.Map // string (absPath+"\x00"+settings key)
+	corpusIndex         memo.Map // string (corpus+settings key)
 
 	// uniqueFieldIndex memoizes MDS069's per-scope value→first-file
 	// index. Keys encode a rule scope (field + globs), not a path.
@@ -39,7 +48,7 @@ type RunCache struct {
 	// (the same post-once discipline as schemaIncludes) so reads
 	// never race an in-flight build. Entries without a registered
 	// scope drop on every invalidation — the safe default.
-	uniqueFieldIndex  sync.Map // string (scope key) -> *runCacheEntry
+	uniqueFieldIndex  memo.Map // string (scope key)
 	uniqueFieldScopes sync.Map // string (scope key) -> ScopeInvalidator
 
 	// schemaDependents maps a fragment path to the set of schema
@@ -64,35 +73,36 @@ type RunCache struct {
 
 	// schemaIncludes / schemaCUESources mirror ParsedSchemaMetadata
 	// into dedicated sync.Maps so Invalidate reads metadata without
-	// peeking at runCacheEntry.val — that would race with the slot's
-	// sync.Once during a first-time build. The slots are written
-	// AFTER ParsedSchema's load returns (so after the once completes)
+	// peeking at memo.Entry.val — that would race with the slot's
+	// mutex-guarded first-time build. The slots are written
+	// AFTER ParsedSchema's load returns (so after the build completes)
 	// and read by Invalidate via sync.Map.Load, which gives the
 	// happens-before guarantee. A missing entry just means no
 	// metadata is registered yet; eviction degrades to a no-op rather
 	// than races on a partial value.
 	schemaIncludes   sync.Map // string (absPath) -> []string
 	schemaCUESources sync.Map // string (absPath) -> []string
-}
 
-// runCacheEntry guards a single cache slot so build runs exactly once
-// per key even when multiple goroutines race for it. atomic.Bool +
-// mutex is used instead of sync.Once, matching file.go's memoEntry:
-// once.Do takes a func() argument, and the closure load would pass
-// (`func() { e.val = build() }`) captures e and build, so it
-// allocates on every call regardless of whether Do's internal check
-// makes it a no-op.
-type runCacheEntry struct {
-	val  any
-	done atomic.Bool
-	mu   sync.Mutex
+	// invalidateGen counts completed Invalidate calls. registered
+	// records, per schema path, the slot whose metadata was last
+	// registered and the invalidateGen value read before that
+	// registration. A ParsedSchema hit re-registers only when either
+	// differs, so the warm path is one sync.Map Load plus one atomic
+	// load. Any Invalidate may drop a dependent edge
+	// (invalidateDependents deletes a fragment's whole set, including
+	// an edge a concurrent ParsedSchema just added), so the first hit
+	// after one re-registers and heals the lost edge. The slot half of
+	// the mark makes a rebuilt slot register even when a stale reader
+	// already stamped the current generation with the old value.
+	invalidateGen atomic.Uint64
+	registered    sync.Map // string (absPath) -> schemaRegistration
 }
 
 // ParsedSchemaMetadata is the optional interface a parsed-schema
-// cache value (whatever its concrete type) implements so RunCache.
+// cache value (whatever its concrete type) implements so Cache.
 // Invalidate can drop downstream entries that depend on the
 // invalidated schema. The rule package's schemaParseResult satisfies
-// it; the lint package only sees the surface.
+// it; this package only sees the surface.
 //
 //   - SchemaIncludes returns absolute paths of every fragment the
 //     schema's <?include?> directives reached. Invalidate(fragment)
@@ -110,17 +120,17 @@ type ParsedSchemaMetadata interface {
 	SchemaCUESources() []string
 }
 
-// NewRunCache returns an empty cache ready to be installed on
+// New returns an empty cache ready to be installed on
 // engine.Runner.RunCache.
-func NewRunCache() *RunCache {
-	return &RunCache{schemaDependents: map[string]*sync.Map{}}
+func New() *Cache {
+	return &Cache{schemaDependents: map[string]*sync.Map{}}
 }
 
 // FrontMatter returns build's result for absPath, computed at most once
 // per absPath in this cache's lifetime. Concurrent callers with the
 // same key block on the same once and observe the same value.
-func (c *RunCache) FrontMatter(absPath string, build func() any) any {
-	return load(&c.frontMatter, absPath, build)
+func (c *Cache) FrontMatter(absPath string, build func() any) any {
+	return c.frontMatter.Get(absPath, build)
 }
 
 // RawSchemaFile returns build's result for absPath, computed at most
@@ -130,8 +140,8 @@ func (c *RunCache) FrontMatter(absPath string, build func() any) any {
 // deciding how to parse) so a schema referenced by many host files —
 // the common case for a workspace-wide kind — is read and inspected
 // once per run instead of once per host file.
-func (c *RunCache) RawSchemaFile(absPath string, build func() any) any {
-	return load(&c.rawSchemaFile, absPath, build)
+func (c *Cache) RawSchemaFile(absPath string, build func() any) any {
+	return c.rawSchemaFile.Get(absPath, build)
 }
 
 // ScopeInvalidator scopes the unique-field-index slot's response to
@@ -148,8 +158,8 @@ type ScopeInvalidator interface {
 // built value implements ScopeInvalidator it is registered for
 // targeted invalidation; the registration happens after load
 // returns (post-once), so Invalidate's reads never race the build.
-func (c *RunCache) UniqueFieldIndex(key string, build func() any) any {
-	v := load(&c.uniqueFieldIndex, key, build)
+func (c *Cache) UniqueFieldIndex(key string, build func() any) any {
+	v := c.uniqueFieldIndex.Get(key, build)
 	// Register (or refresh) the scope when missing or when the
 	// entry was rebuilt under the same key — a racing Invalidate
 	// between load and Store could otherwise leave the scope map
@@ -171,8 +181,8 @@ func (c *RunCache) UniqueFieldIndex(key string, build func() any) any {
 // an edit to an unrelated file must not force an index rebuild on
 // the next lint pass. Entries without a scope, or any call with an
 // empty absPath, drop unconditionally.
-func (c *RunCache) dropUniqueFieldIndexes(absPath string) {
-	c.uniqueFieldIndex.Range(func(k, _ any) bool {
+func (c *Cache) dropUniqueFieldIndexes(absPath string) {
+	c.uniqueFieldIndex.Range(func(k string) bool {
 		if siv, ok := c.uniqueFieldScopes.Load(k); ok && absPath != "" {
 			if !siv.(ScopeInvalidator).MatchesInvalidatedPath(absPath) {
 				return true
@@ -187,10 +197,10 @@ func (c *RunCache) dropUniqueFieldIndexes(absPath string) {
 // dropDuplicateParagraphs evicts every DuplicateParagraphs slot whose
 // key was built from absPath, regardless of the settings suffix
 // (e.g. min-chars) a caller appended after the "\x00" separator.
-func (c *RunCache) dropDuplicateParagraphs(absPath string) {
+func (c *Cache) dropDuplicateParagraphs(absPath string) {
 	prefix := absPath + "\x00"
-	c.duplicateParagraphs.Range(func(k, _ any) bool {
-		if key, ok := k.(string); ok && strings.HasPrefix(key, prefix) {
+	c.duplicateParagraphs.Range(func(k string) bool {
+		if strings.HasPrefix(k, prefix) {
 			c.duplicateParagraphs.Delete(k)
 		}
 		return true
@@ -201,12 +211,15 @@ func (c *RunCache) dropDuplicateParagraphs(absPath string) {
 // of absolute filesystem paths every <?include?> in the file at
 // absPath resolves to. Position-independent so two host files whose
 // f.FS roots differ can still share the cached adjacency.
-func (c *RunCache) Includes(absPath string, build func() []string) []string {
-	v := load(&c.includes, absPath, func() any { return build() })
-	// v always carries dynamic type []string (the wrapper closure
-	// converts build's typed nil to a typed-nil any), so v == nil
-	// cannot fire — the assertion succeeds for nil and non-nil
-	// slices alike.
+func (c *Cache) Includes(absPath string, build func() []string) []string {
+	v := c.includes.Get(absPath, func() any { return build() })
+	// v carries dynamic type []string (the wrapper closure converts
+	// build's typed nil to a typed-nil any), so the assertion succeeds
+	// for nil and non-nil slices alike. The one exception: a build that
+	// panicked leaves the slot done with an untyped nil (memo.Entry's
+	// sync.Once-style contract), and this assertion then panics on every
+	// later call until Invalidate drops the slot. That stays loud on
+	// purpose — a silent nil would read as "no includes".
 	return v.([]string)
 }
 
@@ -221,8 +234,14 @@ func (c *RunCache) Includes(absPath string, build func() []string) []string {
 // per-target lookup; on link-heavy corpora it collapses the
 // per-host-file goldmark parse + AST walk to one walk per (Run,
 // target).
-func (c *RunCache) Anchors(absPath string, build func() (map[string]struct{}, error)) (map[string]struct{}, error) {
-	ei, _ := c.anchors.LoadOrStore(absPath, &anchorEntry{})
+func (c *Cache) Anchors(absPath string, build func() (map[string]struct{}, error)) (map[string]struct{}, error) {
+	// Load before LoadOrStore, as memo.Map.Entry does: LoadOrStore's
+	// &anchorEntry{} argument (and the boxed key) would otherwise be
+	// built and discarded on every cache hit.
+	ei, ok := c.anchors.Load(absPath)
+	if !ok {
+		ei, _ = c.anchors.LoadOrStore(absPath, &anchorEntry{})
+	}
 	e := ei.(*anchorEntry)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -259,19 +278,16 @@ type anchorEntry struct {
 // match list, so the per-path Invalidate leaves these slots alone;
 // tree-shape changes (create/delete/rename) must drop them via
 // InvalidateGlobMatches, the same lifecycle the wikilink index uses.
-func (c *RunCache) GlobMatches(key string, build func() []string) []string {
-	v := load(&c.globMatches, key, func() any { return build() })
+func (c *Cache) GlobMatches(key string, build func() []string) []string {
+	v := c.globMatches.Get(key, func() any { return build() })
 	return v.([]string)
 }
 
 // InvalidateGlobMatches drops every cached glob match list. Call on
 // file create/delete/rename — the events that change what a glob can
 // match.
-func (c *RunCache) InvalidateGlobMatches() {
-	c.globMatches.Range(func(k, _ any) bool {
-		c.globMatches.Delete(k)
-		return true
-	})
+func (c *Cache) InvalidateGlobMatches() {
+	c.globMatches.Clear()
 	// A create/delete/rename also changes which files a corpus-index
 	// aggregate summed over, on top of the content-driven drop in
 	// invalidate.
@@ -292,8 +308,8 @@ func (c *RunCache) InvalidateGlobMatches() {
 // "absPath\x00" so an LSP document edit evicts the right entries
 // regardless of which settings suffix produced them. A caller with
 // no stable absolute path (an in-memory FS) must not use this cache.
-func (c *RunCache) DuplicateParagraphs(key string, build func() any) any {
-	return load(&c.duplicateParagraphs, key, build)
+func (c *Cache) DuplicateParagraphs(key string, build func() any) any {
+	return c.duplicateParagraphs.Get(key, build)
 }
 
 // CorpusIndex returns build's result for key, computed at most once
@@ -312,8 +328,8 @@ func (c *RunCache) DuplicateParagraphs(key string, build func() any) any {
 // mirroring corpusFilesKey's shape — Invalidate(absPath) below drops
 // every slot unconditionally on any content edit, since any corpus
 // key's aggregate could include absPath.
-func (c *RunCache) CorpusIndex(key string, build func() any) any {
-	return load(&c.corpusIndex, key, build)
+func (c *Cache) CorpusIndex(key string, build func() any) any {
+	return c.corpusIndex.Get(key, build)
 }
 
 // dropCorpusIndex clears every cached corpus-index aggregate. Called
@@ -324,11 +340,8 @@ func (c *RunCache) CorpusIndex(key string, build func() any) any {
 // MDS037 is opt-in and a one-shot `mdsmith check` never invalidates
 // (its corpus is immutable for the run), so this only costs a rebuild
 // on the LSP's edit-driven path.
-func (c *RunCache) dropCorpusIndex() {
-	c.corpusIndex.Range(func(k, _ any) bool {
-		c.corpusIndex.Delete(k)
-		return true
-	})
+func (c *Cache) dropCorpusIndex() {
+	c.corpusIndex.Clear()
 }
 
 // Wikilinks returns build's result keyed by rootKey, computed at
@@ -344,15 +357,15 @@ func (c *RunCache) dropCorpusIndex() {
 // backlinks` calls the helper directly without a cache because
 // it is one-shot. Either way the build/cache contract sits in
 // one place.
-func (c *RunCache) Wikilinks(rootKey string, build func() any) any {
-	return load(&c.wikilinks, rootKey, build)
+func (c *Cache) Wikilinks(rootKey string, build func() any) any {
+	return c.wikilinks.Get(rootKey, build)
 }
 
 // ParsedSchema returns build's result for absPath, computed at most
 // once per absPath in this cache's lifetime. The value carries
 // dynamic type any so the requiredstructure rule (MDS020) can store
 // its package-private *parsedSchema (or a (parsedSchema, error) tuple)
-// without leaking the type into the lint package. Concurrent callers
+// without leaking the type into this package. Concurrent callers
 // with the same key block on the same once and observe the same
 // value.
 //
@@ -366,19 +379,46 @@ func (c *RunCache) Wikilinks(rootKey string, build func() any) any {
 // cache also registers absPath as a dependent of every path in
 // SchemaIncludes() on the reverse-include index. Invalidate(fragment)
 // then evicts every schema that reached fragment, closing the
-// stale-fragment gap the LSP would otherwise observe.
+// stale-fragment gap the LSP would otherwise observe. Registration
+// runs on the first lookup of each slot and on the first lookup after
+// each Invalidate (see invalidateGen), not on every warm hit.
 //
 // MDS020 reaches this slot via f.RunCache; on a corpus where N
 // host files all reference one schema, the per-Check parseSchema
 // chain (schema markdown parse, AST walk, frontmatter CUE-derive)
 // collapses from N runs to 1 — closing the parity-gap profile
 // that plan 195 documents as the biggest default-rule hot spot.
-func (c *RunCache) ParsedSchema(absPath string, build func() any) any {
-	v := load(&c.parsedSchema, absPath, build)
-	if meta, ok := v.(ParsedSchemaMetadata); ok {
-		c.registerSchemaMetadata(absPath, meta)
-	}
+func (c *Cache) ParsedSchema(absPath string, build func() any) any {
+	e := c.parsedSchema.Entry(absPath)
+	v := e.Get(build)
+	c.registerParsedSchema(absPath, e, v)
 	return v
+}
+
+// registerParsedSchema registers v's metadata for absPath unless it
+// was already registered for slot e in the current invalidateGen.
+// Keying the mark on e as well as the generation means a rebuilt slot
+// always registers its own metadata, even when a reader still holding
+// the dropped slot registered the old value under the new generation.
+func (c *Cache) registerParsedSchema(absPath string, e *memo.Entry, v any) {
+	meta, ok := v.(ParsedSchemaMetadata)
+	if !ok {
+		return
+	}
+	mark := schemaRegistration{entry: e, gen: c.invalidateGen.Load()}
+	if r, ok := c.registered.Load(absPath); ok && r.(schemaRegistration) == mark {
+		return
+	}
+	c.registerSchemaMetadata(absPath, meta)
+	c.registered.Store(absPath, mark)
+}
+
+// schemaRegistration is the per-schema mark registerParsedSchema
+// compares against: the slot it registered and the invalidateGen
+// value read before that registration.
+type schemaRegistration struct {
+	entry *memo.Entry
+	gen   uint64
 }
 
 // registerSchemaMetadata captures the parsed schema's includes and
@@ -388,7 +428,7 @@ func (c *RunCache) ParsedSchema(absPath string, build func() any) any {
 // ParsedSchema calls for the same absPath: the inner sync.Map's
 // LoadOrStore re-uses the existing set and a re-Store of the same
 // metadata slice is a benign overwrite.
-func (c *RunCache) registerSchemaMetadata(absPath string, meta ParsedSchemaMetadata) {
+func (c *Cache) registerSchemaMetadata(absPath string, meta ParsedSchemaMetadata) {
 	includes := meta.SchemaIncludes()
 	c.schemaIncludes.Store(absPath, includes)
 	c.schemaCUESources.Store(absPath, meta.SchemaCUESources())
@@ -397,39 +437,21 @@ func (c *RunCache) registerSchemaMetadata(absPath string, meta ParsedSchemaMetad
 
 // registerSchemaIncludes adds schemaPath as a dependent of every
 // fragment in includes on the reverse-include index. Idempotent
-// under concurrent ParsedSchema calls for the same schemaPath: the
-// inner sync.Map's LoadOrStore re-uses the existing set, and
-// re-adding the same dependent key is a no-op.
+// under concurrent ParsedSchema calls for the same schemaPath: an
+// existing set is re-used, and re-adding the same dependent key is
+// a no-op.
 //
-// The verify-and-retry loop closes a race with Invalidate's
-// empty-set cleanup: Invalidate's CompareAndDelete on the outer
-// schemaDependents map only compares the outer-value pointer,
-// which stays the same even when a concurrent register adds to
-// the inner *sync.Map. Without the retry, this sequence loses
-// the new dependent:
-//
-//  1. T1 register: LoadOrStore("frag") → setI (existing)
-//  2. T2 invalidate: empty-check on setI → empty → CompareAndDelete
-//     drops the outer entry
-//  3. T1 register: set.Store(schemaPath) → lands on the orphaned
-//     setI, never reachable from schemaDependents again
-//
-// The retry detects step 3's orphaning by re-Loading the outer
-// entry after Store and confirming it still points at setI.
-// On mismatch, the loop re-issues LoadOrStore, which creates a
-// fresh set and re-registers. The retry cap (8) is well above
-// any plausible race depth — register-vs-invalidate is bounded
-// by LSP edit rate.
-func (c *RunCache) registerSchemaIncludes(schemaPath string, includes []string) {
+// The set lookup-or-create and the inner Store run together under
+// depsMu, the same lock dropDependentBackPointers holds for its
+// empty-check and drop. A register can therefore never land on a set
+// the empty-set cleanup has already unlinked from schemaDependents —
+// the orphaning race the former lock-free sync.Map version had to
+// detect with a verify-and-retry loop.
+func (c *Cache) registerSchemaIncludes(schemaPath string, includes []string) {
 	for _, frag := range includes {
 		if frag == "" {
 			continue
 		}
-		// Under depsMu the load-or-store and the inner Store are one atomic
-		// step, so the empty-set cleanup in invalidate (also under depsMu)
-		// cannot orphan the dependent the way the lock-free sync.Map version's
-		// CompareAndDelete race could — the retry loop that guarded that race is
-		// no longer needed.
 		c.depsMu.Lock()
 		set, ok := c.schemaDependents[frag]
 		if !ok {
@@ -455,12 +477,15 @@ func (c *RunCache) registerSchemaIncludes(schemaPath string, includes []string) 
 // `cuecontext.New().CompileString(schema)` on every Check; with
 // this slot the compile runs once per unique CUE source per Run,
 // regardless of how many host files share the schema.
-func (c *RunCache) CompiledCUE(source string, build func() any) any {
-	return load(&c.compiledCUE, source, build)
+func (c *Cache) CompiledCUE(source string, build func() any) any {
+	return c.compiledCUE.Get(source, build)
 }
 
-// Invalidate drops the front-matter, include, anchor, and
-// parsed-schema entries for absPath. The LSP calls this from
+// Invalidate drops absPath's front-matter, raw-schema, include,
+// anchor, duplicate-paragraph, and parsed-schema entries, every
+// corpus-index aggregate, and each unique-field index whose scope
+// absPath can fall in (an index with no registered scope always
+// drops). The LSP calls this from
 // didChange / didSave / didChangeWatchedFiles so the next Check
 // that crosses absPath re-reads from disk.
 //
@@ -493,9 +518,13 @@ func (c *RunCache) CompiledCUE(source string, build func() any) any {
 // Wikilink indices are NOT invalidated per absPath because a file
 // rename or creation could change the resolution of any wikilink in
 // the workspace; the LSP must InvalidateWikilinks (or build a
-// fresh RunCache) when the filesystem layout changes.
-func (c *RunCache) Invalidate(absPath string) {
+// fresh Cache) when the filesystem layout changes.
+func (c *Cache) Invalidate(absPath string) {
 	c.invalidate(absPath, map[string]struct{}{})
+	// Bump after every edge deletion so a ParsedSchema that read the
+	// old generation before or during this call re-registers on its
+	// next hit (see invalidateGen).
+	c.invalidateGen.Add(1)
 }
 
 // invalidate is the recursive worker for Invalidate. The visited set
@@ -506,7 +535,7 @@ func (c *RunCache) Invalidate(absPath string) {
 // encounter. The set is per-call (allocated by the public
 // Invalidate entry point) so independent Invalidate calls do not
 // share visited state.
-func (c *RunCache) invalidate(absPath string, visited map[string]struct{}) {
+func (c *Cache) invalidate(absPath string, visited map[string]struct{}) {
 	if _, ok := visited[absPath]; ok {
 		return
 	}
@@ -524,10 +553,13 @@ func (c *RunCache) invalidate(absPath string, visited map[string]struct{}) {
 	includes := c.evictSchemaArtifacts(absPath)
 	c.invalidateDependents(absPath, visited)
 
-	// Drop the parsed-schema slot and its mirrored metadata.
+	// Drop the parsed-schema slot, its mirrored metadata, and its
+	// registration mark (which would otherwise pin the dropped slot
+	// and its parsed value for the session's lifetime).
 	c.parsedSchema.Delete(absPath)
 	c.schemaIncludes.Delete(absPath)
 	c.schemaCUESources.Delete(absPath)
+	c.registered.Delete(absPath)
 
 	c.dropDependentBackPointers(absPath, includes)
 }
@@ -536,11 +568,12 @@ func (c *RunCache) invalidate(absPath string, visited map[string]struct{}) {
 // absPath produced and returns the schema's include fragments and CUE sources
 // for the rest of the eviction. The includes/cueSources are read from the
 // dedicated sync.Maps; both are written AFTER ParsedSchema's load returns
-// (post-sync.Once), so there is no race with an in-flight build. A miss (slot
+// (after the slot's build completes), so there is no race with an in-flight
+// build. A miss (slot
 // never populated, or already dropped by a sibling Invalidate via the
 // dependents walk) leaves the slices nil and the rest of the eviction is a
 // no-op.
-func (c *RunCache) evictSchemaArtifacts(absPath string) (includes []string) {
+func (c *Cache) evictSchemaArtifacts(absPath string) (includes []string) {
 	if v, ok := c.schemaIncludes.Load(absPath); ok {
 		includes, _ = v.([]string)
 	}
@@ -568,7 +601,7 @@ func (c *RunCache) evictSchemaArtifacts(absPath string) (includes []string) {
 // with only the live dependents. The visited set carried through the recursion
 // is the cycle guard — a dependent already invalidated in this top-level call
 // is skipped.
-func (c *RunCache) invalidateDependents(absPath string, visited map[string]struct{}) {
+func (c *Cache) invalidateDependents(absPath string, visited map[string]struct{}) {
 	c.depsMu.Lock()
 	set, ok := c.schemaDependents[absPath]
 	c.depsMu.Unlock()
@@ -600,7 +633,7 @@ func (c *RunCache) invalidateDependents(absPath string, visited map[string]struc
 // or after the drop (so it re-creates a fresh set under the same lock) — the
 // mutex makes this the race-safe equivalent of the former
 // sync.Map.CompareAndDelete, which tinygo lacks (plan 240).
-func (c *RunCache) dropDependentBackPointers(absPath string, includes []string) {
+func (c *Cache) dropDependentBackPointers(absPath string, includes []string) {
 	for _, frag := range includes {
 		if frag == "" {
 			continue
@@ -627,7 +660,7 @@ func (c *RunCache) dropDependentBackPointers(absPath string, includes []string) 
 // dependentSet returns the dependent-schema set registered for fragment
 // under the depsMu guard, for tests that assert the reverse-include index
 // shape. It returns (nil, false) when no set is registered.
-func (c *RunCache) dependentSet(fragment string) (*sync.Map, bool) {
+func (c *Cache) dependentSet(fragment string) (*sync.Map, bool) {
 	c.depsMu.Lock()
 	defer c.depsMu.Unlock()
 	set, ok := c.schemaDependents[fragment]
@@ -637,40 +670,6 @@ func (c *RunCache) dependentSet(fragment string) (*sync.Map, bool) {
 // InvalidateWikilinks clears every cached wikilink index. The LSP
 // calls this when the workspace tree changes (file create/delete/
 // rename) so the next resolution walks afresh.
-func (c *RunCache) InvalidateWikilinks() {
-	c.wikilinks.Range(func(k, _ any) bool {
-		c.wikilinks.Delete(k)
-		return true
-	})
-}
-
-// load is the shared cache-slot primitive for every RunCache map. It
-// checks Load before LoadOrStore so the warm (already-built) path
-// never constructs the throwaway &runCacheEntry{} that LoadOrStore's
-// second argument would otherwise allocate on every call — the same
-// value gets discarded whenever the key is already present, but Go
-// evaluates that argument before LoadOrStore can say so. build is
-// invoked directly (no wrapping closure), mirroring file.go's Memo.
-func load(m *sync.Map, key string, build func() any) any {
-	if v, ok := m.Load(key); ok {
-		return loadEntry(v.(*runCacheEntry), build)
-	}
-	ei, _ := m.LoadOrStore(key, &runCacheEntry{})
-	return loadEntry(ei.(*runCacheEntry), build)
-}
-
-// loadEntry runs build at most once for e, then returns the cached
-// value. The atomic.Bool fast path costs one atomic load on every
-// warm call; the mutex only guards the cold build.
-func loadEntry(e *runCacheEntry, build func() any) any {
-	if e.done.Load() {
-		return e.val
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if !e.done.Load() {
-		defer e.done.Store(true)
-		e.val = build()
-	}
-	return e.val
+func (c *Cache) InvalidateWikilinks() {
+	c.wikilinks.Clear()
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/runcache"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1299,7 +1300,7 @@ func TestCheck_Wikilinks_RunCacheSharedIndex(t *testing.T) {
 	writeFile(t, docA, "# A\n\n[[present]] [[missing]]\n")
 	writeFile(t, docB, "# B\n\n[[present]] [[missing]]\n")
 
-	cache := lint.NewRunCache()
+	cache := runcache.New()
 	r := &Rule{Wikilinks: true}
 
 	for _, p := range []string{docA, docB} {
@@ -1319,7 +1320,7 @@ func TestWikilinkIndexForRoot_EmptyKeyReturnsNil(t *testing.T) {
 	dir := t.TempDir()
 	f := &lint.File{
 		RootFS:   os.DirFS(dir),
-		RunCache: lint.NewRunCache(),
+		RunCache: runcache.New(),
 	}
 	got := wikilinkIndexForRoot(f, f.RootFS)
 	assert.Nil(t, got)
@@ -1333,7 +1334,7 @@ func TestWikilinkIndexForRoot_NilRunCacheReturnsNil(t *testing.T) {
 }
 
 func TestWikilinkIndexForRoot_NilRootReturnsNil(t *testing.T) {
-	f := &lint.File{RootDir: "/tmp/x", RunCache: lint.NewRunCache()}
+	f := &lint.File{RootDir: "/tmp/x", RunCache: runcache.New()}
 	assert.Nil(t, wikilinkIndexForRoot(f, nil),
 		"nil root → no per-run index")
 }

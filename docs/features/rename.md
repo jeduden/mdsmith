@@ -10,7 +10,6 @@ summary: >-
 icon: replace
 weight: 9
 group: "A connected docs tree"
-link: "/reference/cli/lsp/"
 ---
 # Rename without breaking links
 

@@ -36,6 +36,10 @@ question. The current production set:
 - `internal/piparser` — re-export the goldmark processing-instruction
   (`<?…?>`) block node and parser from `pkg/markdown` for type switches.
   Split from `internal/lint`.
+- `internal/runcache` — memoize cross-file reads (front matter, schemas,
+  corpus walks) for one whole run. Split from `internal/lint`.
+- `internal/memo` — the build-once, alloc-free-when-warm cache slot that
+  `lint.File.Memo` and `internal/runcache` share. A stdlib-only leaf.
 - `internal/fix` — produce edits that make a file stop violating rules.
 - `internal/linkgraph` — canonical Markdown link / directive / reference
   extractor; MDS027, `mdsmith list backlinks`, and `internal/index` consult
@@ -55,9 +59,7 @@ question. The current production set:
   [Public Markdown Library](../markdown-library.md).
 - `internal/mdtext` — walk an already-parsed AST (slugging, TOC,
   plain-text). `pkg/markdown` produces the node it walks.
-- `internal/mdfence`, `internal/mdhtml` — does this source line open or
-  close a fenced code block, or start or end an HTML block? Shared,
-  zero-allocation line classifiers that mirror the goldmark fork.
+- `internal/mdfence`, `internal/mdhtml` — goldmark-exact fence/HTML lines.
 - `internal/punkt` — sentence segmenter (vendored Punkt); only
   `internal/mdtext` imports it.
 - `internal/rule` — interfaces for rules and fixes (the ports package).
@@ -70,10 +72,9 @@ question. The current production set:
   `internal/rules/MDS###-<rule-name>/` (e.g.
   `internal/rules/MDS001-line-length/`).
 
-The names answer the question the package
-exists to answer. A package named `util`
-fails that test — it answers "a grab bag",
-so unrelated code accumulates.
+The names answer the question the package exists to answer. A
+package named `util` fails that test — it answers "a grab bag", so
+unrelated code accumulates.
 
 ## Open/closed via plugin packages (OCP)
 

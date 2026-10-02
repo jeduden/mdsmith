@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 )
 
 func TestExtractWikiLinks_NilFileReturnsNil(t *testing.T) {
@@ -83,7 +84,7 @@ func TestWikilinkIndexFor_CachedAcrossCallers(t *testing.T) {
 	// MDS027 takes this branch via the engine's RunCache so a
 	// workspace walked for host file A serves host file B too.
 	mfs := fstest.MapFS{"page.md": &fstest.MapFile{Data: []byte{}}}
-	cache := lint.NewRunCache()
+	cache := runcache.New()
 	a := linkgraphWikilinkIndexFor(cache, "/root", mfs)
 	b := linkgraphWikilinkIndexFor(cache, "/root", mfs)
 	require.NotNil(t, a)
@@ -92,7 +93,7 @@ func TestWikilinkIndexFor_CachedAcrossCallers(t *testing.T) {
 
 // linkgraphWikilinkIndexFor is a thin alias so the test reads
 // naturally as a unit test of the package-local helper.
-func linkgraphWikilinkIndexFor(cache *lint.RunCache, key string, root fs.FS) *WikilinkIndex {
+func linkgraphWikilinkIndexFor(cache *runcache.Cache, key string, root fs.FS) *WikilinkIndex {
 	return WikilinkIndexFor(cache, key, root)
 }
 

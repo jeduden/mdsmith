@@ -31,8 +31,12 @@ fails on drift.
 - Headings use sentence case. Commands, config keys, and
   rule IDs (`MDS027`) render in mono, even in prose.
 - Marketing surfaces avoid softeners ("powerful",
-  "blazing") and earn claims with rule IDs, numbers, or
-  command output.
+  "blazing") and earn claims with numbers or command
+  output. Rule IDs stay out of homepage headings and
+  card copy, where a first-time visitor cannot decode
+  them; they back claims on feature, guide, and
+  reference pages. The homepage artifact mocks may still
+  show them as part of captured diagnostic output.
 - Status emoji (✅ 🔲 🔳) are data and stay as Unicode.
   Decorative section emoji become Lucide icons on the
   website.
@@ -47,7 +51,7 @@ fails on drift.
 | `--ok-500`, `--warn-500`, `--err-500` | Diagnostic semantics, matching `mdsmith check` terminal output.                          |
 | `--term-*`                            | Terminal mock palette only. Never mixed with UI tokens.                                  |
 | `--tint-*`                            | bg/fg/line triads for icon tiles. Cycle them; never two adjacent tiles in one hue.       |
-| `--grad-*`                            | Warm-only gradients: hero glow, bento cells, dark panels, gradient icon tiles.           |
+| `--grad-*`                            | Warm-only gradients: hero glow, gradient icon tiles, and `.shot-stage` showcase cells.   |
 
 Gradients carry two extra rules. Never place one behind body
 text on a light surface. Use at most one gradient surface per
@@ -96,13 +100,11 @@ viewport.
 - Capsules (pills and chips) mark **status only**: rule
   state, version chips, filter toggles. Navigation is
   plain text links with a solid underline on hover.
-- Bento grids (`.bento` / `.bento-card`) lay out feature
-  cells on six columns with a 14px gap and `--radius-lg`
-  corners; cells span 2, 3, 4, or 6 columns. At most one
-  `is-glow` and one `is-dark` cell per bento.
 - Cards: `--bg-raised` background, 1px `--border`, 6px
   radius, `--shadow-sm` at rest. No left-border accent
-  stripe; use a rule-ID chip instead.
+  stripe. Homepage feature cards carry no MDS rule-ID
+  chips; the codes are cited on each feature page and
+  defined on the Rules index.
 - Hover: links underline; buttons darken one step on the
   forge ramp. Never opacity-only hover.
 - Press: 1px translate down. No scale effects.

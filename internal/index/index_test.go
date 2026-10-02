@@ -604,3 +604,61 @@ func TestFrontMatterAliasRejected(t *testing.T) {
 			"alias-bearing front matter must not produce front-matter symbols: %+v", s)
 	}
 }
+
+// TestNameMatches_NoAllocOnMixedCase pins the case-insensitive substring
+// test used by SearchSymbols (run per symbol per keystroke) to zero
+// allocations; strings.ToLower allocates for any name with uppercase.
+func TestNameMatches_NoAllocOnMixedCase(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	allocs := testing.AllocsPerRun(100, func() {
+		if !nameMatches("Apple Pie", "pie") {
+			t.Fatal("expected match")
+		}
+	})
+	assert.Zero(t, allocs)
+}
+
+func TestNameMatches_Semantics(t *testing.T) {
+	t.Parallel()
+	assert.True(t, nameMatches("anything", ""))
+	assert.True(t, nameMatches("Apple Pie", "apple"))
+	assert.True(t, nameMatches("Apple Pie", "e p"))
+	assert.False(t, nameMatches("Apple", "pie"))
+	assert.False(t, nameMatches("ap", "apple"))
+	assert.True(t, nameMatches("Überblick", "überblick"))
+	// Lower-casing changes byte length (2 -> 3), and the Kelvin sign folds to ASCII 'k'.
+	assert.True(t, nameMatches("\u212a", "k"))
+	assert.True(t, nameMatches("\u023a", "\u2c65"))
+	assert.True(t, nameMatches("\u023ax", "\u2c65x"))
+	assert.False(t, nameMatches("日本", "\ufffd"))
+}
+
+func TestContainsFold(t *testing.T) {
+	t.Parallel()
+	assert.True(t, containsFold("Apple Pie", "e p"))
+	assert.False(t, containsFold("Apple", "pie"))
+	assert.False(t, containsFold("ap", "apple"))
+	assert.False(t, containsFold("Apple", "\u00e9"), "ASCII name cannot contain non-ASCII query")
+	assert.True(t, containsFold("\u212a", "k"), "non-ASCII name takes the ToLower path")
+}
+
+func TestIsASCII(t *testing.T) {
+	t.Parallel()
+	assert.True(t, isASCII(""))
+	assert.True(t, isASCII("Apple Pie"))
+	assert.False(t, isASCII("caf\u00e9"))
+}
+
+// TestSearchSymbols_UppercaseQueryMatches pins that SearchSymbols
+// lower-cases the query before nameMatches/containsFold, which require a
+// lower-cased q.
+func TestSearchSymbols_UppercaseQueryMatches(t *testing.T) {
+	t.Parallel()
+	idx := New("/root")
+	idx.Update("a.md", []byte("# Apple Pie\n"))
+	hits := idx.SearchSymbols("APPLE", 0)
+	require.Len(t, hits, 1)
+	assert.Equal(t, "Apple Pie", hits[0].Symbol.Name)
+}

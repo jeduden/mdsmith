@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/require"
 )
 
@@ -91,4 +92,49 @@ func TestCheckAllocBudget(t *testing.T) {
 		"MDS030 Check allocs/op = %.0f exceeds budget %d: "+
 			"new allocations were added to the hot path",
 		delta, allocBudgetMDS030)
+}
+
+// TestHasMeaningfulContent_CommentFreeHTMLBlockNoAlloc pins the HTML-block
+// branch to zero allocations when the block holds no `<!--`: the comment
+// regexp and the string copy of the block are skipped (see
+// docs/development/high-performance-go.md, "Gate expensive analyzers
+// behind a cheap pre-check").
+func TestHasMeaningfulContent_CommentFreeHTMLBlockNoAlloc(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	f, err := lint.NewFile("h.md", []byte("# A\n\n<div>\nx\n</div>\n"))
+	require.NoError(t, err)
+	nodes := topLevelNodes(f.AST)
+	require.True(t, hasMeaningfulContent(nodes, f.Source))
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = hasMeaningfulContent(nodes, f.Source)
+	})
+	require.Zero(t, allocs)
+}
+
+func TestHasMeaningfulContent_CommentOnlyHTMLBlock(t *testing.T) {
+	f, err := lint.NewFile("h.md", []byte("# A\n\n<!-- a -->\n"))
+	require.NoError(t, err)
+	require.False(t, hasMeaningfulContent(topLevelNodes(f.AST)[1:], f.Source))
+	f, err = lint.NewFile("h.md", []byte("# A\n\n<!-- a -->\n<div>x</div>\n"))
+	require.NoError(t, err)
+	require.True(t, hasMeaningfulContent(topLevelNodes(f.AST)[1:], f.Source))
+}
+
+func TestHtmlBlockMeaningful(t *testing.T) {
+	cases := map[string]bool{
+		"<div>x</div>\n": true,
+		"<!-- a -->\n":   false,
+		// One block holding a comment line and real content: the comment
+		// opener takes the strip-and-trim path, and content survives it.
+		"<div>\n<!-- c -->\n</div>\n": true,
+	}
+	for body, want := range cases {
+		f, err := lint.NewFile("h.md", []byte("# A\n\n"+body))
+		require.NoError(t, err)
+		n, ok := topLevelNodes(f.AST)[1].(*ast.HTMLBlock)
+		require.True(t, ok, body)
+		require.Equal(t, want, htmlBlockMeaningful(n, f.Source), body)
+	}
 }

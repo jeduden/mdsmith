@@ -2,11 +2,10 @@
 title: "Conventions and flavors"
 summary: >-
   Pin a Markdown convention to get a curated rule preset and a target
-  renderer flavor in one switch. `MDS034` flags syntax the flavor
-  will not render; a placeholder vocabulary spares template tokens.
+  renderer flavor in one switch. A flavor check flags syntax the
+  flavor will not render; a placeholder vocabulary spares template
+  tokens.
 icon: book-type
-link: "/reference/conventions/"
-rules: ["MDS034"]
 weight: 2
 group: "Clean, consistent Markdown"
 ---

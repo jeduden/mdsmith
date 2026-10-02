@@ -849,7 +849,45 @@ func nameMatches(name, q string) bool {
 	if q == "" {
 		return true
 	}
-	return strings.Contains(strings.ToLower(name), q)
+	return containsFold(name, q)
+}
+
+// containsFold reports whether q, already lower-cased, is a substring of
+// name under case folding. An ASCII name is folded in place with no
+// allocation; a non-ASCII name takes the strings.ToLower path, because
+// lower-casing can change byte length for non-ASCII runes. A non-ASCII q
+// never matches an ASCII name: the byte compare below fails on its first
+// non-ASCII byte.
+func containsFold(name, q string) bool {
+	if !isASCII(name) {
+		return strings.Contains(strings.ToLower(name), q)
+	}
+	for i := 0; i+len(q) <= len(name); i++ {
+		j := 0
+		for j < len(q) {
+			c := name[i+j]
+			if 'A' <= c && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			if c != q[j] {
+				break
+			}
+			j++
+		}
+		if j == len(q) {
+			return true
+		}
+	}
+	return false
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }
 
 // SymbolMatch pairs a Symbol with the file that contains it. Returned

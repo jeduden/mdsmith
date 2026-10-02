@@ -11,6 +11,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 	"github.com/jeduden/mdsmith/pkg/markdown"
 	"github.com/stretchr/testify/assert"
@@ -142,7 +143,7 @@ func perRuleBenchMakeFile(tb testing.TB, src []byte, mapFS fstest.MapFS) func() 
 		require.NoError(tb, err)
 		f.FS = mapFS
 		f.RootDir = "."
-		f.RunCache = lint.NewRunCache()
+		f.RunCache = runcache.New()
 		return f
 	}
 }

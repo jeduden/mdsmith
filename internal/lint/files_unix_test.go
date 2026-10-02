@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build unix
 
 package lint
 
@@ -17,9 +17,9 @@ import (
 // even when their name has a markdown extension. Reading such
 // entries via the lint pipeline could block indefinitely.
 //
-// The test is gated behind `!windows` because `syscall.Mkfifo` is
-// not available on Windows (the syscall package elides it at
-// compile time for that platform).
+// The test is gated behind `unix` because `syscall.Mkfifo` exists
+// only on Unix targets; Windows, js/wasm, wasip1, and plan9 lack it,
+// so a `!windows` tag broke their test compiles.
 func TestResolveFiles_SkipsNonRegularEntries(t *testing.T) {
 	dir := t.TempDir()
 	// Real file + FIFO-with-.md-name in the same directory.

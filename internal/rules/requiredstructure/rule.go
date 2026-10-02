@@ -25,6 +25,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/internal/schema"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -1208,7 +1209,7 @@ const sectionWildcard = "..."
 // to share its result across schemas with identical CUE source —
 // the inner validateCUESchemaSyntax routes through it when non-nil.
 // Tests pass nil to keep the parser standalone.
-func parseSchemaFrontMatter(prefix []byte, cache *lint.RunCache) (schemaConfig, error) {
+func parseSchemaFrontMatter(prefix []byte, cache *runcache.Cache) (schemaConfig, error) {
 	cfg := schemaConfig{}
 	if prefix == nil {
 		return cfg, nil
@@ -1582,7 +1583,7 @@ func parseSchema(data []byte, schemaPath string, maxBytes int64) (*parsedSchema,
 // failed CompiledCUE entry the build cached is evicted when the
 // next Invalidate(schemaPath) fires.
 func parseSchemaWithCache(
-	data []byte, schemaPath string, maxBytes int64, cache *lint.RunCache,
+	data []byte, schemaPath string, maxBytes int64, cache *runcache.Cache,
 ) (*parsedSchema, []string, error) {
 	return parseSchemaWithRootFS(data, schemaPath, maxBytes, cache, nil)
 }
@@ -1594,7 +1595,7 @@ func parseSchemaWithCache(
 // the CLI passes a nil rootFS and reads from disk. cachedParseSchema
 // supplies f.RootFS.
 func parseSchemaWithRootFS(
-	data []byte, schemaPath string, maxBytes int64, cache *lint.RunCache, rootFS fs.FS,
+	data []byte, schemaPath string, maxBytes int64, cache *runcache.Cache, rootFS fs.FS,
 ) (*parsedSchema, []string, error) {
 	prefix, content := lint.StripFrontMatter(data)
 
@@ -2379,7 +2380,7 @@ func validateCUESchemaSyntax(schema string) error {
 // validateCUESchemaSyntaxWith is validateCUESchemaSyntax with the
 // CompileString site routed through cache when non-nil. A nil cache
 // compiles a fresh value (the test-direct path).
-func validateCUESchemaSyntaxWith(cache *lint.RunCache, schema string) error {
+func validateCUESchemaSyntaxWith(cache *runcache.Cache, schema string) error {
 	if strings.TrimSpace(schema) == "" {
 		return nil
 	}

@@ -10,6 +10,8 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 
 	"github.com/jeduden/mdsmith/internal/gitignore"
+	"github.com/jeduden/mdsmith/internal/memo"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/pkg/markdown"
 )
 
@@ -190,22 +192,21 @@ type File struct {
 	// times. nil for struct-literal Files in unit tests; the
 	// catalog rule then takes the per-Check fallback path.
 	//
-	// RunCache (runcache.go) and the parse cache (parsecache.go) stay in
-	// this package rather than moving to siblings like the gitignore,
-	// bytelimit, and piparser splits: File embeds *RunCache here, so a
-	// dedicated internal/runcache package would import lint for File
-	// while lint imports it for the field — a circular import. They are
-	// facets of the parsed-file model, not standalone utilities, so
-	// they belong with File anyway. See plan/224.
-	RunCache *RunCache
+	// The type lives in internal/runcache, a leaf package that imports
+	// nothing from lint, so lint can hold the field without an import
+	// cycle. internal/engine cannot host it: engine imports lint
+	// directly, so lint importing engine for this field would cycle.
+	// The parse cache (parsecache.go) stays here as a facet of the
+	// parsed-file model. See plan/2608301919.
+	RunCache *runcache.Cache
 
 	// scratch backs Memo: per-Check rule memoization. A *File is
 	// built fresh for each Check and discarded after, so values
 	// cached here never outlive a single Check — no cross-file or
 	// cross-run staleness, the same scope as the cross-file rule's
-	// per-Check cache. sync.Map keeps it safe for the concurrent
+	// per-Check cache. memo.Map keeps it safe for the concurrent
 	// readers the LSP may run against one document.
-	scratch sync.Map
+	scratch memo.Map
 
 	// linkRefs is declared last among the pointer-bearing fields on
 	// purpose: as a slice, only its 8-byte data-pointer word is
@@ -268,23 +269,6 @@ type File struct {
 	MaxInputBytes int64
 }
 
-// memoEntry guards a single Memo key so build runs exactly once even
-// when several rule passes (or concurrent LSP readers) race for the
-// same key. atomic.Bool + mutex is used instead of sync.Once because
-// once.Do takes a function value as a parameter — the closure
-// `func() { e.val = build() }` Memo would pass captures `e` and
-// `build`, both escape-tracking pointers, so it allocates per call.
-// On hot per-File memos (astutil.CollectSectionParagraphs feeds
-// every paragraph-aware rule), that single closure escape is the
-// dominant per-Check allocation the MDS024 budget gate sees. The
-// atomic flag is a double-checked-lock pattern: cheap atomic load
-// on the warm path, mutex-guarded build on the cold path.
-type memoEntry struct {
-	val  any
-	done atomic.Bool
-	mu   sync.Mutex
-}
-
 // Memo returns the value for key, computing it once via build on the
 // first request within this File's lifetime and serving the cached
 // value thereafter. It exists so a rule whose passes would otherwise
@@ -295,72 +279,25 @@ type memoEntry struct {
 // per directive. The File is discarded after each Check, so nothing
 // is cached across files or runs.
 //
-// build is invoked directly (no wrapping closure) so the call adds
-// no per-Memo-call allocation beyond the cold-path memoEntry itself.
-// The warm path checks Load before LoadOrStore for the same reason:
-// LoadOrStore's second argument (&memoEntry{}) is constructed before
-// the call and discarded whenever the key already exists, so a plain
-// LoadOrStore would allocate one on every call regardless of hit or
-// miss.
-//
-// Panic safety mirrors sync.Once: if build panics, the entry is
-// still marked done (via the deferred Store) and the mutex is
-// released (via the deferred Unlock), so the panic propagates
-// without leaving the per-File memo in a deadlocked state.
-// Subsequent calls on the same key serve the zero-value cached
-// result instead of re-running build, matching upstream sync.Once.
+// The slot is a memo.Entry: build runs at most once per key under
+// concurrent readers, the warm path allocates nothing, and a
+// panicking build still marks the key done, matching sync.Once.
 func (f *File) Memo(key string, build func() any) any {
-	if v, ok := f.scratch.Load(key); ok {
-		return memoLoad(v.(*memoEntry), build)
-	}
-	ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
-	return memoLoad(ei.(*memoEntry), build)
-}
-
-// memoLoad runs build at most once for e, then returns the cached
-// value — the double-checked-lock body shared by Memo and MemoFile.
-func memoLoad(e *memoEntry, build func() any) any {
-	if e.done.Load() {
-		return e.val
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if !e.done.Load() {
-		defer e.done.Store(true)
-		e.val = build()
-	}
-	return e.val
+	return f.scratch.Get(key, build)
 }
 
 // MemoFile is the *File-passing variant of Memo: build receives this
-// File as an argument instead of capturing it in a closure. Callers
-// whose build needs nothing beyond File data can pass a package-
-// level function value, which avoids the per-call closure allocation
-// the plain `Memo` form forces on every invocation. The hot
-// astutil.CollectSectionParagraphs path is the canonical user.
-//
-// Panic safety matches Memo's contract: defer Unlock + defer
-// done.Store(true) keep the per-entry mutex from leaking a lock and
-// match sync.Once's "panic still marks done" semantics. The warm
-// path checks Load before LoadOrStore for the same reason Memo does.
+// File as an argument, so a caller whose build needs nothing beyond
+// File data can pass a package-level function value. The hot
+// astutil.CollectSectionParagraphs path is the canonical user. Its
+// once-per-key, zero-alloc warm path, and panic contract match
+// Memo's.
 func (f *File) MemoFile(key string, build func(*File) any) any {
-	var e *memoEntry
-	if v, ok := f.scratch.Load(key); ok {
-		e = v.(*memoEntry)
-	} else {
-		ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
-		e = ei.(*memoEntry)
-	}
-	if e.done.Load() {
-		return e.val
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if !e.done.Load() {
-		defer e.done.Store(true)
-		e.val = build(f)
-	}
-	return e.val
+	// The adapter closure captures f and build, but memo.Map.Get does
+	// not leak build, so the closure stays on the stack (pinned by
+	// TestFile_MemoFile_WarmPathAllocatesNothing and
+	// TestFile_MemoFile_ColdPathMatchesMemo).
+	return f.scratch.Get(key, func() any { return build(f) })
 }
 
 // headingTextCacheKey pairs a heading node with the base offset its
@@ -385,7 +322,7 @@ type headingTextCacheKey struct {
 // HeadingTextCache memoizes compute's result for (heading, base),
 // keyed by the heading node's pointer identity plus base — see
 // headingTextCacheKey. A plain mutex-guarded map is used rather than
-// the sync.Map-backed scratch facility behind Memo/MemoFile: headings
+// the memo.Map-backed scratch facility behind Memo/MemoFile: headings
 // are a write-once, read-a-few-times keyset per File (a handful of
 // headings, each queried by a handful of rules), and sync.Map's
 // per-insert entry/dirty-map bookkeeping cost more in benchmarking

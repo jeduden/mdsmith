@@ -55,7 +55,7 @@ is trivially safe there. Only the LSP path needs the hook.
    `Runner` and threaded to rules via a context value or a field
    on `*lint.File` that points at the shared cache (not a package
    global — testability and LSP isolation).
-   `lint.RunCache` in `internal/lint/runcache.go`; the engine
+   `runcache.Cache` in `internal/runcache/runcache.go`; the engine
    `Runner.RunCache` field threads it to each `*lint.File`.
 2. [x] Route `cachedFrontMatter` and `includeTargetsOf` through
    the run cache when present, falling back to the per-Check memo
@@ -70,7 +70,7 @@ is trivially safe there. Only the LSP path needs the hook.
    `Server.invalidateCachedRead` fires on `didChange`, `didSave`,
    and `didChangeWatchedFiles`;
    `TestRunCache_InvalidateForcesReread` and
-   `TestRunCache_InvalidateForcesRebuild` pin the seam.
+   `TestCache_InvalidateForcesRebuild` pin the seam.
 4. [x] Benchmark the repo corpus before/after with the existing
    interleaved-median harness; record the delta here. Confirm the
    neutral corpus (no directives) is unchanged and

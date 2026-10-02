@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -51,12 +50,6 @@ type testKey struct {
 	name string
 }
 
-// testFuncRe matches a top-level test entry point at column zero:
-// Test*, Example*, or Fuzz*. A method (`func (r R) TestX`) has a
-// receiver between `func ` and the name, so it never matches —
-// only package-level functions are recorded.
-var testFuncRe = regexp.MustCompile(`^func ((?:Test|Example|Fuzz)[A-Za-z0-9_]*)\(`)
-
 // testEvent is the subset of a `go test -json` event we read.
 type testEvent struct {
 	Action  string
@@ -71,10 +64,10 @@ type testEvent struct {
 // srcRoot is the module root whose *_test.go files classify each
 // executed test by file location.
 func SummarizeTestRun(srcRoot string, r io.Reader, logOut io.Writer) (TestCounts, error) {
-	layers, err := scanTestLayers(srcRoot)
-	if err != nil {
-		return TestCounts{}, err
-	}
+	// A scan failure is reported only after the stream is drained and
+	// its log written: returning early would break the pipe of the
+	// go test feeding r and lose the CI log.
+	layers, scanErr := scanTestLayers(srcRoot)
 
 	// results records the layer of every (pkg,test) that reached a
 	// terminal action; hasChild marks every test that owns a subtest
@@ -109,6 +102,9 @@ func SummarizeTestRun(srcRoot string, r io.Reader, logOut io.Writer) (TestCounts
 	if err := sc.Err(); err != nil {
 		return TestCounts{}, fmt.Errorf("reading test json: %w", err)
 	}
+	if scanErr != nil {
+		return TestCounts{}, scanErr
+	}
 	return tallyCounts(results, hasChild), nil
 }
 
@@ -129,16 +125,23 @@ func newTerseLog(w io.Writer) *terseLog {
 	return &terseLog{out: bufio.NewWriter(w), buf: make(map[testKey][]string)}
 }
 
-// passthrough echoes a non-JSON line (e.g. a `go: downloading …`
-// notice) verbatim, but drops a `{`-led line — a mangled event from
-// `go test -json`'s rare cross-package write interleaving — so the
-// log never shows half a JSON record.
+// passthrough echoes a line that is not a `go test -json` event.
 func (l *terseLog) passthrough(line []byte) {
+	echoNonEvent(l.out, line)
+}
+
+// echoNonEvent is the one rule every `go test -json` reader in this
+// package applies to a line that failed to decode: it echoes a
+// non-JSON line (e.g. a `go: downloading …` notice) verbatim, but
+// drops a `{`-led line — a mangled event from `go test -json`'s rare
+// cross-package write interleaving — so the log never shows half a
+// JSON record.
+func echoNonEvent(out io.Writer, line []byte) {
 	if startsWithBrace(line) {
 		return
 	}
-	_, _ = l.out.Write(line)
-	_ = l.out.WriteByte('\n')
+	_, _ = out.Write(line)
+	_, _ = out.Write([]byte{'\n'})
 }
 
 // output routes one "output" event: verbose scaffolding is dropped,
@@ -366,24 +369,25 @@ func importPath(module, relDir string) string {
 }
 
 // scanTestFuncNames returns the names of every top-level test entry
-// point declared in a Go file.
+// point declared in a Go file: a package-level function (not a method)
+// whose name starts with Test, Example, or Fuzz. It reads declarations
+// through topLevelFuncs, the scanner test-js-wasm shares, so a function
+// inside a comment or a string literal is never counted.
 func scanTestFuncNames(path string) ([]string, error) {
-	f, err := os.Open(path)
+	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close() //nolint:errcheck // read-only
-
-	var names []string
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for sc.Scan() {
-		if m := testFuncRe.FindSubmatch(sc.Bytes()); m != nil {
-			names = append(names, string(m[1]))
-		}
+	_, funcs, err := topLevelFuncs(src)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+	var names []string
+	for _, fn := range funcs {
+		name := fn.Name.Name
+		if strings.HasPrefix(name, "Test") || strings.HasPrefix(name, "Example") || strings.HasPrefix(name, "Fuzz") {
+			names = append(names, name)
+		}
 	}
 	return names, nil
 }

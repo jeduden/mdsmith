@@ -25,6 +25,7 @@ import (
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/runcache"
 
 	// Register every production rule so rule.All() returns the full
 	// set, exactly as cmd/mdsmith/main.go does. The recipesafety rule
@@ -136,7 +137,7 @@ type Session struct {
 	// LSP relies on this surviving across per-keystroke CheckVersion
 	// calls; Invalidate drops the changed path's entry. Created once in
 	// NewSession.
-	runCache *lint.RunCache
+	runCache *runcache.Cache
 	// parseCache memoizes the parsed *lint.File for a document keyed by
 	// (uri, version). CheckVersion installs it on the runner so a repeat
 	// Check at the same version skips the parse — the plan-216 contract
@@ -199,7 +200,7 @@ func NewSession(opts SessionOptions) (*Session, error) {
 		rootDir:           rootDirOf(opts.Workspace),
 		maxBytes:          resolveSessionMaxBytes(cfg),
 		checkCache:        make(map[string]cachedCheck),
-		runCache:          lint.NewRunCache(),
+		runCache:          runcache.New(),
 		parseCache:        lint.NewParseCache(),
 		sourceConfigCache: engine.NewSourceConfigCache(),
 	}, nil

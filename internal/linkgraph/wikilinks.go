@@ -14,6 +14,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/pathutil"
+	"github.com/jeduden/mdsmith/internal/runcache"
 )
 
 // WikiLink is one parsed Obsidian-style wikilink occurrence.
@@ -175,7 +176,7 @@ func inCodeSpan(spans []byteRange, offset int) bool {
 // This is the canonical entry point both MDS027 and
 // `mdsmith list backlinks` route through; rewriting it once
 // keeps the workspace walk semantics in one place.
-func WikilinkIndexFor(cache *lint.RunCache, rootKey string, root fs.FS) *WikilinkIndex {
+func WikilinkIndexFor(cache *runcache.Cache, rootKey string, root fs.FS) *WikilinkIndex {
 	if cache == nil || rootKey == "" {
 		return NewWikilinkIndex(root)
 	}
@@ -194,7 +195,7 @@ func WikilinkIndexFor(cache *lint.RunCache, rootKey string, root fs.FS) *Wikilin
 // otherwise sort on every call.
 //
 // Build the index once per (run, root) — e.g. via
-// `lint.RunCache.Wikilinks` — and call Resolve for each wikilink
+// `runcache.Cache.Wikilinks` — and call Resolve for each wikilink
 // target. Lookups are then O(stems + matches) instead of O(files
 // in workspace) per target.
 type WikilinkIndex struct {

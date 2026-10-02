@@ -7,6 +7,7 @@ import (
 	"testing/fstest"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/internal/testsymlink"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -149,7 +150,7 @@ func TestThreeWayDuplicateFlagsEachLaterFile(t *testing.T) {
 func TestRunCacheSharesOneIndex(t *testing.T) {
 	fsys := planFS()
 	r := planRule()
-	rc := lint.NewRunCache()
+	rc := runcache.New()
 
 	fa := file(t, "plan/a.md", fsys)
 	fb := file(t, "plan/b.md", fsys)
@@ -334,7 +335,7 @@ func TestTargetedInvalidationWithRootDir(t *testing.T) {
 		[]byte("---\nid: 7\n---\n# A\n"), 0o644))
 
 	r := &Rule{Field: "id", Include: []string{"plan/*.md"}}
-	rc := lint.NewRunCache()
+	rc := runcache.New()
 	f, err := lint.NewFile(filepath.Join(root, "plan", "a.md"),
 		[]byte("# Title\n"))
 	require.NoError(t, err)
