@@ -76,6 +76,20 @@ out of plan 2610022044, which fixes the extension filter.
    `docs/guide.mdx`. The PR #885 code review found this;
    [move.md](../docs/reference/cli/move.md) documents the
    current listed-only check.
+6. `wikilinkStemBytes` re-implements `normalizeTarget`'s
+   trim, slash, and base logic, so the rewrite range and the
+   edge key can drift. Have `linkgraph` return the base
+   segment's byte span and use it in the move planner. The
+   PR #885 code review found tasks 6 to 9.
+7. The edge loop strips the `./` that `dstWikilinkSpelling`
+   adds and never checks the result. Return the bare
+   spelling plus a needs-prefix flag, or check the prefixed
+   token with `WikilinkReaches`.
+8. `dstWikilinkSpelling` checks again whether dst is
+   Markdown. Pass in `FileStemKey`'s answer instead.
+9. `index.IncomingWikilinkEdges` keys its lookup with
+   `strings.ToLower`. Use `linkgraph.FileNameKey`, which
+   keys the stored edges.
 
 PR #885 already retired `fileStem`: the move planner keys
 files with `linkgraph.FileStemKey`, the same function
@@ -91,6 +105,8 @@ files with `linkgraph.FileStemKey`, the same function
       `docs/logo.png`
 - [ ] The move planner's stem counts come from the same index
       `[[stem]]` resolution reads
+- [ ] The move planner reuses `linkgraph`'s base-segment
+      span, Markdown test, and name key, with no copies
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues
