@@ -57,9 +57,6 @@ func classify(ptr, length int32) int64 {
 	if length < 0 {
 		return 0
 	}
-	if length > 0 && ptr == 0 {
-		return 0
-	}
 	text := ""
 	if length > 0 {
 		// Resolve ptr through keepAlive rather than converting the raw
