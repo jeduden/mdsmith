@@ -61,6 +61,28 @@ func TestFileStem_NonMarkdownFallback(t *testing.T) {
 	assert.Equal(t, "api", fileStem("docs/API.md"))
 }
 
+func TestCountFilesWithStem(t *testing.T) {
+	files := []string{"a.md", "docs/API.md", "api/api.md", "img/api.png", "notes/b.mdx"}
+	for name, tc := range map[string]struct {
+		files []string
+		stem  string
+		want  int
+	}{
+		"no files":                     {nil, "api", 0},
+		"no match":                     {files, "missing", 0},
+		"single match":                 {files, "a", 1},
+		"same stem in two directories": {files, "api", 2},
+		"case-folded basename":         {files, "api", 2},
+		"non-markdown keeps extension": {files, "api.png", 1},
+		"stem is not a prefix match":   {files, "ap", 0},
+		"mdx is not a wikilink stem":   {files, "b.mdx", 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, countFilesWithStem(stubWorkspace{files: tc.files}, tc.stem))
+		})
+	}
+}
+
 func TestDstStemSpelling_NonMarkdownKeepsBase(t *testing.T) {
 	assert.Equal(t, "Service", dstStemSpelling("docs/Service.md"))
 	assert.Equal(t, "diagram.png", dstStemSpelling("img/diagram.png"))

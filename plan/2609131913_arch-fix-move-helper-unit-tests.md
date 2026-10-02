@@ -2,7 +2,7 @@
 id: 2609131913
 title: >-
   Add unit tests for untested move.go helper functions
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   internal/refactor/move.go's recomputeToken, encodePathToken,
@@ -54,6 +54,16 @@ Its code now lives in `computePlanWrite` and
 Each has a named test in
 `cmd/mdsmith/planapply_unit_test.go`.
 
+## Status note
+
+Only `countFilesWithStem` still needs a test. The other three
+were changed by commit c689bb309. `pathEdit` is now `destEdit`.
+`encodePathToken` is now `encodeLike`. `recomputeToken` is gone.
+
+`TestDestEdit` and `TestEncodeLike` already cover the renamed
+pair. The new `TestCountFilesWithStem` sits in
+`move_coverage_test.go`.
+
 ## Tasks
 
 1. Read each function's current behavior and existing indirect
@@ -74,11 +84,11 @@ Each has a named test in
 
 ## Acceptance Criteria
 
-- [ ] Each of `recomputeToken`, `encodePathToken`, `pathEdit`,
-      and `countFilesWithStem` has a dedicated test symbol
-      named after it in `internal/refactor/move_test.go` or
-      `move_coverage_test.go`.
-- [ ] No production code changes; behavior is unchanged.
+- [x] Each helper that still exists (`countFilesWithStem`, plus
+      the renamed `destEdit` and `encodeLike`) has a dedicated
+      test symbol named after it in `internal/refactor/`;
+      `recomputeToken` was removed (see the status note).
+- [x] No production code changes; behavior is unchanged.
 - [ ] `go test ./...` is green.
 - [ ] `mdsmith check .` is green.
 
