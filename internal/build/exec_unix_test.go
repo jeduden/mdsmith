@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -63,9 +62,6 @@ func TestKillGroup_SIGKILLPath(t *testing.T) {
 }
 
 func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("process-group kill tested on Unix")
-	}
 	stage := t.TempDir()
 	pidFile := filepath.Join(stage, "child.pid")
 	// Parent spawns a long-lived child in the background, records its PID,
