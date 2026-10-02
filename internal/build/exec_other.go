@@ -1,4 +1,4 @@
-//go:build !unix && !windows
+//go:build js || wasip1
 
 package build
 
@@ -7,11 +7,9 @@ import (
 	"os/exec"
 )
 
-// configureProcessGroup is a no-op on targets with neither POSIX process
-// groups nor Windows Job Objects (js/wasm, wasip1, plan9). js/wasm and
-// wasip1 cannot start a subprocess at all. plan9 has a group primitive,
-// the note group (RFNOTEG, then "kill" written to /proc/<pid>/notepg),
-// but this file does not use it yet; plan 2610020946 tracks that.
+// configureProcessGroup is a no-op on js/wasm and wasip1, which have
+// neither POSIX process groups nor Windows Job Objects and cannot start
+// a subprocess at all. plan9 has its own file, exec_plan9.go.
 func configureProcessGroup(*exec.Cmd) {}
 
 // afterStart is a no-op on these targets. It returns nil so runRecipe
@@ -19,8 +17,8 @@ func configureProcessGroup(*exec.Cmd) {}
 func afterStart(*exec.Cmd) func() { return nil }
 
 // killGroup terminates only the recipe's leader process: there is no
-// group kill on js/wasm or wasip1, and plan9's is not wired up yet. A nil Process (the command never started)
-// is a no-op.
+// group kill on js/wasm or wasip1. A nil Process (the command never
+// started) is a no-op.
 func killGroup(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return

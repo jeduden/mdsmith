@@ -377,12 +377,12 @@ directory. A recipe that invokes `mdsmith` (for example to run
 `mdsmith extract`) must add the directory holding the binary to
 `build.exec.path`.
 
-Each recipe runs in its own process group (`Setpgid` on Unix;
-`CREATE_NEW_PROCESS_GROUP` plus a Job Object on Windows). On timeout,
-Unix sends `SIGTERM`, waits up to 5 s, then sends `SIGKILL` to the
-group; Windows sends `CTRL_BREAK_EVENT` and ends the Job Object. Without
-a Job Object a Windows daemon can survive. Each later wait is capped at
-5 s: for the leader, again after a direct kill, then for output to drain.
+Each recipe runs in its own process group (`Setpgid` on Unix, `RFNOTEG`
+on plan9, `CREATE_NEW_PROCESS_GROUP` plus a Job Object on Windows). On
+timeout, Unix sends `SIGTERM`, waits up to 5 s, then sends `SIGKILL` to
+the group; plan9 writes `kill` to `/proc/<pid>/notepg`; Windows sends
+`CTRL_BREAK_EVENT` and ends the Job Object (without one a daemon can
+survive). Each later wait is capped at 5 s.
 
 ### Atomic-write hardening
 

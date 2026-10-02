@@ -106,11 +106,12 @@ type runOpts struct {
 // once, with no wait. Either way a recipe that spawns daemons cannot
 // leave orphans behind. If the Job Object could not be created, Windows
 // falls back to CTRL_BREAK alone, which reaches the leader's group but
-// cannot guarantee that. On the other targets (exec_other.go) the
-// timeout kills only the leader, with no grace period: js/wasm and
-// wasip1 cannot start a subprocess at all, and plan9's note-group kill
-// is not wired up yet (plan 2610020946). So the orphan guarantee holds
-// on Unix and on Windows with a Job Object only.
+// cannot guarantee that. On plan9 the recipe leads its own note group
+// (RFNOTEG) and the timeout writes "kill" to /proc/<pid>/notepg, which
+// reaches every process in it at once, with no grace period; if that
+// write fails, only the leader is killed. On js/wasm and wasip1
+// (exec_other.go) no subprocess can start. So the orphan guarantee
+// holds on Unix, on plan9, and on Windows with a Job Object.
 //
 // After the kill, runRecipe waits at most reapWait for the leader to
 // exit. If it has not (a leader that ignored the group kill), it kills

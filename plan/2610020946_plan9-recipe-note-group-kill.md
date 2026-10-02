@@ -1,7 +1,7 @@
 ---
 id: 2610020946
 title: Kill a timed-out recipe's whole note group on plan9
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   On plan9, `internal/build` kills only a timed-out recipe's
@@ -61,8 +61,8 @@ which only had to make the package compile on wasm.
 
 - [ ] On plan9, a timed-out recipe leaves no process from
       its note group running.
-- [ ] `GOOS=plan9 go vet ./...` (tests included) passes,
+- [x] `GOOS=plan9 go vet ./...` (tests included) passes,
       and CI still gates it.
-- [ ] `GOOS=js GOARCH=wasm go build ./...` still passes.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `GOOS=js GOARCH=wasm go build ./...` still passes.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

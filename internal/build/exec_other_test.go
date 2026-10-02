@@ -1,4 +1,4 @@
-//go:build !unix && !windows
+//go:build js || wasip1
 
 package build
 
