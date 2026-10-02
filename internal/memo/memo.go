@@ -59,16 +59,54 @@ func (e *Entry) getSlow(build func() any) any {
 	return e.val
 }
 
-// Load returns the *Entry stored under key in m, storing a new one on
-// first use. Every value in m must be an *Entry. It checks Load before
-// LoadOrStore so the warm path never constructs the throwaway
-// &Entry{} that LoadOrStore's second argument would otherwise
-// allocate: Go evaluates that argument before LoadOrStore can report
-// that the key already exists.
-func Load(m *sync.Map, key string) *Entry {
-	if v, ok := m.Load(key); ok {
+// Map is a keyed set of Entry slots. It wraps a sync.Map so the
+// "every value is an *Entry" invariant holds by construction: only
+// Entry stores into it, and Range hands back typed keys. The zero Map
+// is ready to use and must not be copied after first use.
+type Map struct {
+	m sync.Map // string -> *Entry
+}
+
+// Entry returns the *Entry stored under key, storing a new one on
+// first use. It checks Load before LoadOrStore so the warm path never
+// constructs the throwaway &Entry{} that LoadOrStore's second argument
+// would otherwise allocate: Go evaluates that argument before
+// LoadOrStore can report that the key already exists.
+func (m *Map) Entry(key string) *Entry {
+	if v, ok := m.m.Load(key); ok {
 		return v.(*Entry)
 	}
-	v, _ := m.LoadOrStore(key, &Entry{})
+	v, _ := m.m.LoadOrStore(key, &Entry{})
 	return v.(*Entry)
+}
+
+// Get runs build at most once for key and returns the cached value;
+// it is Entry(key).Get(build).
+func (m *Map) Get(key string, build func() any) any {
+	return m.Entry(key).Get(build)
+}
+
+// Delete drops key's slot so the next Get runs build again. A build
+// already in flight on the dropped Entry finishes against that Entry
+// and is not visible to later lookups.
+func (m *Map) Delete(key string) {
+	m.m.Delete(key)
+}
+
+// Range calls f for each key, in no particular order, until f returns
+// false. As with sync.Map.Range, f may call Delete.
+func (m *Map) Range(f func(key string) bool) {
+	m.m.Range(func(k, _ any) bool {
+		return f(k.(string))
+	})
+}
+
+// Clear drops every slot, deleting key by key with the same Range and
+// Delete calls the rest of Map uses, so it needs no sync.Map method
+// beyond those (the WASM build runs on tinygo's sync.Map).
+func (m *Map) Clear() {
+	m.m.Range(func(k, _ any) bool {
+		m.m.Delete(k)
+		return true
+	})
 }

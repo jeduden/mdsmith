@@ -214,7 +214,7 @@ func TestCache_AnchorsBuildsOnce(t *testing.T) {
 // Anchors at zero allocs. A LoadOrStore-only lookup builds a throwaway
 // &anchorEntry{} (and boxes the key) on every hit, because Go
 // evaluates LoadOrStore's arguments before it can report that the key
-// already exists — the same gap memo.Load closes for the other slots.
+// already exists — the same gap memo.Map.Entry closes for the other slots.
 func TestCache_AnchorsWarmPathAllocatesNothing(t *testing.T) {
 	c := New()
 	build := func() (map[string]struct{}, error) {
@@ -1247,19 +1247,19 @@ func TestDuplicateParagraphs_InvalidateDropsEveryKeyForPath(t *testing.T) {
 // e.once.Do(func() { e.val = build() }) allocates the wrapping closure
 // as an argument even when Do's internal check makes it a no-op — the
 // closure-box anti-pattern internal/memo's Entry doc comment
-// describes. load now delegates to memo.Load + Entry.Get; this test
-// keeps the zero-alloc guarantee pinned at the Cache seam.
-func TestLoad_WarmPathAllocatesNothing(t *testing.T) {
-	var m sync.Map
+// describes. Every slot is now a memo.Map; this test keeps the
+// zero-alloc guarantee pinned at the Cache seam.
+func TestCache_SlotWarmPathAllocatesNothing(t *testing.T) {
+	c := New()
 	build := func() any { return 42 }
 
 	// Warm the entry.
-	load(&m, "k", build)
+	c.CompiledCUE("k", build)
 
 	allocs := testing.AllocsPerRun(200, func() {
-		load(&m, "k", build)
+		c.CompiledCUE("k", build)
 	})
-	assert.Zero(t, allocs, "load's cache-hit path must not allocate")
+	assert.Zero(t, allocs, "a Cache slot's cache-hit path must not allocate")
 }
 
 // TestAnchorEntryFieldLayout_PointerFieldsLeading guards Cache's

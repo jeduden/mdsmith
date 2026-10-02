@@ -75,7 +75,7 @@ this scope mismatch:
    The build-once slot (`load`/`runCacheEntry`) duplicated
    `lint.File.Memo`'s `memoEntry`/`memoLoad` line for line,
    so both now use one primitive in the new stdlib-only leaf
-   `internal/memo` (`memo.Entry`, `memo.Load`). `Get`
+   `internal/memo` (`memo.Entry` and the typed `memo.Map`). `Get`
    splits its warm path from an outlined cold path so it
    inlines; `MemoFile` then wraps `Get` in a closure that
    stays on the stack, so no generic `GetWith` is needed.

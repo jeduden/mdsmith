@@ -55,27 +55,73 @@ func TestEntry_GetPanicMarksDone(t *testing.T) {
 	assert.Zero(t, calls)
 }
 
-// TestLoad_ReturnsSameEntryPerKey pins that one key maps to one Entry
-// and distinct keys to distinct entries.
-func TestLoad_ReturnsSameEntryPerKey(t *testing.T) {
-	var m sync.Map
-	a := Load(&m, "a")
-	assert.Same(t, a, Load(&m, "a"))
-	assert.NotSame(t, a, Load(&m, "b"))
+// TestMap_EntryReturnsSameEntryPerKey pins that one key maps to one
+// Entry and distinct keys to distinct entries.
+func TestMap_EntryReturnsSameEntryPerKey(t *testing.T) {
+	var m Map
+	a := m.Entry("a")
+	assert.Same(t, a, m.Entry("a"))
+	assert.NotSame(t, a, m.Entry("b"))
 }
 
-// TestLoad_WarmPathAllocatesNothing pins the cache-hit cost of
-// Load+Get at zero allocs: the Load-before-LoadOrStore check skips the
+// TestMap_GetWarmPathAllocatesNothing pins the cache-hit cost of
+// Map.Get at zero allocs: the Load-before-LoadOrStore check skips the
 // throwaway &Entry{} that LoadOrStore's argument would construct.
-func TestLoad_WarmPathAllocatesNothing(t *testing.T) {
-	var m sync.Map
+func TestMap_GetWarmPathAllocatesNothing(t *testing.T) {
+	var m Map
 	build := func() any { return 42 }
-	Load(&m, "k").Get(build)
+	m.Get("k", build)
 
 	allocs := testing.AllocsPerRun(200, func() {
-		Load(&m, "k").Get(build)
+		m.Get("k", build)
 	})
 	assert.Zero(t, allocs)
+}
+
+// TestMap_DeleteForcesRebuild pins that Delete drops the slot so the
+// next Get runs build again, and leaves other keys cached.
+func TestMap_DeleteForcesRebuild(t *testing.T) {
+	var m Map
+	var calls int32
+	build := func() any { return atomic.AddInt32(&calls, 1) }
+	m.Get("a", build)
+	m.Get("b", build)
+	m.Delete("a")
+	assert.Equal(t, int32(3), m.Get("a", build))
+	assert.Equal(t, int32(2), m.Get("b", build))
+}
+
+// TestMap_RangeVisitsEveryKeyAndStops pins Range's key iteration and
+// its early stop when f returns false.
+func TestMap_RangeVisitsEveryKeyAndStops(t *testing.T) {
+	var m Map
+	m.Entry("a")
+	m.Entry("b")
+	var seen []string
+	m.Range(func(k string) bool {
+		seen = append(seen, k)
+		return true
+	})
+	assert.ElementsMatch(t, []string{"a", "b"}, seen)
+
+	n := 0
+	m.Range(func(string) bool {
+		n++
+		return false
+	})
+	assert.Equal(t, 1, n)
+}
+
+// TestMap_ClearDropsEveryKey pins that Clear empties the map.
+func TestMap_ClearDropsEveryKey(t *testing.T) {
+	var m Map
+	m.Entry("a")
+	m.Entry("b")
+	m.Clear()
+	m.Range(func(k string) bool {
+		t.Errorf("unexpected key %q after Clear", k)
+		return true
+	})
 }
 
 // TestEntryFieldLayout_PointerFieldsLeading pins the val/done/mu

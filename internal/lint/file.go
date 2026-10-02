@@ -204,9 +204,9 @@ type File struct {
 	// built fresh for each Check and discarded after, so values
 	// cached here never outlive a single Check — no cross-file or
 	// cross-run staleness, the same scope as the cross-file rule's
-	// per-Check cache. sync.Map keeps it safe for the concurrent
+	// per-Check cache. memo.Map keeps it safe for the concurrent
 	// readers the LSP may run against one document.
-	scratch sync.Map
+	scratch memo.Map
 
 	// linkRefs is declared last among the pointer-bearing fields on
 	// purpose: as a slice, only its 8-byte data-pointer word is
@@ -283,7 +283,7 @@ type File struct {
 // concurrent readers, the warm path allocates nothing, and a
 // panicking build still marks the key done, matching sync.Once.
 func (f *File) Memo(key string, build func() any) any {
-	return memo.Load(&f.scratch, key).Get(build)
+	return f.scratch.Get(key, build)
 }
 
 // MemoFile is the *File-passing variant of Memo: build receives this
@@ -293,10 +293,10 @@ func (f *File) Memo(key string, build func() any) any {
 // once-per-key, zero-alloc warm path, and panic contract match
 // Memo's.
 func (f *File) MemoFile(key string, build func(*File) any) any {
-	// The adapter closure captures f and build, but Get's warm path
-	// inlines and its cold path does not leak build, so the closure
+	// The adapter closure captures f and build, but memo.Map.Get does
+	// not leak build, so the closure
 	// stays on the stack (pinned by TestFile_MemoFile_*Alloc* tests).
-	return memo.Load(&f.scratch, key).Get(func() any { return build(f) })
+	return f.scratch.Get(key, func() any { return build(f) })
 }
 
 // headingTextCacheKey pairs a heading node with the base offset its
@@ -321,7 +321,7 @@ type headingTextCacheKey struct {
 // HeadingTextCache memoizes compute's result for (heading, base),
 // keyed by the heading node's pointer identity plus base — see
 // headingTextCacheKey. A plain mutex-guarded map is used rather than
-// the sync.Map-backed scratch facility behind Memo/MemoFile: headings
+// the memo.Map-backed scratch facility behind Memo/MemoFile: headings
 // are a write-once, read-a-few-times keyset per File (a handful of
 // headings, each queried by a handful of rules), and sync.Map's
 // per-insert entry/dirty-map bookkeeping cost more in benchmarking
