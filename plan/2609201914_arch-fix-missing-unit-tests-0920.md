@@ -105,32 +105,34 @@ trivial accessor.
 
 3. Run the task 2 tests in CI. Add a step to the `wasm` job
    in [ci.yml][ci], which already installs Node, next to the
-   existing "Vet the WASM bridge" step. The test names are
-   listed once, and both the `-run` filter and the pass count
-   come from that list:
+   existing "Vet the WASM bridge" step. The test names come
+   from the `js && wasm` test files themselves, so a test
+   added there later runs without editing the step. Both the
+   `-run` filter and the pass count come from that list:
 
    ```bash
-   tests='ResolveVersion|WorkspaceFromJS|URIAndSource|AllStrings'
-   env -i PATH="$PATH" HOME="$HOME" \
-     GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)" \
-     GOTOOLCHAIN="$(go env GOTOOLCHAIN)" GOFLAGS="$(go env GOFLAGS)" \
-     GOOS=js GOARCH=wasm go test -v \
-     -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" \
+   tests=$(grep -l '^//go:build js && wasm$' cmd/mdsmith-wasm/*_test.go \
+     | xargs grep -ohE '^func Test[A-Za-z0-9_]+\(\w+ \*testing\.T\)' \
+     | sed -E 's/^func Test([A-Za-z0-9_]+)\(.*/\1/' | paste -sd'|')
+   test -n "$tests"
+   log=$(mktemp)
+   GOOS=js GOARCH=wasm go test -v \
+     -exec="env -i 'PATH=$PATH' '$(go env GOROOT)/lib/wasm/go_js_wasm_exec'" \
      -run "^Test($tests)\$" \
-     ./cmd/mdsmith-wasm/ > wasm-bridge.log || { cat wasm-bridge.log; exit 1; }
-   cat wasm-bridge.log
+     ./cmd/mdsmith-wasm/ > "$log" || { cat "$log"; exit 1; }
+   cat "$log"
    want=$(printf '%s\n' "$tests" | tr '|' '\n' | wc -l)
-   test "$(grep -c '^--- PASS: Test' wasm-bridge.log)" -eq "$want"
+   test "$(grep -c '^--- PASS: Test' "$log")" -eq "$want"
    ```
 
    `env -i` is needed because `wasm_exec.js` caps arguments
    plus environment at about 8 KB. With a full shell
    environment the test binary exits with "total length of
-   command line and environment variables exceeds limit". The
-   step passes through only what `go test` needs: `PATH`,
-   `HOME`, the two caches, `GOTOOLCHAIN` (so the job's
-   `setup-go` toolchain is used, not a download), and
-   `GOFLAGS`.
+   command line and environment variables exceeds limit". It
+   sits inside `-exec`, so it strips only the Node runtime's
+   environment down to `PATH`. The `go` command keeps the
+   job's full environment: caches, `GOTOOLCHAIN`, `GOFLAGS`,
+   and any proxy settings.
 
    The count check is there because a `-run` filter that
    matches no test prints `[no tests to run]` and exits 0.

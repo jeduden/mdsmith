@@ -520,7 +520,9 @@ jobs:
   # (size_test.go: ceilings of 14 MiB raw / 4.25 MiB gzipped at
   # BestSpeed, against an artifact of ~13.1 MiB / ~4.0 MiB) and the
   # Go↔JS method-set
-  # parity (methods_test.go). tinygo is built in the separate tinygo-wasm
+  # parity (methods_test.go). A separate step first runs the
+  # `js && wasm` bridge helper unit tests (bridge_test.go) under Node.
+  # tinygo is built in the separate tinygo-wasm
   # job below, which is now enforcing (plan 247).
   wasm:
     runs-on: ubuntu-latest
@@ -541,19 +543,27 @@ jobs:
       - name: Vet the WASM bridge
         run: GOOS=js GOARCH=wasm go vet ./cmd/mdsmith-wasm/...
       - name: Unit-test the WASM bridge helpers under Node
+        # The test list comes from every `js && wasm` test file, so a
+        # test added there runs here without editing this step (native
+        # `go test` never compiles those files). The -run filter keeps
+        # the untagged size and smoke tests, which shell out to go and
+        # node, from running under js/wasm.
         run: |
-          tests='ResolveVersion|WorkspaceFromJS|URIAndSource|AllStrings'
-          # env -i: wasm_exec.js caps args plus environment at ~8 KB.
-          env -i PATH="$PATH" HOME="$HOME" \
-            GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)" \
-            GOTOOLCHAIN="$(go env GOTOOLCHAIN)" GOFLAGS="$(go env GOFLAGS)" \
-            GOOS=js GOARCH=wasm go test -v \
-            -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" \
+          tests=$(grep -l '^//go:build js && wasm$' cmd/mdsmith-wasm/*_test.go \
+            | xargs grep -ohE '^func Test[A-Za-z0-9_]+\(\w+ \*testing\.T\)' \
+            | sed -E 's/^func Test([A-Za-z0-9_]+)\(.*/\1/' | paste -sd'|')
+          test -n "$tests"
+          log=$(mktemp)
+          # env -i: wasm_exec.js caps args plus environment at ~8 KB. It
+          # wraps only the Node runtime, so the go command keeps the
+          # job's full Go and proxy environment.
+          GOOS=js GOARCH=wasm go test -v \
+            -exec="env -i 'PATH=$PATH' '$(go env GOROOT)/lib/wasm/go_js_wasm_exec'" \
             -run "^Test($tests)\$" \
-            ./cmd/mdsmith-wasm/ > wasm-bridge.log || { cat wasm-bridge.log; exit 1; }
-          cat wasm-bridge.log
+            ./cmd/mdsmith-wasm/ > "$log" || { cat "$log"; exit 1; }
+          cat "$log"
           want=$(printf '%s\n' "$tests" | tr '|' '\n' | wc -l)
-          test "$(grep -c '^--- PASS: Test' wasm-bridge.log)" -eq "$want"
+          test "$(grep -c '^--- PASS: Test' "$log")" -eq "$want"
       - name: WASM smoke test, size budget, and method-set parity
         run: go test ./cmd/mdsmith-wasm/...
 
