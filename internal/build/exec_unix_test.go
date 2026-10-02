@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -103,26 +104,44 @@ func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
 }
 
 // stubKillGroup swaps killGroupFn and shortens reapWait for one test.
+// The stub leaves survivors on purpose, so cleanup SIGKILLs the
+// recipe's whole process group (Setpgid made pgid == leader pid):
+// an orphan would otherwise keep the test binary's stderr open and
+// stall `go test` until it exits.
 func stubKillGroup(t *testing.T, fn func(*exec.Cmd)) {
 	t.Helper()
 	oldKill, oldReap := killGroupFn, reapWait
-	killGroupFn, reapWait = fn, 100*time.Millisecond
-	t.Cleanup(func() { killGroupFn, reapWait = oldKill, oldReap })
-}
-
-// killRecordedPID kills the process whose PID a recipe wrote to pidFile,
-// so a test that leaves a survivor on purpose does not leak it.
-func killRecordedPID(t *testing.T, pidFile string) {
-	t.Helper()
+	pgid := 0
+	killGroupFn = func(cmd *exec.Cmd) {
+		pgid = cmd.Process.Pid
+		fn(cmd)
+	}
+	reapWait = 100 * time.Millisecond
 	t.Cleanup(func() {
-		b, err := os.ReadFile(pidFile)
-		if err != nil {
-			return
-		}
-		if pid, err := parsePID(strings.TrimSpace(string(b))); err == nil {
-			_ = syscall.Kill(pid, syscall.SIGKILL)
+		killGroupFn, reapWait = oldKill, oldReap
+		if pgid > 0 {
+			_ = signalGroup(pgid, syscall.SIGKILL)
 		}
 	})
+}
+
+// lockedBuffer is a strings.Builder safe to read while os/exec's copy
+// goroutine may still write to it.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
 }
 
 func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
@@ -151,22 +170,49 @@ func TestRunRecipe_SurvivorHoldingPipeDoesNotBlock(t *testing.T) {
 	// cmd.Wait would block until that child exits. runRecipe must stop
 	// waiting after reapWait.
 	stubKillGroup(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
-	stage := t.TempDir()
-	pidFile := filepath.Join(stage, "child.pid")
-	killRecordedPID(t, pidFile)
-	script := writeScript(t, t.TempDir(), "daemon.sh",
-		`sleep 5 & echo $! > "`+pidFile+`"; sleep 5`)
+	script := writeScript(t, t.TempDir(), "daemon.sh", `sleep 5 & sleep 5`)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	start := time.Now()
 	_, timedOut, err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
-		dir:     stage,
+		dir:     t.TempDir(),
 		defExec: defaultExecConfig(),
-		stdout:  &strings.Builder{},
+		stdout:  &lockedBuffer{},
 	})
 	require.Error(t, err)
 	assert.True(t, timedOut)
 	assert.Less(t, time.Since(start), 3*time.Second, "a survivor's open pipe must not block")
+}
+
+func TestRunRecipe_AbandonedSurvivorCannotWriteAfterReturn(t *testing.T) {
+	// After runRecipe gives up on a survivor that holds the stdout pipe,
+	// os/exec's copy goroutine is still running. A line the survivor
+	// prints later must not reach the caller's writer: Build has already
+	// closed its log and moved on by then.
+	stubKillGroup(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
+	marker := filepath.Join(t.TempDir(), "printed")
+	script := writeScript(t, t.TempDir(), "late.sh",
+		`(sleep 1; echo late; : > "`+marker+`") & sleep 5`)
+
+	out := &lockedBuffer{}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+		stdout:  out,
+	})
+	require.Error(t, err)
+	require.True(t, timedOut)
+
+	require.Eventually(t, func() bool {
+		_, statErr := os.Stat(marker)
+		return statErr == nil
+	}, 5*time.Second, 20*time.Millisecond, "survivor should print after runRecipe returns")
+	// Give the copy goroutine time to forward the line it read.
+	time.Sleep(200 * time.Millisecond)
+	assert.NotContains(t, out.String(), "late")
 }

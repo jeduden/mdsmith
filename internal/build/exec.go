@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -115,7 +116,8 @@ type runOpts struct {
 // exit. If it has not, it kills the leader directly and waits at most
 // reapWait again, then returns anyway: a leader that ignored the group
 // kill, or a survivor that holds a captured output pipe open, cannot
-// hang mdsmith.
+// hang mdsmith. Output such a survivor writes after runRecipe returns
+// is dropped (outputGate), never forwarded to o.stdout or o.stderr.
 //
 // It returns the process exit code, whether the run timed out, and any
 // error. On success it returns (0, false, nil). On non-zero exit it
@@ -127,15 +129,17 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	// only kill the leader, not the group.
 	cmd := exec.Command(o.argv[0], o.argv[1:]...) //nolint:gosec // argv is explicit; user-declared recipe
 	cmd.Dir = o.dir
+	// A caller's writer is reached through os/exec's copy goroutines,
+	// which outlive runRecipe when the timeout path stops waiting on a
+	// survivor. The gate closes on return, so no write lands after it.
+	gate := &outputGate{}
+	defer gate.close()
+	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 	if o.stdout != nil {
-		cmd.Stdout = o.stdout
-	} else {
-		cmd.Stdout = os.Stderr
+		cmd.Stdout = gate.wrap(o.stdout)
 	}
 	if o.stderr != nil {
-		cmd.Stderr = o.stderr
-	} else {
-		cmd.Stderr = os.Stderr
+		cmd.Stderr = gate.wrap(o.stderr)
 	}
 	cmd.Env = buildEnv(o.exec, o.defExec)
 	configureProcessGroup(cmd)
@@ -205,6 +209,45 @@ var killGroupFn = killGroup
 // after killGroup, and once more after the leader-only fallback kill.
 // It is a var so a test can shorten it.
 var reapWait = 5 * time.Second
+
+// outputGate forwards a recipe's stdout and stderr writes until close,
+// then drops them. One mutex covers both streams and is held across
+// each forwarded Write, so once close returns no write is in flight
+// and none follows. Sharing it also keeps the os/exec guarantee that a
+// writer passed as both stdout and stderr sees one Write at a time.
+type outputGate struct {
+	mu     sync.Mutex
+	closed bool
+}
+
+// wrap returns a writer that forwards to w while the gate is open. The
+// value is comparable, so os/exec still detects stdout == stderr.
+func (g *outputGate) wrap(w io.Writer) io.Writer { return gatedWriter{g: g, w: w} }
+
+// close stops forwarding, after any in-flight write completes.
+func (g *outputGate) close() {
+	g.mu.Lock()
+	g.closed = true
+	g.mu.Unlock()
+}
+
+// gatedWriter is one stream's side of an outputGate.
+type gatedWriter struct {
+	g *outputGate
+	w io.Writer
+}
+
+// Write forwards p to the wrapped writer, or reports it written and
+// drops it once the gate is closed, so the copy goroutine keeps
+// draining the pipe and the survivor never blocks on a full one.
+func (gw gatedWriter) Write(p []byte) (int, error) {
+	gw.g.mu.Lock()
+	defer gw.g.mu.Unlock()
+	if gw.g.closed {
+		return len(p), nil
+	}
+	return gw.w.Write(p)
+}
 
 // waitAtMost receives from done for up to d. It reports true and the
 // received error, or false and nil when d elapses first.
