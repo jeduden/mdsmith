@@ -822,12 +822,16 @@ func wikilinkStemBytes(row []byte, bracketStart int) (int, int, bool) {
 }
 
 // countFilesWithStem reports how many workspace files share the given
-// lowercased basename stem. A count above one means a bare `[[stem]]`
+// lowercased basename stem. Only Markdown files count: the wikilink
+// index maps nothing else to a stem. A count above one means a bare `[[stem]]`
 // is ambiguous, so the move planner cannot safely rewrite wikilinks by
 // stem alone.
 func countFilesWithStem(ws Workspace, stem string) int {
 	n := 0
 	for _, f := range ws.Files() {
+		if !mdpath.IsMarkdownPath(f) {
+			continue
+		}
 		if fileStem(f) == stem {
 			n++
 		}

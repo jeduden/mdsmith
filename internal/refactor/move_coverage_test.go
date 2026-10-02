@@ -63,6 +63,7 @@ func TestFileStem_NonMarkdownFallback(t *testing.T) {
 
 func TestCountFilesWithStem(t *testing.T) {
 	files := []string{"a.md", "docs/API.md", "api/api.md", "img/api.png", "notes/b.mdx", "notes/c.markdown"}
+	licenseFiles := []string{"notes/LICENSE", "docs/license.md"}
 	for name, tc := range map[string]struct {
 		files []string
 		stem  string
@@ -75,9 +76,8 @@ func TestCountFilesWithStem(t *testing.T) {
 		"case-folded basename":           {[]string{"docs/API.md"}, "api", 1},
 		"markdown extension is stripped": {files, "c", 1},
 		"upper-case markdown extension":  {[]string{"docs/Guide.MD"}, "guide", 1},
-		"non-markdown keeps extension":   {files, "api.png", 1},
+		"extensionless file is no stem":  {licenseFiles, "license", 1},
 		"stem is not a prefix match":     {files, "ap", 0},
-		"mdx keeps its extension":        {files, "b.mdx", 1},
 	} {
 		t.Run(name, func(t *testing.T) {
 			assert.Equal(t, tc.want, countFilesWithStem(stubWorkspace{files: tc.files}, tc.stem))

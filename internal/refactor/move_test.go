@@ -359,3 +359,19 @@ func TestMove_SafetyErrors(t *testing.T) {
 		assert.ErrorAs(t, err, &se)
 	})
 }
+
+// TestMove_WikilinkRewrittenWithExtensionlessSibling locks that an
+// extensionless file such as LICENSE is not a wikilink stem target: the
+// wikilink index maps only Markdown files to stems, so it must not count
+// as a same-stem sibling of docs/license.md.
+func TestMove_WikilinkRewrittenWithExtensionlessSibling(t *testing.T) {
+	src := "See [[license]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/license.md": "# License\n",
+		"notes/LICENSE":   "MIT\n",
+		"index.md":        src,
+	})
+	plan, err := Move(ws, "docs/license.md", "docs/terms.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[terms]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
+}

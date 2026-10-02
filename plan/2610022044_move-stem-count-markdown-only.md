@@ -1,7 +1,7 @@
 ---
 id: 2610022044
 title: Count only Markdown files as wikilink stem siblings on move
-status: "🔲"
+status: "🔳"
 summary: >-
   The move planner's wikilink pass treats a non-Markdown file
   (for example an extensionless `LICENSE`) as a stem target,
@@ -101,10 +101,10 @@ counts against the resolver's own index.
 
 ## Acceptance Criteria
 
-- [ ] `countFilesWithStem` returns 1, not 2, for `license`
+- [x] `countFilesWithStem` returns 1, not 2, for `license`
       when the workspace holds `notes/LICENSE` and
       `docs/license.md`
-- [ ] Moving `docs/license.md` to `docs/terms.md` rewrites
+- [x] Moving `docs/license.md` to `docs/terms.md` rewrites
       `[[license]]` even when an extensionless `LICENSE` is
       in the workspace
 - [ ] Moving `LICENSE` to `COPYING` leaves every `[[license]]`
