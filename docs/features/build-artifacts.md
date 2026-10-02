@@ -3,8 +3,8 @@ title: "Build artifacts in sync"
 summary: >-
   The `<?build?>` directive declares an artifact and a recipe.
   `mdsmith fix` keeps the section body in sync with the recipe
-  output, and a shell-safety check inspects the recipe without
-  running it.
+  output, and a lint-time check rejects any recipe command that
+  invokes a shell or uses shell operators, without running it.
 icon: blocks
 weight: 14
 group: "Markdown as a single source of truth"

@@ -30,10 +30,10 @@ which was the only reader of `Params.rules`. It then dropped the
 `rules:` lines from the five feature pages under `docs/features/`.
 The same plan's round-3 review found that `link:` was dead too:
 the card href is `$page.RelPermalink`, and nothing else reads
-`Params.link`. It dropped the `link:` lines from all 18 feature
-pages. Both schema keys in [`.mdsmith.yml`](../.mdsmith.yml) are
-still there, because that file needs explicit user consent to
-edit.
+`Params.link`. It dropped the `link:` lines from the 18 feature
+pages that set it (`quality.md` never did). Both schema keys
+in [`.mdsmith.yml`](../.mdsmith.yml) are still there, because
+that file needs explicit user consent to edit.
 
 ## Tasks
 
@@ -42,9 +42,10 @@ edit.
 2. Delete the `"rules?": '[...string]'` and `"link?": string`
    lines from the `feature` kind's `schema.frontmatter` block.
 3. Confirm no file under `docs/features/` sets `rules:` or
-   `link:` in its front matter, then run `mdsmith check .`. A plain grep for
-   `^rules:` is not enough: the YAML examples in
-   `size-and-readability.md` start lines with `rules:` too.
+   `link:` in its front matter, then run `mdsmith check .`.
+   A plain grep for `^rules:` is not enough: the YAML
+   examples in `size-and-readability.md` start lines with
+   `rules:` too.
 
 ## Acceptance Criteria
 

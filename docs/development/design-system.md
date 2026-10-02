@@ -51,7 +51,7 @@ fails on drift.
 | `--ok-500`, `--warn-500`, `--err-500` | Diagnostic semantics, matching `mdsmith check` terminal output.                          |
 | `--term-*`                            | Terminal mock palette only. Never mixed with UI tokens.                                  |
 | `--tint-*`                            | bg/fg/line triads for icon tiles. Cycle them; never two adjacent tiles in one hue.       |
-| `--grad-*`                            | Warm-only gradients: hero glow and gradient icon tiles.                                  |
+| `--grad-*`                            | Warm-only gradients: hero glow, gradient icon tiles, and `.shot-stage` showcase cells.   |
 
 Gradients carry two extra rules. Never place one behind body
 text on a light surface. Use at most one gradient surface per

@@ -153,7 +153,8 @@ meaning and drops the puzzle.
 4. Tier 3 (optional, confirm first): drop `.pillar-num`, collapse
    the icon-tile tints to one, trim the hero badge row, and drop
    the two homepage section eyebrows. Deferred, not taken in
-   this PR: it needs a separate design confirmation.
+   this PR: it needs a separate design confirmation. Tracked in
+   [plan 2610020305](2610020305_homepage-tier3-declutter.md).
 5. Rebuild the site locally, re-capture the homepage, and check
    the before/after side by side. Run `mdsmith check .`.
 

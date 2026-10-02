@@ -7,7 +7,9 @@ import { test, expect } from "./hermetic";
  * from the content/_index.md body plus the one-engine surface row
  * from its front matter) and the markdownlint migration link in
  * the hero — the elements that tell a first-time visitor what
- * mdsmith is and where to start.
+ * mdsmith is and where to start. Also guards the feature-grid
+ * cards (icon-tile hues, no MDS rule-ID codes in card copy) and
+ * the install rows on a narrow viewport.
  */
 test.describe("homepage positioning", () => {
   test("scope statement renders under the hero", async ({ page }) => {
@@ -128,11 +130,10 @@ test.describe("homepage positioning", () => {
     // The codes are defined on the Rules index and cited on each
     // feature page; on the homepage they are undecodable to a
     // first-time visitor, so the feature-grid cards omit them.
-    await expect(page.locator(".card-grid .rule-chip")).toHaveCount(0);
-    await expect(page.locator(".card-grid .card-rules")).toHaveCount(0);
-    // No code may sneak back in through other markup either, such
-    // as a `<code>MDS034</code>` span in a card summary or a chip
-    // row beside .card-content. Scan the whole .card-body (icon
+    // No code may appear in any markup, such as a chip row, a
+    // `<code>MDS034</code>` span in a card summary, or a title /
+    // aria-label attribute read to screen readers. Scan the
+    // whole .card-body (icon
     // tile, title, summary, "Learn more") but not the lead cards'
     // artifact mocks, which follow .card-body inside the card and
     // show captured diagnostics (the graph SVG's "MDS027 missing
@@ -141,6 +142,23 @@ test.describe("homepage positioning", () => {
     expect(copy.length).toBeGreaterThan(5);
     for (const text of copy) {
       expect(text).not.toMatch(/\bMDS\d{3}\b/);
+    }
+    // Attribute values on each .card-body and its descendants,
+    // plus the enclosing card link (aria-label / title).
+    const attrs = await page
+      .locator(".card-grid .card-body")
+      .evaluateAll(bodies =>
+        bodies.flatMap(body => {
+          const els = [body, ...Array.from(body.querySelectorAll("*"))];
+          const card = body.closest(".card");
+          if (card) els.push(card);
+          return els.flatMap(el =>
+            Array.from(el.attributes).map(a => a.value),
+          );
+        }),
+      );
+    for (const value of attrs) {
+      expect(value).not.toMatch(/\bMDS\d{3}\b/);
     }
   });
 
