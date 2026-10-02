@@ -2,15 +2,16 @@
 // whole lint pass. Its Cache is shared by every host file an
 // engine.Run (or a long-lived LSP session) processes, so a target read,
 // schema parse, or corpus walk runs once per pass instead of once per
-// host file. It is a leaf package that imports only the standard
-// library, so internal/lint can hold a *Cache on File without an
-// import cycle (plan/2608301919).
+// host file. It imports only the standard library and the leaf
+// internal/memo, so internal/lint can hold a *Cache on File without
+// an import cycle (plan/2608301919).
 package runcache
 
 import (
 	"strings"
 	"sync"
-	"sync/atomic"
+
+	"github.com/jeduden/mdsmith/internal/memo"
 )
 
 // Cache memoizes per-target-file reads (front matter, include
@@ -27,16 +28,16 @@ import (
 // lifetime and calls Invalidate when a document edit could change
 // what the next Check would read from disk.
 type Cache struct {
-	frontMatter         sync.Map // string (absPath) -> *runCacheEntry
-	rawSchemaFile       sync.Map // string (absPath) -> *runCacheEntry
-	includes            sync.Map // string (absPath) -> *runCacheEntry
+	frontMatter         sync.Map // string (absPath) -> *memo.Entry
+	rawSchemaFile       sync.Map // string (absPath) -> *memo.Entry
+	includes            sync.Map // string (absPath) -> *memo.Entry
 	anchors             sync.Map // string (absPath) -> *anchorEntry
-	wikilinks           sync.Map // string (root key) -> *runCacheEntry
-	globMatches         sync.Map // string (base+patterns key) -> *runCacheEntry
-	parsedSchema        sync.Map // string (absPath) -> *runCacheEntry
-	compiledCUE         sync.Map // string (CUE source) -> *runCacheEntry
-	duplicateParagraphs sync.Map // string (absPath+"\x00"+settings key) -> *runCacheEntry
-	corpusIndex         sync.Map // string (corpus+settings key) -> *runCacheEntry
+	wikilinks           sync.Map // string (root key) -> *memo.Entry
+	globMatches         sync.Map // string (base+patterns key) -> *memo.Entry
+	parsedSchema        sync.Map // string (absPath) -> *memo.Entry
+	compiledCUE         sync.Map // string (CUE source) -> *memo.Entry
+	duplicateParagraphs sync.Map // string (absPath+"\x00"+settings key) -> *memo.Entry
+	corpusIndex         sync.Map // string (corpus+settings key) -> *memo.Entry
 
 	// uniqueFieldIndex memoizes MDS069's per-scope value→first-file
 	// index. Keys encode a rule scope (field + globs), not a path.
@@ -46,7 +47,7 @@ type Cache struct {
 	// (the same post-once discipline as schemaIncludes) so reads
 	// never race an in-flight build. Entries without a registered
 	// scope drop on every invalidation — the safe default.
-	uniqueFieldIndex  sync.Map // string (scope key) -> *runCacheEntry
+	uniqueFieldIndex  sync.Map // string (scope key) -> *memo.Entry
 	uniqueFieldScopes sync.Map // string (scope key) -> ScopeInvalidator
 
 	// schemaDependents maps a fragment path to the set of schema
@@ -71,7 +72,7 @@ type Cache struct {
 
 	// schemaIncludes / schemaCUESources mirror ParsedSchemaMetadata
 	// into dedicated sync.Maps so Invalidate reads metadata without
-	// peeking at runCacheEntry.val — that would race with the slot's
+	// peeking at memo.Entry.val — that would race with the slot's
 	// sync.Once during a first-time build. The slots are written
 	// AFTER ParsedSchema's load returns (so after the once completes)
 	// and read by Invalidate via sync.Map.Load, which gives the
@@ -80,19 +81,6 @@ type Cache struct {
 	// than races on a partial value.
 	schemaIncludes   sync.Map // string (absPath) -> []string
 	schemaCUESources sync.Map // string (absPath) -> []string
-}
-
-// runCacheEntry guards a single cache slot so build runs exactly once
-// per key even when multiple goroutines race for it. atomic.Bool +
-// mutex is used instead of sync.Once, matching internal/lint/file.go's
-// memoEntry: once.Do takes a func() argument, and the closure load
-// would pass (`func() { e.val = build() }`) captures e and build, so
-// it allocates on every call regardless of whether Do's internal
-// check makes it a no-op.
-type runCacheEntry struct {
-	val  any
-	done atomic.Bool
-	mu   sync.Mutex
 }
 
 // ParsedSchemaMetadata is the optional interface a parsed-schema
@@ -651,34 +639,9 @@ func (c *Cache) InvalidateWikilinks() {
 	})
 }
 
-// load is the shared cache-slot primitive for every Cache map. It
-// checks Load before LoadOrStore so the warm (already-built) path
-// never constructs the throwaway &runCacheEntry{} that LoadOrStore's
-// second argument would otherwise allocate on every call — the same
-// value gets discarded whenever the key is already present, but Go
-// evaluates that argument before LoadOrStore can say so. build is
-// invoked directly (no wrapping closure), mirroring internal/lint's
-// File.Memo.
+// load is the shared cache-slot primitive for every Cache map: a
+// memo.Entry per key, so build runs once per key and the warm path
+// allocates nothing (see internal/memo).
 func load(m *sync.Map, key string, build func() any) any {
-	if v, ok := m.Load(key); ok {
-		return loadEntry(v.(*runCacheEntry), build)
-	}
-	ei, _ := m.LoadOrStore(key, &runCacheEntry{})
-	return loadEntry(ei.(*runCacheEntry), build)
-}
-
-// loadEntry runs build at most once for e, then returns the cached
-// value. The atomic.Bool fast path costs one atomic load on every
-// warm call; the mutex only guards the cold build.
-func loadEntry(e *runCacheEntry, build func() any) any {
-	if e.done.Load() {
-		return e.val
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if !e.done.Load() {
-		defer e.done.Store(true)
-		e.val = build()
-	}
-	return e.val
+	return memo.Load(m, key).Get(build)
 }

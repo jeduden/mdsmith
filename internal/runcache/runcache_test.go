@@ -709,7 +709,7 @@ func TestCache_InvalidateSchemaDropsBackpointers(t *testing.T) {
 
 // TestCache_InvalidateDoesNotRaceParsedSchemaBuild pins the race
 // fix for Copilot thread `PRRT_kwDORLpjqs6EXfF6` on PR #377: Invalidate
-// must not read runCacheEntry.val (which is set under the slot's
+// must not read memo.Entry.val (which is set under the slot's
 // sync.Once) while a concurrent ParsedSchema build is in flight. The
 // fix stores metadata in dedicated sync.Maps (schemaIncludes /
 // schemaCUESources) and Invalidate reads from those — race-free.
@@ -1171,13 +1171,13 @@ func TestDuplicateParagraphs_InvalidateDropsEveryKeyForPath(t *testing.T) {
 // by the corpus size.
 //
 // Before this test, load's warm path paid two allocations per call
-// regardless of hit/miss: LoadOrStore's second argument (&runCacheEntry{})
+// regardless of hit/miss: LoadOrStore's second argument (the entry)
 // is constructed before the call and discarded on a hit, and
 // e.once.Do(func() { e.val = build() }) allocates the wrapping closure
 // as an argument even when Do's internal check makes it a no-op — the
-// exact closure-box anti-pattern internal/lint/file.go's memoEntry doc comment
-// describes fixing for File.Memo, which had the same gap: a Load-first
-// check before the throwaway LoadOrStore value must run first.
+// closure-box anti-pattern internal/memo's Entry doc comment
+// describes. load now delegates to memo.Load + Entry.Get; this test
+// keeps the zero-alloc guarantee pinned at the Cache seam.
 func TestLoad_WarmPathAllocatesNothing(t *testing.T) {
 	var m sync.Map
 	build := func() any { return 42 }
@@ -1194,8 +1194,8 @@ func TestLoad_WarmPathAllocatesNothing(t *testing.T) {
 // TestAnchorEntryFieldLayout_PointerFieldsLeading guards Cache's
 // anchorEntry against regressing to a layout where the map field trails
 // the scalar fields — see docs/development/high-performance-go.md
-// "Struct layout" and runCacheEntry's val/done/mu ordering a few lines
-// above it in runcache.go, which anchorEntry did not follow.
+// "Struct layout" and memo.Entry's val/done/mu ordering in
+// internal/memo/memo.go, which anchorEntry did not follow.
 func TestAnchorEntryFieldLayout_PointerFieldsLeading(t *testing.T) {
 	structlayout.AssertPointerFieldsFirst(t, reflect.TypeOf(anchorEntry{}))
 }

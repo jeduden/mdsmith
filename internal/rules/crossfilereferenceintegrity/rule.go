@@ -628,7 +628,7 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 // "redundant re-scanning that could be memoized" anti-pattern
 // docs/development/high-performance-go.md calls out. atomic.Bool +
 // mutex avoids the closure-box sync.Once would force on every call
-// (matching internal/lint's memoEntry/runCacheEntry pattern).
+// (matching the internal/memo Entry pattern).
 func (r *Rule) cachedGlobSettingsErr() error {
 	if r.globSettingsDone.Load() {
 		return r.globSettingsErr

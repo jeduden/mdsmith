@@ -18,7 +18,7 @@ import (
 //
 // Plan 2606130838 (memoize link extraction) raised this to 12,
 // because linkgraph.Links() adds two cold-path allocations: the
-// *memoEntry and the boxed []Link header.
+// *memo.Entry and the boxed []Link header.
 //
 // Back down to the published ceiling now that the link walk no longer
 // materialises each link's visible text and ParseTargetBytes resolves

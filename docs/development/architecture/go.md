@@ -36,10 +36,10 @@ question. The current production set:
 - `internal/piparser` — re-export the goldmark processing-instruction
   (`<?…?>`) block node and parser from `pkg/markdown` for type switches.
   Split from `internal/lint`.
-- `internal/runcache` — memoize cross-file reads and derived values
-  (front matter, includes, parsed schemas, corpus walks) for one whole
-  run, shared by every host file. A stdlib-only leaf package. Split from
-  `internal/lint`.
+- `internal/runcache` — memoize cross-file reads (front matter, schemas,
+  corpus walks) for one whole run. Split from `internal/lint`.
+- `internal/memo` — the build-once, alloc-free-when-warm cache slot that
+  `lint.File.Memo` and `internal/runcache` share. A stdlib-only leaf.
 - `internal/fix` — produce edits that make a file stop violating rules.
 - `internal/linkgraph` — canonical Markdown link / directive / reference
   extractor; MDS027, `mdsmith list backlinks`, and `internal/index` consult

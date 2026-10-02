@@ -72,6 +72,11 @@ this scope mismatch:
    `runcache.New`, so call sites do not stutter
    (`runcache.RunCache`). The `RunCache` field names on
    `lint.File` and `engine.Runner` stay.
+   The build-once slot (`load`/`runCacheEntry`) duplicated
+   `lint.File.Memo`'s `memoEntry`/`memoLoad` line for line,
+   so both now use one primitive in the new stdlib-only leaf
+   `internal/memo` (`memo.Entry`, `memo.Load`,
+   `memo.GetWith`).
 4. Update every import across the files listed in task 2.
 5. Keep `internal/lint`'s per-file `Memo` type in place;
    only the cross-file `RunCache` moves.

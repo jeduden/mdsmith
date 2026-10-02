@@ -10,6 +10,7 @@ import (
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 
 	"github.com/jeduden/mdsmith/internal/gitignore"
+	"github.com/jeduden/mdsmith/internal/memo"
 	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/pkg/markdown"
 )
@@ -268,23 +269,6 @@ type File struct {
 	MaxInputBytes int64
 }
 
-// memoEntry guards a single Memo key so build runs exactly once even
-// when several rule passes (or concurrent LSP readers) race for the
-// same key. atomic.Bool + mutex is used instead of sync.Once because
-// once.Do takes a function value as a parameter — the closure
-// `func() { e.val = build() }` Memo would pass captures `e` and
-// `build`, both escape-tracking pointers, so it allocates per call.
-// On hot per-File memos (astutil.CollectSectionParagraphs feeds
-// every paragraph-aware rule), that single closure escape is the
-// dominant per-Check allocation the MDS024 budget gate sees. The
-// atomic flag is a double-checked-lock pattern: cheap atomic load
-// on the warm path, mutex-guarded build on the cold path.
-type memoEntry struct {
-	val  any
-	done atomic.Bool
-	mu   sync.Mutex
-}
-
 // Memo returns the value for key, computing it once via build on the
 // first request within this File's lifetime and serving the cached
 // value thereafter. It exists so a rule whose passes would otherwise
@@ -295,41 +279,11 @@ type memoEntry struct {
 // per directive. The File is discarded after each Check, so nothing
 // is cached across files or runs.
 //
-// build is invoked directly (no wrapping closure) so the call adds
-// no per-Memo-call allocation beyond the cold-path memoEntry itself.
-// The warm path checks Load before LoadOrStore for the same reason:
-// LoadOrStore's second argument (&memoEntry{}) is constructed before
-// the call and discarded whenever the key already exists, so a plain
-// LoadOrStore would allocate one on every call regardless of hit or
-// miss.
-//
-// Panic safety mirrors sync.Once: if build panics, the entry is
-// still marked done (via the deferred Store) and the mutex is
-// released (via the deferred Unlock), so the panic propagates
-// without leaving the per-File memo in a deadlocked state.
-// Subsequent calls on the same key serve the zero-value cached
-// result instead of re-running build, matching upstream sync.Once.
+// The slot is a memo.Entry: build runs at most once per key under
+// concurrent readers, the warm path allocates nothing, and a
+// panicking build still marks the key done, matching sync.Once.
 func (f *File) Memo(key string, build func() any) any {
-	if v, ok := f.scratch.Load(key); ok {
-		return memoLoad(v.(*memoEntry), build)
-	}
-	ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
-	return memoLoad(ei.(*memoEntry), build)
-}
-
-// memoLoad runs build at most once for e, then returns the cached
-// value — the double-checked-lock body shared by Memo and MemoFile.
-func memoLoad(e *memoEntry, build func() any) any {
-	if e.done.Load() {
-		return e.val
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if !e.done.Load() {
-		defer e.done.Store(true)
-		e.val = build()
-	}
-	return e.val
+	return memo.Load(&f.scratch, key).Get(build)
 }
 
 // MemoFile is the *File-passing variant of Memo: build receives this
@@ -337,30 +291,10 @@ func memoLoad(e *memoEntry, build func() any) any {
 // whose build needs nothing beyond File data can pass a package-
 // level function value, which avoids the per-call closure allocation
 // the plain `Memo` form forces on every invocation. The hot
-// astutil.CollectSectionParagraphs path is the canonical user.
-//
-// Panic safety matches Memo's contract: defer Unlock + defer
-// done.Store(true) keep the per-entry mutex from leaking a lock and
-// match sync.Once's "panic still marks done" semantics. The warm
-// path checks Load before LoadOrStore for the same reason Memo does.
+// astutil.CollectSectionParagraphs path is the canonical user. Its
+// once-per-key and panic contract matches Memo's.
 func (f *File) MemoFile(key string, build func(*File) any) any {
-	var e *memoEntry
-	if v, ok := f.scratch.Load(key); ok {
-		e = v.(*memoEntry)
-	} else {
-		ei, _ := f.scratch.LoadOrStore(key, &memoEntry{})
-		e = ei.(*memoEntry)
-	}
-	if e.done.Load() {
-		return e.val
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if !e.done.Load() {
-		defer e.done.Store(true)
-		e.val = build(f)
-	}
-	return e.val
+	return memo.GetWith(memo.Load(&f.scratch, key), f, build)
 }
 
 // headingTextCacheKey pairs a heading node with the base offset its

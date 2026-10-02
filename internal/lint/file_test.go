@@ -273,7 +273,7 @@ func TestFile_Memo(t *testing.T) {
 // key on the same File.
 //
 // Before this test, the warm path still paid for the throwaway
-// &memoEntry{} that f.scratch.LoadOrStore's second argument
+// &memo.Entry{} that f.scratch.LoadOrStore's second argument
 // constructs before the call — Go evaluates that argument whether or
 // not the key is already present, and the freshly built entry is
 // discarded on a hit. A Load-first check must run ahead of
