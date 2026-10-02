@@ -131,11 +131,12 @@ func workspaceFromJS(v js.Value) map[string][]byte {
 
 // isRecord reports whether v is a plain JS object: its
 // Object.prototype.toString tag is "[object Object]". JS typeof reports
-// "object" for null, arrays, boxed strings, arguments, and Maps alike,
-// which syscall/js mirrors as js.TypeObject. The tag rejects every one
-// of those, so an array-like's indices never become file paths, and it
-// still accepts an Object.create(null) record and an object from
-// another realm.
+// "object" for arrays, boxed strings, arguments, and Maps alike, which
+// syscall/js mirrors as js.TypeObject (null is js.TypeNull, so the type
+// check alone already rejects it). The tag rejects every one of those,
+// so an array-like's indices never become file paths, and it still
+// accepts an Object.create(null) record and an object from another
+// realm.
 func isRecord(v js.Value) bool {
 	return v.Type() == js.TypeObject &&
 		js.Global().Get("Object").Get("prototype").Get("toString").

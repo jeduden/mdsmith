@@ -49,8 +49,8 @@ func TestWorkspaceFromJS(t *testing.T) {
 	t.Run("non-object yields nil", func(t *testing.T) {
 		assert.Nil(t, workspaceFromJS(js.ValueOf("x")))
 		assert.Nil(t, workspaceFromJS(js.Undefined()))
-		// JS typeof reports "object" for null; the guard must still
-		// reject it.
+		// JS typeof reports "object" for null (syscall/js reports
+		// TypeNull); the guard must still reject it.
 		assert.Nil(t, workspaceFromJS(js.Null()))
 		assert.Nil(t, workspaceFromJS(js.ValueOf(3)))
 	})

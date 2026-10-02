@@ -70,7 +70,8 @@ Implemented as planned, with three additions. An
 `Object.prototype.toString` tag of `[object Object]`),
 so a boxed `String`, `arguments`, or a `Map` rejects as
 an array does. It also makes `createSession` reject an
-array or `null` as the options object itself. A present
+array as the options object itself (`null` already
+rejected, as `syscall/js` reports it as `TypeNull`). A present
 `null` workspace rejects too; only an absent
 (`undefined`) workspace means an empty one. The same
 rule now covers `configYAML`: absent means the default
