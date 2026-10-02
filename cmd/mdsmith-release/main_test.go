@@ -915,16 +915,7 @@ func TestBenchCheckCommand(t *testing.T) {
 // everything fn wrote to stdout.
 func captureStdout(t *testing.T, fn func() int) string {
 	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
-	fn()
-	_ = w.Close()
-	os.Stdout = old
-	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
-	return buf.String()
+	return captureFile(t, &os.Stdout, func() { fn() })
 }
 
 // TestRunSelectAuditSarifs drives the select-audit-sarifs subcommand
@@ -979,22 +970,36 @@ func TestRunTestJSWasm(t *testing.T) {
 
 // captureStderr runs fn with os.Stderr redirected to a pipe and returns
 // everything written to it, including by child processes that inherit
-// os.Stderr. The pipe is drained concurrently so a chatty fn cannot
-// block on a full pipe buffer.
+// os.Stderr.
 func captureStderr(t *testing.T, fn func()) string {
 	t.Helper()
-	old := os.Stderr
+	return captureFile(t, &os.Stderr, fn)
+}
+
+// captureFile runs fn with *target (os.Stdout or os.Stderr) redirected
+// to a pipe and returns everything written to it. The pipe is drained
+// concurrently so a chatty fn cannot block on a full pipe buffer, and
+// *target is restored even if fn panics or calls t.FailNow.
+func captureFile(t *testing.T, target **os.File, fn func()) string {
+	t.Helper()
+	old := *target
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
-	os.Stderr = w
-	done := make(chan string)
+	// Buffered so the reader never blocks when fn panics and nothing
+	// receives.
+	done := make(chan string, 1)
 	go func() {
 		var buf bytes.Buffer
 		_, _ = buf.ReadFrom(r)
 		done <- buf.String()
 	}()
-	fn()
-	os.Stderr = old
-	_ = w.Close()
+	func() {
+		*target = w
+		defer func() {
+			*target = old
+			_ = w.Close()
+		}()
+		fn()
+	}()
 	return <-done
 }
