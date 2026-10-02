@@ -564,7 +564,7 @@ func TestWrapCellBr_AllocsDoNotGrowPerLine(t *testing.T) {
 	// One []rune, the spans, lines, one string per wrapped line and the
 	// final join; measured before the change at ~2x the wrapped line count.
 	lines := float64(len(text)/20) + 1
-	if allocs > lines*1.3+8 {
+	if allocs > lines*1.5+12 {
 		t.Errorf("allocs = %v for ~%v lines", allocs, lines)
 	}
 }

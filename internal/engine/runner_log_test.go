@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"testing"
 
 	vlog "github.com/jeduden/mdsmith/internal/log"
@@ -54,5 +55,26 @@ func TestRunner_log_PrefersConfiguredLogger(t *testing.T) {
 	r := &Runner{Logger: configured}
 	if got := r.log(); got != configured {
 		t.Fatalf("(*Runner).log() = %p, want the configured logger %p", got, configured)
+	}
+}
+
+// logFile must not box path when logging is off; see
+// docs/development/high-performance-go.md, "Allocations".
+func TestLogFile_DisabledAllocatesNothing(t *testing.T) {
+	if testing.Short() || raceEnabled {
+		t.Skip("alloc gate skipped under -short and -race")
+	}
+	l := &vlog.Logger{}
+	path := "docs/a.md"
+	if allocs := testing.AllocsPerRun(100, func() { logFile(l, path) }); allocs != 0 {
+		t.Errorf("allocs = %v, want 0", allocs)
+	}
+}
+
+func TestLogFile_EnabledWritesLine(t *testing.T) {
+	var buf bytes.Buffer
+	logFile(&vlog.Logger{Enabled: true, W: &buf}, "a.md")
+	if got := buf.String(); got != "file: a.md\n" {
+		t.Errorf("got %q", got)
 	}
 }
