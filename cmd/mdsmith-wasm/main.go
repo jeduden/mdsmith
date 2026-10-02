@@ -332,11 +332,12 @@ func proxyInvalidate(sess *mdsmith.Session) js.Func {
 // methods, a dispose reference taken before that first call points at
 // a released func once it has run (see plan 2610021237).
 //
-// On a frozen session object the Sets are silently ignored, so proxy
-// still points at this func. dispose then keeps it registered, and the
-// nil guard turns a second session.dispose() into a no-op instead of a
-// call to a released func. The other methods of a frozen session still
-// point at their released funcs.
+// On a frozen session object (or one whose dispose is read-only) the
+// Set is silently ignored, so proxy still points at this func. dispose
+// then keeps it registered, and the nil guard turns a second
+// session.dispose() into a no-op instead of a call to a released func.
+// The other methods of a frozen session still point at their released
+// funcs.
 //
 // dispose drops its references before it runs any JS, so a re-entrant
 // call (from a JS setter the caller put on the session object) returns
