@@ -9,12 +9,15 @@ import (
 	"bytes"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
-	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 // CharAt returns the fence character at the given position, skipping
 // leading spaces. Returns 0 when no fence character (` or ~) follows.
+// It reads the character of a line the parser already opened a fence
+// on and decides no fence-ness itself, so it stays a plain byte read
+// rather than an mdfence call.
 func CharAt(src []byte, pos int) byte {
 	for pos < len(src) && src[pos] == ' ' {
 		pos++
@@ -40,56 +43,56 @@ func CloseLine(f *lint.File, fcb *ast.FencedCodeBlock) int {
 
 // OpenLineRange returns the byte range [start, end) of the opening
 // fence line (without trailing newline).
+//
+// A parsed block carries its opening position (Node.Pos, the offset of
+// the fence run), so the line around it is the opening line in every
+// layout: inside a list item or block quote, and for an empty fence
+// with no info string, which goldmark gives neither an info nor a
+// content segment. The remaining branches serve only blocks built by
+// hand, which have no position.
 func OpenLineRange(src []byte, fcb *ast.FencedCodeBlock) (int, int) {
+	if p := fcb.Pos(); p >= 0 && p <= len(src) {
+		return lineAround(src, p)
+	}
 	if fcb.Info != nil {
-		// Walk back from info start to find line start
-		lineStart := fcb.Info.Segment.Start
-		for lineStart > 0 && src[lineStart-1] != '\n' {
-			lineStart--
-		}
-		// Line end is the end of the info segment (there may be trailing space)
-		lineEnd := fcb.Info.Segment.Stop
-		for lineEnd < len(src) && src[lineEnd] != '\n' {
-			lineEnd++
-		}
-		return lineStart, lineEnd
+		return lineAround(src, fcb.Info.Segment.Start)
 	}
 	if fcb.Lines().Len() > 0 {
-		firstContentStart := fcb.Lines().At(0).Start
-		// Walk backwards past the newline ending the opening fence line
-		pos := firstContentStart
+		// The opening fence line ends just before the first content line.
+		pos := fcb.Lines().At(0).Start
 		if pos > 0 && src[pos-1] == '\n' {
 			pos--
 		}
-		lineEnd := pos
-		lineStart := pos
-		for lineStart > 0 && src[lineStart-1] != '\n' {
-			lineStart--
-		}
-		return lineStart, lineEnd
+		return lineAround(src, pos)
 	}
-	// Empty code block with no info - scan from previous sibling or start of file
-	searchStart := 0
-	if prev := fcb.PreviousSibling(); prev != nil {
-		searchStart = lastByteOfNodeStop(src, prev)
-	}
-	pos := searchStart
-	for pos < len(src) {
-		lineStart := pos
-		lineEnd := pos
-		for lineEnd < len(src) && src[lineEnd] != '\n' {
-			lineEnd++
-		}
-		line := bytes.TrimLeft(src[lineStart:lineEnd], " ")
-		if bytes.HasPrefix(line, []byte("```")) || bytes.HasPrefix(line, []byte("~~~")) {
-			return lineStart, lineEnd
-		}
-		if lineEnd >= len(src) {
-			break
+	// No position, info, or content: the first line mdfence reads as an
+	// opening fence.
+	for pos := 0; pos < len(src); {
+		lineEnd := pos + lineLen(src[pos:])
+		if _, ok := mdfence.Open(src[pos:lineEnd]); ok {
+			return pos, lineEnd
 		}
 		pos = lineEnd + 1
 	}
 	return len(src), len(src)
+}
+
+// lineAround returns the byte range [start, end) of the line holding
+// offset p, without its trailing newline.
+func lineAround(src []byte, p int) (int, int) {
+	start := p
+	for start > 0 && src[start-1] != '\n' {
+		start--
+	}
+	return start, p + lineLen(src[p:])
+}
+
+// lineLen returns the length of b's first line, without its newline.
+func lineLen(b []byte) int {
+	if i := bytes.IndexByte(b, '\n'); i >= 0 {
+		return i
+	}
+	return len(b)
 }
 
 // CloseLineRange returns the byte range [start, end) of the closing
@@ -111,14 +114,4 @@ func CloseLineRange(src []byte, fcb *ast.FencedCodeBlock, openEnd int) (int, int
 		closingEnd++
 	}
 	return closingStart, closingEnd
-}
-
-func lastByteOfNodeStop(src []byte, n ast.Node) int {
-	if block, ok := n.(interface{ Lines() *text.Segments }); ok {
-		lines := block.Lines()
-		if lines.Len() > 0 {
-			return lines.At(lines.Len() - 1).Stop
-		}
-	}
-	return 0
 }

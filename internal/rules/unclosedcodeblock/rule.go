@@ -1,9 +1,8 @@
 package unclosedcodeblock
 
 import (
-	"bytes"
-
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/fencepos"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -99,8 +98,10 @@ func hasClosingFence(f *lint.File, fcb *ast.FencedCodeBlock) bool {
 		return true
 	}
 
-	fenceChar := fencepos.CharAt(f.Source, openStart)
-	if fenceChar == 0 {
+	// The opening line read from column 0: a fence behind a list marker
+	// or quote prefix is no opener here, and is not judged.
+	open, ok := mdfence.Open(f.Source[openStart:openEnd])
+	if !ok {
 		return true
 	}
 
@@ -115,9 +116,10 @@ func hasClosingFence(f *lint.File, fcb *ast.FencedCodeBlock) bool {
 	if closeStart == closeEnd {
 		return false
 	}
-	closingLine := bytes.TrimLeft(f.Source[closeStart:closeEnd], " ")
-	minFence := []byte{fenceChar, fenceChar, fenceChar}
-	return bytes.HasPrefix(closingLine, minFence)
+	// The line after the content closes the block only when mdfence
+	// reads it as the opener's closer; a container's end can also cut a
+	// fence short, leaving a non-closer there.
+	return mdfence.Close(f.Source[closeStart:closeEnd], open)
 }
 
 // enteringKinds is the static node-kind interest CheckNode declares

@@ -248,3 +248,19 @@ func TestHasClosingFence_ClosingLineEmpty(t *testing.T) {
 		assert.Equal(t, "unclosed fenced code block", d.Message)
 	}
 }
+
+// TestHasClosingFence_ContainerEndIsNoCloser pins that the line after a
+// fence a list item's end cut short counts as a closer only when mdfence
+// reads it as one: "```js" carries an info string, so it opens a new
+// fence rather than closing the item's.
+func TestHasClosingFence_ContainerEndIsNoCloser(t *testing.T) {
+	src := []byte("- a\n\n  ```\n  x\n```js\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	diags := (&Rule{}).Check(f)
+	lines := make([]int, len(diags))
+	for i, d := range diags {
+		lines[i] = d.Line
+	}
+	assert.Equal(t, []int{3, 5}, lines)
+}

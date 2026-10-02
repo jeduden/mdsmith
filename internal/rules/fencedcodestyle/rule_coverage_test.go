@@ -37,6 +37,17 @@ func TestFix_EmptyTildeBlockAfterParagraph(t *testing.T) {
 	assert.Equal(t, "paragraph\n\n```\n```\n", string(result))
 }
 
+// TestFix_EmptyBlockAfterList pins that the empty info-less fence
+// after a list is rewritten on its own lines, not on the first
+// fence-looking line of the file.
+func TestFix_EmptyBlockAfterList(t *testing.T) {
+	src := []byte("~~~js\nx\n~~~\n\n- item\n\n~~~\n~~~\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "backtick"}
+	assert.Equal(t, "```js\nx\n```\n\n- item\n\n```\n```\n", string(r.Fix(f)))
+}
+
 // --- Defensive guards: synthetic FCB with no resolvable open fence ---
 //
 // Real goldmark output never produces a FencedCodeBlock without a
@@ -55,10 +66,9 @@ func newFileWithSyntheticFCB(t *testing.T, src []byte, fcb *ast.FencedCodeBlock)
 }
 
 func TestCheck_SyntheticFCB_OpenStartPastSource(t *testing.T) {
-	// Source has no fence. The synthetic FCB has no Info, no Lines, and
-	// no previous sibling (the document is empty), so OpenLineRange
-	// scans from position 0 and returns the (len(src), len(src))
-	// sentinel. Check must hit the `openStart >= len(src)` guard and
+	// Source has no fence. The synthetic FCB has no position, Info, or
+	// Lines, so OpenLineRange scans from position 0 and returns the
+	// (len(src), len(src)) sentinel. Check must hit the `openStart >= len(src)` guard and
 	// skip the block silently.
 	fcb := ast.NewFencedCodeBlock(nil)
 	f := newFileWithSyntheticFCB(t, []byte(""), fcb)

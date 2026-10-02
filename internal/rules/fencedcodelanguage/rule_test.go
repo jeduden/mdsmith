@@ -56,6 +56,9 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		[]byte("# H\n\n```xy"),
 		[]byte("# H\n\n```x\n"),
 		[]byte("# H\n\n```x\ncode\n```x"),
+		// An empty info-less fence after a list: the AST path locates
+		// its opening line from the node, not a forward scan.
+		[]byte("```js\nx\n```\n\n- item\n\n```\n```\n"),
 	}
 	for _, src := range srcs {
 		astFile, err := lint.NewFile("f.md", src)
