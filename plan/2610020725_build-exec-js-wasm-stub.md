@@ -97,8 +97,9 @@ not catch this. The wasm job in
     pipes, so `cmd.Wait` returns when the leader exits.
     A survivor that holds a pipe now costs one bounded
     drain wait, not two. Its read ends are then closed,
-    so no goroutine or fd leaks, and output after return
-    is dropped. A disposed wasm session's methods keep
+    so no goroutine or fd leaks on Unix or Windows (plan9
+    cannot cancel a pending read), and output after
+    return is dropped. A disposed wasm session's methods keep
     their shape: async ones reject with "session
     disposed". The spike's guest/host ABI moves to a
     tested `abi` package that decodes an output address

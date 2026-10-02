@@ -251,7 +251,10 @@ session's caches and workspace can be freed. Each method keeps its
 shape afterwards: `check`, `fix`, `kinds`, `rename`, and `move` return
 a `Promise` that rejects with `Error("session disposed")`.
 `capabilities()` returns `[]`, and `invalidate()` does nothing. A
-second `dispose()` is a no-op.
+second `dispose()` is a no-op. These stand-ins are reached through the
+session object only. A method reference taken before `dispose()` (such
+as `const { check } = session`) points at a released function: it
+returns `undefined` and logs "call to released function".
 
 `createSession` rejects when `opts` is not a plain object. It also
 rejects when `opts.workspace` is present but is not a plain object of

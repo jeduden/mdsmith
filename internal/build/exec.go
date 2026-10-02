@@ -117,8 +117,13 @@ type runOpts struct {
 // the leader directly and waits at most reapWait again. It then waits
 // at most reapWait for captured output to drain and closes its end of
 // the pipes (recipeOutput.abandon), so a survivor that holds a captured
-// pipe open can neither hang mdsmith nor pin a goroutine or fd; output
-// written after runRecipe returns is dropped, never forwarded.
+// pipe open cannot hang mdsmith. On Unix and Windows the close also
+// ends the copy goroutine and frees the fd; plan9 cannot cancel a
+// blocked read, so there they last until the survivor's next write or
+// exit. Captured output written after runRecipe returns is dropped,
+// never forwarded. A writer that is an *os.File (including the nil
+// default, os.Stderr) is not captured: the child writes to it
+// directly, so a survivor can still reach it after the return.
 //
 // It returns the process exit code, whether the run timed out, and any
 // error. On success it returns (0, false, nil). On non-zero exit it

@@ -25,8 +25,12 @@ type recipeOutput struct {
 	copies   sync.WaitGroup
 	drained  chan struct{} // closed when every copy goroutine ended
 
-	errMu   sync.Mutex
-	copyErr error // first error writing to a caller's writer
+	errMu sync.Mutex
+	// copyErr is the first error a copy goroutine hit: a failed write
+	// to a caller's writer, or a read error. After abandon it holds
+	// the closed-file read error, so only read it on a run that
+	// drained without abandon.
+	copyErr error
 }
 
 // attach sets cmd.Stdout and cmd.Stderr, creating a pipe and starting
@@ -106,18 +110,21 @@ func (ro *recipeOutput) closeChildEnds() {
 	}
 }
 
-// err returns the first error a copy goroutine hit writing to a
-// caller's writer. Read it only after drained is closed.
+// err returns the first error a copy goroutine hit (see copyErr).
+// Read it only after drained is closed, and never after abandon.
 func (ro *recipeOutput) err() error {
 	ro.errMu.Lock()
 	defer ro.errMu.Unlock()
 	return ro.copyErr
 }
 
-// abandon closes every read end. A copy goroutine blocked in Read
-// returns, and a survivor still holding a write end gets EPIPE on its
-// next write. A copy goroutine that already read data may still pass
-// it to the gate; the gate's close (on runRecipe's return) drops it.
+// abandon closes every read end. On Unix and Windows a copy goroutine
+// blocked in Read returns, and a survivor still holding a write end
+// gets EPIPE on its next write. plan9 cannot cancel a pending read, so
+// there the goroutine and fd stay until the survivor's next write or
+// exit, and that write succeeds. A copy goroutine that already read
+// data may still pass it to the gate; the gate's close (on runRecipe's
+// return) drops it.
 func (ro *recipeOutput) abandon() {
 	for _, f := range ro.readers {
 		_ = f.Close()
