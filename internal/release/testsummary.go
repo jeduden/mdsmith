@@ -64,10 +64,10 @@ type testEvent struct {
 // srcRoot is the module root whose *_test.go files classify each
 // executed test by file location.
 func SummarizeTestRun(srcRoot string, r io.Reader, logOut io.Writer) (TestCounts, error) {
-	layers, err := scanTestLayers(srcRoot)
-	if err != nil {
-		return TestCounts{}, err
-	}
+	// A scan failure is reported only after the stream is drained and
+	// its log written: returning early would break the pipe of the
+	// go test feeding r and lose the CI log.
+	layers, scanErr := scanTestLayers(srcRoot)
 
 	// results records the layer of every (pkg,test) that reached a
 	// terminal action; hasChild marks every test that owns a subtest
@@ -101,6 +101,9 @@ func SummarizeTestRun(srcRoot string, r io.Reader, logOut io.Writer) (TestCounts
 	log.flush()
 	if err := sc.Err(); err != nil {
 		return TestCounts{}, fmt.Errorf("reading test json: %w", err)
+	}
+	if scanErr != nil {
+		return TestCounts{}, scanErr
 	}
 	return tallyCounts(results, hasChild), nil
 }

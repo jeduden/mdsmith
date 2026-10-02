@@ -207,6 +207,26 @@ func TestSummarizeTestRunErrorsWithoutModule(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestSummarizeTestRunScanErrorStillStreamsLog pins that a source-scan
+// failure (here an unparsable _test.go that go test never compiles,
+// such as one behind `//go:build ignore`) is still reported, but only
+// after the whole -json stream has been read and its terse log
+// written: the go test feeding stdin must not die on a broken pipe
+// and the CI log must not be lost.
+func TestSummarizeTestRunScanErrorStillStreamsLog(t *testing.T) {
+	root := writeTestModule(t)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "broken_test.go"),
+		[]byte("//go:build ignore\n\npackage m\nfunc TestX(\n"), 0o644))
+	s := evLine(t, "output", "example.com/m/foo", "", "FAIL\texample.com/m/foo\t0.01s\n")
+	r := strings.NewReader(s)
+
+	var log bytes.Buffer
+	_, err := SummarizeTestRun(root, r, &log)
+	assert.ErrorContains(t, err, "broken_test.go")
+	assert.Contains(t, log.String(), "FAIL\texample.com/m/foo")
+	assert.Zero(t, r.Len(), "stdin fully drained")
+}
+
 // TestSummarizeTestRunLogHidesPassShowsFail pins the terse-log
 // contract: a passing test's output (including a noisy multi-line
 // dump like a CLI usage block) is hidden, while a failing test's
