@@ -14,6 +14,10 @@ import (
 // The js.Func backing the executor is released inside the executor so
 // it is freed once Promise construction calls it (Promise executors run
 // synchronously during construction).
+//
+// A JS exception the executor raises (a js.Error panic) rejects the
+// Promise with that exception (see rejectOnJSError), so no executor
+// needs its own guard.
 func newPromise(executor func(resolve, reject func(any))) js.Value {
 	var handler js.Func
 	handler = funcOf(func(_ js.Value, pArgs []js.Value) any {
@@ -26,6 +30,7 @@ func newPromise(executor func(resolve, reject func(any))) js.Value {
 		// completion synchronously within Promise construction for
 		// our synchronous engine calls.
 		defer releaseFunc(handler)
+		defer rejectOnJSError(reject)
 		executor(resolve, reject)
 		return js.Undefined()
 	})
@@ -51,13 +56,15 @@ func toJS(v any) js.Value {
 	return js.Global().Get("JSON").Call("parse", string(data))
 }
 
-// rejectOnJSError, deferred in a Promise executor, turns a JS exception
-// that a syscall/js Call, Invoke, or New raised as a js.Error panic into
-// a rejection with that exception. Inspecting a caller's object can
-// throw (a revoked Proxy, a Proxy trap that throws), and an unrecovered
-// panic in a js.FuncOf callback ends the Go program and every session
-// with it. wasm_exec.js caught the exception before Go panicked, so the
-// runtime is intact. Any other panic is re-raised unchanged.
+// rejectOnJSError, which newPromise defers around every executor, turns
+// a JS exception that a syscall/js Call, Invoke, or New raised as a
+// js.Error panic into a rejection with that exception. Inspecting a
+// caller's object can throw (a revoked Proxy, a Proxy trap that throws),
+// and an unrecovered panic in a js.FuncOf callback ends the Go program
+// and every session with it. wasm_exec.js caught the exception before Go
+// panicked, so the runtime is intact. Any other panic is re-raised
+// unchanged. TinyGo does not implement recover() on WebAssembly, so in a
+// TinyGo build the exception still ends the program.
 func rejectOnJSError(reject func(any)) {
 	r := recover()
 	if r == nil {

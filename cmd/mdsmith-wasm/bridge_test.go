@@ -3,12 +3,15 @@
 package main
 
 import (
+	"errors"
 	"maps"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"syscall/js"
 	"testing"
 
+	"github.com/jeduden/mdsmith/pkg/mdsmith"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -183,6 +186,44 @@ func awaitPromise(t *testing.T, p js.Value) (js.Value, bool) {
 	return r.v, r.rejected
 }
 
+// jsValue returns v as a js.Value, failing t when v is anything else,
+// so a js.FuncOf-shaped result (typed any) of the wrong type fails the
+// test cleanly instead of panicking the js/wasm test binary. Call it
+// only from the test goroutine, never inside a JS callback.
+func jsValue(t helperT, v any) js.Value {
+	t.Helper()
+	jv, ok := v.(js.Value)
+	require.True(t, ok, "got %T, want js.Value", v)
+	return jv
+}
+
+// helperT is the part of *testing.T that jsValue uses.
+type helperT interface {
+	require.TestingT
+	Helper()
+}
+
+// recordingT is a helperT that records a failure; FailNow ends the
+// calling goroutine as *testing.T's does.
+type recordingT struct{ failed bool }
+
+func (r *recordingT) Errorf(string, ...any) { r.failed = true }
+func (r *recordingT) FailNow()              { r.failed = true; runtime.Goexit() }
+func (r *recordingT) Helper()               {}
+
+func TestJSValue(t *testing.T) {
+	want := js.ValueOf("x")
+	assert.True(t, jsValue(t, want).Equal(want))
+	inner := &recordingT{}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		jsValue(inner, "not a js.Value")
+	}()
+	<-done
+	assert.True(t, inner.failed, "a non-js.Value fails t")
+}
+
 func TestCreateSession(t *testing.T) {
 	obj := func(m map[string]any) js.Value { return js.ValueOf(m) }
 	const (
@@ -211,7 +252,7 @@ func TestCreateSession(t *testing.T) {
 	}
 	for _, tt := range rejects {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
-			v, rejected := awaitPromise(t, createSession(js.Undefined(), tt.args).(js.Value))
+			v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), tt.args)))
 			require.True(t, rejected, "promise must reject")
 			assert.Equal(t, tt.wantMsg, v.Get("message").String())
 		})
@@ -227,7 +268,7 @@ func TestCreateSession(t *testing.T) {
 	}
 	for _, tt := range resolves {
 		t.Run("resolves "+tt.name, func(t *testing.T) {
-			v, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{obj(tt.opts)}).(js.Value))
+			v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{obj(tt.opts)})))
 			require.False(t, rejected, "promise must resolve: %v", v)
 			assert.Equal(t, js.TypeFunction, v.Get("check").Type())
 			v.Call("dispose")
@@ -258,7 +299,7 @@ func TestCreateSession_RejectsThrowingObjects(t *testing.T) {
 		{"throwing ownKeys workspace", obj(map[string]any{"workspace": throwingKeys})},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			v, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{tt.opts}).(js.Value))
+			v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{tt.opts})))
 			require.True(t, rejected, "promise must reject")
 			assert.True(t, v.InstanceOf(js.Global().Get("TypeError")), "rejects with the thrown TypeError")
 		})
@@ -270,7 +311,7 @@ func TestCreateSession_RejectsThrowingObjects(t *testing.T) {
 func newTestProxy(t *testing.T) js.Value {
 	t.Helper()
 	opts := js.ValueOf(map[string]any{})
-	v, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{opts}).(js.Value))
+	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
 	require.False(t, rejected, "promise must resolve: %v", v)
 	return v
 }
@@ -291,6 +332,44 @@ func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
 	assert.Equal(t, sessionMethodNames(), got)
 }
 
+// TestMethodTable_PanicsOnIncompleteEntry checks that methodTable
+// rejects an entry with a nil call or disposed func, naming it, so a
+// hand-written methodImpl literal fails at package init rather than
+// panicking inside a js.FuncOf callback on its first call. A complete
+// table comes back unchanged.
+func TestMethodTable_PanicsOnIncompleteEntry(t *testing.T) {
+	ok := voidMethod(func(*mdsmith.Session, []js.Value) {})
+	assert.PanicsWithValue(t, "methodTable: x has no call func", func() {
+		methodTable(map[string]methodImpl{"x": {disposed: ok.disposed}})
+	})
+	assert.PanicsWithValue(t, "methodTable: x has no disposed func", func() {
+		methodTable(map[string]methodImpl{"x": {call: ok.call}})
+	})
+	got := methodTable(map[string]methodImpl{"x": ok})
+	require.Contains(t, got, "x")
+	assert.NotNil(t, got["x"].call)
+}
+
+// asyncMethodNames lists the session methods engine-api.md documents
+// as returning a Promise. Tests that check the "session disposed"
+// rejection range over it; TestAsyncMethodNames_MatchTable keeps it in
+// step with sharedMethodImpls.
+var asyncMethodNames = []string{"check", "fix", "kinds", "rename", "move"}
+
+// TestAsyncMethodNames_MatchTable checks that a table entry's disposed
+// result is a Promise exactly when its name is in asyncMethodNames, so
+// a new async method cannot skip the tests that range over that list.
+func TestAsyncMethodNames_MatchTable(t *testing.T) {
+	for name, impl := range sharedMethodImpls {
+		isPromise := settledShape(t, impl.disposed()) == "promise"
+		assert.Equal(t, slices.Contains(asyncMethodNames, name), isPromise,
+			"%s: disposed result is a Promise iff it is in asyncMethodNames", name)
+	}
+	for _, name := range asyncMethodNames {
+		assert.Contains(t, sharedMethodImpls, name)
+	}
+}
+
 // TestNewSessionProxy_DisposeKeepsMethodShapes checks that after
 // dispose() every method keeps its return shape: async methods reject
 // with "session disposed", capabilities() is empty, invalidate() does
@@ -306,28 +385,212 @@ func TestNewSessionProxy_DisposeKeepsMethodShapes(t *testing.T) {
 	assertDisposedShapes(t, proxy)
 }
 
+// methodSampleArgs holds well-formed arguments for each forwarding
+// session method, so a test can call every method in sharedMethodImpls
+// on a live session and reach its real path, not only its argument
+// check.
+var methodSampleArgs = map[string][]any{
+	"check":        {"a.md", "# A\n"},
+	"fix":          {"a.md", "# A\n"},
+	"kinds":        {"a.md"},
+	"rename":       {"a.md", "# A\n", "", "A", "B"},
+	"move":         {"a.md", "b.md"},
+	"capabilities": {},
+	"invalidate":   {"a.md"},
+}
+
 // assertDisposedShapes checks the return shape of every method of a
 // disposed session object.
 func assertDisposedShapes(t *testing.T, proxy js.Value) {
 	t.Helper()
-	for _, m := range [][]any{
-		{"check", "a.md", "# A\n"},
-		{"fix", "a.md", "# A\n"},
-		{"kinds", "a.md"},
-		{"rename", "a.md", "1", "B", ""},
-		{"move", "a.md", "b.md"},
-	} {
-		p := proxy.Call(m[0].(string), m[1:]...)
-		require.Equal(t, js.TypeObject, p.Type(), "%s after dispose returns a Promise", m[0])
+	for _, name := range asyncMethodNames {
+		p := proxy.Call(name, methodSampleArgs[name]...)
+		require.Equal(t, js.TypeObject, p.Type(), "%s after dispose returns a Promise", name)
 		v, rejected := awaitPromise(t, p)
-		assert.True(t, rejected, "%s after dispose rejects", m[0])
-		assert.Equal(t, "session disposed", v.Get("message").String(), m[0])
+		assert.True(t, rejected, "%s after dispose rejects", name)
+		assert.Equal(t, "session disposed", v.Get("message").String(), name)
 	}
 	caps := proxy.Call("capabilities")
 	require.True(t, caps.InstanceOf(js.Global().Get("Array")), "capabilities after dispose")
 	assert.Equal(t, 0, caps.Length())
 	assert.True(t, proxy.Call("invalidate", "a.md").IsUndefined(), "invalidate after dispose")
 	assert.True(t, proxy.Call("dispose").IsUndefined(), "second dispose")
+}
+
+// TestNewSessionProxy_DisposedShapeMatchesLive checks, for every method
+// in sharedMethodImpls, that a disposed session returns a result of the
+// same shape (Promise, array, or other JS type) as the live method. A
+// synchronous method that falls back to the rejecting-Promise result
+// after dispose fails here, and so does one whose disposed result is
+// undefined where the live one is an array. Each method needs an entry
+// in methodSampleArgs, so a new method cannot skip the check. A method
+// left off the session object fails cleanly instead of panicking the
+// test binary.
+func TestNewSessionProxy_DisposedShapeMatchesLive(t *testing.T) {
+	for name := range sharedMethodImpls {
+		args, ok := methodSampleArgs[name]
+		require.True(t, ok, "%s needs sample args in methodSampleArgs", name)
+		proxy := newTestProxy(t)
+		if !assert.Equal(t, js.TypeFunction, proxy.Get(name).Type(), "%s is not on the session object", name) {
+			proxy.Call("dispose")
+			continue
+		}
+		live := settledShape(t, proxy.Call(name, args...))
+		proxy.Call("dispose")
+		disposed := settledShape(t, proxy.Call(name, args...))
+		assert.Equal(t, live, disposed, "%s: result shape after dispose", name)
+	}
+}
+
+// settledShape names the shape of a method result: "promise" for a
+// Promise, "array" for an array, and otherwise its JS type, such as
+// "undefined". A Promise is awaited first, so its executor and
+// callbacks finish before the next call.
+func settledShape(t *testing.T, v js.Value) string {
+	t.Helper()
+	switch {
+	case v.InstanceOf(js.Global().Get("Promise")):
+		awaitPromise(t, v)
+		return "promise"
+	case js.Global().Get("Array").Call("isArray", v).Bool():
+		return "array"
+	default:
+		return v.Type().String()
+	}
+}
+
+func TestAsyncMethod(t *testing.T) {
+	// fn runs inside a Promise executor, a JS callback, where t.Fatal
+	// would block on the JS event loop and hang the suite; record the
+	// call and assert after the Promise settles instead.
+	t.Run("resolves the value as JS", func(t *testing.T) {
+		var gotArgs []js.Value
+		m := asyncMethod(func(_ *mdsmith.Session, args []js.Value) (any, error) {
+			gotArgs = args
+			return map[string]any{"n": 1}, nil
+		})
+		v, rejected := awaitPromise(t, m.call(nil, []js.Value{js.ValueOf("x")}))
+		require.False(t, rejected)
+		assert.Equal(t, 1, v.Get("n").Int())
+		require.Len(t, gotArgs, 1)
+		assert.Equal(t, "x", gotArgs[0].String())
+	})
+	t.Run("rejects with the error message", func(t *testing.T) {
+		m := asyncMethod(func(*mdsmith.Session, []js.Value) (any, error) {
+			return nil, errors.New("boom")
+		})
+		v, rejected := awaitPromise(t, m.call(nil, nil))
+		require.True(t, rejected)
+		assert.Equal(t, "boom", v.Get("message").String())
+	})
+	// That fn never runs after dispose is sharedFunc's job; see
+	// TestSharedFunc.
+	t.Run("disposed result rejects", func(t *testing.T) {
+		m := asyncMethod(func(*mdsmith.Session, []js.Value) (any, error) {
+			return nil, nil
+		})
+		v, rejected := awaitPromise(t, m.disposed())
+		require.True(t, rejected)
+		assert.Equal(t, disposedAsyncReason, v.Get("message").String())
+	})
+	// A JS exception fn raises (syscall/js panics with js.Error) must
+	// reject the Promise, as in createSession, rather than end the Go
+	// program and every session with it.
+	t.Run("rejects with a thrown JS exception", func(t *testing.T) {
+		m := asyncMethod(func(*mdsmith.Session, []js.Value) (any, error) {
+			js.Global().Get("JSON").Call("parse", "{")
+			return nil, nil
+		})
+		v, rejected := awaitPromise(t, m.call(nil, nil))
+		require.True(t, rejected)
+		assert.True(t, v.InstanceOf(js.Global().Get("SyntaxError")), "rejects with the thrown SyntaxError")
+	})
+}
+
+// TestProxyArgErrors checks that each async proxy rejects bad arguments
+// with its package-level sentinel, so a bad call allocates no new
+// error, and that the sentinel names the method's signature. The
+// argument check runs before the session is used, so sess is nil.
+func TestProxyArgErrors(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		fn   func(*mdsmith.Session, []js.Value) (any, error)
+		want error
+		msg  string
+	}{
+		{"check", proxyCheck, errCheckArgs, "check(uri, src) requires two string arguments"},
+		{"fix", proxyFix, errFixArgs, "fix(uri, src) requires two string arguments"},
+		{"kinds", proxyKinds, errKindsArgs, "kinds(uri) requires a string argument"},
+		{"rename", proxyRename, errRenameArgs, "rename(uri, source, as, old, new) requires five string arguments"},
+		{"move", proxyMove, errMoveArgs, "move(src, dst) requires two string arguments"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.fn(nil, []js.Value{js.ValueOf(1)})
+			assert.Same(t, tt.want, err)
+			assert.EqualError(t, err, tt.msg)
+		})
+	}
+}
+
+func TestStringListMethod(t *testing.T) {
+	m := stringListMethod(func(*mdsmith.Session, []js.Value) []string {
+		return []string{"a", "b"}
+	})
+	live := m.call(nil, nil)
+	require.Equal(t, "array", settledShape(t, live))
+	assert.Equal(t, 2, live.Length())
+	assert.Equal(t, "b", live.Index(1).String())
+
+	gone := m.disposed()
+	require.Equal(t, "array", settledShape(t, gone))
+	assert.Equal(t, 0, gone.Length())
+}
+
+// TestMethodConstructors_PanicOnNilFn checks that each constructor
+// rejects a nil fn when the table is built (package init), so an entry
+// such as asyncMethod(nil) fails at startup with a named cause instead
+// of on the first live call, inside a js.FuncOf callback.
+func TestMethodConstructors_PanicOnNilFn(t *testing.T) {
+	assert.PanicsWithValue(t, "asyncMethod: nil fn", func() { asyncMethod(nil) })
+	assert.PanicsWithValue(t, "stringListMethod: nil fn", func() { stringListMethod(nil) })
+	assert.PanicsWithValue(t, "voidMethod: nil fn", func() { voidMethod(nil) })
+}
+
+func TestVoidMethod(t *testing.T) {
+	calls := 0
+	m := voidMethod(func(*mdsmith.Session, []js.Value) { calls++ })
+	assert.True(t, m.call(nil, nil).IsUndefined())
+	assert.Equal(t, 1, calls)
+	assert.True(t, m.disposed().IsUndefined())
+	assert.Equal(t, 1, calls, "disposed result must not run fn")
+}
+
+// TestDisposedReject checks that each call returns a new Promise that
+// rejects with Error("session disposed").
+func TestDisposedReject(t *testing.T) {
+	p, q := disposedReject(), disposedReject()
+	assert.False(t, p.Equal(q), "a fresh Promise per call")
+	// Await both, so neither is left an unhandled rejection.
+	for _, pr := range []js.Value{p, q} {
+		v, rejected := awaitPromise(t, pr)
+		require.True(t, rejected)
+		assert.True(t, v.InstanceOf(js.Global().Get("Error")))
+		assert.Equal(t, disposedAsyncReason, v.Get("message").String())
+	}
+}
+
+// TestDisposedEmptyList checks that each call returns a new empty
+// array, so a caller that pushes onto one cannot change the next.
+func TestDisposedEmptyList(t *testing.T) {
+	a := disposedEmptyList()
+	require.Equal(t, "array", settledShape(t, a))
+	assert.Equal(t, 0, a.Length())
+	a.Call("push", "x")
+	assert.Equal(t, 0, disposedEmptyList().Length(), "a fresh array per call")
+}
+
+func TestDisposedUndefined(t *testing.T) {
+	assert.True(t, disposedUndefined().IsUndefined())
 }
 
 // TestNewSessionProxy_DisposeLeavesNoFuncs tracks the funcs a session's
@@ -430,6 +693,20 @@ func TestBoundSession(t *testing.T) {
 	}
 }
 
+// TestNewPromise_RejectsOnJSError checks that a JS exception raised in
+// any executor (a js.Error panic) rejects that Promise with the
+// exception rather than ending the Go program, so no caller of
+// newPromise (createSession, an async method, or its disposed result)
+// has to remember to defer rejectOnJSError itself.
+func TestNewPromise_RejectsOnJSError(t *testing.T) {
+	p := newPromise(func(_, _ func(any)) {
+		js.Global().Get("JSON").Call("parse", "{")
+	})
+	v, rejected := awaitPromise(t, p)
+	require.True(t, rejected)
+	assert.True(t, v.InstanceOf(js.Global().Get("SyntaxError")), "rejects with the thrown SyntaxError")
+}
+
 // TestRejectOnJSError checks that a deferred rejectOnJSError rejects
 // with the JS exception a js.Error panic carries, does nothing without
 // a panic, and re-raises any other panic.
@@ -442,7 +719,7 @@ func TestRejectOnJSError(t *testing.T) {
 	jsErr := js.Global().Get("Error").New("boom")
 	got := run(func() { panic(js.Error{Value: jsErr}) })
 	require.Len(t, got, 1)
-	assert.True(t, got[0].(js.Value).Equal(jsErr), "rejects with the thrown JS value")
+	assert.True(t, jsValue(t, got[0]).Equal(jsErr), "rejects with the thrown JS value")
 	assert.Empty(t, run(func() {}), "no panic, no rejection")
 	assert.PanicsWithValue(t, "go bug", func() { run(func() { panic("go bug") }) })
 }
@@ -479,7 +756,7 @@ func TestBigIntArgs(t *testing.T) {
 			obj(map[string]any{"configYAML": big}),
 			obj(map[string]any{"workspace": big}),
 		} {
-			_, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{opts}).(js.Value))
+			_, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
 			assert.True(t, rejected)
 		}
 	})
@@ -487,7 +764,7 @@ func TestBigIntArgs(t *testing.T) {
 	t.Run("session methods", func(t *testing.T) {
 		proxy := newTestProxy(t)
 		defer proxy.Call("dispose")
-		for _, m := range []string{"check", "fix", "kinds", "rename", "move"} {
+		for _, m := range asyncMethodNames {
 			args := []any{big, big, big, big, big}
 			_, rejected := awaitPromise(t, proxy.Call(m, args...))
 			assert.True(t, rejected, "%s(BigInt...) rejects", m)
@@ -519,6 +796,53 @@ func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
 	assert.False(t, proxy.Call("hasOwnProperty", "missing").Bool())
 }
 
+// TestSharedFunc checks the dispatch every shared method func runs: a
+// live bound id calls impl.call with that session and the remaining
+// args, and a disposed id, an unknown id, or no id returns
+// impl.disposed() without ever calling impl.call.
+func TestSharedFunc(t *testing.T) {
+	proxy := newTestProxy(t)
+	// Disposed mid-test too; a second dispose is a no-op, and the defer
+	// frees the session if a require stops the test before that.
+	defer proxy.Call("dispose")
+	liveID := nextSessionID - 1
+	live := sessions[liveID]
+	require.NotNil(t, live)
+	var calls []*mdsmith.Session
+	var gotRest []js.Value
+	disposedCalls := 0
+	f := sharedFunc(methodImpl{
+		call: func(sess *mdsmith.Session, args []js.Value) js.Value {
+			calls = append(calls, sess)
+			gotRest = args
+			return js.ValueOf("live")
+		},
+		disposed: func() js.Value {
+			disposedCalls++
+			return js.ValueOf("disposed")
+		},
+	})
+
+	got := jsValue(t, f(js.Undefined(), []js.Value{js.ValueOf(liveID), js.ValueOf("a.md")}))
+	assert.Equal(t, "live", got.String())
+	require.Len(t, calls, 1)
+	assert.Same(t, live, calls[0])
+	require.Len(t, gotRest, 1)
+	assert.Equal(t, "a.md", gotRest[0].String())
+
+	proxy.Call("dispose")
+	for _, args := range [][]js.Value{
+		{js.ValueOf(liveID), js.ValueOf("a.md")},
+		{js.ValueOf(-1)},
+		nil,
+	} {
+		got := jsValue(t, f(js.Undefined(), args))
+		assert.Equal(t, "disposed", got.String())
+	}
+	assert.Len(t, calls, 1, "impl.call must not run without a live session")
+	assert.Equal(t, 3, disposedCalls)
+}
+
 // TestSharedMethods_NoSessionID calls each shared func directly with no
 // bound id: every method takes the disposed path instead of panicking,
 // and dispose does nothing.
@@ -526,7 +850,7 @@ func TestSharedMethods_NoSessionID(t *testing.T) {
 	shared := sharedMethods()
 	require.ElementsMatch(t, sessionMethodNames(), slices.Collect(maps.Keys(shared)))
 	before := len(sessions)
-	for _, name := range []string{"check", "fix", "kinds", "rename", "move"} {
+	for _, name := range asyncMethodNames {
 		v, rejected := awaitPromise(t, shared[name].Invoke("a.md", "# A\n"))
 		assert.True(t, rejected, "%s without an id rejects", name)
 		assert.Equal(t, "session disposed", v.Get("message").String(), name)
