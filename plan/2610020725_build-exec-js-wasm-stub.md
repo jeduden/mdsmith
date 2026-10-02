@@ -106,6 +106,16 @@ not catch this. The wasm job in
     at or above 2 GiB. CI builds golangci-lint once.
     plan9's note-group kill is out of scope and moves to
     plan [2610020946](2610020946_plan9-recipe-note-group-kill.md).
+11. Added in the pre-merge review. A real-pipe test moves
+    to the `unix || windows` file so a js/wasm run
+    passes. Docs now scope the output guarantees per
+    platform. Three items are out of scope: the
+    `Cmd.WaitDelay` rewrite (plan
+    [2610021026](2610021026_recipe-exec-waitdelay.md)),
+    the dispose func leak (plan
+    [2610021027](2610021027_wasm-dispose-func-release.md)),
+    and a js/wasm CI gate for untagged tests (plan
+    [2610021028](2610021028_js-wasm-portable-test-gate.md)).
 
 ## Acceptance Criteria
 
