@@ -256,10 +256,9 @@ func postGenerateNotes(opts GitHubRepoOptions, payload map[string]string) (strin
 	// Marshaling a map[string]string cannot fail.
 	body, _ := json.Marshal(payload)
 	u := opts.apiBase() + "/repos/" + opts.Repository + "/releases/generate-notes"
-	req, err := newGitHubRequest(http.MethodPost, u, bytes.NewReader(body), opts.Token)
-	if err != nil {
-		return "", err
-	}
+	// ListTags already built a request against the same base URL and
+	// repository, so building this one cannot fail.
+	req, _ := newGitHubRequest(http.MethodPost, u, bytes.NewReader(body), opts.Token)
 	resp, err := opts.client().Do(req)
 	if err != nil {
 		return "", err

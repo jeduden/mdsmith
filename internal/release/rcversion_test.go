@@ -46,6 +46,7 @@ func TestNextRCVersion(t *testing.T) {
 		{"continues the rc series", []string{"v0.55.1", "v0.56.0-rc.1", "v0.56.0-rc.2"}, "v0.56.0-rc.3"},
 		{"rc numbers compare numerically", []string{"v0.55.1", "v0.56.0-rc.9", "v0.56.0-rc.10"}, "v0.56.0-rc.11"},
 		{"fills from max, not count", []string{"v0.55.1", "v0.56.0-rc.4"}, "v0.56.0-rc.5"},
+		{"order of tags does not matter", []string{"v0.56.0-rc.4", "v0.55.1", "v0.56.0-rc.2"}, "v0.56.0-rc.5"},
 		{"ignores rcs of other bases", []string{"v0.55.1", "v0.55.0-rc.7", "v0.57.0-rc.2"}, "v0.56.0-rc.1"},
 		{"resets after the stable ships", []string{"v0.56.0-rc.3", "v0.56.0"}, "v0.57.0-rc.1"},
 		{"ignores other suffixes", []string{"v0.55.1", "v0.56.0-beta.4", "v0.56.0-rc.x"}, "v0.56.0-rc.1"},
