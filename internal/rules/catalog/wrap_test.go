@@ -486,7 +486,7 @@ func TestSpansInRange_SpanOutsideRange(t *testing.T) {
 		{start: 10, end: 15}, // after end=8 → excluded
 		{start: 5, end: 8},   // inside range=5..8 → included
 	}
-	result := spansInRange(spans, 5, 8)
+	result := spansInRange(nil, spans, 5, 8)
 	require.Len(t, result, 1)
 	assert.Equal(t, 0, result[0].start)
 	assert.Equal(t, 3, result[0].end)
@@ -497,7 +497,7 @@ func TestSpansInRange_AdjustedStartNegative(t *testing.T) {
 	// Span starts at 2, offset=5, end=10
 	// → adjusted.start = 2-5 = -3 → clamped to 0
 	spans := []markdownSpan{{start: 2, end: 10}}
-	result := spansInRange(spans, 5, 10)
+	result := spansInRange(nil, spans, 5, 10)
 	require.Len(t, result, 1)
 	assert.Equal(t, 0, result[0].start) // clamped from -3 to 0
 }
@@ -546,4 +546,25 @@ func TestBuildColumnMap_NotTableRow(t *testing.T) {
 func TestExtractPrimaryField_NoFields(t *testing.T) {
 	result := extractPrimaryField("plain text without braces")
 	assert.Equal(t, "", result)
+}
+
+// wrapCellBr must not regrow its result and span slices on every wrapped
+// line; see docs/development/high-performance-go.md, "Allocations".
+func TestWrapCellBr_AllocsDoNotGrowPerLine(t *testing.T) {
+	if testing.Short() {
+		t.Skip("alloc gate skipped in -short mode")
+	}
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
+	text := strings.Repeat("alpha `code span` [link](x.md) beta ", 40)
+	allocs := testing.AllocsPerRun(20, func() {
+		wrapCellBr(text, 20)
+	})
+	// One []rune, the spans, lines, one string per wrapped line and the
+	// final join; measured before the change at ~2x the wrapped line count.
+	lines := float64(len(text)/20) + 1
+	if allocs > lines*1.3+8 {
+		t.Errorf("allocs = %v for ~%v lines", allocs, lines)
+	}
 }

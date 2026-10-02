@@ -62,13 +62,15 @@ func wrapCellBr(text string, maxWidth int) string {
 	}
 
 	spans := parseMarkdownSpansRunes(runes)
-	var lines []string
 	n := len(runes)
+	lines := make([]string, 0, n/maxWidth+1)
+	var spanBuf []markdownSpan
 	offset := 0 // current rune offset into original text
 
 	for n-offset > maxWidth {
 		remLen := n - offset
-		adjustedSpans := spansInRange(spans, offset, offset+remLen)
+		spanBuf = spansInRange(spanBuf[:0], spans, offset, offset+remLen)
+		adjustedSpans := spanBuf
 		breakPos := findBreakPointRunes(runes[offset:], adjustedSpans, maxWidth)
 
 		if breakPos <= 0 {
@@ -227,9 +229,10 @@ func lastSpaceInRunes(runes []rune, pos int) int {
 	return -1
 }
 
-// spansInRange returns spans adjusted to be relative to the start of a substring.
-func spansInRange(spans []markdownSpan, offset, end int) []markdownSpan {
-	var result []markdownSpan
+// spansInRange appends to result the spans overlapping [offset, end),
+// adjusted to be relative to offset, and returns it. Callers pass
+// buf[:0] to reuse capacity across calls.
+func spansInRange(result, spans []markdownSpan, offset, end int) []markdownSpan {
 	for _, s := range spans {
 		if s.end <= offset || s.start >= end {
 			continue
