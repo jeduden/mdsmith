@@ -548,8 +548,27 @@ func TestStepCodeFence(t *testing.T) {
 	assert.Equal(t, []bool{false, false}, steps("``", "x"), "two backticks")
 	assert.Equal(t, []bool{true, true, true}, steps("```", "```\u00a0", "---"),
 		"NBSP after the run is not whitespace: the line does not close")
-	assert.Equal(t, []bool{true, true, false}, steps("    ```", "    ```", "x"),
-		"any indent opens and closes (no container tracking)")
+	assert.Equal(t, []bool{true, true, true, true, true, false},
+		steps("   ```", "x", "\t```", "---", "```", "---"),
+		"up to three columns open; a tab-indented line is no closer")
+	assert.Equal(t, []bool{false, false}, steps("    ```", "---"),
+		"four columns is indented code, not a fence")
+	assert.Equal(t, []bool{false, false}, steps("\t```", "---"),
+		"a tab reaches column four: indented code, not a fence")
+}
+
+// TestHasSlidevMarkers_IndentedFenceIsNoFence pins that a fence-like
+// line indented four or more columns opens no fence, so a later `---`
+// or slot marker still counts — after a blank line (indented code) and
+// right after paragraph text (continuation text).
+func TestHasSlidevMarkers_IndentedFenceIsNoFence(t *testing.T) {
+	for _, src := range []string{
+		"# A\n\n    ```\n\n---\n",
+		"Para\n    ```\n---\n",
+		"Para\n\t```\n::right::\n",
+	} {
+		assert.True(t, hasSlidevMarkers(splitLines(src)), "%q", src)
+	}
 }
 
 func TestParseSlides_NestedFenceKeepsSeparatorLiteral(t *testing.T) {

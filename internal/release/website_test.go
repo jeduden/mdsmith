@@ -883,3 +883,12 @@ func TestApplyOutsideFences_BacktickInInfoIsNotAFence(t *testing.T) {
 	got := applyOutsideFences(src, bytes.ToUpper)
 	assert.Equal(t, "```X``` IS INLINE CODE\nREWRITE ME", string(got))
 }
+
+func TestApplyOutsideFences_IndentedFenceLineIsNoFence(t *testing.T) {
+	// mdfence's indent policy: four columns (or a tab) is indented code
+	// or paragraph continuation, never a fence, so the lines after it
+	// are rewritten. Up to three spaces still opens a fence.
+	src := []byte("para\n    ```\nrewrite\n\t```\nrewrite\n   ```\nkeep\n```")
+	got := applyOutsideFences(src, bytes.ToUpper)
+	assert.Equal(t, "PARA\n    ```\nREWRITE\n\t```\nREWRITE\n   ```\nkeep\n```", string(got))
+}

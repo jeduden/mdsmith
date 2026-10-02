@@ -195,11 +195,12 @@ func hasSlidevMarkers(lines [][]byte) bool {
 // The fence rules are mdfence's (CommonMark): a closer is the opener's
 // character, a run at least as long, and nothing after it, so a
 // shorter or different inner fence (```js inside ````md) is content,
-// and ```ts``` (inline code) opens nothing. Unlike CommonMark, any
-// number of leading spaces is stripped first: the scanner tracks no
-// list containers, so a fence nested in a list item still counts.
+// and ```ts``` (inline code) opens nothing. Indentation follows
+// mdfence's one policy: up to three columns, a tab reaching column
+// four, so an indented-code line that looks like a fence opens nothing
+// and cannot hide later `---` or `::slot::` markers.
 func stepCodeFence(t *mdfence.Tracker, line []byte) bool {
-	return t.Step(bytes.TrimLeft(line, " "))
+	return t.Step(line)
 }
 
 // slide is one logical slide with its frontmatter and slot markers.

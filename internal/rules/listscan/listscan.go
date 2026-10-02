@@ -213,8 +213,8 @@ func (p *parser) scanLine(i int, line []byte) int {
 	// columns past the parent content column (same indent budget a marker
 	// gets). Detect it relative to baseCol so a fence nested inside a list
 	// item — whose absolute indent is the item's content column — is still
-	// recognized.
-	if fence, ok := mdfence.Open(fenceView(line, indent, baseCol)); ok {
+	// recognized; mdfence expands tabs at their true columns.
+	if fence, ok := mdfence.OpenIn(line, 0, baseCol); ok {
 		// A fenced code block is not a paragraph, so a marker after it (once
 		// the block closes) interrupts nothing.
 		p.topInParagraph = false
@@ -307,7 +307,7 @@ func (p *parser) consumeFence(open int, fence mdfence.Fence, baseCol int) int {
 			break
 		}
 		line := p.lines[i]
-		if mdfence.Close(fenceView(line, astutil.CountLeadingSpaces(line), baseCol), fence) {
+		if mdfence.CloseIn(line, fence, 0, baseCol) {
 			return i
 		}
 		if len(p.stack) > 0 {
@@ -700,16 +700,6 @@ func atoiBytes(b []byte) int {
 		n = n*10 + int(c-'0')
 	}
 	return n
-}
-
-// fenceView returns line as mdfence should see it inside a container
-// whose content starts at baseCol: sliced at baseCol, so the fence's
-// up-to-3-space indent budget is measured from the container's content
-// column rather than from column 0. indent is line's leading-space
-// count; a line indented less than baseCol (a lazy line, or a fence
-// that closes the item) is sliced at its first non-space byte instead.
-func fenceView(line []byte, indent, baseCol int) []byte {
-	return line[min(indent, baseCol):]
 }
 
 // isThematicBreak reports whether line is a thematic break (3+ of a

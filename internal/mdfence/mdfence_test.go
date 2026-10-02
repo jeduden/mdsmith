@@ -19,8 +19,8 @@ func TestOpen(t *testing.T) {
 		{"long run", "`````", Fence{Char: '`', Len: 5}, true},
 		{"info string", "```go", Fence{Char: '`', Len: 3, HasInfo: true}, true},
 		{"info after space", "~~~~ yaml title", Fence{Char: '~', Len: 4, HasInfo: true}, true},
-		{"one space indent", " ```", Fence{Char: '`', Len: 3, Indent: 1}, true},
-		{"three space indent", "   ~~~", Fence{Char: '~', Len: 3, Indent: 3}, true},
+		{"one space indent", " ```", Fence{Char: '`', Len: 3}, true},
+		{"three space indent", "   ~~~", Fence{Char: '~', Len: 3}, true},
 		{"trailing whitespace is no info", "```  \t", Fence{Char: '`', Len: 3}, true},
 		{"trailing CR is no info", "```\r", Fence{Char: '`', Len: 3}, true},
 		{"trailing LF is no info", "```\n", Fence{Char: '`', Len: 3}, true},
@@ -68,7 +68,7 @@ func TestClose(t *testing.T) {
 		{"tilde exact", "~~~", td3, true},
 		{"longer run", "`````", bt3, true},
 		{"indented 3", "   ```", bt3, true},
-		{"indent independent of opener", "```", Fence{Char: '`', Len: 3, Indent: 2}, true},
+		{"indent independent of opener", "```", Fence{Char: '`', Len: 3}, true},
 		{"trailing spaces and tabs", "```  \t", bt3, true},
 		{"trailing CR", "```\r", bt3, true},
 		{"trailing CRLF", "```\r\n", bt3, true},
@@ -145,11 +145,11 @@ func TestIsSpace(t *testing.T) {
 	}
 }
 
-// TestFence_Size pins Fence at 24 bytes: callers return it by value on
-// per-line scan paths, so its two ints come before the two single-byte
+// TestFence_Size pins Fence at 16 bytes: callers return it by value on
+// per-line scan paths, so its int comes before the two single-byte
 // fields (docs/development/high-performance-go.md "Struct layout").
 func TestFence_Size(t *testing.T) {
-	assert.LessOrEqual(t, unsafe.Sizeof(Fence{}), uintptr(24))
+	assert.LessOrEqual(t, unsafe.Sizeof(Fence{}), uintptr(16))
 }
 
 // TestZeroAllocs pins the package's zero-allocation contract: every
