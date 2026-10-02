@@ -526,9 +526,9 @@ func (p *lc0Pass) inFence() bool { return p.fence.Char != 0 }
 // "\r" among the bytes after the run, so a final line ending in "\r"
 // keeps its one-byte info string and is not passed as final.
 func (p *lc0Pass) tryOpenFence(ln int, rest []byte) bool {
-	final := ln == finalLineNoEOL(p.lines)
+	final := ln == FinalLineNoEOL(p.lines)
 	if final {
-		raw := p.lines[ln-1] // non-empty: finalLineNoEOL returned ln
+		raw := p.lines[ln-1] // non-empty: FinalLineNoEOL returned ln
 		final = raw[len(raw)-1] != '\r'
 	}
 	fence, ok := mdfence.OpenFinal(rest, final)

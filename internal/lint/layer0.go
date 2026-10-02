@@ -136,18 +136,24 @@ func Layer0(f *File) *Layer0Scan {
 	return f.layer0
 }
 
+// FinalLineNoEOL returns FinalLineNoEOL(f.Lines): the 1-based number of
+// f's last line when the source ends without a newline, else 0.
+func (f *File) FinalLineNoEOL() int { return FinalLineNoEOL(f.Lines) }
+
 // scanLayer0 runs the single forward pass over lines. It pre-sizes both
 // line-set maps to the line count so the common case (most lines in code
 // or PI blocks for a code-heavy file) does not re-grow the map, keeping
 // the scan inside the rule allocation budget.
 func scanLayer0(lines [][]byte) *Layer0Scan {
-	return scanLayer0Depth(lines, 0, finalLineNoEOL(lines))
+	return scanLayer0Depth(lines, 0, FinalLineNoEOL(lines))
 }
 
-// finalLineNoEOL returns the 1-based number of the last of lines when
+// FinalLineNoEOL returns the 1-based number of the last of lines when
 // the source ends without a newline (bytes.Split then leaves a non-empty
-// last element), or 0 when it ends with one.
-func finalLineNoEOL(lines [][]byte) int {
+// last element), or 0 when it ends with one. goldmark drops a one-byte
+// fence info string on that line (mdfence.OpenFinal), so every scanner
+// that reads fence info asks this one helper.
+func FinalLineNoEOL(lines [][]byte) int {
 	if n := len(lines); n > 0 && len(lines[n-1]) > 0 {
 		return n
 	}
@@ -157,14 +163,17 @@ func finalLineNoEOL(lines [][]byte) int {
 // quoteBodyFinal maps final, the parent scan's 1-based final line with
 // no newline (0 for none), into a block quote's stripped body: it returns
 // the 1-based body line taken from that parent line, or 0. The final
-// line, when in the quote, is the last real body line; a phantom
-// closing-fence slot (a nil line) may follow it, so the last two slots
-// are checked.
+// line is the source's last line, and body maps parent lines in
+// increasing order, so only the last real body line can come from it;
+// phantom closing-fence slots (nil lines) after it are skipped, however
+// many there are.
 func quoteBodyFinal(body [][]byte, parentLine []int, final int) int {
-	for k := len(body) - 1; k >= 0 && k >= len(body)-2; k-- {
-		if body[k] != nil && parentLine[k]+1 == final {
-			return k + 1
-		}
+	k := len(body) - 1
+	for k >= 0 && body[k] == nil {
+		k--
+	}
+	if k >= 0 && parentLine[k]+1 == final {
+		return k + 1
 	}
 	return 0
 }

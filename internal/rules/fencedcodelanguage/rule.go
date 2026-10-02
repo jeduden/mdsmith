@@ -64,9 +64,8 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 // fence run on that line — goldmark's info segment is that same text
 // trimmed — so the language-presence verdict is byte-identical.
 func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
-	line := f.Lines[span.Start-1]
-	final := span.Start == len(f.Lines) && len(line) > 0
-	return r.verdict(f, fenceLineHasInfo(line, final), span.Start)
+	final := span.Start == f.FinalLineNoEOL()
+	return r.verdict(f, fenceLineHasInfo(f.Lines[span.Start-1], final), span.Start)
 }
 
 // blockKinds is the static block-kind interest CheckBlock declares via

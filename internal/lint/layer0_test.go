@@ -59,6 +59,12 @@ func TestLayer0_OneByteInfoAtEOFMatchesAST(t *testing.T) {
 	for _, src := range []string{
 		"```x", "```\v", "``` x", "```xy", "```x\n", "```\v\n", "~~~`", "para\n\n```x",
 		"> ```x", "> a\n>\n> ```x", "> ```x\n", "```x\r", "> ```x\r",
+		// Nested quotes, lazy continuation, and fences before the final
+		// line: the final line maps through every quote level.
+		"> > ```x", "> > a\n> > ```x", "> a\n> > ```x", ">> ```x", "> > > ```x",
+		"> a\nb\n> ```x", "> ```\n> b\n> ```\n> ```x", "> ```y\n> ```x",
+		"> > ```\n> > c\n> > ```\n> > ```x", "> - a\n>\n> ```x", "> a\n> ```x",
+		"> > a\n> b\n> ```x", "> ~~~\n> ~~~x", "> ```\n> ```\n>\n> ```x",
 	} {
 		f, err := NewFile("t.md", []byte(src))
 		require.NoError(t, err)
@@ -687,9 +693,17 @@ func TestSourceMayHaveBlockQuote(t *testing.T) {
 }
 
 func TestFinalLineNoEOL(t *testing.T) {
-	assert.Equal(t, 2, finalLineNoEOL(splitLines("a\nb")))
-	assert.Equal(t, 0, finalLineNoEOL(splitLines("a\nb\n")))
-	assert.Equal(t, 0, finalLineNoEOL(nil))
+	assert.Equal(t, 2, FinalLineNoEOL(splitLines("a\nb")))
+	assert.Equal(t, 0, FinalLineNoEOL(splitLines("a\nb\n")))
+	assert.Equal(t, 0, FinalLineNoEOL(nil))
+}
+
+func TestFile_FinalLineNoEOL(t *testing.T) {
+	assert.Equal(t, 3, NewFileLines("f.md", []byte("a\n\n```x")).FinalLineNoEOL())
+	assert.Equal(t, 0, NewFileLines("f.md", []byte("a\n```x\n")).FinalLineNoEOL())
+	f, err := NewFile("f.md", []byte("# H\n\nx"))
+	require.NoError(t, err)
+	assert.Equal(t, 3, f.FinalLineNoEOL())
 }
 
 func TestQuoteBodyFinal(t *testing.T) {
@@ -705,4 +719,9 @@ func TestQuoteBodyFinal(t *testing.T) {
 	assert.Equal(t, 1, quoteBodyFinal(withPhantom, []int{4, 5}, 5))
 	assert.Equal(t, 0, quoteBodyFinal(withPhantom, []int{3, 4}, 5))
 	assert.Equal(t, 0, quoteBodyFinal(nil, nil, 5))
+	// Any number of trailing phantom slots is skipped: the last real
+	// body line decides.
+	twoPhantoms := [][]byte{[]byte("a"), []byte("```x"), nil, nil}
+	assert.Equal(t, 2, quoteBodyFinal(twoPhantoms, []int{3, 4, 5, 6}, 5))
+	assert.Equal(t, 0, quoteBodyFinal([][]byte{nil}, []int{4}, 5))
 }
