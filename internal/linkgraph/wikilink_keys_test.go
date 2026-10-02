@@ -50,6 +50,8 @@ func TestWikilinkReaches(t *testing.T) {
 		{"guide.md ", "guide.md ", false},
 		{" notes", " notes.md", false},
 		{"a\nb", "a\nb.md", false},
+		{"a\rb", "a\rb.md", false},
+		{"guide .md", "guide .md", true},
 		{"C:x", "C:x.md", false},
 		{`a\b`, `a\b.md`, false},
 		{"..", "...md", false},
