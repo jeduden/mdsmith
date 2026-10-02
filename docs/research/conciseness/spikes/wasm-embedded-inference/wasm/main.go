@@ -9,9 +9,9 @@
 //   - alloc(size) ptr    : reserve size bytes of guest memory for host input
 //   - free(ptr)          : release a prior alloc
 //   - classify(ptr, len) : classify text at [ptr, ptr+len) of an alloc'd
-//     buffer (0 for an unknown ptr or len past its end); returns an
-//     int64 packing (outPtr<<32)|outLen of a JSON
-//     result written into a static guest buffer.
+//     buffer; returns abi.Pack(outPtr, outLen) of a JSON result
+//     written into a static guest buffer, or an abi sentinel
+//     (Rejected, Truncated).
 package main
 
 import (
@@ -19,6 +19,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/jeduden/mdsmith/docs/research/conciseness/spikes/wasm-embedded-inference/abi"
 	"github.com/jeduden/mdsmith/internal/rules/concisenessscoring/classifier"
 )
 
@@ -54,21 +55,11 @@ func free(ptr int32) {
 
 //go:wasmexport classify
 func classify(ptr, length int32) int64 {
-	if length < 0 {
-		return 0
+	input, ok := abi.LookupInput(keepAlive, ptr, length)
+	if !ok {
+		return abi.Rejected
 	}
-	text := ""
-	if length > 0 {
-		// Resolve ptr through keepAlive rather than converting the raw
-		// address back to a pointer: only alloc'd buffers are valid
-		// input, and the slice length bounds the read. uint32 first so
-		// an address at or above 2 GiB is not sign-extended.
-		buf, ok := keepAlive[uintptr(uint32(ptr))]
-		if !ok || int(length) > len(buf) {
-			return 0
-		}
-		text = string(buf[:length])
-	}
+	text := string(input)
 	result := model.Classify(text)
 
 	var b strings.Builder
@@ -84,13 +75,13 @@ func classify(ptr, length int32) int64 {
 	)
 	encoded := b.String()
 	if len(encoded) > len(outputBuf) {
-		// Signal truncation with a negative length so the host can detect
-		// and raise rather than silently decoding a truncated JSON buffer.
-		return -1
+		// Signal truncation so the host can detect and raise rather
+		// than silently decoding a truncated JSON buffer.
+		return abi.Truncated
 	}
 	n := copy(outputBuf[:], encoded)
 	out := uintptr(unsafe.Pointer(&outputBuf[0]))
-	return (int64(out) << 32) | int64(n)
+	return abi.Pack(uint32(out), uint32(n))
 }
 
 func main() {}

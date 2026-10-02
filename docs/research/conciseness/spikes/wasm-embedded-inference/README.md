@@ -38,7 +38,10 @@ reactor module exposing:
 - `alloc(size int32) int32` — reserve guest memory for host input
 - `free(ptr int32)` — release a prior alloc
 - `classify(ptr, len int32) int64` — returns `(outPtr<<32)|outLen`
-  pointing at a JSON result in a static guest buffer
+  pointing at a JSON result in a static guest buffer, `0` for a
+  rejected input, or `-1` for a truncated result. The packing and
+  both sentinels live in the untagged `abi/` package, which a native
+  `go test` covers
 
 The host calls `_initialize` once, then calls `alloc`, writes the
 input text into guest linear memory, calls `classify`, and reads the

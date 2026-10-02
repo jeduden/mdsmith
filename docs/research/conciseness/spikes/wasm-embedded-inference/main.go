@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jeduden/mdsmith/docs/research/conciseness/spikes/wasm-embedded-inference/abi"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
@@ -120,17 +121,10 @@ func (g *guestHandle) Classify(text string) (classifyResult, error) {
 	if err != nil {
 		return classifyResult{}, fmt.Errorf("classify: %w", err)
 	}
-	packed := int64(ret[0])
-	if packed < 0 {
-		return classifyResult{}, errors.New("guest signaled output truncation")
+	outPtr, outLen, err := abi.Unpack(int64(ret[0]))
+	if err != nil {
+		return classifyResult{}, err
 	}
-	if packed == 0 {
-		// The guest returns 0 for a negative length or a ptr/length
-		// it did not alloc; a real result is never empty.
-		return classifyResult{}, errors.New("guest rejected input pointer or length")
-	}
-	outPtr := uint32(uint64(packed) >> 32)
-	outLen := uint32(uint64(packed) & 0xFFFFFFFF)
 	raw, ok := g.memory.Read(outPtr, outLen)
 	if !ok {
 		return classifyResult{}, errors.New("memory.Read failed")
