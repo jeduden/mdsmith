@@ -228,6 +228,9 @@ interface Session {
   check(uri: string, src: string): Promise<Diagnostic[]>;
   fix(uri: string, src: string): Promise<FixResult>;
   kinds(uri: string): Promise<KindResolution>;
+  rename(uri: string, src: string, as: string, oldName: string,
+    newName: string): Promise<Plan>;
+  move(src: string, dst: string): Promise<Plan>;
   capabilities(): string[];
   invalidate(uri: string, content?: string): void;
   dispose(): void;
@@ -269,6 +272,19 @@ method made read-only with
 `Object.defineProperty(session, "check", { writable: false })`. None
 of them logs "call to released function".
 
+The id is a small sequential integer, not a secret. A script in the
+same page that reaches a raw shared function can call it with any
+live id. The engine binds through a `bind` captured at load, so a
+later patch of `Function.prototype.bind` or `call` never sees one.
+`wasm_exec.js` looks up `Reflect.apply` on every Go-to-JS call, though,
+so a patched `Reflect.apply` does. Plan
+[2610021439](../../../plan/2610021439_wasm-unforgeable-session-binding.md)
+tracks closing that gap.
+
+An argument of the wrong type, a `BigInt` included, makes an async
+method reject and `invalidate()` do nothing. It never stops the Go
+runtime, so other sessions keep working.
+
 `createSession` rejects when `opts` is not a plain object. It also
 rejects when `opts.workspace` is present but is not a plain object of
 path-to-source strings: `null`, a string, an array, and a boxed
@@ -301,9 +317,9 @@ result matches the native engine on the same in-memory fixture.
 
 Both target budgets are met and CI-verified:
 
-- The standard Go WASM artifact is about 13.1 MiB uncompressed (about
+- The standard Go WASM artifact is about 13.3 MiB uncompressed (about
   3.2 MiB gzipped at standard compression, the figure that crosses the
-  wire; `cmd/mdsmith-wasm/size_test.go` measures about 4.0 MiB at the
+  wire; `cmd/mdsmith-wasm/size_test.go` measures about 4.1 MiB at the
   pessimistic BestSpeed level and fails above 4.25 MiB). It was about
   40 MB before
   `cuelang.org/go` was removed: CUE (95 packages) plus `cockroachdb/apd`
