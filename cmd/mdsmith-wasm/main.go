@@ -86,7 +86,6 @@ func resolveVersion() string {
 // returning factory keeps the JS API ergonomic.
 func createSession(_ js.Value, args []js.Value) any {
 	return newPromise(func(resolve, reject func(any)) {
-		defer rejectOnJSError(reject)
 		if len(args) < 1 || !isRecord(args[0]) {
 			reject(jsError("createSession requires an options object"))
 			return
@@ -247,8 +246,8 @@ type methodImpl struct {
 // fn runs inside the Promise executor; a non-nil error rejects with
 // Error(err.Error()), otherwise the Promise resolves to toJS(value). A
 // JS exception raised on the way (a js.Error panic) rejects with that
-// exception, as in createSession, instead of ending the Go program.
-// After dispose the Promise rejects with Error("session disposed").
+// exception, as newPromise does for every executor. After dispose the
+// Promise rejects with Error("session disposed").
 func asyncMethod(fn func(sess *mdsmith.Session, args []js.Value) (any, error)) methodImpl {
 	if fn == nil {
 		panic("asyncMethod: nil fn")
@@ -256,7 +255,6 @@ func asyncMethod(fn func(sess *mdsmith.Session, args []js.Value) (any, error)) m
 	return methodImpl{
 		call: func(sess *mdsmith.Session, args []js.Value) any {
 			return newPromise(func(resolve, reject func(any)) {
-				defer rejectOnJSError(reject)
 				v, err := fn(sess, args)
 				if err != nil {
 					reject(jsError(err.Error()))

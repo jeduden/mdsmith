@@ -610,6 +610,20 @@ func TestBoundSession(t *testing.T) {
 	}
 }
 
+// TestNewPromise_RejectsOnJSError checks that a JS exception raised in
+// any executor (a js.Error panic) rejects that Promise with the
+// exception rather than ending the Go program, so no caller of
+// newPromise (createSession, an async method, or its disposed result)
+// has to remember to defer rejectOnJSError itself.
+func TestNewPromise_RejectsOnJSError(t *testing.T) {
+	p := newPromise(func(_, _ func(any)) {
+		js.Global().Get("JSON").Call("parse", "{")
+	})
+	v, rejected := awaitPromise(t, p)
+	require.True(t, rejected)
+	assert.True(t, v.InstanceOf(js.Global().Get("SyntaxError")), "rejects with the thrown SyntaxError")
+}
+
 // TestRejectOnJSError checks that a deferred rejectOnJSError rejects
 // with the JS exception a js.Error panic carries, does nothing without
 // a panic, and re-raises any other panic.
