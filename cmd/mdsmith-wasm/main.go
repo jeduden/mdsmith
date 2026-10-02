@@ -48,7 +48,7 @@ func main() {
 	// Capture Function.prototype.bind before the API is reachable, so a
 	// later patch of bind or call never sees the unbound shared funcs.
 	// A later patch of Reflect.apply still does (see bindTo).
-	captureBind()
+	sharedMethods()
 	js.Global().Set("mdsmith", js.ValueOf(map[string]any{
 		"createSession": js.FuncOf(createSession),
 		"version":       resolveVersion(),
@@ -185,7 +185,6 @@ var objectToString js.Value
 // never reaches a released func, so syscall/js logs nothing. See plan
 // 2610021237.
 func newSessionProxy(sess *mdsmith.Session) js.Value {
-	captureBind()
 	shared := sharedMethods()
 	id := nextSessionID
 	nextSessionID++
@@ -200,7 +199,7 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 }
 
 // bindTo is Function.prototype.call.bind(Function.prototype.bind), as
-// captured by captureBind: bindTo(f, this, ...args) is f.bind(this,
+// captured by sharedMethods: bindTo(f, this, ...args) is f.bind(this,
 // ...args) with no property lookup at call time. newSessionProxy binds
 // through it, so a bind or call that another script installs after the
 // engine loads never receives a raw shared func, which would accept any
@@ -209,16 +208,6 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 // sees each raw shared func and id here, and every session object the
 // engine resolves. Plan 2610021439 tracks that gap.
 var bindTo js.Value
-
-// captureBind stores bindTo once. main calls it before exposing the
-// API; newSessionProxy calls it too for the tests, which never run
-// main. The zero js.Value is undefined.
-func captureBind() {
-	if bindTo.IsUndefined() {
-		proto := js.Global().Get("Function").Get("prototype")
-		bindTo = proto.Get("call").Call("bind", proto.Get("bind"))
-	}
-}
 
 // sessions maps a live session's id to its Session. js/wasm runs every
 // goroutine on one thread with no preemption, and nothing between a
@@ -247,11 +236,15 @@ var (
 	sharedFuncs map[string]js.Value
 )
 
-// sharedMethods registers the shared method funcs on first use. They
-// are never released, so every session reuses the same handler-table
+// sharedMethods captures bindTo and registers the shared method funcs on
+// first use. main calls it before exposing the API; newSessionProxy
+// calls it too, for the tests, which never run main. The funcs are
+// never released, so every session reuses the same handler-table
 // entries. Each takes the session id as args[0].
 func sharedMethods() map[string]js.Value {
 	sharedOnce.Do(func() {
+		proto := js.Global().Get("Function").Get("prototype")
+		bindTo = proto.Get("call").Call("bind", proto.Get("bind"))
 		sharedFuncs = make(map[string]js.Value, len(sharedMethodImpls)+1)
 		for name, impl := range sharedMethodImpls {
 			sharedFuncs[name] = funcOf(func(_ js.Value, args []js.Value) any {
@@ -266,20 +259,26 @@ func sharedMethods() map[string]js.Value {
 	return sharedFuncs
 }
 
+// maxSessionID bounds a bound id before its int conversion: 2^53 under
+// standard Go, whose int is 64 bits, and math.MaxInt under TinyGo,
+// whose int is 32 bits on wasm. Either way int(f) is in range.
+const maxSessionID = min(1<<53, math.MaxInt)
+
 // boundSession splits the session id a shared func is bound to off
 // args and looks up its live Session. sess is nil once that session is
 // disposed, and also when args[0] is not an integer number (a string,
-// a fraction, NaN, Infinity, or past ±2^53), which only a direct call to a shared func
-// (never one through a session object) can pass; args then comes back
-// whole, and no fraction is truncated onto a live id.
+// a fraction, NaN, Infinity, or past ±maxSessionID), which only a
+// direct call to a shared func (never one through a session object)
+// can pass; args then comes back whole, and no fraction is truncated
+// onto a live id.
 func boundSession(args []js.Value) (id int, sess *mdsmith.Session, rest []js.Value) {
 	if len(args) == 0 || args[0].Type() != js.TypeNumber {
 		return 0, nil, args
 	}
 	f := args[0].Float()
-	// NaN fails f == Trunc(f); the 2^53 bound rejects Infinity and any
-	// value whose int conversion is implementation-defined.
-	if f != math.Trunc(f) || math.Abs(f) > 1<<53 {
+	// NaN fails f == Trunc(f); the maxSessionID bound rejects Infinity
+	// and any value whose int conversion is implementation-defined.
+	if f != math.Trunc(f) || math.Abs(f) > maxSessionID {
 		return 0, nil, args
 	}
 	id = int(f)

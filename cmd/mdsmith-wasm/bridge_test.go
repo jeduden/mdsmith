@@ -3,7 +3,9 @@
 package main
 
 import (
+	"maps"
 	"runtime/debug"
+	"slices"
 	"syscall/js"
 	"testing"
 
@@ -403,7 +405,7 @@ func TestBoundSession(t *testing.T) {
 // and dispose does nothing.
 func TestSharedMethods_NoSessionID(t *testing.T) {
 	shared := sharedMethods()
-	require.ElementsMatch(t, sessionMethodNames(), keysOf(shared))
+	require.ElementsMatch(t, sessionMethodNames(), slices.Collect(maps.Keys(shared)))
 	before := len(sessions)
 	for _, name := range []string{"check", "fix", "kinds", "rename", "move"} {
 		v, rejected := awaitPromise(t, shared[name].Invoke("a.md", "# A\n"))
@@ -468,15 +470,6 @@ func isSharedFunc(v js.Value) bool {
 		}
 	}
 	return false
-}
-
-// keysOf returns m's keys in no particular order.
-func keysOf(m map[string]js.Value) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
 }
 
 // TestNewSessionProxy_StaleReferencesNeverReachReleasedFuncs checks
