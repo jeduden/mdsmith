@@ -20,6 +20,9 @@
 //	mdsmith-release verify-website-links --dir <html-dir> [--base-url <url>]
 //	mdsmith-release verify-install-picker --dir <html-dir>
 //	mdsmith-release publish-release
+//	mdsmith-release rc-version
+//	mdsmith-release release-notes <out-path>
+//	mdsmith-release check-rc [--discard-draft]
 //	mdsmith-release sbom <out-path>
 //	mdsmith-release check-secret-rotations
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
@@ -73,6 +76,9 @@ Commands:
   verify-install-picker --dir <dir>
                                   Check the rendered install picker matches the channel docs.
   publish-release                 Flip the tag's draft release to published.
+  rc-version                      Print the next release-candidate version (vX.Y+1.0-rc.N).
+  release-notes <out-path>        Write GitHub release notes for RELEASE_TAG since the last stable tag.
+  check-rc [--discard-draft]      Report whether RELEASE_TAG is still the next release candidate.
   sbom <out-path>                 Emit a CycloneDX SBOM of the Go module to <out-path>.
   check-secret-rotations          Open GitHub issues for secrets due for rotation.
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
@@ -149,6 +155,12 @@ func dispatch(cmd, root string, rest []string) int {
 		return runVerifyInstallPicker(root, rest)
 	case "publish-release":
 		return runPublishRelease(root, rest)
+	case "rc-version":
+		return runRCVersion(root, rest)
+	case "release-notes":
+		return runReleaseNotes(root, rest)
+	case "check-rc":
+		return runCheckRC(root, rest)
 	case "sbom":
 		return runSBOM(root, rest)
 	default:

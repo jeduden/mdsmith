@@ -70,10 +70,10 @@ published release is rejected once immutable releases
 are on. So the publish must be the last action. The
 result is an immutable release.
 
-GitHub writes the release notes. The
-`softprops/action-gh-release` step sets
-`generate_release_notes: true`. The notes list merged
-PRs and commits since the previous tag.
+GitHub writes the notes. They start at the last
+stable tag. Each merge to `main` cuts a
+[release candidate](release-candidates.md); the notes
+skip those tags.
 
 `concurrency: { group: release, cancel-in-progress:
 false }` serializes release runs. Two publish jobs

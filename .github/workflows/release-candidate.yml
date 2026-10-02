@@ -1,0 +1,309 @@
+name: Release Candidate
+
+# Every merge to main cuts a GitHub pre-release tagged
+# vX.Y.Z-rc.N, where vX.Y.Z is the minor after the latest stable
+# tag and N counts up per merge (`mdsmith-release rc-version`).
+# It ships the same five binaries, .vsix, and Obsidian zip a
+# stable release does, with checksums, SLSA provenance, a cosign
+# signature, and an SBOM, so a candidate can be installed and
+# verified exactly like the release it previews.
+#
+# GitHub Releases is the only channel. Nothing goes to npm, PyPI,
+# or the extension marketplaces, so this workflow needs no
+# publisher secret and never targets the `release` or
+# `release-approval` environments (release-gate-guard fails the
+# build if it does). The pre-release flag keeps a candidate out
+# of /releases/latest, so `action.yml`, mise, and the install
+# docs keep resolving to the last stable release.
+#
+# The build steps mirror release.yml; keep the two in step. See
+# docs/development/release.md.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One candidate at a time: rc-version reads the tag list, so two
+# overlapping runs would both compute the same -rc.N. A queued run
+# replaces any older queued one, so a burst of merges yields one
+# candidate for the newest commit rather than one per merge.
+concurrency:
+  group: release-candidate
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    # A manual dispatch from any other branch would publish
+    # unmerged code under the next main candidate number.
+    if: &rc_repo_ok >-
+      github.repository == 'jeduden/mdsmith' &&
+      github.ref == 'refs/heads/main'
+    outputs:
+      version: ${{ steps.rc.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Compute the release-candidate version
+        id: rc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v="$(go run ./cmd/mdsmith-release rc-version)"
+          echo "release candidate: $v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  pgo:
+    needs: [version]
+    if: *rc_repo_ok
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build mdsmith-release
+        run: go build -o mdsmith-release ./cmd/mdsmith-release
+      - name: Generate PGO profile
+        run: ./mdsmith-release pgo /tmp/mdsmith-pgo
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pgo-profile
+          path: cmd/mdsmith/default.pgo
+          if-no-files-found: error
+
+  build:
+    needs: [version, pgo]
+    if: *rc_repo_ok
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Download PGO profile
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: pgo-profile
+          path: cmd/mdsmith/
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          # Same as release.yml: no cgo, so the Linux binaries do not
+          # bind glibc's resolver.
+          CGO_ENABLED: "0"
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          test -s cmd/mdsmith/default.pgo
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          bin="mdsmith-${GOOS}-${GOARCH}${ext}"
+          go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o "$bin" ./cmd/mdsmith
+          echo "bin=$bin" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mdsmith-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.bin }}
+
+  # Package the .vsix exactly as release.yml's vscode job does, minus
+  # the Marketplace and Open VSX publish steps (and their tokens).
+  vscode:
+    needs: [version, build]
+    if: *rc_repo_ok
+    runs-on: ubuntu-latest
+    env:
+      MDSMITH_VSIX_PLATFORM_DIR: ${{ github.workspace }}/npm/dist
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Stamp tracked manifests with the candidate version
+        run: go run ./cmd/mdsmith-release stamp "${VERSION#v}"
+      - name: Download build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          pattern: mdsmith-*
+          merge-multiple: true
+      - name: Build platform packages
+        run: go run ./cmd/mdsmith-release build-npm artifacts npm/dist
+      - name: Install extension dependencies
+        working-directory: editors/vscode
+        # --ignore-scripts blocks dependency lifecycle hooks. No
+        # --frozen-lockfile: the stamp above rewrote the @mdsmith/cli
+        # pin, so bun.lock is out of date for that one entry.
+        run: bun install --ignore-scripts
+      - name: Run extension unit tests
+        working-directory: editors/vscode
+        run: bun test
+      - name: Compile extension
+        working-directory: editors/vscode
+        run: bun run build.ts --production
+      - name: Package .vsix
+        working-directory: editors/vscode
+        run: |
+          ver="${VERSION#v}"
+          bunx --bun @vscode/vsce package --no-dependencies \
+            --out "mdsmith-${ver}.vsix"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mdsmith-vscode-extension
+          path: editors/vscode/mdsmith-*.vsix
+
+  obsidian:
+    needs: [version]
+    if: *rc_repo_ok
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Stamp the manifests with the candidate version
+        run: go run ./cmd/mdsmith-release stamp "${VERSION#v}"
+      - name: Install plugin dependencies
+        working-directory: editors/obsidian
+        run: bun install --ignore-scripts
+      - name: Run plugin unit tests
+        working-directory: editors/obsidian
+        run: bun test --preload ./src/test-setup.ts
+      - name: Build the engine to WebAssembly
+        run: bash cmd/mdsmith-wasm/build.sh
+      - name: Build the plugin
+        working-directory: editors/obsidian
+        env:
+          MDSMITH_OBSIDIAN_WASM_DIR: ${{ github.workspace }}/cmd/mdsmith-wasm/dist
+        run: bun run build.ts --production
+      - name: Package the plugin zip
+        run: go run ./cmd/mdsmith-release package-obsidian editors/obsidian/dist editors/obsidian
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mdsmith-obsidian-plugin
+          path: editors/obsidian/mdsmith-obsidian-*.zip
+
+  release:
+    needs: [version, build, vscode, obsidian]
+    if: *rc_repo_ok
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: mdsmith-*
+          merge-multiple: true
+      - name: Generate CycloneDX SBOM
+        run: go run ./cmd/mdsmith-release sbom mdsmith-sbom.cdx.json
+      - name: Create checksums
+        run: sha256sum mdsmith-* > checksums.txt
+      - name: Generate SLSA build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: "mdsmith-*"
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.0.6"
+      - name: Sign checksums with cosign
+        # The signing certificate names release-candidate.yml, not
+        # release.yml, so the stable-release verify command (pinned
+        # to release.yml) rejects a candidate's signature.
+        env:
+          COSIGN_YES: "true"
+        run: |
+          cosign sign-blob \
+            --bundle checksums.txt.bundle \
+            checksums.txt
+      - name: Generate release notes
+        # Notes span from the last stable tag, so each candidate lists
+        # everything the next stable release would ship.
+        env:
+          RELEASE_TAG: ${{ needs.version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go run ./cmd/mdsmith-release release-notes release-notes.md
+      - name: Upload assets to draft pre-release
+        # Draft first, publish last: immutable releases reject uploads
+        # to a published release. The draft carries no tag yet;
+        # tag_name + target_commitish create it at this commit on
+        # publish. The action's `token` input defaults to github.token.
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
+        with:
+          draft: true
+          prerelease: true
+          make_latest: "false"
+          tag_name: ${{ needs.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          body_path: release-notes.md
+          files: |
+            mdsmith-*
+            checksums.txt
+            checksums.txt.bundle
+      - name: Re-check the candidate is still current
+        # The version was picked when this run started. If a stable
+        # release (or another tag) landed while the jobs above were
+        # building, publishing would tag a pre-release of a version
+        # that has already shipped. check-rc re-reads the tags; when
+        # the candidate is stale it deletes this run's draft and the
+        # publish below is skipped. The next merge cuts a fresh one.
+        id: fresh
+        env:
+          RELEASE_TAG: ${{ needs.version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go run ./cmd/mdsmith-release check-rc --discard-draft
+      - name: Publish pre-release
+        if: steps.fresh.outputs.current == 'true'
+        env:
+          RELEASE_TAG: ${{ needs.version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go run ./cmd/mdsmith-release publish-release

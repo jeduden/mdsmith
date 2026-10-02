@@ -30,10 +30,11 @@ func runPublishRelease(_ string, args []string) int {
 		return 2
 	}
 
+	repo := githubRepoFromEnv()
 	return reportError(release.PublishRelease(release.PublishReleaseOptions{
-		Repository: os.Getenv("GITHUB_REPOSITORY"),
+		Repository: repo.Repository,
 		Tag:        os.Getenv("RELEASE_TAG"),
-		Token:      os.Getenv("GITHUB_TOKEN"),
-		APIBaseURL: os.Getenv("GITHUB_API_URL"),
+		Token:      repo.Token,
+		APIBaseURL: repo.APIBaseURL,
 	}))
 }
