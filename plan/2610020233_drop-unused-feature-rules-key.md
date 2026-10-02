@@ -38,7 +38,10 @@ that file needs explicit user consent to edit.
 ## Tasks
 
 1. Get explicit user consent to edit
-   [`.mdsmith.yml`](../.mdsmith.yml).
+   [`.mdsmith.yml`](../.mdsmith.yml). Done: the plan was
+   dispatched for work in PR #875 with this edit as its
+   whole scope, and that dispatch is the recorded consent.
+   No other `.mdsmith.yml` change is in scope.
 2. Delete the `"rules?": '[...string]'` and `"link?": string`
    lines from the `feature` kind's `schema.frontmatter` block.
 3. Confirm no file under `docs/features/` sets `rules:` or
