@@ -41,6 +41,12 @@ Plan 2610021027 keeps that dispose func registered. A
 nil guard makes a second `dispose()` silent. The other
 methods still reach released funcs.
 
+One read-only method hits the same path. Take
+`Object.defineProperty(session, "check", { writable:
+false })`. `dispose` releases that func, but the swap
+does not land. Then `session.check()` returns `undefined`,
+not a rejecting `Promise`.
+
 The simple alternatives each fail one goal:
 
 - Keeping the per-session func unreleased leaks one
@@ -60,7 +66,7 @@ against the WASM budgets on the engine API page.
    calls it twice, and fails if the second call reaches a
    released func (a release hook seam can record that).
    Add the same check for the other methods of a frozen
-   session object.
+   session object, and for one read-only method.
 2. Choose a design that keeps
    `TestNewSessionProxy_DisposeLeavesNoFuncs` green, or
    record why the current trade-off stays.
@@ -70,9 +76,9 @@ against the WASM budgets on the engine API page.
 
 - [ ] `const d = session.dispose; d(); d()` logs nothing,
       or the engine API page states why it still does.
-- [ ] Calls to a frozen session's methods after
-      `dispose()` log nothing, or the engine API page
-      states why they still do.
+- [ ] Calls to a frozen session's methods, or to one
+      read-only method, after `dispose()` log nothing, or
+      the engine API page states why they still do.
 - [ ] N create/dispose cycles leave the func count the
       same as one cycle.
 - [ ] `go run ./cmd/mdsmith-release test-js-wasm
