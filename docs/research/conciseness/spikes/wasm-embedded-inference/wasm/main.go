@@ -8,7 +8,8 @@
 //
 //   - alloc(size) ptr    : reserve size bytes of guest memory for host input
 //   - free(ptr)          : release a prior alloc
-//   - classify(ptr, len) : classify text at [ptr, ptr+len); returns an
+//   - classify(ptr, len) : classify text at [ptr, ptr+len) of an alloc'd
+//     buffer (0 for an unknown ptr or len past its end); returns an
 //     int64 packing (outPtr<<32)|outLen of a JSON
 //     result written into a static guest buffer.
 package main
@@ -61,8 +62,14 @@ func classify(ptr, length int32) int64 {
 	}
 	text := ""
 	if length > 0 {
-		data := unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ptr))), length)
-		text = string(data)
+		// Resolve ptr through keepAlive rather than converting the raw
+		// address back to a pointer: only alloc'd buffers are valid
+		// input, and the slice length bounds the read.
+		buf, ok := keepAlive[uintptr(ptr)]
+		if !ok || int(length) > len(buf) {
+			return 0
+		}
+		text = string(buf[:length])
 	}
 	result := model.Classify(text)
 
