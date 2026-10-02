@@ -6,7 +6,6 @@ summary: >-
   output, and a shell-safety check inspects the recipe without
   running it.
 icon: blocks
-link: "/guides/directives/build/"
 weight: 14
 group: "Markdown as a single source of truth"
 ---

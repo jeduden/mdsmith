@@ -5,7 +5,6 @@ summary: >-
   JSON, YAML, or msgpack data tree; `mdsmith export` writes a portable,
   directive-free copy that renders anywhere.
 icon: braces
-link: "/guides/extract-markdown-as-data/"
 weight: 15
 group: "Markdown as a single source of truth"
 ---

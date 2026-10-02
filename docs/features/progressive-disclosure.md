@@ -5,7 +5,6 @@ summary: >-
   tracked doc, so an agent reads a few thousand tokens of
   metadata up front and opens only the files a task touches.
 icon: list-tree
-link: "/guides/progressive-disclosure/"
 weight: 13
 group: "Markdown as a single source of truth"
 ---

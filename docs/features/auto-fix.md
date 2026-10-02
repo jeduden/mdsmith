@@ -6,7 +6,6 @@ summary: >-
   passes and stopping when edits stabilize. `mdsmith check` is the
   read-only CI sibling.
 icon: wrench
-link: "/reference/cli/fix/"
 weight: 1
 group: "Clean, consistent Markdown"
 ---

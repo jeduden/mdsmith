@@ -5,7 +5,6 @@ summary: >-
   expression on front matter; `mdsmith metrics rank` ranks files by
   any shared metric — both ready to pipe into a release script.
 icon: gauge
-link: "/reference/cli/query/"
 weight: 16
 group: "Built for your pipeline"
 ---

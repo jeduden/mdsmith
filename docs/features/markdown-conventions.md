@@ -6,7 +6,6 @@ summary: >-
   flavor will not render; a placeholder vocabulary spares template
   tokens.
 icon: book-type
-link: "/reference/conventions/"
 weight: 2
 group: "Clean, consistent Markdown"
 ---

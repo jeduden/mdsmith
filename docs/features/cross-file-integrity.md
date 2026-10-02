@@ -5,7 +5,6 @@ summary: >-
   per-file section schemas, and keep Markdown in the right folders.
   Schemas can be inline on a file kind or shared via `proto.md` files.
 icon: link
-link: "/guides/directives/enforcing-structure/"
 weight: 8
 group: "A connected docs tree"
 ---

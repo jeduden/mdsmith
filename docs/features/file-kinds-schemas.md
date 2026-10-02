@@ -5,7 +5,6 @@ summary: >-
   matter against a schema declared inline on the kind or shared via a
   `proto.md` template — so a whole directory obeys one contract.
 icon: shapes
-link: "/guides/file-kinds/"
 weight: 11
 group: "A connected docs tree"
 ---

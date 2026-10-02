@@ -4,7 +4,6 @@ summary: >-
   Cap file, section, and token-budget size; enforce reading grade and
   sentence count; flag verbatim copy-paste across files.
 icon: ruler
-link: "/guides/metrics-tradeoffs/"
 weight: 3
 group: "Clean, consistent Markdown"
 ---
