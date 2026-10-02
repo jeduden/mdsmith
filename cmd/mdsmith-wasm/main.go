@@ -167,242 +167,230 @@ var objectToString js.Value
 // smoke test and a native test assert the set equals
 // pkg/mdsmith.Session's capability list, and a js/wasm test asserts
 // the proxy's keys equal sessionMethodNames.
+//
+// The method funcs are shared by every session and registered once.
+// Each session gets a Function.prototype.bind of them with its id as
+// the first argument, so the binding lives in JS and is collected with
+// the session object, and a session registers no func of its own.
+// dispose drops the id from sessions, so a call through any reference
+// (a stored `const d = session.dispose`, a frozen session object, a
+// read-only method) finds no session and takes the disposed path: it
+// never reaches a released func, so syscall/js logs nothing. See plan
+// 2610021237.
 func newSessionProxy(sess *mdsmith.Session) js.Value {
-	methods := map[string]js.Func{
-		"check":        proxyCheck(sess),
-		"fix":          proxyFix(sess),
-		"kinds":        proxyKinds(sess),
-		"rename":       proxyRename(sess),
-		"move":         proxyMove(sess),
-		"capabilities": proxyCapabilities(sess),
-		"invalidate":   proxyInvalidate(sess),
+	shared := sharedMethods()
+	id := nextSessionID
+	nextSessionID++
+	sessions[id] = sess
+	fields := make(map[string]any, len(shared))
+	for name, f := range shared {
+		fields[name] = f.Call("bind", js.Undefined(), id)
 	}
-	fields := make(map[string]any, len(methods)+1)
-	for name, f := range methods {
-		fields[name] = f
-	}
-	proxy := js.ValueOf(fields)
-	proxy.Set("dispose", proxyDispose(sess, proxy, methods))
-	return proxy
+	return js.ValueOf(fields)
 }
 
-// proxyCheck builds session.check(uri, src) → Promise<Diagnostic[]>.
-func proxyCheck(sess *mdsmith.Session) js.Func {
-	return funcOf(func(_ js.Value, args []js.Value) any {
-		return newPromise(func(resolve, reject func(any)) {
-			uri, src, ok := uriAndSource(args)
-			if !ok {
-				reject(jsError("check(uri, src) requires two string arguments"))
-				return
-			}
-			diags, err := sess.Check(uri, src)
-			if err != nil {
-				reject(jsError(err.Error()))
-				return
-			}
-			// A nil Go slice marshals to JSON null, but the check()
-			// contract is Diagnostic[]; normalise a clean file to [].
-			if diags == nil {
-				diags = []mdsmith.Diagnostic{}
-			}
-			resolve(toJS(diags))
-		})
-	})
-}
-
-// proxyFix builds session.fix(uri, src) → Promise<FixResult>.
-func proxyFix(sess *mdsmith.Session) js.Func {
-	return funcOf(func(_ js.Value, args []js.Value) any {
-		return newPromise(func(resolve, reject func(any)) {
-			uri, src, ok := uriAndSource(args)
-			if !ok {
-				reject(jsError("fix(uri, src) requires two string arguments"))
-				return
-			}
-			res, err := sess.Fix(uri, src)
-			if err != nil {
-				reject(jsError(err.Error()))
-				return
-			}
-			// Same nil-slice→null guard for the result's diagnostics.
-			if res.Diagnostics == nil {
-				res.Diagnostics = []mdsmith.Diagnostic{}
-			}
-			resolve(toJS(res))
-		})
-	})
-}
-
-// proxyKinds builds session.kinds(uri) → Promise<KindsResult>.
-func proxyKinds(sess *mdsmith.Session) js.Func {
-	return funcOf(func(_ js.Value, args []js.Value) any {
-		return newPromise(func(resolve, reject func(any)) {
-			if len(args) < 1 || args[0].Type() != js.TypeString {
-				reject(jsError("kinds(uri) requires a string argument"))
-				return
-			}
-			res, err := sess.Kinds(args[0].String())
-			if err != nil {
-				reject(jsError(err.Error()))
-				return
-			}
-			resolve(toJS(res))
-		})
-	})
-}
-
-// proxyRename builds session.rename(uri, source, as, old, new) →
-// Promise<Plan>; as may be "".
-func proxyRename(sess *mdsmith.Session) js.Func {
-	return funcOf(func(_ js.Value, args []js.Value) any {
-		return newPromise(func(resolve, reject func(any)) {
-			if len(args) < 5 || !allStrings(args[:5]) {
-				reject(jsError("rename(uri, source, as, old, new) requires five string arguments"))
-				return
-			}
-			plan, err := sess.Rename(args[0].String(), []byte(args[1].String()),
-				args[2].String(), args[3].String(), args[4].String())
-			if err != nil {
-				reject(jsError(err.Error()))
-				return
-			}
-			resolve(toJS(plan))
-		})
-	})
-}
-
-// proxyMove builds session.move(src, dst) → Promise<Plan>.
-func proxyMove(sess *mdsmith.Session) js.Func {
-	return funcOf(func(_ js.Value, args []js.Value) any {
-		return newPromise(func(resolve, reject func(any)) {
-			if len(args) < 2 || !allStrings(args[:2]) {
-				reject(jsError("move(src, dst) requires two string arguments"))
-				return
-			}
-			plan, err := sess.Move(args[0].String(), args[1].String())
-			if err != nil {
-				reject(jsError(err.Error()))
-				return
-			}
-			resolve(toJS(plan))
-		})
-	})
-}
-
-// proxyCapabilities builds the synchronous session.capabilities() →
-// string[].
-func proxyCapabilities(sess *mdsmith.Session) js.Func {
-	return funcOf(func(_ js.Value, _ []js.Value) any {
-		caps := sess.Capabilities()
-		arr := make([]any, len(caps))
-		for i, c := range caps {
-			arr[i] = c
-		}
-		return js.ValueOf(arr)
-	})
-}
-
-// proxyInvalidate builds the synchronous session.invalidate(uri, src?).
-// A non-string uri is ignored; a string src replaces the cached source.
-func proxyInvalidate(sess *mdsmith.Session) js.Func {
-	return funcOf(func(_ js.Value, args []js.Value) any {
-		if len(args) < 1 || args[0].Type() != js.TypeString {
-			return js.Undefined()
-		}
-		uri := args[0].String()
-		if len(args) >= 2 && args[1].Type() == js.TypeString {
-			sess.Invalidate(uri, []byte(args[1].String()))
-		} else {
-			sess.Invalidate(uri)
-		}
-		return js.Undefined()
-	})
-}
-
-// proxyDispose builds the synchronous session.dispose(). js.FuncOf
-// keeps every closure in syscall/js's handler table until Release, so
-// without releasing them each disposed session, workspace bytes
-// included, would stay reachable for the life of the engine. dispose
-// therefore releases the session's method funcs and points each
-// method on proxy, dispose included, at a shared stand-in of the same
-// shape (disposedFunc), so a late call through the session object
-// never reaches a released func. Once the swap has landed it releases
-// its own func too (js.Func.Release is safe while the func runs), so a
-// disposed session leaves nothing in the handler table. Like the other
-// methods, a dispose reference taken before that first call points at
-// a released func once it has run (see plan 2610021237).
-//
-// On a frozen session object (or one whose dispose is read-only) the
-// Set is silently ignored, so proxy still points at this func. dispose
-// then keeps it registered, and the nil guard turns a second
-// session.dispose() into a no-op instead of a call to a released func.
-// The other methods of a frozen session still point at their released
-// funcs.
-//
-// dispose drops its references before it runs any JS, so a re-entrant
-// call (from a JS setter the caller put on the session object) returns
-// at the nil guard, and the outer call finishes on its own copies.
-func proxyDispose(sess *mdsmith.Session, proxy js.Value, methods map[string]js.Func) js.Func {
-	var self js.Func
-	self = funcOf(func(_ js.Value, _ []js.Value) any {
-		if sess == nil {
-			return js.Undefined()
-		}
-		s, p, m := sess, proxy, methods
-		sess, proxy, methods = nil, js.Undefined(), nil
-		s.Dispose()
-		for name, f := range m {
-			p.Set(name, disposedFunc(name))
-			releaseFunc(f)
-		}
-		noop := disposedFunc("dispose")
-		p.Set("dispose", noop)
-		if p.Get("dispose").Equal(noop.Value) {
-			releaseFunc(self)
-		}
-		return js.Undefined()
-	})
-	return self
-}
-
-// Stand-ins a disposed session's methods point at. They are shared by
-// every session and never released, so disposing pins nothing new.
+// sessions maps a live session's id to its Session. syscall/js runs
+// every callback on one goroutine, so it needs no lock.
 var (
-	disposedOnce       sync.Once
-	disposedAsync      js.Func // Promise rejecting with "session disposed"
-	disposedEmptyArray js.Func // capabilities(): []
-	disposedNoop       js.Func // invalidate() and dispose(): undefined
+	sessions      = map[int]*mdsmith.Session{}
+	nextSessionID int
 )
+
+// sharedMethodImpls maps each session method to its implementation.
+// sess is nil once the session is disposed.
+var sharedMethodImpls = map[string]func(sess *mdsmith.Session, args []js.Value) any{
+	"check":        proxyCheck,
+	"fix":          proxyFix,
+	"kinds":        proxyKinds,
+	"rename":       proxyRename,
+	"move":         proxyMove,
+	"capabilities": proxyCapabilities,
+	"invalidate":   proxyInvalidate,
+	"dispose":      proxyDispose,
+}
+
+var (
+	sharedOnce  sync.Once
+	sharedFuncs map[string]js.Value
+)
+
+// sharedMethods registers the shared method funcs on first use. They
+// are never released, so every session reuses the same handler-table
+// entries. Each takes the session id as args[0].
+func sharedMethods() map[string]js.Value {
+	sharedOnce.Do(func() {
+		sharedFuncs = make(map[string]js.Value, len(sharedMethodImpls))
+		for name, impl := range sharedMethodImpls {
+			sharedFuncs[name] = funcOf(func(_ js.Value, args []js.Value) any {
+				var sess *mdsmith.Session
+				if len(args) > 0 && args[0].Type() == js.TypeNumber {
+					sess = sessions[args[0].Int()]
+					args = args[1:]
+				}
+				if sess == nil {
+					return disposedResult(name)
+				}
+				return impl(sess, args)
+			}).Value
+		}
+	})
+	return sharedFuncs
+}
+
+// proxyCheck is session.check(uri, src) → Promise<Diagnostic[]>.
+func proxyCheck(sess *mdsmith.Session, args []js.Value) any {
+	return newPromise(func(resolve, reject func(any)) {
+		uri, src, ok := uriAndSource(args)
+		if !ok {
+			reject(jsError("check(uri, src) requires two string arguments"))
+			return
+		}
+		diags, err := sess.Check(uri, src)
+		if err != nil {
+			reject(jsError(err.Error()))
+			return
+		}
+		// A nil Go slice marshals to JSON null, but the check()
+		// contract is Diagnostic[]; normalise a clean file to [].
+		if diags == nil {
+			diags = []mdsmith.Diagnostic{}
+		}
+		resolve(toJS(diags))
+	})
+}
+
+// proxyFix is session.fix(uri, src) → Promise<FixResult>.
+func proxyFix(sess *mdsmith.Session, args []js.Value) any {
+	return newPromise(func(resolve, reject func(any)) {
+		uri, src, ok := uriAndSource(args)
+		if !ok {
+			reject(jsError("fix(uri, src) requires two string arguments"))
+			return
+		}
+		res, err := sess.Fix(uri, src)
+		if err != nil {
+			reject(jsError(err.Error()))
+			return
+		}
+		// Same nil-slice→null guard for the result's diagnostics.
+		if res.Diagnostics == nil {
+			res.Diagnostics = []mdsmith.Diagnostic{}
+		}
+		resolve(toJS(res))
+	})
+}
+
+// proxyKinds is session.kinds(uri) → Promise<KindsResult>.
+func proxyKinds(sess *mdsmith.Session, args []js.Value) any {
+	return newPromise(func(resolve, reject func(any)) {
+		if len(args) < 1 || args[0].Type() != js.TypeString {
+			reject(jsError("kinds(uri) requires a string argument"))
+			return
+		}
+		res, err := sess.Kinds(args[0].String())
+		if err != nil {
+			reject(jsError(err.Error()))
+			return
+		}
+		resolve(toJS(res))
+	})
+}
+
+// proxyRename is session.rename(uri, source, as, old, new) →
+// Promise<Plan>; as may be "".
+func proxyRename(sess *mdsmith.Session, args []js.Value) any {
+	return newPromise(func(resolve, reject func(any)) {
+		if len(args) < 5 || !allStrings(args[:5]) {
+			reject(jsError("rename(uri, source, as, old, new) requires five string arguments"))
+			return
+		}
+		plan, err := sess.Rename(args[0].String(), []byte(args[1].String()),
+			args[2].String(), args[3].String(), args[4].String())
+		if err != nil {
+			reject(jsError(err.Error()))
+			return
+		}
+		resolve(toJS(plan))
+	})
+}
+
+// proxyMove is session.move(src, dst) → Promise<Plan>.
+func proxyMove(sess *mdsmith.Session, args []js.Value) any {
+	return newPromise(func(resolve, reject func(any)) {
+		if len(args) < 2 || !allStrings(args[:2]) {
+			reject(jsError("move(src, dst) requires two string arguments"))
+			return
+		}
+		plan, err := sess.Move(args[0].String(), args[1].String())
+		if err != nil {
+			reject(jsError(err.Error()))
+			return
+		}
+		resolve(toJS(plan))
+	})
+}
+
+// proxyCapabilities is the synchronous session.capabilities() →
+// string[].
+func proxyCapabilities(sess *mdsmith.Session, _ []js.Value) any {
+	caps := sess.Capabilities()
+	arr := make([]any, len(caps))
+	for i, c := range caps {
+		arr[i] = c
+	}
+	return js.ValueOf(arr)
+}
+
+// proxyInvalidate is the synchronous session.invalidate(uri, src?).
+// A non-string uri is ignored; a string src replaces the cached source.
+func proxyInvalidate(sess *mdsmith.Session, args []js.Value) any {
+	if len(args) < 1 || args[0].Type() != js.TypeString {
+		return js.Undefined()
+	}
+	uri := args[0].String()
+	if len(args) >= 2 && args[1].Type() == js.TypeString {
+		sess.Invalidate(uri, []byte(args[1].String()))
+	} else {
+		sess.Invalidate(uri)
+	}
+	return js.Undefined()
+}
+
+// proxyDispose is the synchronous session.dispose(). It disposes the
+// Go session and drops it from sessions, so the Session and its
+// workspace are unreachable from the handler table. The session
+// registered no func of its own, so there is nothing to release. It
+// runs only for a live session; a second call finds no session and
+// takes the disposed path.
+func proxyDispose(sess *mdsmith.Session, _ []js.Value) any {
+	for id, s := range sessions {
+		if s == sess {
+			delete(sessions, id)
+			break
+		}
+	}
+	sess.Dispose()
+	return js.Undefined()
+}
 
 // disposedAsyncReason is the message of a disposed async method's
 // rejection.
 const disposedAsyncReason = "session disposed"
 
-// disposedFunc returns the stand-in for method name: capabilities()
-// returns an empty list, invalidate() and dispose() do nothing, and
-// every async method returns a Promise that rejects with
-// Error("session disposed").
-func disposedFunc(name string) js.Func {
-	disposedOnce.Do(func() {
-		disposedAsync = funcOf(func(js.Value, []js.Value) any {
-			return newPromise(func(_, reject func(any)) {
-				reject(jsError(disposedAsyncReason))
-			})
-		})
-		disposedEmptyArray = funcOf(func(js.Value, []js.Value) any {
-			return js.ValueOf([]any{})
-		})
-		disposedNoop = funcOf(func(js.Value, []js.Value) any {
-			return js.Undefined()
-		})
-	})
+// disposedResult is what method name returns once its session is
+// disposed: capabilities() returns an empty list, invalidate() and
+// dispose() do nothing, and every async method returns a Promise that
+// rejects with Error("session disposed").
+func disposedResult(name string) any {
 	switch name {
 	case "capabilities":
-		return disposedEmptyArray
+		return js.ValueOf([]any{})
 	case "invalidate", "dispose":
-		return disposedNoop
+		return js.Undefined()
 	default:
-		return disposedAsync
+		return newPromise(func(_, reject func(any)) {
+			reject(jsError(disposedAsyncReason))
+		})
 	}
 }
 

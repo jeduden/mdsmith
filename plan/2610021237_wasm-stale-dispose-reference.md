@@ -1,7 +1,7 @@
 ---
 id: 2610021237
 title: Silence a stale wasm session dispose reference
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   Since plan 2610021027, a wasm session's `dispose`
@@ -72,16 +72,25 @@ against the WASM budgets on the engine API page.
    record why the current trade-off stays.
 3. Update the engine API page's dispose paragraph.
 
+Design chosen: the JS-side wrapper option. Shared method funcs
+register once and take a session id first; each session holds
+`Function.prototype.bind` of them (no `eval`, no per-session func).
+`dispose` deletes the id from a Go-side registry, so every call
+through any reference takes the disposed path. This supersedes the
+release-and-swap design: nothing is released, so nothing can be
+reached after release. Size is within the budgets
+(`size_test.go` passes).
+
 ## Acceptance Criteria
 
-- [ ] `const d = session.dispose; d(); d()` logs nothing,
+- [x] `const d = session.dispose; d(); d()` logs nothing,
       or the engine API page states why it still does.
-- [ ] Calls to a frozen session's methods, or to one
+- [x] Calls to a frozen session's methods, or to one
       read-only method, after `dispose()` log nothing, or
       the engine API page states why they still do.
-- [ ] N create/dispose cycles leave the func count the
+- [x] N create/dispose cycles leave the func count the
       same as one cycle.
-- [ ] `go run ./cmd/mdsmith-release test-js-wasm
+- [x] `go run ./cmd/mdsmith-release test-js-wasm
       ./cmd/mdsmith-wasm` passes.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
