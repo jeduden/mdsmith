@@ -282,4 +282,5 @@ footer: |
 | 2610020233 | 🔲     | haiku  | [Drop the unused rules? and link? keys from the feature kind schema](plan/2610020233_drop-unused-feature-rules-key.md)                                  |
 | 2610020305 | 🔲     | sonnet | [Homepage Tier 3 declutter: pillar numbers, tints, badges, eyebrows](plan/2610020305_homepage-tier3-declutter.md)                                       |
 | 2610020725 | ✅     | sonnet | [Make internal/build compile under GOOS=js GOARCH=wasm](plan/2610020725_build-exec-js-wasm-stub.md)                                                     |
+| 2610020946 | 🔲     | sonnet | [Kill a timed-out recipe's whole note group on plan9](plan/2610020946_plan9-recipe-note-group-kill.md)                                                  |
 <?/catalog?>
