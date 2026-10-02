@@ -34,6 +34,13 @@ released func, which returns `undefined` but makes
 [engine API page](../docs/background/concepts/engine-api.md)
 documents this.
 
+A frozen session object hits a related path. Think of
+`Object.freeze(session)`, or a store that freezes its
+state. There `proxy.Set` cannot swap in the stand-ins.
+Plan 2610021027 keeps that dispose func registered. A
+nil guard makes a second `dispose()` silent. The other
+methods still reach released funcs.
+
 The simple alternatives each fail one goal:
 
 - Keeping the per-session func unreleased leaks one
@@ -52,6 +59,8 @@ against the WASM budgets on the engine API page.
 1. Add a js/wasm test that stores `session.dispose`,
    calls it twice, and fails if the second call reaches a
    released func (a release hook seam can record that).
+   Add the same check for the other methods of a frozen
+   session object.
 2. Choose a design that keeps
    `TestNewSessionProxy_DisposeLeavesNoFuncs` green, or
    record why the current trade-off stays.
@@ -61,6 +70,9 @@ against the WASM budgets on the engine API page.
 
 - [ ] `const d = session.dispose; d(); d()` logs nothing,
       or the engine API page states why it still does.
+- [ ] Calls to a frozen session's methods after
+      `dispose()` log nothing, or the engine API page
+      states why they still do.
 - [ ] N create/dispose cycles leave the func count the
       same as one cycle.
 - [ ] `go run ./cmd/mdsmith-release test-js-wasm

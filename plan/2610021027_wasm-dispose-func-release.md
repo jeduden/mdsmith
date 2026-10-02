@@ -48,6 +48,9 @@ say it for `dispose` too.
 2. Release `dispose`'s own func on its first call and set
    `proxy.dispose` to a package-level no-op func.
 3. Update the engine API page's dispose paragraph.
+4. On a frozen session object `proxy.Set` cannot swap in
+   the no-op, so keep `dispose`'s func registered there
+   behind a nil guard; a second `dispose()` stays silent.
 
 ## Acceptance Criteria
 
@@ -55,6 +58,8 @@ say it for `dispose` too.
       same as one cycle.
 - [x] `session.dispose(); session.dispose()` stays a
       no-op.
+- [x] On a frozen session, a second `dispose()` reaches
+      no released func.
 - [x] `go run ./cmd/mdsmith-release test-js-wasm
       ./cmd/mdsmith-wasm` passes.
 - [x] All tests pass: `go test ./...`

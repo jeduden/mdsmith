@@ -349,3 +349,36 @@ func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
 	assert.Len(t, live, base, "live funcs after 5 more create/dispose cycles")
 	assert.Zero(t, strays, "releases of a func that was not live (released twice, or registered outside funcOf)")
 }
+
+// TestNewSessionProxy_DisposeFrozenSessionKeepsDispose checks that a
+// session object frozen before dispose() (Object.freeze, or a store
+// that deep-freezes its state) keeps its dispose func registered:
+// proxy.Set cannot swap in the no-op stand-in there, so releasing it
+// would make a second session.dispose() reach a released func. The kept
+// func drops its references and a second call releases nothing more.
+// Not parallel: it swaps the releaseFunc seam.
+func TestNewSessionProxy_DisposeFrozenSessionKeepsDispose(t *testing.T) {
+	oldRelease := releaseFunc
+	t.Cleanup(func() { releaseFunc = oldRelease })
+	var released []js.Value
+	releaseFunc = func(f js.Func) {
+		released = append(released, f.Value)
+		oldRelease(f)
+	}
+
+	proxy := newTestProxy(t)
+	ownDispose := proxy.Get("dispose")
+	js.Global().Get("Object").Call("freeze", proxy)
+	released = nil // drop releases made while creating the session
+
+	proxy.Call("dispose")
+	require.True(t, proxy.Get("dispose").Equal(ownDispose), "frozen proxy keeps its own dispose")
+	for _, v := range released {
+		assert.False(t, v.Equal(ownDispose), "dispose func of a frozen session must stay registered")
+	}
+	assert.Len(t, released, len(sessionMethodNames())-1, "every other method func released")
+
+	n := len(released)
+	assert.True(t, proxy.Call("dispose").IsUndefined(), "second dispose on a frozen session")
+	assert.Len(t, released, n, "second dispose releases nothing more")
+}
