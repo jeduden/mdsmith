@@ -244,6 +244,9 @@ func TestTestJSONWriter_Line(t *testing.T) {
 	w := &testJSONWriter{out: &out}
 	w.line([]byte("  "))
 	w.line([]byte("not json"))
+	// A mangled event is dropped, as terseLog drops it, so the log
+	// never shows half a JSON record.
+	w.line([]byte(`{"Action":"output","Test":"TestZ`))
 	w.line([]byte(`{"Action":"pass","Test":"TestX"}`))
 	w.line([]byte(`{"Action":"pass","Test":"TestX/sub"}`))
 	w.line([]byte(`{"Action":"skip","Test":"TestY"}`))

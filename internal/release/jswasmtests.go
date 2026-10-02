@@ -284,7 +284,8 @@ func takesTestingT(fn *ast.FuncDecl, pkgName string) bool {
 // Each complete line's Output (the `go test -v` text) goes to out at
 // once, and the top-level tests that report a "pass" event collect in
 // passed, in stream order. A line that is not a JSON event, such as a
-// `go: downloading` notice, passes through to out unchanged.
+// `go: downloading` notice, passes through to out unchanged; a
+// mangled `{`-led event is dropped (see echoNonEvent).
 type testJSONWriter struct {
 	out     io.Writer
 	partial []byte // bytes after the last newline, awaiting the rest
@@ -317,16 +318,16 @@ func (w *testJSONWriter) Flush() {
 	}
 }
 
-// line decodes one stream line: blank lines are dropped, a non-JSON
-// line is echoed, and an event's Output is echoed with a top-level
-// "pass" recorded.
+// line decodes one stream line: blank lines are dropped, a line that
+// is not an event goes through echoNonEvent, and an event's Output is
+// echoed with a top-level "pass" recorded.
 func (w *testJSONWriter) line(b []byte) {
 	if len(bytes.TrimSpace(b)) == 0 {
 		return
 	}
 	var ev testEvent
 	if err := json.Unmarshal(b, &ev); err != nil {
-		_, _ = w.out.Write(append(slices.Clip(b), '\n'))
+		echoNonEvent(w.out, b)
 		return
 	}
 	_, _ = io.WriteString(w.out, ev.Output)

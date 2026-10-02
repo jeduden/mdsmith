@@ -125,16 +125,23 @@ func newTerseLog(w io.Writer) *terseLog {
 	return &terseLog{out: bufio.NewWriter(w), buf: make(map[testKey][]string)}
 }
 
-// passthrough echoes a non-JSON line (e.g. a `go: downloading …`
-// notice) verbatim, but drops a `{`-led line — a mangled event from
-// `go test -json`'s rare cross-package write interleaving — so the
-// log never shows half a JSON record.
+// passthrough echoes a line that is not a `go test -json` event.
 func (l *terseLog) passthrough(line []byte) {
+	echoNonEvent(l.out, line)
+}
+
+// echoNonEvent is the one rule every `go test -json` reader in this
+// package applies to a line that failed to decode: it echoes a
+// non-JSON line (e.g. a `go: downloading …` notice) verbatim, but
+// drops a `{`-led line — a mangled event from `go test -json`'s rare
+// cross-package write interleaving — so the log never shows half a
+// JSON record.
+func echoNonEvent(out io.Writer, line []byte) {
 	if startsWithBrace(line) {
 		return
 	}
-	_, _ = l.out.Write(line)
-	_ = l.out.WriteByte('\n')
+	_, _ = out.Write(line)
+	_, _ = out.Write([]byte{'\n'})
 }
 
 // output routes one "output" event: verbose scaffolding is dropped,
