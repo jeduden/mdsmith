@@ -8,9 +8,10 @@
 //
 //   - alloc(size) ptr    : reserve size bytes of guest memory for host input
 //   - free(ptr)          : release a prior alloc
-//   - classify(ptr, len) : classify text at [ptr, ptr+len); returns an
-//     int64 packing (outPtr<<32)|outLen of a JSON
-//     result written into a static guest buffer.
+//   - classify(ptr, len) : classify text at [ptr, ptr+len) of an alloc'd
+//     buffer; returns abi.Pack(outPtr, outLen) of a JSON result
+//     written into a static guest buffer, or an abi sentinel
+//     (Rejected, Truncated).
 package main
 
 import (
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/jeduden/mdsmith/docs/research/conciseness/spikes/wasm-embedded-inference/abi"
 	"github.com/jeduden/mdsmith/internal/rules/concisenessscoring/classifier"
 )
 
@@ -48,22 +50,16 @@ func alloc(size int32) int32 {
 
 //go:wasmexport free
 func free(ptr int32) {
-	delete(keepAlive, uintptr(ptr))
+	delete(keepAlive, uintptr(uint32(ptr)))
 }
 
 //go:wasmexport classify
 func classify(ptr, length int32) int64 {
-	if length < 0 {
-		return 0
+	input, ok := abi.LookupInput(keepAlive, ptr, length)
+	if !ok {
+		return abi.Rejected
 	}
-	if length > 0 && ptr == 0 {
-		return 0
-	}
-	text := ""
-	if length > 0 {
-		data := unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ptr))), length)
-		text = string(data)
-	}
+	text := string(input)
 	result := model.Classify(text)
 
 	var b strings.Builder
@@ -79,13 +75,13 @@ func classify(ptr, length int32) int64 {
 	)
 	encoded := b.String()
 	if len(encoded) > len(outputBuf) {
-		// Signal truncation with a negative length so the host can detect
-		// and raise rather than silently decoding a truncated JSON buffer.
-		return -1
+		// Signal truncation so the host can detect and raise rather
+		// than silently decoding a truncated JSON buffer.
+		return abi.Truncated
 	}
 	n := copy(outputBuf[:], encoded)
 	out := uintptr(unsafe.Pointer(&outputBuf[0]))
-	return (int64(out) << 32) | int64(n)
+	return abi.Pack(uint32(out), uint32(n))
 }
 
 func main() {}

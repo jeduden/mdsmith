@@ -63,7 +63,20 @@ jobs:
           cache-dependency-path: |
             go.sum
             tools/go.sum
-      - run: go tool -modfile=tools/go.mod golangci-lint run
+      # `go tool` would compile the linter for the target GOOS, so
+      # build it once for the host and run that one binary for every
+      # view of the module: native (linux), js/wasm (which also covers
+      # the shared !unix && !windows fallback files), and windows.
+      # Files tagged wasip1 or plan9 alone, such as the wasip1 spike
+      # guest, get only the go vet runs in the wasm job.
+      - name: Build golangci-lint for the host
+        run: go build -modfile=tools/go.mod -o "$RUNNER_TEMP/golangci-lint" github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+      - name: Lint the native build
+        run: '"$RUNNER_TEMP/golangci-lint" run'
+      - name: Lint the js/wasm build
+        run: GOOS=js GOARCH=wasm "$RUNNER_TEMP/golangci-lint" run
+      - name: Lint the windows build
+        run: GOOS=windows GOARCH=amd64 "$RUNNER_TEMP/golangci-lint" run
 
   # Tracked manifests must stay pinned at 0.0.0-dev between releases;
   # the release workflow rewrites them with `mdsmith-release stamp`
@@ -520,8 +533,10 @@ jobs:
   # (size_test.go: ceilings of 14 MiB raw / 4.25 MiB gzipped at
   # BestSpeed, against an artifact of ~13.1 MiB / ~4.0 MiB) and the
   # Go↔JS method-set
-  # parity (methods_test.go). A separate step first runs the js/wasm-only
-  # bridge helper unit tests (bridge_test.go) under Node.
+  # parity (methods_test.go). Earlier steps build the whole module for
+  # js/wasm, vet it (tests included) for js/wasm, wasip1, and plan9,
+  # and run the js/wasm-only unit tests (bridge_test.go and the
+  # internal/build and cmd/mdsmith stubs) under Node.
   # tinygo is built in the separate tinygo-wasm
   # job below, which is now enforcing (plan 247).
   wasm:
@@ -536,12 +551,24 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "22"
-      # golangci-lint (the lint job) runs under the native GOOS, so it
-      # skips the //go:build js && wasm bridge entirely. go vet does
-      # cross-compile, so run it here to give the bridge at least
-      # vet-level static analysis.
-      - name: Vet the WASM bridge
-        run: GOOS=js GOARCH=wasm go vet ./cmd/mdsmith-wasm/...
+      - name: Build the whole module for WASM
+        # Plan 2610020725: the bridge never imports internal/build, so
+        # vet and build of ./cmd/mdsmith-wasm alone missed a js/wasm
+        # break in its exec hooks. Building ./... gates every package.
+        run: GOOS=js GOARCH=wasm go build ./...
+      # The lint job runs golangci-lint for linux, js/wasm, and windows
+      # only, so wasip1- and plan9-only files get no linting. go vet
+      # cross-compiles, so run it here for all three wasm-adjacent
+      # targets. Unlike go build, go vet also
+      # type-checks _test.go files, so ./... catches a test helper
+      # defined only under `unix` or `windows` (neither tag covers js,
+      # wasip1, or plan9).
+      - name: Vet the whole module, tests included, for WASM
+        run: GOOS=js GOARCH=wasm go vet ./...
+      - name: Vet the whole module, tests included, for wasip1
+        run: GOOS=wasip1 GOARCH=wasm go vet ./...
+      - name: Vet the whole module, tests included, for plan9
+        run: GOOS=plan9 GOARCH=amd64 go vet ./...
       - name: Unit-test the WASM bridge helpers under Node
         # Runtime logic lives in mdsmith-release per
         # docs/development/release-tooling.md. test-js-wasm runs every
@@ -549,6 +576,14 @@ jobs:
         # unless each one reports a go test -json pass (a skip fails by
         # name).
         run: go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm
+      - name: Unit-test the js/wasm exec stubs under Node
+        # Plan 2610020725: exec_other.go (internal/build, tagged
+        # !unix && !windows) and fileop_exec_wasm.go (cmd/mdsmith,
+        # tagged wasm) never compile natively, so only a js/wasm run
+        # tests them. test-js-wasm takes one package.
+        run: |
+          go run ./cmd/mdsmith-release test-js-wasm ./internal/build
+          go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith
       - name: WASM smoke test, size budget, and method-set parity
         run: go test ./cmd/mdsmith-wasm/...
 

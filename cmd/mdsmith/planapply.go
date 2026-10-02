@@ -108,7 +108,7 @@ func commitPlan(rootDir string, writes []planWrite, op *refactor.FileOp) *commit
 		}
 	}
 	if op != nil {
-		if err := op.Execute(rootDir); err != nil {
+		if err := executeFileOp(*op, rootDir); err != nil {
 			return rollbackWrites(writes, err)
 		}
 	}

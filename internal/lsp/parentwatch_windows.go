@@ -28,7 +28,9 @@ func processAlive(pid int) bool {
 	if err != nil {
 		return winAliveFromOpenErr(err)
 	}
-	defer windows.CloseHandle(h)
+	// A failed close leaks one handle and cannot change the liveness
+	// answer, so the error is deliberately dropped.
+	defer func() { _ = windows.CloseHandle(h) }()
 	event, err := windows.WaitForSingleObject(h, 0)
 	if err != nil {
 		// WAIT_FAILED: the wait itself errored. Be conservative and

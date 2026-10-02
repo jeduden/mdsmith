@@ -233,7 +233,7 @@ func TestE2E_Build_GroupWritableStagingRootRefused(t *testing.T) {
 }
 
 func TestE2E_Build_TimeoutKillsSpawnedChild(t *testing.T) {
-	if runtime.GOOS == "windows" {
+	if !canProbeProcess {
 		t.Skip("process-group kill tested on Unix")
 	}
 	dir := writeBuildRepo(t, "")

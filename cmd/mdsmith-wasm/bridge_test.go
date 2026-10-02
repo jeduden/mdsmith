@@ -183,6 +183,10 @@ func awaitPromise(t *testing.T, p js.Value) (js.Value, bool) {
 
 func TestCreateSession(t *testing.T) {
 	obj := func(m map[string]any) js.Value { return js.ValueOf(m) }
+	const (
+		wsMsg  = "createSession options.workspace must be an object of path to source strings"
+		cfgMsg = "createSession options.configYAML must be a string"
+	)
 
 	rejects := []struct {
 		name    string
@@ -193,13 +197,15 @@ func TestCreateSession(t *testing.T) {
 		{"string options", []js.Value{js.ValueOf("x")}, "createSession requires an options object"},
 		{"null options", []js.Value{js.Null()}, "createSession requires an options object"},
 		{"array options", []js.Value{js.ValueOf([]any{})}, "createSession requires an options object"},
-		{"empty array workspace", []js.Value{obj(map[string]any{"workspace": []any{}})}, "createSession options.workspace must be an object of path to source strings"},
-		{"array workspace", []js.Value{obj(map[string]any{"workspace": []any{"# A"}})}, "createSession options.workspace must be an object of path to source strings"},
-		{"null workspace", []js.Value{obj(map[string]any{"workspace": nil})}, "createSession options.workspace must be an object of path to source strings"},
-		{"string workspace", []js.Value{obj(map[string]any{"workspace": "a.md"})}, "createSession options.workspace must be an object of path to source strings"},
-		{"boxed string workspace", []js.Value{obj(map[string]any{"workspace": js.Global().Get("String").New("# A")})}, "createSession options.workspace must be an object of path to source strings"},
-		{"null configYAML", []js.Value{obj(map[string]any{"configYAML": nil})}, "createSession options.configYAML must be a string"},
-		{"byte configYAML", []js.Value{obj(map[string]any{"configYAML": js.Global().Get("Uint8Array").New(2)})}, "createSession options.configYAML must be a string"},
+		{"empty array workspace", []js.Value{obj(map[string]any{"workspace": []any{}})}, wsMsg},
+		{"array workspace", []js.Value{obj(map[string]any{"workspace": []any{"# A"}})}, wsMsg},
+		{"null workspace", []js.Value{obj(map[string]any{"workspace": nil})}, wsMsg},
+		{"string workspace", []js.Value{obj(map[string]any{"workspace": "a.md"})}, wsMsg},
+		{"boxed string workspace",
+			[]js.Value{obj(map[string]any{"workspace": js.Global().Get("String").New("# A")})}, wsMsg},
+		{"null configYAML", []js.Value{obj(map[string]any{"configYAML": nil})}, cfgMsg},
+		{"byte configYAML",
+			[]js.Value{obj(map[string]any{"configYAML": js.Global().Get("Uint8Array").New(2)})}, cfgMsg},
 	}
 	for _, tt := range rejects {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
@@ -225,4 +231,69 @@ func TestCreateSession(t *testing.T) {
 			v.Call("dispose")
 		})
 	}
+}
+
+// newTestProxy resolves createSession over an empty workspace and
+// returns the session proxy.
+func newTestProxy(t *testing.T) js.Value {
+	t.Helper()
+	opts := js.ValueOf(map[string]any{})
+	v, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{opts}).(js.Value))
+	require.False(t, rejected, "promise must resolve: %v", v)
+	return v
+}
+
+// TestNewSessionProxy_KeysMatchSessionMethodNames ties the proxy's real
+// keys to sessionMethodNames, the list the native parity test checks
+// against the Go Session, so a key added to or dropped from
+// newSessionProxy alone cannot drift past that test.
+func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
+	proxy := newTestProxy(t)
+	defer proxy.Call("dispose")
+	keys := js.Global().Get("Object").Call("keys", proxy)
+	got := make([]string, keys.Length())
+	for i := range got {
+		got[i] = keys.Index(i).String()
+	}
+	assert.ElementsMatch(t, sessionMethodNames(), got)
+}
+
+// TestNewSessionProxy_DisposeReleasesMethods checks that dispose()
+// releases the session's own method funcs, so syscall/js's handler
+// table stops pinning the Session, while every method keeps its return
+// shape: async methods reject with "session disposed", capabilities()
+// is empty, invalidate() does nothing, and a second dispose() is a
+// no-op. No call reaches a released func.
+func TestNewSessionProxy_DisposeReleasesMethods(t *testing.T) {
+	proxy := newTestProxy(t)
+	require.Equal(t, js.TypeObject, proxy.Call("check", "a.md", "# A\n").Type(),
+		"a live check returns a Promise")
+	require.Equal(t, js.TypeObject, proxy.Call("capabilities").Type(),
+		"a live capabilities returns an array")
+	liveCheck := proxy.Get("check")
+
+	proxy.Call("dispose")
+
+	// The session's own func is released: invoking it returns undefined
+	// (syscall/js logs "call to released function" for this one call).
+	assert.True(t, liveCheck.Invoke("a.md", "# A\n").IsUndefined(), "released check func")
+
+	for _, m := range [][]any{
+		{"check", "a.md", "# A\n"},
+		{"fix", "a.md", "# A\n"},
+		{"kinds", "a.md"},
+		{"rename", "a.md", "1", "B", ""},
+		{"move", "a.md", "b.md"},
+	} {
+		p := proxy.Call(m[0].(string), m[1:]...)
+		require.Equal(t, js.TypeObject, p.Type(), "%s after dispose returns a Promise", m[0])
+		v, rejected := awaitPromise(t, p)
+		assert.True(t, rejected, "%s after dispose rejects", m[0])
+		assert.Equal(t, "session disposed", v.Get("message").String(), m[0])
+	}
+	caps := proxy.Call("capabilities")
+	require.True(t, caps.InstanceOf(js.Global().Get("Array")), "capabilities after dispose")
+	assert.Equal(t, 0, caps.Length())
+	assert.True(t, proxy.Call("invalidate", "a.md").IsUndefined(), "invalidate after dispose")
+	assert.NotPanics(t, func() { proxy.Call("dispose") }, "second dispose")
 }
