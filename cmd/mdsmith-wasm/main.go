@@ -45,7 +45,8 @@ func main() {
 	// default from the one source of truth. An explicit GOGC still wins.
 	gctune.ApplyBatch()
 	// Capture Function.prototype.bind before the API is reachable, so a
-	// later patch of it never sees the unbound shared funcs.
+	// later patch of bind or call never sees the unbound shared funcs.
+	// A later patch of Reflect.apply still does (see bindTo).
 	captureBind()
 	js.Global().Set("mdsmith", js.ValueOf(map[string]any{
 		"createSession": js.FuncOf(createSession),
@@ -174,7 +175,9 @@ var objectToString js.Value
 // The method funcs are shared by every session and registered once.
 // Each session gets a Function.prototype.bind of them with its id as
 // the first argument, so the binding lives in JS and is collected with
-// the session object, and a session registers no func of its own.
+// the session object, and a session registers no func of its own. The
+// Go Session stays in sessions until dispose, even once the session
+// object is collected.
 // dispose drops the id from sessions, so a call through any reference
 // (a stored `const d = session.dispose`, a frozen session object, a
 // read-only method) finds no session and takes the disposed path: it
@@ -186,11 +189,13 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 	id := nextSessionID
 	nextSessionID++
 	sessions[id] = sess
-	fields := make(map[string]any, len(shared))
-	for name, f := range shared {
-		fields[name] = bindTo.Invoke(f, js.Undefined(), id)
+	// Set the keys in sessionMethodNames order, not Go map order, so
+	// Object.keys(session) is the same for every session.
+	proxy := js.Global().Get("Object").New()
+	for _, name := range sessionMethodNames() {
+		proxy.Set(name, bindTo.Invoke(shared[name], js.Undefined(), id))
 	}
-	return js.ValueOf(fields)
+	return proxy
 }
 
 // bindTo is Function.prototype.call.bind(Function.prototype.bind), as
@@ -198,7 +203,10 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 // ...args) with no property lookup at call time. newSessionProxy binds
 // through it, so a bind or call that another script installs after the
 // engine loads never receives a raw shared func, which would accept any
-// session id.
+// session id. It does not cover Reflect.apply: wasm_exec.js looks that
+// up on every Go-to-JS call, so a Reflect.apply replaced at any time
+// sees each raw shared func and id here, and every session object the
+// engine resolves. Plan 2610021439 tracks that gap.
 var bindTo js.Value
 
 // captureBind stores bindTo once. main calls it before exposing the

@@ -246,7 +246,8 @@ func newTestProxy(t *testing.T) js.Value {
 // TestNewSessionProxy_KeysMatchSessionMethodNames ties the proxy's real
 // keys to sessionMethodNames, the list the native parity test checks
 // against the Go Session, so a key added to or dropped from
-// newSessionProxy alone cannot drift past that test.
+// newSessionProxy alone cannot drift past that test. The order must
+// match too, so Object.keys(session) is the same for every session.
 func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
 	proxy := newTestProxy(t)
 	defer proxy.Call("dispose")
@@ -255,7 +256,7 @@ func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
 	for i := range got {
 		got[i] = keys.Index(i).String()
 	}
-	assert.ElementsMatch(t, sessionMethodNames(), got)
+	assert.Equal(t, sessionMethodNames(), got)
 }
 
 // TestNewSessionProxy_DisposeKeepsMethodShapes checks that after
@@ -405,9 +406,10 @@ func TestSharedMethods_NoSessionID(t *testing.T) {
 
 // TestNewSessionProxy_IgnoresLaterBindPatch checks that a
 // Function.prototype.bind or .call replaced after the engine loaded (by
-// another plugin sharing the realm) never sees a session's id or the
-// unbound shared funcs: the proxy binds through the pair captured at
-// load.
+// another plugin sharing the realm) never receives an unbound shared
+// func: the proxy binds through the pair captured at load. The patch is
+// undone by a defer, so a failed require in newTestProxy cannot leave
+// it in place for later tests.
 func TestNewSessionProxy_IgnoresLaterBindPatch(t *testing.T) {
 	warm := newTestProxy(t) // captures bind and registers the shared funcs
 	warm.Call("dispose")
@@ -430,10 +432,12 @@ func TestNewSessionProxy_IgnoresLaterBindPatch(t *testing.T) {
 				}
 				return apply.Invoke(orig, this, js.ValueOf(argv))
 			})
-			proto.Set(method, spy)
-			proxy := newTestProxy(t)
-			proto.Set(method, orig)
-			spy.Release()
+			defer spy.Release()
+			proxy := func() js.Value {
+				proto.Set(method, spy)
+				defer proto.Set(method, orig)
+				return newTestProxy(t)
+			}()
 			defer proxy.Call("dispose")
 
 			assert.Zero(t, leaks, "patched %s received a raw shared func", method)
