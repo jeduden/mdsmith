@@ -106,24 +106,41 @@ trivial accessor.
 3. Run the task 2 tests in CI. Add a step to the `wasm` job
    in [ci.yml][ci], which already installs Node, next to the
    existing "Vet the WASM bridge" step. The test names come
-   from the `js && wasm` test files themselves, so a test
-   added there later runs without editing the step. Both the
-   `-run` filter and the pass count come from that list:
+   from the test files that only a `js/wasm` build compiles.
+   `go list` applies the build constraints itself, so any tag
+   spelling or a `_js`/`_wasm` file-name suffix counts, and a
+   test added there later runs without editing the step. Both
+   the `-run` filter and the pass count come from that list:
 
    ```bash
-   tests=$(grep -l '^//go:build js && wasm$' cmd/mdsmith-wasm/*_test.go \
-     | xargs grep -ohE '^func Test[A-Za-z0-9_]+\(\w+ \*testing\.T\)' \
-     | sed -E 's/^func Test([A-Za-z0-9_]+)\(.*/\1/' | paste -sd'|')
-   test -n "$tests"
-   log=$(mktemp)
+   set -o pipefail
+   pkg=./cmd/mdsmith-wasm
+   tmp=$(mktemp -d)
+   files='{{range .TestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}{{range .XTestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}'
+   GOOS=js GOARCH=wasm go list -f "$files" "$pkg" | sort > "$tmp/js"
+   go list -f "$files" "$pkg" | sort > "$tmp/native"
+   comm -23 "$tmp/js" "$tmp/native" > "$tmp/jsonly"
+   test -s "$tmp/jsonly"
+   names=$(xargs -d '\n' grep -ohE '^func Test[A-Za-z0-9_]+\((\w+ )?\*testing\.T\)' < "$tmp/jsonly" \
+     | sed -E 's/^func Test([A-Za-z0-9_]+)\(.*/\1/')
+   test -n "$names"
+   tests=$(paste -sd'|' <<< "$names")
+   want=$(wc -l <<< "$names")
    GOOS=js GOARCH=wasm go test -v \
      -exec="env -i 'PATH=$PATH' '$(go env GOROOT)/lib/wasm/go_js_wasm_exec'" \
      -run "^Test($tests)\$" \
-     ./cmd/mdsmith-wasm/ > "$log" || { cat "$log"; exit 1; }
-   cat "$log"
-   want=$(printf '%s\n' "$tests" | tr '|' '\n' | wc -l)
-   test "$(grep -c '^--- PASS: Test' "$log")" -eq "$want"
+     "$pkg" > "$tmp/log" || { cat "$tmp/log"; exit 1; }
+   cat "$tmp/log"
+   got=$(grep -c '^--- PASS: Test' "$tmp/log" || true)
+   if [ "$got" -ne "$want" ]; then
+     echo "::error::$got of $want js/wasm tests passed; expected ^Test($tests)\$"
+     exit 1
+   fi
    ```
+
+   `set -o pipefail` matters because a `run:` step with no
+   `shell:` key uses `bash -e`, which ignores a failing
+   `go list` piped into `sort`.
 
    `env -i` is needed because `wasm_exec.js` caps arguments
    plus environment at about 8 KB. With a full shell
