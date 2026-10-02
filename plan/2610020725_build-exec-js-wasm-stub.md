@@ -57,9 +57,11 @@ not catch this. The wasm job in
    linux, darwin, and windows.
 5. Added during implementation: the whole-module wasm build
    also failed in `cmd/mdsmith` because `FileOp.Execute` in
-   `internal/refactor` is tagged `!wasm`. Add
-   `fileop_exec_wasm.go`, a stub that returns an error, with a
-   wasm test.
+   `internal/refactor` is tagged `!wasm`. Route the one
+   call through `executeFileOp` in `cmd/mdsmith`, with a
+   `fileop_exec_wasm.go` stub that returns an error and a
+   wasm test. (Round 1 put the stub in `internal/refactor`;
+   round 2 moved it, see item 8.)
 6. Added in review round 1. Gate test files and other
    targets too, since `go build` skips `_test.go`. CI now
    vets `./...` for js/wasm, wasip1, and plan9. It also
@@ -71,11 +73,20 @@ not catch this. The wasm job in
    kills with no grace wait. `CloseHandle` gets an
    explicit error check. `newSessionProxy` is split per
    method.
-7. Added in review round 1: the stub drops the
-   compile-time guard on wasm `Execute` calls.
-   `cmd/mdsmith-wasm/execguard_test.go` type-checks the
-   bridge's js/wasm dependency graph. It fails on any
-   use of `FileOp.Execute`.
+7. Added in review round 1: a stub in `internal/refactor`
+   dropped the compile-time guard on wasm `Execute`
+   calls, so a type-check test (`execguard_test.go`)
+   restored it.
+8. Added in review round 2. The stub moved out of
+   `internal/refactor` into `cmd/mdsmith`, the only
+   caller, which the bridge never links. `FileOp.Execute`
+   is again undefined under wasm, so the compiler rejects
+   any wasm-reachable call and the guard test is gone.
+   `TestMain` moves to a `!wasm` file so the cmd/mdsmith
+   wasm test runs under Node. The session proxy's
+   `dispose()` releases the other method funcs, so a
+   disposed session no longer stays pinned. A js/wasm
+   test ties the proxy's keys to `sessionMethodNames`.
 
 ## Acceptance Criteria
 
@@ -88,4 +99,4 @@ not catch this. The wasm job in
 - [x] golangci-lint passes for js/wasm and windows, and
       CI gates it.
 - [x] No package the wasm bridge links uses
-      `FileOp.Execute`, enforced by a test.
+      `FileOp.Execute`, enforced by the compiler.

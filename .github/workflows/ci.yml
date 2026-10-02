@@ -579,12 +579,12 @@ jobs:
         run: go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm
       - name: Unit-test the js/wasm exec stubs under Node
         # Plan 2610020725: exec_other.go (internal/build, tagged
-        # !unix && !windows) and fileop_exec_wasm.go (internal/refactor,
+        # !unix && !windows) and fileop_exec_wasm.go (cmd/mdsmith,
         # tagged wasm) never compile natively, so only a js/wasm run
         # tests them. test-js-wasm takes one package.
         run: |
           go run ./cmd/mdsmith-release test-js-wasm ./internal/build
-          go run ./cmd/mdsmith-release test-js-wasm ./internal/refactor
+          go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith
       - name: WASM smoke test, size budget, and method-set parity
         run: go test ./cmd/mdsmith-wasm/...
 

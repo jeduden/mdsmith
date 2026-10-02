@@ -22,10 +22,9 @@ import (
 // absent, or the file being untracked, is not a failure: the plain
 // rename covers those.
 //
-// Execute is a subprocess boundary and so lives outside the pure engine.
-// Under wasm (GOOS=js GOARCH=wasm has no subprocesses) the stub in
-// fileop_exec_wasm.go always returns an error; wasm hosts perform the
-// move through their own platform API.
+// Execute is a subprocess boundary and so lives outside the pure engine
+// and outside the wasm build (GOOS=js GOARCH=wasm has no subprocesses);
+// wasm hosts perform the move through their own platform API.
 func (op FileOp) Execute(rootDir string) error {
 	to := filepath.Join(rootDir, filepath.FromSlash(op.To))
 	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
