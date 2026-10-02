@@ -31,8 +31,10 @@ fails on drift.
 - Headings use sentence case. Commands, config keys, and
   rule IDs (`MDS027`) render in mono, even in prose.
 - Marketing surfaces avoid softeners ("powerful",
-  "blazing") and earn claims with rule IDs, numbers, or
-  command output.
+  "blazing") and earn claims with numbers or command
+  output. Rule IDs stay off the homepage, where a
+  first-time visitor cannot decode them; they back claims
+  on feature, guide, and reference pages.
 - Status emoji (✅ 🔲 🔳) are data and stay as Unicode.
   Decorative section emoji become Lucide icons on the
   website.

@@ -5,7 +5,6 @@ summary: >-
   sentence count; flag verbatim copy-paste across files.
 icon: ruler
 link: "/guides/metrics-tradeoffs/"
-rules: ["MDS022", "MDS023", "MDS024", "MDS028", "MDS037"]
 weight: 3
 group: "Clean, consistent Markdown"
 ---

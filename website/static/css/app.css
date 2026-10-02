@@ -1534,13 +1534,6 @@ a.install-label:hover { color: var(--forge-300); text-decoration: underline; }
 .bento-card.is-tall { grid-row: span 2; }
 .bento-card h3 { font-size: 16px; font-weight: 600; margin: 2px 0 0; letter-spacing: -0.01em; }
 .bento-card p { font-size: 13.5px; color: var(--fg-muted); line-height: 1.55; margin: 0; }
-.bento-card .rule-chip {
-  display: inline-flex; align-items: center;
-  font-family: var(--font-mono); font-size: 11px;
-  background: var(--steel-50); border: 1px solid var(--border-strong);
-  padding: 1px 6px; border-radius: 3px; color: var(--steel-700);
-  align-self: flex-start;
-}
 .bento-card.is-glow::before {
   content: "";
   position: absolute; inset: 0;

@@ -6,7 +6,6 @@ summary: >-
   `proto.md` template — so a whole directory obeys one contract.
 icon: shapes
 link: "/guides/file-kinds/"
-rules: ["MDS020"]
 weight: 11
 group: "A connected docs tree"
 ---

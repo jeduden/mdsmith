@@ -131,6 +131,10 @@ test.describe("homepage positioning", () => {
     expect(await page.locator(".card-grid .card").count()).toBeGreaterThan(5);
     await expect(page.locator(".card-grid .rule-chip")).toHaveCount(0);
     await expect(page.locator(".card-grid .card-rules")).toHaveCount(0);
+    // No code may sneak back in through other markup either, such
+    // as a `<code>MDS034</code>` span in a card summary.
+    const cardText = await page.locator(".card-grid").innerText();
+    expect(cardText).not.toMatch(/\bMDS\d{3}\b/);
   });
 
   test("install commands stay readable on a narrow viewport", async ({

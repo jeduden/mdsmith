@@ -6,7 +6,6 @@ summary: >-
   Schemas can be inline on a file kind or shared via `proto.md` files.
 icon: link
 link: "/guides/directives/enforcing-structure/"
-rules: ["MDS027", "MDS020", "MDS033", "MDS069"]
 weight: 8
 group: "A connected docs tree"
 ---
