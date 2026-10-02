@@ -22,9 +22,9 @@ import (
 )
 
 // funcOf and releaseFunc are js.FuncOf and js.Func.Release behind seams
-// so a test can count the funcs a session's lifecycle registers (its
-// proxy methods and every Promise executor), which syscall/js keeps
-// private.
+// so a test can count the funcs a session's lifecycle registers (every
+// Promise executor, plus the shared method funcs on first use), which
+// syscall/js keeps private.
 var (
 	funcOf      = js.FuncOf
 	releaseFunc = js.Func.Release
@@ -189,15 +189,18 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 	return js.ValueOf(fields)
 }
 
-// sessions maps a live session's id to its Session. syscall/js runs
-// every callback on one goroutine, so it needs no lock.
+// sessions maps a live session's id to its Session. js/wasm runs every
+// goroutine on one thread with no preemption, and nothing between a
+// read and a write here blocks, so it needs no lock.
 var (
 	sessions      = map[int]*mdsmith.Session{}
 	nextSessionID int
 )
 
-// sharedMethodImpls maps each session method to its implementation.
-// sess is nil once the session is disposed.
+// sharedMethodImpls maps each forwarding session method to its
+// implementation. The shared func only calls it for a live session, so
+// sess is never nil; dispose is registered on its own (proxyDispose)
+// because it alone needs the id, to drop it from sessions.
 var sharedMethodImpls = map[string]func(sess *mdsmith.Session, args []js.Value) any{
 	"check":        proxyCheck,
 	"fix":          proxyFix,
@@ -206,7 +209,6 @@ var sharedMethodImpls = map[string]func(sess *mdsmith.Session, args []js.Value) 
 	"move":         proxyMove,
 	"capabilities": proxyCapabilities,
 	"invalidate":   proxyInvalidate,
-	"dispose":      proxyDispose,
 }
 
 var (
@@ -219,22 +221,31 @@ var (
 // entries. Each takes the session id as args[0].
 func sharedMethods() map[string]js.Value {
 	sharedOnce.Do(func() {
-		sharedFuncs = make(map[string]js.Value, len(sharedMethodImpls))
+		sharedFuncs = make(map[string]js.Value, len(sharedMethodImpls)+1)
 		for name, impl := range sharedMethodImpls {
 			sharedFuncs[name] = funcOf(func(_ js.Value, args []js.Value) any {
-				var sess *mdsmith.Session
-				if len(args) > 0 && args[0].Type() == js.TypeNumber {
-					sess = sessions[args[0].Int()]
-					args = args[1:]
+				if _, sess, rest := boundSession(args); sess != nil {
+					return impl(sess, rest)
 				}
-				if sess == nil {
-					return disposedResult(name)
-				}
-				return impl(sess, args)
+				return disposedResult(name)
 			}).Value
 		}
+		sharedFuncs["dispose"] = funcOf(proxyDispose).Value
 	})
 	return sharedFuncs
+}
+
+// boundSession splits the session id a shared func is bound to off
+// args and looks up its live Session. sess is nil once that session is
+// disposed, and also when args[0] is not a number, which only a direct
+// call to a shared func (never one through a session object) can pass;
+// args then comes back whole.
+func boundSession(args []js.Value) (id int, sess *mdsmith.Session, rest []js.Value) {
+	if len(args) == 0 || args[0].Type() != js.TypeNumber {
+		return 0, nil, args
+	}
+	id = args[0].Int()
+	return id, sessions[id], args[1:]
 }
 
 // proxyCheck is session.check(uri, src) → Promise<Diagnostic[]>.
@@ -356,20 +367,17 @@ func proxyInvalidate(sess *mdsmith.Session, args []js.Value) any {
 	return js.Undefined()
 }
 
-// proxyDispose is the synchronous session.dispose(). It disposes the
-// Go session and drops it from sessions, so the Session and its
-// workspace are unreachable from the handler table. The session
-// registered no func of its own, so there is nothing to release. It
-// runs only for a live session; a second call finds no session and
-// takes the disposed path.
-func proxyDispose(sess *mdsmith.Session, _ []js.Value) any {
-	for id, s := range sessions {
-		if s == sess {
-			delete(sessions, id)
-			break
-		}
+// proxyDispose is the shared func behind the synchronous
+// session.dispose(). For a live session it drops the id from sessions
+// and disposes the Go session, so the Session and its workspace are
+// unreachable from Go. The session registered no func of its own, so
+// there is nothing to release. A second call finds no session and
+// does nothing.
+func proxyDispose(_ js.Value, args []js.Value) any {
+	if id, sess, _ := boundSession(args); sess != nil {
+		delete(sessions, id)
+		sess.Dispose()
 	}
-	sess.Dispose()
 	return js.Undefined()
 }
 
@@ -377,15 +385,16 @@ func proxyDispose(sess *mdsmith.Session, _ []js.Value) any {
 // rejection.
 const disposedAsyncReason = "session disposed"
 
-// disposedResult is what method name returns once its session is
-// disposed: capabilities() returns an empty list, invalidate() and
-// dispose() do nothing, and every async method returns a Promise that
-// rejects with Error("session disposed").
+// disposedResult is what forwarding method name returns once its
+// session is disposed: capabilities() returns an empty list,
+// invalidate() does nothing, and every async method returns a Promise
+// that rejects with Error("session disposed"). A disposed dispose()
+// is handled by proxyDispose.
 func disposedResult(name string) any {
 	switch name {
 	case "capabilities":
 		return js.ValueOf([]any{})
-	case "invalidate", "dispose":
+	case "invalidate":
 		return js.Undefined()
 	default:
 		return newPromise(func(_, reject func(any)) {

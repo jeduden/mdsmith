@@ -246,7 +246,7 @@ becomes a Go `ConfigSource` exactly as the `-c` flag's text does.
 is async, and any Go method returning `(T, error)` maps to a
 `Promise<T>` that rejects with `new Error(msg)`.
 
-Every session registers no function of its own. The method functions
+No session registers a function of its own. The method functions
 are shared by all sessions and registered once. Each session object
 holds a `bind` of them with a session id, so the binding is collected
 with the session object. `dispose()` drops the id, so the disposed

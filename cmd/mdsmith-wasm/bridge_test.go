@@ -298,10 +298,12 @@ func assertDisposedShapes(t *testing.T, proxy js.Value) {
 }
 
 // TestNewSessionProxy_DisposeLeavesNoFuncs tracks the funcs a session's
-// lifecycle (proxy methods and Promise executors) registers and
-// releases through the funcOf and releaseFunc seams. After a warm-up
-// cycle, N more create/dispose cycles must leave the live set the same
-// size, so a restart loop does not grow syscall/js's handler table.
+// lifecycle (Promise executors, plus the shared method funcs on first
+// use) registers and releases through the funcOf and releaseFunc seams.
+// After a warm-up cycle, N more create/dispose cycles must leave the
+// live set the same size, so a restart loop does not grow syscall/js's
+// handler table, and must leave the sessions registry the same size, so
+// no disposed Session (workspace included) stays reachable from Go.
 // Each func is tracked by its JS wrapper rather than a bare counter, so
 // releasing the wrong func (or one twice) cannot cancel out a leak.
 // Not parallel: it swaps package seams.
@@ -337,22 +339,86 @@ func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
 		// executor must be released too.
 		awaitPromise(t, proxy.Call("check", "a.md", "# A\n"))
 	}
-	cycle() // warm-up: creates the shared disposed stand-ins if no earlier test did
-	base := len(live)
+	cycle() // warm-up: registers the shared method funcs if no earlier test did
+	base, baseSessions := len(live), len(sessions)
 	for i := 0; i < 5; i++ {
 		cycle()
 	}
 	assert.Len(t, live, base, "live funcs after 5 more create/dispose cycles")
+	assert.Len(t, sessions, baseSessions, "registered sessions after 5 more create/dispose cycles")
 	assert.Zero(t, strays, "releases of a func that was not live (released twice, or registered outside funcOf)")
+}
+
+// TestBoundSession checks how a shared func splits its bound session id
+// off args. A first arg that is not a number only reaches a shared func
+// called directly, never through a session object; it must look up no
+// session and keep args whole rather than panic in Value.Int.
+func TestBoundSession(t *testing.T) {
+	proxy := newTestProxy(t)
+	defer proxy.Call("dispose")
+	liveID := nextSessionID - 1
+	require.NotNil(t, sessions[liveID], "newTestProxy registered the newest id")
+	src := js.ValueOf("a.md")
+
+	tests := []struct {
+		name     string
+		args     []js.Value
+		wantID   int
+		wantLive bool
+		wantRest []js.Value
+	}{
+		{"no args", nil, 0, false, nil},
+		{"string first arg", []js.Value{src}, 0, false, []js.Value{src}},
+		{"unknown id", []js.Value{js.ValueOf(-1), src}, -1, false, []js.Value{src}},
+		{"live id", []js.Value{js.ValueOf(liveID), src}, liveID, true, []js.Value{src}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			id, sess, rest := boundSession(tt.args)
+			assert.Equal(t, tt.wantID, id)
+			assert.Equal(t, tt.wantLive, sess != nil, "live session found")
+			require.Len(t, rest, len(tt.wantRest))
+			for i := range rest {
+				assert.True(t, rest[i].Equal(tt.wantRest[i]), "rest[%d]", i)
+			}
+		})
+	}
+}
+
+// TestSharedMethods_NoSessionID calls each shared func directly with no
+// bound id: every method takes the disposed path instead of panicking,
+// and dispose does nothing.
+func TestSharedMethods_NoSessionID(t *testing.T) {
+	shared := sharedMethods()
+	require.ElementsMatch(t, sessionMethodNames(), keysOf(shared))
+	before := len(sessions)
+	for _, name := range []string{"check", "fix", "kinds", "rename", "move"} {
+		v, rejected := awaitPromise(t, shared[name].Invoke("a.md", "# A\n"))
+		assert.True(t, rejected, "%s without an id rejects", name)
+		assert.Equal(t, "session disposed", v.Get("message").String(), name)
+	}
+	assert.Equal(t, 0, shared["capabilities"].Invoke().Length())
+	assert.True(t, shared["invalidate"].Invoke("a.md").IsUndefined())
+	assert.True(t, shared["dispose"].Invoke().IsUndefined())
+	assert.Len(t, sessions, before, "dispose without an id drops no session")
+}
+
+// keysOf returns m's keys in no particular order.
+func keysOf(m map[string]js.Value) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // TestNewSessionProxy_StaleReferencesNeverReachReleasedFuncs checks
 // that no call after dispose() reaches a released func (which
-// syscall/js logs as "call to released function"): dispose releases
-// nothing, and a stored dispose or method reference, a frozen session
-// object, and a read-only method all behave like the live object. The
-// release seam records every release, so a call that reached a
-// released func would show up as a release dispose made.
+// syscall/js logs as "call to released function"). The release seam
+// shows dispose releases nothing, so no reference a session object
+// handed out can point at a released func; a stored dispose or method
+// reference, a frozen session object, and a read-only method then all
+// take the same disposed path as the writable object.
 // Not parallel: it swaps the releaseFunc seam.
 func TestNewSessionProxy_StaleReferencesNeverReachReleasedFuncs(t *testing.T) {
 	object := js.Global().Get("Object")
@@ -404,15 +470,4 @@ func recordReleases(t *testing.T) *[]js.Value {
 		oldRelease(f)
 	}
 	return released
-}
-
-// containsValue reports whether vs holds a value strictly equal (===)
-// to v.
-func containsValue(vs []js.Value, v js.Value) bool {
-	for _, x := range vs {
-		if x.Equal(v) {
-			return true
-		}
-	}
-	return false
 }
