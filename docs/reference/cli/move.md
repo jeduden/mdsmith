@@ -112,9 +112,16 @@ cross-directory move, check them by hand.
   `\` just before the `#` or `?` that ends the path, as in
   `a.md\#x`, only escapes that byte, so such a link is repointed
   and keeps its `\`.
-- **Ambiguous wikilinks.** When another file shares the old or
-  the new basename stem, no `[[stem]]` is rewritten, because the
-  rewrite could point it at the wrong file.
+- **Ambiguous wikilinks.** When another Markdown file shares the
+  old or the new basename stem, no `[[stem]]` is rewritten,
+  because the rewrite could point it at the wrong file. For a new
+  name with another extension, such as `guide.mdx`, any file that
+  already has that name blocks the rewrite.
+- **Wikilinks to a name they cannot reach.** A move to a name
+  with no extension, such as `COPYING`, leaves every `[[stem]]`
+  as written, because a bare `[[name]]` finds only Markdown
+  files. So does a new name that holds `#`, `|`, `[`, or `]`, such
+  as `C#.md`, which a wikilink cannot spell. Those links break.
 - **Footnote text that is a lone link.** mdsmith reads
   `[^1]: [z](a.md)` as a footnote definition and leaves its text
   as written, so the link inside it is not repointed. Longer

@@ -60,7 +60,9 @@ func (e SourceNotFoundError) Error() string {
 //   - wikilink stems — `[[old-stem]]` → `[[new-stem]]`, but only when
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
-//     asymmetry with path links);
+//     asymmetry with path links). Only a Markdown src is a stem target,
+//     and a dst no wikilink can name — no extension, an empty stem, or
+//     a `#`, `|`, `[`, `]` in the name — gets no rewrite;
 //   - outbound destinations inside src, when it has a Markdown
 //     extension or the workspace lists it (an `.mdx` file that
 //     `files:` matches) — every `[t](path)`, `![a](path)` and
@@ -746,8 +748,21 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 		return
 	}
 	oldStem := fileStem(src)
+	// A Markdown destination is addressed by stem, so keeping the stem
+	// keeps every link resolving. A typed destination (`guide.png`) is
+	// addressed by exact name, a different key space, so it always needs
+	// the rewrite: comparing its name to oldStem would wrongly skip a
+	// move such as docs/guide.png.md → docs/guide.png.
+	dstIsMarkdown := mdpath.IsMarkdownPath(dst)
 	newStem := fileStem(dst)
-	if oldStem == newStem {
+	if dstIsMarkdown && oldStem == newStem {
+		return
+	}
+	// The rewritten token must still parse as a wikilink naming dst. An
+	// empty stem (`.md`) leaves `[[]]`, and `#`, `|`, `[`, or `]` would
+	// split or end the link, so no rewrite can reach such a name.
+	newSpelling := dstStemSpelling(dst)
+	if newSpelling == "" || strings.ContainsAny(newSpelling, "#|[]") {
 		return
 	}
 	// A wikilink resolves by basename stem, and the index keys these
@@ -771,14 +786,13 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	// wikilinks alone, mirroring the source-side ambiguity guard above.
 	// A Markdown destination is addressed by stem; a typed non-Markdown
 	// destination (`guide.mdx`) is addressed by exact file name.
-	if mdpath.IsMarkdownPath(dst) {
+	if dstIsMarkdown {
 		if countFilesWithStem(ws, newStem) > 0 {
 			return
 		}
 	} else if countFilesWithName(ws, strings.ToLower(path.Base(dst))) > 0 {
 		return
 	}
-	newSpelling := dstStemSpelling(dst)
 	for _, e := range ws.IncomingWikilinkEdges(oldStem) {
 		key, source, ok := ws.Resolve(e.SourceFile)
 		if !ok {
@@ -876,13 +890,19 @@ func fileStem(p string) string {
 
 // dstStemSpelling returns the basename stem of dst with its original
 // casing, so a rewritten wikilink reads naturally (`[[Service]]`, not a
-// lowercased match key). A Markdown extension is stripped; any other
-// name is kept whole.
+// lowercased match key). A Markdown extension is stripped unless the
+// stem holds a dot of its own: a bare `[[v1.3]]` reads `.3` as a typed
+// extension and looks up a file named exactly `v1.3`, so `v1.3.md`
+// keeps its extension. Any other name is kept whole.
 func dstStemSpelling(dst string) string {
 	base := path.Base(dst)
 	ext := path.Ext(base)
-	if mdpath.HasMarkdownExt(ext) {
-		return strings.TrimSuffix(base, ext)
+	if !mdpath.HasMarkdownExt(ext) {
+		return base
 	}
-	return base
+	stem := strings.TrimSuffix(base, ext)
+	if path.Ext(stem) != "" {
+		return base
+	}
+	return stem
 }

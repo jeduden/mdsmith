@@ -109,6 +109,12 @@ func TestDstStemSpelling_NonMarkdownKeepsBase(t *testing.T) {
 	assert.Equal(t, "diagram.png", dstStemSpelling("img/diagram.png"))
 }
 
+func TestDstStemSpelling_DottedStemKeepsMarkdownExt(t *testing.T) {
+	assert.Equal(t, "v1.3.md", dstStemSpelling("docs/v1.3.md"))
+	assert.Equal(t, "guide.md.md", dstStemSpelling("docs/guide.md.md"))
+	assert.Equal(t, "", dstStemSpelling("docs/.md"))
+}
+
 // locatedTokens parses body and returns each located destination as
 // the bytes at its recorded row position, in walk order. Reading the
 // row (not the parsed bytes) pins where each destination was found.

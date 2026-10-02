@@ -395,27 +395,31 @@ func TestMove_WikilinkLeftUntouchedWhenTypedDestNameCollides(t *testing.T) {
 
 // TestMove_NonMarkdownSourceLeavesWikilinksAlone locks that moving a
 // non-Markdown file never rewrites `[[stem]]` links: no stem resolves to
-// it, so `[[license]]` still points at docs/license.md.
+// it, so `[[license]]` still points at docs/license.md. The Markdown
+// destination pins the source guard on its own: an extensionless
+// destination such as COPYING is skipped by the destination guard too.
 func TestMove_NonMarkdownSourceLeavesWikilinksAlone(t *testing.T) {
-	for name, listed := range map[string]bool{"listed": true, "unlisted": false} {
-		t.Run(name, func(t *testing.T) {
-			files := map[string]string{
-				"docs/license.md": "# License\n",
-				"index.md":        "See [[license]].\n",
-			}
-			if listed {
-				files["LICENSE"] = "MIT\n"
-			}
-			ws := newMemWorkspace(files)
-			// An unlisted source is still resolvable on disk.
-			var w Workspace = ws
-			if !listed {
-				w = unlistedSource{memWorkspace: ws, rel: "LICENSE", body: "MIT\n"}
-			}
-			plan, err := Move(w, "LICENSE", "COPYING")
-			require.NoError(t, err)
-			assert.Empty(t, plan.Edits["index.md"])
-		})
+	for _, dst := range []string{"COPYING", "docs/terms.md"} {
+		for name, listed := range map[string]bool{"listed": true, "unlisted": false} {
+			t.Run(dst+"/"+name, func(t *testing.T) {
+				files := map[string]string{
+					"docs/license.md": "# License\n",
+					"index.md":        "See [[license]].\n",
+				}
+				if listed {
+					files["LICENSE"] = "MIT\n"
+				}
+				ws := newMemWorkspace(files)
+				// An unlisted source is still resolvable on disk.
+				var w Workspace = ws
+				if !listed {
+					w = unlistedSource{memWorkspace: ws, rel: "LICENSE", body: "MIT\n"}
+				}
+				plan, err := Move(w, "LICENSE", dst)
+				require.NoError(t, err)
+				assert.Empty(t, plan.Edits["index.md"])
+			})
+		}
 	}
 }
 
@@ -430,6 +434,56 @@ func TestMove_WikilinkNotRewrittenToExtensionlessName(t *testing.T) {
 	plan, err := Move(ws, "docs/api.md", "docs/COPYING")
 	require.NoError(t, err)
 	assert.Empty(t, plan.Edits["index.md"])
+}
+
+// TestMove_WikilinkNotRewrittenToUnspellableName locks that a move to a
+// name no wikilink can spell rewrites nothing: an empty stem (`.md`)
+// leaves `[[]]`, and a `#`, `|`, `[`, or `]` in the stem splits or ends
+// the link, so the rewrite would not name the destination.
+func TestMove_WikilinkNotRewrittenToUnspellableName(t *testing.T) {
+	for _, dst := range []string{"docs/.md", "docs/C#.md", "docs/a|b.md", "docs/[x].md", "docs/x].txt"} {
+		t.Run(dst, func(t *testing.T) {
+			ws := newMemWorkspace(map[string]string{
+				"docs/api.md": "# API\n",
+				"index.md":    "See [[api]].\n",
+			})
+			plan, err := Move(ws, "docs/api.md", dst)
+			require.NoError(t, err)
+			assert.Empty(t, plan.Edits["index.md"])
+		})
+	}
+}
+
+// TestMove_WikilinkKeepsMarkdownExtForDottedStem locks that a
+// destination stem holding a dot keeps its Markdown extension: a bare
+// `[[v1.3]]` reads `.3` as a typed extension and looks up a file named
+// exactly `v1.3`, so only `[[v1.3.md]]` reaches docs/v1.3.md.
+func TestMove_WikilinkKeepsMarkdownExtForDottedStem(t *testing.T) {
+	src := "See [[v1.2.md]] and [[v1.2.md#notes|old]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/v1.2.md": "# V1.2\n",
+		"index.md":     src,
+	})
+	plan, err := Move(ws, "docs/v1.2.md", "docs/v1.3.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[v1.3.md]] and [[v1.3.md#notes|old]].\n",
+		applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_WikilinkRewrittenWhenTypedDestNameEqualsOldStem locks that a
+// typed destination is compared by name, not against the Markdown stem:
+// docs/guide.png.md has stem `guide.png`, the same string as the
+// destination's name, yet `[[guide.png.md]]` stops resolving once the
+// file is docs/guide.png and must become `[[guide.png]]`.
+func TestMove_WikilinkRewrittenWhenTypedDestNameEqualsOldStem(t *testing.T) {
+	src := "See [[guide.png.md]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/guide.png.md": "# Guide\n",
+		"index.md":          src,
+	})
+	plan, err := Move(ws, "docs/guide.png.md", "docs/guide.png")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[guide.png]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
 }
 
 // unlistedSource resolves one file that Files() does not list, as
