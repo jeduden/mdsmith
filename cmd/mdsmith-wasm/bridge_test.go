@@ -297,3 +297,32 @@ func TestNewSessionProxy_DisposeReleasesMethods(t *testing.T) {
 	assert.True(t, proxy.Call("invalidate", "a.md").IsUndefined(), "invalidate after dispose")
 	assert.NotPanics(t, func() { proxy.Call("dispose") }, "second dispose")
 }
+
+// TestNewSessionProxy_DisposeLeavesNoFuncs counts the funcs the session
+// proxy registers and releases through the funcOf and releaseFunc
+// seams. After a warm-up cycle, N more create/dispose cycles must leave
+// the live count unchanged, so a restart loop does not grow
+// syscall/js's handler table. Not parallel: it swaps package seams.
+func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
+	oldOf, oldRelease := funcOf, releaseFunc
+	t.Cleanup(func() { funcOf, releaseFunc = oldOf, oldRelease })
+	live := 0
+	funcOf = func(fn func(js.Value, []js.Value) any) js.Func {
+		live++
+		return oldOf(fn)
+	}
+	releaseFunc = func(f js.Func) {
+		live--
+		oldRelease(f)
+	}
+
+	cycle := func() {
+		newTestProxy(t).Call("dispose")
+	}
+	cycle() // warm-up: creates the shared disposed stand-ins once
+	base := live
+	for i := 0; i < 5; i++ {
+		cycle()
+	}
+	assert.Equal(t, base, live, "live funcs after 5 more create/dispose cycles")
+}

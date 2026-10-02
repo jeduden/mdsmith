@@ -1,7 +1,7 @@
 ---
 id: 2610021027
 title: Release a disposed wasm session's dispose func
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   `proxyDispose` in `cmd/mdsmith-wasm` never releases its
