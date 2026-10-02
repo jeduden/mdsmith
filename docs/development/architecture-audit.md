@@ -134,10 +134,10 @@ None.
 - `cliRenameWorkspace` and `sessionRefactorWorkspace` share
   four matching `Workspace` pass-throughs (`Resolve`
   differs by design) — [plan/2609131911][2609131911].
-- `internal/refactor/move.go` helpers lack tests by name
-  ([tests.md][tests]) — [plan/2609131913][2609131913].
-  Resolved: `countFilesWithStem` has `TestCountFilesWithStem`;
-  the other three became the tested `destEdit` and `encodeLike`.
+- `internal/refactor/move.go`'s `recomputeToken`, `encodePathToken`,
+  `pathEdit`, `countFilesWithStem` lack tests by name ([tests.md][tests])
+  — [plan/2609131913][2609131913]. Resolved: the first three became the
+  tested `destEdit` and `encodeLike`; `countFilesWithStem` has a test.
 
 ### nice-to-have (2026-09-13)
 
