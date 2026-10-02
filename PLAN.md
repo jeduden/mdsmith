@@ -294,4 +294,5 @@ footer: |
 | 2610021849 | 🔲     | sonnet | [Kill running build recipes when the CLI is interrupted](plan/2610021849_cancel-recipes-on-cli-interrupt.md)                                            |
 | 2610021917 | 🔲     | sonnet | [Replace the per-platform kill maps with a per-recipe group killer](plan/2610021917_per-recipe-group-killer.md)                                         |
 | 2610022044 | 🔲     | sonnet | [Count only Markdown files as wikilink stem siblings on move](plan/2610022044_move-stem-count-markdown-only.md)                                         |
+| 2610022104 | 🔲     | sonnet | [Count wikilink stem siblings against the resolver's index on move](plan/2610022104_move-stem-count-resolver-index.md)                                  |
 <?/catalog?>
