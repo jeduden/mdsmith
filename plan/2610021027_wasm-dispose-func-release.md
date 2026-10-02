@@ -51,6 +51,9 @@ say it for `dispose` too.
 4. On a frozen session object `proxy.Set` cannot swap in
    the no-op, so keep `dispose`'s func registered there
    behind a nil guard; a second `dispose()` stays silent.
+5. Move `dispose`'s references into locals before it runs
+   any JS. Then a `dispose()` re-entered from a setter on
+   the session object returns at the nil guard.
 
 ## Acceptance Criteria
 
@@ -60,6 +63,9 @@ say it for `dispose` too.
       no-op.
 - [x] On a frozen session, a second `dispose()` reaches
       no released func.
+- [x] A `dispose()` re-entered from a setter on the
+      session object neither panics nor releases a func
+      twice.
 - [x] `go run ./cmd/mdsmith-release test-js-wasm
       ./cmd/mdsmith-wasm` passes.
 - [x] All tests pass: `go test ./...`
