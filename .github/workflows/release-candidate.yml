@@ -276,9 +276,7 @@ jobs:
         # Draft first, publish last: immutable releases reject uploads
         # to a published release. The draft carries no tag yet;
         # tag_name + target_commitish create it at this commit on
-        # publish.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # publish. The action's `token` input defaults to github.token.
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
           draft: true
