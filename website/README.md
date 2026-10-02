@@ -150,8 +150,8 @@ Feature copy lives once, as Markdown, in
   site cannot drift.
 - One page per feature (`auto-fix.md`, `performance.md`,
   `quality.md`, …) carries a short `summary:` plus an
-  `icon:`, `weight:`, optional `rules:`, and a fuller
-  body. `feature-grid.html` builds the homepage cards
+  `icon:`, `weight:`, `group:`, and a fuller body.
+  `feature-grid.html` builds the homepage cards
   from these pages; each card links to the full page,
   which has room for the longer write-up the README
   cannot fit.
