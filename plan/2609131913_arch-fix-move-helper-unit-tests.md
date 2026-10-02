@@ -2,7 +2,7 @@
 id: 2609131913
 title: >-
   Add unit tests for untested move.go helper functions
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   internal/refactor/move.go's recomputeToken, encodePathToken,
@@ -89,8 +89,8 @@ pair. The new `TestCountFilesWithStem` sits in
       test symbol named after it in `internal/refactor/`;
       `recomputeToken` was removed (see the status note).
 - [x] No production code changes; behavior is unchanged.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [tests]: ../docs/development/architecture/tests.md
