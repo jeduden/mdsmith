@@ -2,13 +2,13 @@
 id: 2609061915
 title: >-
   Add unit tests for the untested rename/move helpers
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
-  21 private helpers in internal/refactor and its
-  cmd/mdsmith and pkg/mdsmith callers have no unit test
-  named after them. They are covered only through tests of
-  the functions that call them.
+  20 private helpers in internal/refactor and its
+  cmd/mdsmith and pkg/mdsmith callers each got a unit
+  test named after them. Before, only tests of the
+  functions that call them reached the helpers.
 ---
 # Add unit tests for the untested rename/move helpers
 
@@ -22,9 +22,10 @@ test" rule.
 
 The 2026-09-06 architecture audit of the `internal/refactor`
 rename/move engine flagged these functions. That audit was in
-closed PR #839 and never reached main. These 21 functions have
-no test named after them on main. They are listed by name, not
-line, since the files keep moving:
+closed PR #839 and never reached main. These functions had
+no test named after them on main. One of the original 21,
+`applyEditsToFile`, no longer exists, so 20 remain. They are
+listed by name, not line, since the files keep moving:
 
 - [internal/refactor/fileop_exec.go][fileop-exec] —
   `gitTracked`, `gitMove`. Only the `TestFileOpExecute_*`
@@ -40,7 +41,8 @@ line, since the files keep moving:
   `internal/lsp` and drive a `textDocument/rename` request
   through a server harness. They are integration tests, not
   unit tests next to the source.
-- [cmd/mdsmith/move.go][cmd-move] — `applyEditsToFile`.
+- [cmd/mdsmith/move.go][cmd-move] — `applyEditsToFile`
+  (removed since the audit; see Task 4).
 - [cmd/mdsmith/rename.go][cmd-rename] —
   `buildWorkspace`, `detectRenameMode`, `headingPlan`,
   `linkRefPlan`, `looksLikePath`, `firstPathish`,
@@ -60,8 +62,10 @@ scenario tests:
 
 A few caller tests are unit tests next to the source:
 
-- `TestBuildRenameWorkspace_DiscoveryPaths` drives every exit
-  of `buildWorkspace` through `buildRenameWorkspace`.
+- `TestBuildRenameWorkspace_DiscoveryPaths` drove the exits
+  of `buildWorkspace` through `buildRenameWorkspace`. It now
+  keeps the unreadable-target exit, plus the missing-config
+  and empty-workspace exits as propagation checks.
 - The `TestApplyPlan_*` tests in
   [move_unit_test.go][cmd-move-test] call `buildWorkspace`
   directly, but only as setup.
@@ -70,7 +74,7 @@ A few caller tests are unit tests next to the source:
   and `TestE2E_Rename_LinkRef_JSON` reach `linkRefPlan`.
 - `TestWriteFilePreservingMode*` reaches `resolveWriteMode`.
 
-None of the 21 is a public surface by itself, so all are
+None of them is a public surface by itself, so all are
 `tax`, not `blocker`.
 
 ## Out of scope
@@ -136,45 +140,63 @@ Two overlaps remain:
    `TestLinkRefEdits`, `TestRefUseEditsInBody`,
    `TestRefUseEdit`, `TestLinkTextBounds`, and
    `TestBodyNewlineCount` to [rename_test.go][rename-test].
-4. Add `TestApplyEditsToFile` to
-   [move_unit_test.go][cmd-move-test] if `applyEditsToFile`
-   still exists. Open PR #859 replaces it with an
-   all-or-nothing plan applier whose functions carry their own
-   tests; if #859 has merged, skip this task.
+4. Skipped. `applyEditsToFile` no longer exists on main: PR #859
+   replaced it with an all-or-nothing plan applier whose
+   functions carry their own tests.
 5. Add `TestBuildWorkspace`, `TestDetectRenameMode`,
    `TestHeadingPlan`, `TestLinkRefPlan`, `TestLooksLikePath`,
    `TestFirstPathish`, and `TestResolveWriteMode` to
    [rename_unit_test.go][cmd-rename-test].
    `TestBuildWorkspace` calls `buildWorkspace` directly for
    each exit: missing config, empty workspace, bad
-   max-input-size, and success. Move the "empty workspace
-   exits 1" and "bad max-input-size exits 2" subtests out of
+   max-input-size, and success. Move the "bad max-input-size
+   exits 2" subtest out of
    `TestBuildRenameWorkspace_DiscoveryPaths` into it, rather
-   than assert the same exits twice. Keep "missing config
-   exits 2" and "unreadable target exits 2" in the
-   `buildRenameWorkspace` test. It still needs one
-   `buildWorkspace` failure to cover its early return, so
-   "missing config" is asserted in both tests on purpose.
+   than assert the same exit twice. Keep "unreadable target
+   exits 2" in the `buildRenameWorkspace` test. That test
+   still needs `buildWorkspace` failures to cover its early
+   return, so "missing config exits 2" and "empty workspace
+   exits 1" are asserted in both tests on purpose: the
+   second proves the exit code propagates unchanged.
 6. Add `TestDetectRenameKind`, `TestToRefactorPlan`,
    `TestSessionRefactorWorkspace_Resolve`, and
    `TestSession_BuildRefactorWorkspace` to
    [refactor_test.go][pkg-refactor-test].
-7. Do not change production code. Keep the caller tests named
-   in the Background section. They cover the public contract.
-   Task 5's subtest move is the one change to them.
-8. `go build ./...` and `go vet ./...` pass.
+7. Keep the caller tests named in the Background section. They
+   cover the public contract. Task 5's subtest move is the one
+   change to them.
+8. Fix the production bugs the new tests exposed:
+
+  - `linkTextBounds` anchored on the inner text nodes, so a
+     use like `[**bold**][docs]`, ``[`code`][docs]``, or
+     `[][docs]` was dropped. It now anchors on the link's
+     recorded `[`. The closing `]` comes after every byte the
+     parser put inside the link (text, raw HTML, autolinks, and
+     a nested image through its own destination or label), and
+     the label that follows must match the reference.
+  - `refUseEditsInBody` skipped image references such as
+     `![alt][docs]`. It now rewrites them too.
+  - `invalidLinkRefRune` accepted a label that ends in an
+     unescaped backslash, which escapes the def's closing `]`.
+     It now rejects one.
+  - The `buildRenameWorkspace` comment said an empty
+     workspace returns 0. It returns 1.
+
+9. `go build ./...` and `go vet ./...` pass.
 
 ## Acceptance Criteria
 
-- [ ] Every function listed in the Background section has a
-      test carrying its own name, added here or earlier by
-      another PR.
-- [ ] No test name is declared twice in a package.
-- [ ] No production code changed.
-- [ ] `go test ./...` is green.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] Every function listed in the Background section that
+      still exists has a test carrying its own name, added
+      here or earlier by another PR.
+- [x] No test name is declared twice in a package.
+- [x] Reference uses with inline markup, empty text, or an
+      image are rewritten, and a label ending in an unescaped
+      backslash is rejected.
+- [x] `go test ./...` is green.
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` is green.
+- [x] `mdsmith check .` is green.
 
 [tests]: ../docs/development/architecture/tests.md
 [fileop-exec]: ../internal/refactor/fileop_exec.go

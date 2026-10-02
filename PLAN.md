@@ -271,7 +271,7 @@ footer: |
 | 2608301918 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-30 touched-set tax findings](plan/2608301918_arch-fix-touched-set-unit-tests-0830.md)                         |
 | 2608301919 | ✅     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
 | 2609032052 | 🔲     | opus   | [Resolve config from `pyproject.toml` under `[tool.mdsmith]`](plan/2609032052_pyproject-config-source.md)                                               |
-| 2609061915 | 🔲     | sonnet | [Add unit tests for the untested rename/move helpers](plan/2609061915_arch-fix-touched-set-unit-tests-0906.md)                                          |
+| 2609061915 | ✅     | sonnet | [Add unit tests for the untested rename/move helpers](plan/2609061915_arch-fix-touched-set-unit-tests-0906.md)                                          |
 | 2609131911 | 🔲     | sonnet | [Share the refactor Workspace adapter between CLI and Session](plan/2609131911_arch-fix-refactor-workspace-duplication.md)                              |
 | 2609131913 | 🔲     | sonnet | [Add unit tests for untested move.go helper functions](plan/2609131913_arch-fix-move-helper-unit-tests.md)                                              |
 | 2609201914 | ✅     | sonnet | [Add dedicated unit tests for AdvancePastLine and the WASM bridge helpers](plan/2609201914_arch-fix-missing-unit-tests-0920.md)                         |
@@ -279,7 +279,7 @@ footer: |
 | 2609271913 | ✅     | haiku  | [Remove dead front-matter parse helpers in internal/index](plan/2609271913_arch-fix-remove-dead-frontmatter-helpers.md)                                 |
 | 2610020045 | ✅     | sonnet | [Move the WASM bridge test-runner shell into mdsmith-release](plan/2610020045_wasm-js-test-runner-subcommand.md)                                        |
 | 2610020046 | ✅     | sonnet | [Harden WASM bridge workspace input and version lookup](plan/2610020046_wasm-bridge-input-hardening.md)                                                 |
-| 2610020233 | 🔲     | haiku  | [Drop the unused rules? and link? keys from the feature kind schema](plan/2610020233_drop-unused-feature-rules-key.md)                                  |
+| 2610020233 | ✅     | haiku  | [Drop the unused rules? and link? keys from the feature kind schema](plan/2610020233_drop-unused-feature-rules-key.md)                                  |
 | 2610020305 | 🔲     | sonnet | [Homepage Tier 3 declutter: pillar numbers, tints, badges, eyebrows](plan/2610020305_homepage-tier3-declutter.md)                                       |
 | 2610020725 | ✅     | sonnet | [Make internal/build compile under GOOS=js GOARCH=wasm](plan/2610020725_build-exec-js-wasm-stub.md)                                                     |
 | 2610020946 | 🔳     | sonnet | [Kill a timed-out recipe's whole note group on plan9](plan/2610020946_plan9-recipe-note-group-kill.md)                                                  |

@@ -33,6 +33,7 @@ func callLinkRef(source []byte, oldLabel, newName string) ([]Edit, error) {
 
 func TestInvalidLabelRuneError_Error(t *testing.T) {
 	assert.Equal(t, `label cannot contain ']'`, InvalidLabelRuneError{Rune: ']'}.Error())
+	assert.Equal(t, "label cannot end with an unescaped backslash", InvalidLabelRuneError{Rune: '\\'}.Error())
 }
 
 func TestLabelConflictError_Error(t *testing.T) {
@@ -190,15 +191,14 @@ func TestContentBlockLines_CodeBlockLinesConsumed(t *testing.T) {
 	assert.False(t, hasDef, "ref def line must not appear")
 }
 
-func TestLinkRef_EmptyTextReferenceUseSkipped(t *testing.T) {
-	// `[][spec]` is a full reference with empty display text:
-	// linkTextBounds can't anchor it, so refUseEdit skips that use
-	// while the def and the normal `[spec]` use are still rewritten.
+func TestLinkRef_EmptyTextReferenceUseRewritten(t *testing.T) {
+	// `[][spec]` is a full reference with empty display text. The
+	// link's recorded `[` position anchors it, so it is rewritten
+	// alongside the def and the normal `[spec]` use.
 	src := []byte("Empty [][spec] and normal [spec].\n\n[spec]: u\n")
 	edits, err := callLinkRef(src, "spec", "rfc")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// def + the one anchorable use; the empty-text use is dropped.
-	assert.Len(t, edits, 2)
+	assert.Len(t, edits, 3)
 }

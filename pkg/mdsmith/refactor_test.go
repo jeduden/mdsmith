@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/refactor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -167,4 +168,96 @@ func TestSession_CapabilitiesIncludeRenameAndMove(t *testing.T) {
 	caps := s.Capabilities()
 	assert.Contains(t, caps, "rename")
 	assert.Contains(t, caps, "move")
+}
+
+func TestDetectRenameKind(t *testing.T) {
+	src := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
+	kind, err := detectRenameKind(src, "Setup")
+	require.NoError(t, err)
+	assert.Equal(t, "heading", kind)
+
+	kind, err = detectRenameKind(src, "docs")
+	require.NoError(t, err)
+	assert.Equal(t, "label", kind)
+
+	_, err = detectRenameKind([]byte("# docs\n\nSee [docs].\n\n[docs]: u\n"), "docs")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "matches both")
+
+	_, err = detectRenameKind(src, "ghost")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no heading or link-ref label")
+}
+
+func TestToRefactorPlan(t *testing.T) {
+	empty := toRefactorPlan(refactor.Plan{})
+	assert.NotNil(t, empty.Edits)
+	assert.Empty(t, empty.Edits)
+	assert.Nil(t, empty.Move)
+
+	p := refactor.Plan{
+		Edits: map[string][]refactor.Edit{
+			"a.md": {{
+				Range: refactor.Range{
+					Start: refactor.Position{Line: 1, Character: 2},
+					End:   refactor.Position{Line: 3, Character: 4},
+				},
+				NewText: "x",
+			}},
+		},
+		FileOp: &refactor.FileOp{From: "a.md", To: "b.md"},
+	}
+	got := toRefactorPlan(p)
+	require.Len(t, got.Edits["a.md"], 1)
+	assert.Equal(t, TextEdit{StartLine: 1, StartChar: 2, EndLine: 3, EndChar: 4, NewText: "x"},
+		got.Edits["a.md"][0])
+	require.NotNil(t, got.Move)
+	assert.Equal(t, FileMove{From: "a.md", To: "b.md"}, *got.Move)
+}
+
+func TestSessionRefactorWorkspace_Resolve(t *testing.T) {
+	s := newRefactorSession(t, map[string][]byte{
+		"a.md":     []byte("# A\n"),
+		"sub/b.md": []byte("# B\n"),
+	})
+	ws := s.buildRefactorWorkspace("a.md", []byte("# Buffer\n"))
+
+	// The overlay URI resolves to the supplied buffer, not the file.
+	rel, src, ok := ws.Resolve("./a.md")
+	require.True(t, ok)
+	assert.Equal(t, "a.md", rel)
+	assert.Equal(t, "# Buffer\n", string(src))
+
+	// Other files read through the session workspace.
+	rel, src, ok = ws.Resolve("sub/b.md")
+	require.True(t, ok)
+	assert.Equal(t, "sub/b.md", rel)
+	assert.Equal(t, "# B\n", string(src))
+
+	_, _, ok = ws.Resolve("missing.md")
+	assert.False(t, ok)
+
+	// Without an overlay the file's own bytes are returned.
+	_, src, ok = s.buildRefactorWorkspace("", nil).Resolve("a.md")
+	require.True(t, ok)
+	assert.Equal(t, "# A\n", string(src))
+}
+
+func TestSession_BuildRefactorWorkspace(t *testing.T) {
+	s := newRefactorSession(t, map[string][]byte{
+		"a.md":      []byte("# A\n"),
+		"c.md":      []byte("See [x](a.md#other).\n"),
+		"sub/b.md":  []byte("# B\n"),
+		"notes.txt": []byte("not markdown"),
+	})
+	plain := s.buildRefactorWorkspace("", nil)
+	assert.ElementsMatch(t, []string{"a.md", "c.md", "sub/b.md"}, plain.Files())
+	// a.md has no "Other" heading on disk, but c.md already links to it.
+	assert.Len(t, plain.IncomingAnchorEdges("a.md", "other"), 1)
+
+	// With an overlay the index reads the unsaved buffer for a.md. The
+	// buffer's link to b.md#b shows up only when the overlay is used.
+	overlay := s.buildRefactorWorkspace("a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
+	assert.Len(t, overlay.IncomingAnchorEdges("sub/b.md", "b"), 1)
+	assert.Empty(t, plain.IncomingAnchorEdges("sub/b.md", "b"))
 }
