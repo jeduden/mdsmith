@@ -4,8 +4,12 @@ package build
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -56,4 +60,48 @@ func TestKillGroup_SIGKILLPath(t *testing.T) {
 	require.Error(t, err)
 	// With a 50ms grace period and SIGTERM ignored, SIGKILL ends it quickly.
 	assert.Less(t, time.Since(start), 5*time.Second, "SIGKILL should be prompt")
+}
+
+func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process-group kill tested on Unix")
+	}
+	stage := t.TempDir()
+	pidFile := filepath.Join(stage, "child.pid")
+	// Parent spawns a long-lived child in the background, records its PID,
+	// then sleeps. On timeout the whole group must die, including the child.
+	body := `sleep 120 & echo $! > "` + pidFile + `"; sleep 120`
+	script := writeScript(t, t.TempDir(), "spawn.sh", body)
+
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	_, _, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     stage,
+		exec:    ExecConfig{},
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	assert.Less(t, time.Since(start), 10*time.Second, "kill should be prompt")
+
+	// Give the kernel a moment to reap.
+	deadline := time.Now().Add(6 * time.Second)
+	var childPID int
+	for time.Now().Before(deadline) {
+		b, rerr := os.ReadFile(pidFile)
+		if rerr == nil {
+			if n, perr := parsePID(strings.TrimSpace(string(b))); perr == nil {
+				childPID = n
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	require.NotZero(t, childPID, "child pid should have been recorded")
+
+	// The child must no longer be alive: signal 0 probes existence.
+	assert.Eventually(t, func() bool {
+		return !processAlive(childPID)
+	}, 6*time.Second, 100*time.Millisecond, "spawned child should not be orphaned")
 }
