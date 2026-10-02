@@ -1,7 +1,7 @@
 ---
 id: 2610021027
 title: Release a disposed wasm session's dispose func
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   `proxyDispose` in `cmd/mdsmith-wasm` never releases its
@@ -51,10 +51,10 @@ say it for `dispose` too.
 
 ## Acceptance Criteria
 
-- [ ] N create/dispose cycles leave the func count the
+- [x] N create/dispose cycles leave the func count the
       same as one cycle.
-- [ ] `session.dispose(); session.dispose()` stays a
+- [x] `session.dispose(); session.dispose()` stays a
       no-op.
-- [ ] `go run ./cmd/mdsmith-release test-js-wasm
+- [x] `go run ./cmd/mdsmith-release test-js-wasm
       ./cmd/mdsmith-wasm` passes.
-- [ ] All tests pass: `go test ./...`
+- [x] All tests pass: `go test ./...`
