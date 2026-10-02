@@ -576,13 +576,11 @@ func TestBracketPairsStrayClosingBracket(t *testing.T) {
 // rather than producing a phantom edit. This drives the
 // `if !ok { continue }` arm that the rename's natural flow
 // rarely reaches.
-// TestRenameLinkRefSkipsEmptyTextReference verifies that an
-// empty-text reference link `[][docs]` doesn't panic the
-// rename. linkTextBounds returns (-1, -1) for these — without
-// the labelBoundsInBody guard, indexing body[-1] would crash.
-// The use is silently skipped; the def + other uses still
-// rewrite cleanly.
-func TestRenameLinkRefSkipsEmptyTextReference(t *testing.T) {
+// TestRenameLinkRefRewritesEmptyTextReference verifies that an
+// empty-text reference link `[][docs]` is rewritten along with
+// the def and the other use: linkTextBounds anchors it on the
+// link's recorded `[` position, so all three labels change.
+func TestRenameLinkRefRewritesEmptyTextReference(t *testing.T) {
 	t.Parallel()
 	src := "# T\n\nSee [][docs] and [other][docs].\n\n[docs]: https://x\n"
 	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src})
@@ -600,7 +598,7 @@ func TestRenameLinkRefSkipsEmptyTextReference(t *testing.T) {
 	var edit workspaceEdit
 	require.NoError(t, json.Unmarshal(raw, &edit))
 	require.Contains(t, edit.Changes, uri)
-	require.NotEmpty(t, edit.Changes[uri])
+	require.Len(t, edit.Changes[uri], 3)
 }
 
 // TestRenameHeadingRewritesAngleBracketRefDef covers
