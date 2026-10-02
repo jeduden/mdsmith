@@ -68,8 +68,10 @@ jobs:
       # tagged js && wasm, !unix && !windows, or windows were never
       # linted. `go tool` would compile the linter itself for the
       # target GOOS, so build it once for the host, then lint the
-      # js/wasm (also covers the wasip1/plan9 fallback files) and
-      # windows views of the module.
+      # js/wasm (which also covers the shared !unix && !windows
+      # fallback files) and windows views of the module. Files tagged
+      # wasip1 or plan9 alone, such as the wasip1 spike guest, get only
+      # the go vet runs in the wasm job.
       - name: Build golangci-lint for the host
         run: go build -modfile=tools/go.mod -o "$RUNNER_TEMP/golangci-lint" github.com/golangci/golangci-lint/v2/cmd/golangci-lint
       - name: Lint the js/wasm build
@@ -555,10 +557,10 @@ jobs:
         # vet and build of ./cmd/mdsmith-wasm alone missed a js/wasm
         # break in its exec hooks. Building ./... gates every package.
         run: GOOS=js GOARCH=wasm go build ./...
-      # golangci-lint (the lint job) runs under the native GOOS, so it
-      # skips the //go:build js && wasm bridge entirely. go vet does
-      # cross-compile, so run it here to give the bridge at least
-      # vet-level static analysis. Unlike go build, go vet also
+      # The lint job runs golangci-lint for linux, js/wasm, and windows
+      # only, so wasip1- and plan9-only files get no linting. go vet
+      # cross-compiles, so run it here for all three wasm-adjacent
+      # targets. Unlike go build, go vet also
       # type-checks _test.go files, so ./... catches a test helper
       # defined only under `unix` or `windows` (neither tag covers js,
       # wasip1, or plan9).
