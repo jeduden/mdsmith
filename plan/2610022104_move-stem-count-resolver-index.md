@@ -3,7 +3,7 @@ id: 2610022104
 title: Count wikilink stem siblings against the resolver's index on move
 status: "🔲"
 summary: >-
-  The move planner's `countFilesWithStem` counts files from
+  The move planner's `wikilinkKeyHolders` counts files from
   `ws.Files()`, but the wikilink resolver indexes every
   Markdown file on disk except `.git` and `node_modules`. A
   gitignored `archive/guide.md` can take `[[guide]]` yet is not
@@ -60,10 +60,17 @@ out of plan 2610022044, which fixes the extension filter.
    block the `[[readme]]` rewrite when `docs/readme.md` moves.
 3. Expose a stem and name count on `linkgraph.WikilinkIndex`
    and have the move planner build or receive the index for
-   the workspace root, replacing `countFilesWithStem`'s walk
+   the workspace root, replacing `wikilinkKeyHolders`' walk
    over `ws.Files()`.
 4. Keep the exact-name guard from plan 2610022044 on the same
    index (`names` map) so both checks read one file set.
+5. Retire `fileStem`, which runs the link-target parser
+   `linkgraph.WikilinkStem` on file paths. Key the moved file
+   and its destination the way `NewWikilinkIndex` keys files,
+   so the Markdown-only filter, the non-Markdown source guard,
+   and the stem/name split in `appendWikilinkStemEdits` read
+   one keying function. The PR #885 code review found that
+   these special cases sit at different depths.
 
 ## Acceptance Criteria
 

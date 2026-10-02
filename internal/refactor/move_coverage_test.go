@@ -61,7 +61,7 @@ func TestFileStem_NonMarkdownFallback(t *testing.T) {
 	assert.Equal(t, "api", fileStem("docs/API.md"))
 }
 
-func TestCountFilesWithStem(t *testing.T) {
+func TestWikilinkKeyHolders_OldStem(t *testing.T) {
 	files := []string{"a.md", "docs/API.md", "api/api.md", "img/api.png", "notes/b.mdx", "notes/c.markdown"}
 	licenseFiles := []string{"notes/LICENSE", "docs/license.md"}
 	for name, tc := range map[string]struct {
@@ -80,12 +80,17 @@ func TestCountFilesWithStem(t *testing.T) {
 		"stem is not a prefix match":     {files, "ap", 0},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tc.want, countFilesWithStem(stubWorkspace{files: tc.files}, tc.stem))
+			// src is listed as the first file so it adds no extra holder.
+			files := append([]string{"src.txt"}, tc.files...)
+			oldN, _ := wikilinkKeyHolders(files, "src.txt", tc.stem, "zzz", true)
+			assert.Equal(t, tc.want, oldN)
+			_, newN := wikilinkKeyHolders(files, "src.txt", "zzz", tc.stem, true)
+			assert.Equal(t, tc.want, newN, "a Markdown destination counts stems the same way")
 		})
 	}
 }
 
-func TestCountFilesWithName(t *testing.T) {
+func TestWikilinkKeyHolders_NewName(t *testing.T) {
 	files := []string{"a.md", "img/api.png", "notes/b.mdx", "x/B.MDX"}
 	for name, tc := range map[string]struct {
 		files []string
@@ -99,9 +104,18 @@ func TestCountFilesWithName(t *testing.T) {
 		"no prefix match":              {files, "api", 0},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tc.want, countFilesWithName(stubWorkspace{files: tc.files}, tc.base))
+			_, newN := wikilinkKeyHolders(tc.files, "", "zzz", tc.base, false)
+			assert.Equal(t, tc.want, newN)
 		})
 	}
+}
+
+func TestWikilinkKeyHolders_UnlistedSourceCounts(t *testing.T) {
+	files := []string{"docs/guide.md"}
+	oldN, _ := wikilinkKeyHolders(files, "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 2, oldN, "an unlisted source holds its own stem")
+	oldN, _ = wikilinkKeyHolders(append(files, "a/guide.md"), "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 2, oldN, "a listed source is not counted twice")
 }
 
 func TestDstStemSpelling_NonMarkdownKeepsBase(t *testing.T) {
@@ -406,4 +420,25 @@ func TestMove_SelfPathLinkStaysValid(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, plan.Edits["docs/a.md"])
 	require.NotNil(t, plan.FileOp)
+}
+
+// TestMove_UnlistedSourceCountsTowardStemAmbiguity locks that a moved
+// Markdown file absent from ws.Files() (excluded by a `files:` glob,
+// yet still readable through Resolve) counts as a holder of its own
+// stem. One listed same-stem sibling then makes `[[guide]]` ambiguous,
+// so no wikilink is rewritten to the moved file's new name.
+func TestMove_UnlistedSourceCountsTowardStemAmbiguity(t *testing.T) {
+	ws := stubWorkspace{
+		wikilinkEdges: []index.Edge{{SourceFile: "index.md", SourceLine: 1, SourceCol: 5}},
+		files:         []string{"docs/guide.md", "index.md"},
+		sources: map[string][]byte{
+			"a/b/guide.md":  []byte("# Guide\n"),
+			"docs/guide.md": []byte("# Docs guide\n"),
+			"index.md":      []byte("See [[guide]].\n"),
+		},
+	}
+	plan, err := Move(ws, "a/b/guide.md", "a/b/manual.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"],
+		"unlisted source plus a listed sibling: [[guide]] is ambiguous")
 }

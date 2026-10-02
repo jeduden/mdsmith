@@ -774,23 +774,25 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	// docs/Guide.md and ref/Guide.md exist and only docs/Guide.md
 	// moves). Leave every such wikilink untouched in that case rather
 	// than break an unrelated reference — the moved file's own links
-	// stay resolvable by the sibling's stem.
-	if countFilesWithStem(ws, oldStem) > 1 {
-		return
-	}
+	// stay resolvable by the sibling's stem. The source is counted even
+	// when ws.Files() omits it (a `files:` glob can exclude a file
+	// Resolve still reads): it holds oldStem either way, so one listed
+	// sibling already makes the link ambiguous.
+	//
 	// The destination stem must be unique too. dst does not exist in the
 	// workspace yet (Move rejected an existing destination), so any file
 	// already carrying newStem is a *different* file: retargeting
 	// `[[oldStem]]` to `[[newStem]]` would make the link resolve to that
 	// sibling (or become ambiguous) instead of the moved file. Leave the
-	// wikilinks alone, mirroring the source-side ambiguity guard above.
+	// wikilinks alone, mirroring the source-side ambiguity guard.
 	// A Markdown destination is addressed by stem; a typed non-Markdown
 	// destination (`guide.mdx`) is addressed by exact file name.
-	if dstIsMarkdown {
-		if countFilesWithStem(ws, newStem) > 0 {
-			return
-		}
-	} else if countFilesWithName(ws, strings.ToLower(path.Base(dst))) > 0 {
+	newKey := newStem
+	if !dstIsMarkdown {
+		newKey = strings.ToLower(path.Base(dst))
+	}
+	oldHolders, newHolders := wikilinkKeyHolders(ws.Files(), src, oldStem, newKey, dstIsMarkdown)
+	if oldHolders > 1 || newHolders > 0 {
 		return
 	}
 	for _, e := range ws.IncomingWikilinkEdges(oldStem) {
@@ -847,36 +849,38 @@ func wikilinkStemBytes(row []byte, bracketStart int) (int, int, bool) {
 	return stemStart, end, true
 }
 
-// countFilesWithStem reports how many workspace files share the given
-// lowercased basename stem. Only Markdown files count: the wikilink
-// index maps nothing else to a stem. A count above one means a bare `[[stem]]`
-// is ambiguous, so the move planner cannot safely rewrite wikilinks by
-// stem alone.
-func countFilesWithStem(ws Workspace, stem string) int {
-	n := 0
-	for _, f := range ws.Files() {
-		if !mdpath.IsMarkdownPath(f) {
-			continue
+// wikilinkKeyHolders counts, in one pass over files, the Markdown
+// files addressed by oldStem and the files holding newKey. newKey is a
+// stem when newIsStem (a Markdown destination) and otherwise a
+// lowercased exact basename, since a typed wikilink such as
+// `[[guide.mdx]]` resolves by file name. src always counts as an
+// oldStem holder, listed or not, because Resolve reads it from disk.
+func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem bool) (oldN, newN int) {
+	srcListed := false
+	for _, f := range files {
+		if f == src {
+			srcListed = true
 		}
-		if fileStem(f) == stem {
-			n++
+		isMD := mdpath.IsMarkdownPath(f)
+		var stem string
+		if isMD {
+			stem = fileStem(f)
+			if stem == oldStem {
+				oldN++
+			}
+		}
+		if newIsStem {
+			if isMD && stem == newKey {
+				newN++
+			}
+		} else if strings.ToLower(path.Base(f)) == newKey {
+			newN++
 		}
 	}
-	return n
-}
-
-// countFilesWithName reports how many workspace files have the given
-// lowercased basename. A typed wikilink such as `[[guide.mdx]]`
-// resolves by exact file name, so this guards a non-Markdown
-// destination where stem counting does not apply.
-func countFilesWithName(ws Workspace, base string) int {
-	n := 0
-	for _, f := range ws.Files() {
-		if strings.ToLower(path.Base(f)) == base {
-			n++
-		}
+	if !srcListed {
+		oldN++
 	}
-	return n
+	return oldN, newN
 }
 
 // fileStem returns the lowercased basename stem a file is addressed by
