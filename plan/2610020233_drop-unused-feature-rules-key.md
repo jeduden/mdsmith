@@ -34,11 +34,14 @@ because that file needs explicit user consent to edit.
    [`.mdsmith.yml`](../.mdsmith.yml).
 2. Delete the `"rules?": '[...string]'` line from the
    `feature` kind's `schema.frontmatter` block.
-3. Confirm no file under `docs/features/` sets `rules:`, then
-   run `mdsmith check .`.
+3. Confirm no file under `docs/features/` sets `rules:` in its
+   front matter, then run `mdsmith check .`. A plain grep for
+   `^rules:` is not enough: the YAML examples in
+   `size-and-readability.md` start lines with `rules:` too.
 
 ## Acceptance Criteria
 
 - [ ] The `feature` kind schema has no `rules?` key.
-- [ ] `grep -n '^rules:' docs/features/*.md` prints nothing.
+- [ ] `mdsmith list query 'rules: _' docs/features/` prints
+      nothing (front matter only, so code blocks do not match).
 - [ ] `mdsmith check .` passes.

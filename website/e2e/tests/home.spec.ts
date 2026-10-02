@@ -128,13 +128,19 @@ test.describe("homepage positioning", () => {
     // The codes are defined on each feature page and the Rules
     // index; on the homepage they are undecodable to a first-time
     // visitor, so the feature-grid cards omit them.
-    expect(await page.locator(".card-grid .card").count()).toBeGreaterThan(5);
     await expect(page.locator(".card-grid .rule-chip")).toHaveCount(0);
     await expect(page.locator(".card-grid .card-rules")).toHaveCount(0);
     // No code may sneak back in through other markup either, such
-    // as a `<code>MDS034</code>` span in a card summary.
-    const cardText = await page.locator(".card-grid").innerText();
-    expect(cardText).not.toMatch(/\bMDS\d{3}\b/);
+    // as a `<code>MDS034</code>` span in a card summary. Scan only
+    // the card copy (title, summary, "Learn more"): there is one
+    // .card-grid per pillar, and the lead cards' artifact mocks
+    // show captured diagnostics (the graph SVG's "MDS027 missing
+    // anchor") on purpose.
+    const copy = await page.locator(".card-grid .card-content").allInnerTexts();
+    expect(copy.length).toBeGreaterThan(5);
+    for (const text of copy) {
+      expect(text).not.toMatch(/\bMDS\d{3}\b/);
+    }
   });
 
   test("install commands stay readable on a narrow viewport", async ({
