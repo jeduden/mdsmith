@@ -290,4 +290,5 @@ footer: |
 | 2610021439 | 🔲     | sonnet | [Make wasm session method bindings unforgeable](plan/2610021439_wasm-unforgeable-session-binding.md)                                                    |
 | 2610021452 | 🔲     | sonnet | [Free wasm sessions dropped without dispose](plan/2610021452_wasm-collect-dropped-sessions.md)                                                          |
 | 2610021556 | ✅     | sonnet | [Declare each wasm method's disposed result next to its impl](plan/2610021556_wasm-disposed-result-table.md)                                            |
+| 2610021800 | 🔲     | sonnet | [Contain wasm JS exceptions outside the executor guard](plan/2610021800_wasm-js-exception-outside-guard.md)                                             |
 <?/catalog?>
