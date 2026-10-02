@@ -90,3 +90,19 @@ func TestSortRows_AllocsBounded(t *testing.T) {
 	})
 	require.LessOrEqual(t, allocs, 1.0)
 }
+
+// The comparator sees (unavailable, available) pairs in either argument
+// order; both must sort available rows first.
+func TestSortRows_UnavailableAfterAvailableEitherInputOrder(t *testing.T) {
+	def, ok := LookupScope(ScopeFile, "bytes")
+	require.True(t, ok)
+	unavail := Row{Path: "u.md", Metrics: map[string]Value{"bytes": UnavailableValue()}}
+	avail := Row{Path: "a.md", Metrics: map[string]Value{"bytes": AvailableValue(1)}}
+
+	for _, rows := range [][]Row{{unavail, avail}, {avail, unavail}} {
+		in := append([]Row(nil), rows...)
+		SortRows(in, def, OrderAsc)
+		require.Equal(t, "a.md", in[0].Path)
+		require.Equal(t, "u.md", in[1].Path)
+	}
+}
