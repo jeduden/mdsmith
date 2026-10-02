@@ -43,7 +43,13 @@ of plan
    result.
 2. Change `sharedMethodImpls` to map each name to a
    struct of the implementation and its disposed result,
-   and delete the name switch in `disposedResult`.
+   and delete the name switch in `disposedResult`. Build
+   each entry with a constructor named for its result
+   shape (`asyncMethod`, `stringListMethod`,
+   `voidMethod`), so no entry has a nil func and the
+   disposed result always has the live shape. The async
+   constructor also owns the Promise boilerplate the five
+   async methods repeated.
 3. Run `go run ./cmd/mdsmith-release test-js-wasm
    ./cmd/mdsmith-wasm` and the WASM size check in
    [size_test.go](../cmd/mdsmith-wasm/size_test.go).
@@ -54,6 +60,8 @@ of plan
       same table entry as its implementation
 - [x] A test fails when a disposed method's result shape
       differs from its live result shape
+- [x] A test fails when a table entry has a nil call
+      or disposed func
 - [x] All tests pass: `go test ./...` and the js/wasm
       suite
 - [x] `go tool golangci-lint run` reports no issues,

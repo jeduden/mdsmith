@@ -13,6 +13,7 @@
 package main
 
 import (
+	"errors"
 	"math"
 	"runtime/debug"
 	"sync"
@@ -229,8 +230,10 @@ var (
 )
 
 // methodImpl pairs a forwarding session method's implementation with
-// the result it returns once its session is disposed, so a new method
-// states both in one table entry.
+// the result it returns once its session is disposed. Build one with
+// asyncMethod, stringListMethod, or voidMethod, which fix both funcs
+// from the method's result shape, so the two cannot disagree and
+// neither is nil.
 type methodImpl struct {
 	// call runs the method for a live session; sess is never nil.
 	call func(sess *mdsmith.Session, args []js.Value) any
@@ -239,19 +242,67 @@ type methodImpl struct {
 	disposed func() any
 }
 
+// asyncMethod builds the entry for a method that returns a Promise.
+// fn runs inside the Promise executor; a non-nil error rejects with
+// Error(err.Error()), otherwise the Promise resolves to toJS(value).
+// After dispose the Promise rejects with Error("session disposed").
+func asyncMethod(fn func(sess *mdsmith.Session, args []js.Value) (any, error)) methodImpl {
+	return methodImpl{
+		call: func(sess *mdsmith.Session, args []js.Value) any {
+			return newPromise(func(resolve, reject func(any)) {
+				v, err := fn(sess, args)
+				if err != nil {
+					reject(jsError(err.Error()))
+					return
+				}
+				resolve(toJS(v))
+			})
+		},
+		disposed: disposedReject,
+	}
+}
+
+// stringListMethod builds the entry for a synchronous method that
+// returns string[]. After dispose it returns an empty array.
+func stringListMethod(fn func(sess *mdsmith.Session, args []js.Value) []string) methodImpl {
+	return methodImpl{
+		call: func(sess *mdsmith.Session, args []js.Value) any {
+			list := fn(sess, args)
+			arr := make([]any, len(list))
+			for i, s := range list {
+				arr[i] = s
+			}
+			return js.ValueOf(arr)
+		},
+		disposed: disposedEmptyList,
+	}
+}
+
+// voidMethod builds the entry for a synchronous method that returns
+// undefined. After dispose it returns undefined without running fn.
+func voidMethod(fn func(sess *mdsmith.Session, args []js.Value)) methodImpl {
+	return methodImpl{
+		call: func(sess *mdsmith.Session, args []js.Value) any {
+			fn(sess, args)
+			return js.Undefined()
+		},
+		disposed: disposedUndefined,
+	}
+}
+
 // sharedMethodImpls maps each forwarding session method to its
 // implementation and disposed result. The shared func calls impl.call
 // only for a live session and impl.disposed otherwise; dispose is
 // registered on its own (proxyDispose) because it alone needs the id,
 // to drop it from sessions.
 var sharedMethodImpls = map[string]methodImpl{
-	"check":        {proxyCheck, disposedReject},
-	"fix":          {proxyFix, disposedReject},
-	"kinds":        {proxyKinds, disposedReject},
-	"rename":       {proxyRename, disposedReject},
-	"move":         {proxyMove, disposedReject},
-	"capabilities": {proxyCapabilities, disposedEmptyList},
-	"invalidate":   {proxyInvalidate, disposedUndefined},
+	"check":        asyncMethod(proxyCheck),
+	"fix":          asyncMethod(proxyFix),
+	"kinds":        asyncMethod(proxyKinds),
+	"rename":       asyncMethod(proxyRename),
+	"move":         asyncMethod(proxyMove),
+	"capabilities": stringListMethod(proxyCapabilities),
+	"invalidate":   voidMethod(proxyInvalidate),
 }
 
 var (
@@ -309,114 +360,77 @@ func boundSession(args []js.Value) (id int, sess *mdsmith.Session, rest []js.Val
 }
 
 // proxyCheck is session.check(uri, src) → Promise<Diagnostic[]>.
-func proxyCheck(sess *mdsmith.Session, args []js.Value) any {
-	return newPromise(func(resolve, reject func(any)) {
-		uri, src, ok := uriAndSource(args)
-		if !ok {
-			reject(jsError("check(uri, src) requires two string arguments"))
-			return
-		}
-		diags, err := sess.Check(uri, src)
-		if err != nil {
-			reject(jsError(err.Error()))
-			return
-		}
-		// A nil Go slice marshals to JSON null, but the check()
-		// contract is Diagnostic[]; normalise a clean file to [].
-		if diags == nil {
-			diags = []mdsmith.Diagnostic{}
-		}
-		resolve(toJS(diags))
-	})
+func proxyCheck(sess *mdsmith.Session, args []js.Value) (any, error) {
+	uri, src, ok := uriAndSource(args)
+	if !ok {
+		return nil, errors.New("check(uri, src) requires two string arguments")
+	}
+	diags, err := sess.Check(uri, src)
+	if err != nil {
+		return nil, err
+	}
+	// A nil Go slice marshals to JSON null, but the check() contract
+	// is Diagnostic[]; normalise a clean file to [].
+	if diags == nil {
+		diags = []mdsmith.Diagnostic{}
+	}
+	return diags, nil
 }
 
 // proxyFix is session.fix(uri, src) → Promise<FixResult>.
-func proxyFix(sess *mdsmith.Session, args []js.Value) any {
-	return newPromise(func(resolve, reject func(any)) {
-		uri, src, ok := uriAndSource(args)
-		if !ok {
-			reject(jsError("fix(uri, src) requires two string arguments"))
-			return
-		}
-		res, err := sess.Fix(uri, src)
-		if err != nil {
-			reject(jsError(err.Error()))
-			return
-		}
-		// Same nil-slice→null guard for the result's diagnostics.
-		if res.Diagnostics == nil {
-			res.Diagnostics = []mdsmith.Diagnostic{}
-		}
-		resolve(toJS(res))
-	})
+func proxyFix(sess *mdsmith.Session, args []js.Value) (any, error) {
+	uri, src, ok := uriAndSource(args)
+	if !ok {
+		return nil, errors.New("fix(uri, src) requires two string arguments")
+	}
+	res, err := sess.Fix(uri, src)
+	if err != nil {
+		return nil, err
+	}
+	// Same nil-slice→null guard for the result's diagnostics.
+	if res.Diagnostics == nil {
+		res.Diagnostics = []mdsmith.Diagnostic{}
+	}
+	return res, nil
 }
 
 // proxyKinds is session.kinds(uri) → Promise<KindsResult>.
-func proxyKinds(sess *mdsmith.Session, args []js.Value) any {
-	return newPromise(func(resolve, reject func(any)) {
-		if len(args) < 1 || jsType(args[0]) != js.TypeString {
-			reject(jsError("kinds(uri) requires a string argument"))
-			return
-		}
-		res, err := sess.Kinds(args[0].String())
-		if err != nil {
-			reject(jsError(err.Error()))
-			return
-		}
-		resolve(toJS(res))
-	})
+func proxyKinds(sess *mdsmith.Session, args []js.Value) (any, error) {
+	if len(args) < 1 || jsType(args[0]) != js.TypeString {
+		return nil, errors.New("kinds(uri) requires a string argument")
+	}
+	return sess.Kinds(args[0].String())
 }
 
 // proxyRename is session.rename(uri, source, as, old, new) →
 // Promise<Plan>; as may be "".
-func proxyRename(sess *mdsmith.Session, args []js.Value) any {
-	return newPromise(func(resolve, reject func(any)) {
-		if len(args) < 5 || !allStrings(args[:5]) {
-			reject(jsError("rename(uri, source, as, old, new) requires five string arguments"))
-			return
-		}
-		plan, err := sess.Rename(args[0].String(), []byte(args[1].String()),
-			args[2].String(), args[3].String(), args[4].String())
-		if err != nil {
-			reject(jsError(err.Error()))
-			return
-		}
-		resolve(toJS(plan))
-	})
+func proxyRename(sess *mdsmith.Session, args []js.Value) (any, error) {
+	if len(args) < 5 || !allStrings(args[:5]) {
+		return nil, errors.New("rename(uri, source, as, old, new) requires five string arguments")
+	}
+	return sess.Rename(args[0].String(), []byte(args[1].String()),
+		args[2].String(), args[3].String(), args[4].String())
 }
 
 // proxyMove is session.move(src, dst) → Promise<Plan>.
-func proxyMove(sess *mdsmith.Session, args []js.Value) any {
-	return newPromise(func(resolve, reject func(any)) {
-		if len(args) < 2 || !allStrings(args[:2]) {
-			reject(jsError("move(src, dst) requires two string arguments"))
-			return
-		}
-		plan, err := sess.Move(args[0].String(), args[1].String())
-		if err != nil {
-			reject(jsError(err.Error()))
-			return
-		}
-		resolve(toJS(plan))
-	})
+func proxyMove(sess *mdsmith.Session, args []js.Value) (any, error) {
+	if len(args) < 2 || !allStrings(args[:2]) {
+		return nil, errors.New("move(src, dst) requires two string arguments")
+	}
+	return sess.Move(args[0].String(), args[1].String())
 }
 
 // proxyCapabilities is the synchronous session.capabilities() →
 // string[].
-func proxyCapabilities(sess *mdsmith.Session, _ []js.Value) any {
-	caps := sess.Capabilities()
-	arr := make([]any, len(caps))
-	for i, c := range caps {
-		arr[i] = c
-	}
-	return js.ValueOf(arr)
+func proxyCapabilities(sess *mdsmith.Session, _ []js.Value) []string {
+	return sess.Capabilities()
 }
 
 // proxyInvalidate is the synchronous session.invalidate(uri, src?).
 // A non-string uri is ignored; a string src replaces the cached source.
-func proxyInvalidate(sess *mdsmith.Session, args []js.Value) any {
+func proxyInvalidate(sess *mdsmith.Session, args []js.Value) {
 	if len(args) < 1 || jsType(args[0]) != js.TypeString {
-		return js.Undefined()
+		return
 	}
 	uri := args[0].String()
 	if len(args) >= 2 && jsType(args[1]) == js.TypeString {
@@ -424,7 +438,6 @@ func proxyInvalidate(sess *mdsmith.Session, args []js.Value) any {
 	} else {
 		sess.Invalidate(uri)
 	}
-	return js.Undefined()
 }
 
 // proxyDispose is the shared func behind the synchronous

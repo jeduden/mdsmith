@@ -3,12 +3,14 @@
 package main
 
 import (
+	"errors"
 	"maps"
 	"runtime/debug"
 	"slices"
 	"syscall/js"
 	"testing"
 
+	"github.com/jeduden/mdsmith/pkg/mdsmith"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -380,6 +382,71 @@ func settledShape(t *testing.T, v js.Value) string {
 	default:
 		return v.Type().String()
 	}
+}
+
+// TestSharedMethodImpls_Complete checks that every table entry carries
+// both funcs, so a nil one fails here instead of panicking inside a
+// js.FuncOf callback, which hangs the js/wasm suite.
+func TestSharedMethodImpls_Complete(t *testing.T) {
+	for name, impl := range sharedMethodImpls {
+		assert.NotNil(t, impl.call, "%s has no call func", name)
+		assert.NotNil(t, impl.disposed, "%s has no disposed func", name)
+	}
+}
+
+func TestAsyncMethod(t *testing.T) {
+	t.Run("resolves the value as JS", func(t *testing.T) {
+		var gotArgs []js.Value
+		m := asyncMethod(func(_ *mdsmith.Session, args []js.Value) (any, error) {
+			gotArgs = args
+			return map[string]any{"n": 1}, nil
+		})
+		v, rejected := awaitPromise(t, m.call(nil, []js.Value{js.ValueOf("x")}).(js.Value))
+		require.False(t, rejected)
+		assert.Equal(t, 1, v.Get("n").Int())
+		require.Len(t, gotArgs, 1)
+		assert.Equal(t, "x", gotArgs[0].String())
+	})
+	t.Run("rejects with the error message", func(t *testing.T) {
+		m := asyncMethod(func(*mdsmith.Session, []js.Value) (any, error) {
+			return nil, errors.New("boom")
+		})
+		v, rejected := awaitPromise(t, m.call(nil, nil).(js.Value))
+		require.True(t, rejected)
+		assert.Equal(t, "boom", v.Get("message").String())
+	})
+	t.Run("disposed result rejects", func(t *testing.T) {
+		m := asyncMethod(func(*mdsmith.Session, []js.Value) (any, error) {
+			t.Fatal("fn must not run after dispose")
+			return nil, nil
+		})
+		v, rejected := awaitPromise(t, m.disposed().(js.Value))
+		require.True(t, rejected)
+		assert.Equal(t, disposedAsyncReason, v.Get("message").String())
+	})
+}
+
+func TestStringListMethod(t *testing.T) {
+	m := stringListMethod(func(*mdsmith.Session, []js.Value) []string {
+		return []string{"a", "b"}
+	})
+	live := m.call(nil, nil).(js.Value)
+	require.Equal(t, "array", settledShape(t, live))
+	assert.Equal(t, 2, live.Length())
+	assert.Equal(t, "b", live.Index(1).String())
+
+	gone := m.disposed().(js.Value)
+	require.Equal(t, "array", settledShape(t, gone))
+	assert.Equal(t, 0, gone.Length())
+}
+
+func TestVoidMethod(t *testing.T) {
+	calls := 0
+	m := voidMethod(func(*mdsmith.Session, []js.Value) { calls++ })
+	assert.True(t, m.call(nil, nil).(js.Value).IsUndefined())
+	assert.Equal(t, 1, calls)
+	assert.True(t, m.disposed().(js.Value).IsUndefined())
+	assert.Equal(t, 1, calls, "disposed result must not run fn")
 }
 
 // TestNewSessionProxy_DisposeLeavesNoFuncs tracks the funcs a session's
