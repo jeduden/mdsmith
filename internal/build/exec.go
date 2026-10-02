@@ -107,11 +107,18 @@ type runOpts struct {
 // leave orphans behind. If the Job Object could not be created, Windows
 // falls back to CTRL_BREAK alone, which reaches the leader's group but
 // cannot guarantee that. On plan9 the recipe leads its own note group
-// (RFNOTEG) and the timeout writes "kill" to /proc/<pid>/notepg, which
-// reaches every process in it at once, with no grace period; if that
-// write fails, only the leader is killed. On js/wasm and wasip1
-// (exec_other.go) no subprocess can start. So the orphan guarantee
-// holds on Unix, on plan9, and on Windows with a Job Object.
+// (RFNOTEG). afterStart opens /proc/<pid>/notepg and reads the noteid
+// while the leader is alive. The timeout writes "kill" to that file,
+// which reaches every process still in the group at once, with no grace
+// period, even after the leader exited; it then writes a forced "kill"
+// to the ctl file of every process whose noteid still matches, so a
+// member that catches the note dies too. If neither step reached a
+// process, only the leader is killed. rc's `&` starts a new note group,
+// so a job backgrounded that way escapes, as a setsid daemon does on
+// Unix. On js/wasm and wasip1 (exec_other.go) no
+// subprocess can start. So the orphan guarantee holds on Unix, on
+// plan9 for processes that stay in the note group, and on Windows with
+// a Job Object.
 //
 // After the kill, runRecipe waits at most reapWait for the leader to
 // exit. If it has not (a leader that ignored the group kill), it kills

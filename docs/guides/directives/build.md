@@ -380,9 +380,9 @@ directory. A recipe that invokes `mdsmith` (for example to run
 Each recipe runs in its own process group (`Setpgid` on Unix, `RFNOTEG`
 on plan9, `CREATE_NEW_PROCESS_GROUP` plus a Job Object on Windows). On
 timeout, Unix sends `SIGTERM`, waits up to 5 s, then sends `SIGKILL` to
-the group; plan9 writes `kill` to `/proc/<pid>/notepg`; Windows sends
-`CTRL_BREAK_EVENT` and ends the Job Object (without one a daemon can
-survive). Each later wait is capped at 5 s.
+the group; plan9 writes `kill` to the group's `notepg`, then each
+member's `ctl` (an rc `&` job escapes); Windows sends `CTRL_BREAK_EVENT`
+and ends the Job Object (else a daemon can survive). Waits cap at 5 s.
 
 ### Atomic-write hardening
 

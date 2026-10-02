@@ -146,8 +146,9 @@ func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
 }
 
 func TestRunRecipe_SurvivorHoldingPipeDoesNotBlock(t *testing.T) {
-	// Models a target with no group kill (plan9): only the leader dies,
-	// and a background child keeps the captured stdout pipe open, so
+	// Models a kill that reaches only the leader (plan9 when the notepg
+	// file could not be opened, or a child that left the note group):
+	// a background child keeps the captured stdout pipe open, so
 	// cmd.Wait would block until that child exits. runRecipe must stop
 	// waiting after reapWait.
 	stubKillGroup(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })

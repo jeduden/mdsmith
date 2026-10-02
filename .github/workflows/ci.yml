@@ -66,9 +66,13 @@ jobs:
       # `go tool` would compile the linter for the target GOOS, so
       # build it once for the host and run that one binary for every
       # view of the module: native (linux), js/wasm (which also covers
-      # the shared !unix && !windows fallback files), and windows.
-      # Files tagged wasip1 or plan9 alone, such as the wasip1 spike
-      # guest, get only the go vet runs in the wasm job.
+      # the shared !unix && !windows && !plan9 fallback files), windows,
+      # and plan9 (internal/build/exec_plan9.go). The plan9 run prints
+      # type errors for third-party packages that do not build there
+      # (afero, charmbracelet/x/term) and exits zero on them; it still
+      # lints internal/build and exits non-zero on a finding there. Files tagged wasip1
+      # alone, such as the wasip1 spike guest, get only the go vet
+      # runs in the wasm job.
       - name: Build golangci-lint for the host
         run: go build -modfile=tools/go.mod -o "$RUNNER_TEMP/golangci-lint" github.com/golangci/golangci-lint/v2/cmd/golangci-lint
       - name: Lint the native build
@@ -77,6 +81,8 @@ jobs:
         run: GOOS=js GOARCH=wasm "$RUNNER_TEMP/golangci-lint" run
       - name: Lint the windows build
         run: GOOS=windows GOARCH=amd64 "$RUNNER_TEMP/golangci-lint" run
+      - name: Lint the plan9 build
+        run: GOOS=plan9 GOARCH=amd64 "$RUNNER_TEMP/golangci-lint" run
 
   # Tracked manifests must stay pinned at 0.0.0-dev between releases;
   # the release workflow rewrites them with `mdsmith-release stamp`
@@ -556,8 +562,8 @@ jobs:
         # vet and build of ./cmd/mdsmith-wasm alone missed a js/wasm
         # break in its exec hooks. Building ./... gates every package.
         run: GOOS=js GOARCH=wasm go build ./...
-      # The lint job runs golangci-lint for linux, js/wasm, and windows
-      # only, so wasip1- and plan9-only files get no linting. go vet
+      # The lint job runs golangci-lint for linux, js/wasm, windows,
+      # and plan9, so wasip1-only files get no linting. go vet
       # cross-compiles, so run it here for all three wasm-adjacent
       # targets. Unlike go build, go vet also
       # type-checks _test.go files, so ./... catches a test helper
@@ -578,7 +584,7 @@ jobs:
         run: go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm
       - name: Unit-test the js/wasm exec stubs under Node
         # Plan 2610020725: exec_other.go (internal/build, tagged
-        # !unix && !windows) and fileop_exec_wasm.go (cmd/mdsmith,
+        # !unix && !windows && !plan9) and fileop_exec_wasm.go (cmd/mdsmith,
         # tagged wasm) never compile natively, so only a js/wasm run
         # tests them. test-js-wasm takes one package.
         run: |

@@ -49,13 +49,22 @@ which only had to make the package compile on wasm.
 2. Split plan9 out of `exec_other.go` into
    `exec_plan9.go`. Set `SysProcAttr{Rfork:
    syscall.RFNOTEG}` in `configureProcessGroup`. In
-   `killGroup`, write `kill` to `/proc/<pid>/notepg`,
-   and fall back to `cmd.Process.Kill()` if that write
-   fails.
-3. Narrow `exec_other.go` to `js || wasip1` and update
-   the `runRecipe` doc comment and
+   `afterStart`, open `/proc/<pid>/notepg` while the
+   leader is alive: the kernel binds the open file to
+   the note group, so a write still reaches it after
+   the leader exits; also read its `noteid`. In
+   `killGroup`, write `kill` to that file. The note is
+   catchable, so then sweep `/proc` and write a forced
+   `kill` to the `ctl` file of every process with that
+   `noteid` (opening `ctl` before reading `noteid`, so
+   a reused pid is never hit). Fall back to
+   `cmd.Process.Kill()` if neither step reached a
+   process.
+3. Narrow `exec_other.go` to `!unix && !windows &&
+   !plan9` and update the `runRecipe` doc comment and
    [build.md](../docs/guides/directives/build.md) so they
-   say the orphan guarantee holds on plan9 too.
+   say the orphan guarantee holds on plan9 too, except
+   for an rc `&` job, which leads its own note group.
 
 ## Acceptance Criteria
 
