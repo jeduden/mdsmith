@@ -69,7 +69,7 @@ func TestRunReleaseNotesWritesBody(t *testing.T) {
 	assert.Equal(t, "## What's Changed\n", string(got))
 }
 
-func TestRunReleaseNotesReportsAPIError(t *testing.T) {
+func TestRunReleaseNotesReportsMissingTag(t *testing.T) {
 	fakeTagsAPI(t)
 	t.Setenv("RELEASE_TAG", "")
 	t.Setenv("GITHUB_SHA", "abc123")

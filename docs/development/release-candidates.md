@@ -11,9 +11,10 @@ summary: >-
 # Release Candidates
 
 `.github/workflows/release-candidate.yml` runs on every
-push to `main` (and on manual dispatch). It cuts a
-GitHub **pre-release** so each merge can be installed
-and tested before a stable release.
+push to `main` (and on manual dispatch from `main`;
+a dispatch from any other branch skips every job). It
+cuts a GitHub **pre-release** so each merge can be
+installed and tested before a stable release.
 
 The version is the minor after the latest stable tag,
 plus `-rc.N`. `mdsmith-release rc-version` reads the

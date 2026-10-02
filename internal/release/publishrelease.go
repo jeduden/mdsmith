@@ -64,14 +64,9 @@ func PublishRelease(opts PublishReleaseOptions) error {
 	if sleep == nil {
 		sleep = time.Sleep
 	}
-	client := opts.Client
-	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
-	}
-	apiBase := strings.TrimRight(opts.APIBaseURL, "/")
-	if apiBase == "" {
-		apiBase = "https://api.github.com"
-	}
+	repo := GitHubRepoOptions{APIBaseURL: opts.APIBaseURL, Client: opts.Client}
+	client := repo.client()
+	apiBase := repo.apiBase()
 
 	var (
 		rel   releaseRef

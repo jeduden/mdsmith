@@ -87,7 +87,7 @@ func TestPreviousStableTag(t *testing.T) {
 }
 
 func TestPreviousStableTagRejectsMalformedVersion(t *testing.T) {
-	for _, v := range []string{"", "0.56.0", "v0.56", "latest"} {
+	for _, v := range []string{"", "0.56.0", "v0.56", "latest", "v0.56.0-", "v0.56.0+", "v0.56.0-rc 1"} {
 		_, _, err := PreviousStableTag([]string{"v0.1.0"}, v)
 		assert.Error(t, err, v)
 	}

@@ -37,8 +37,11 @@ concurrency:
 jobs:
   version:
     runs-on: ubuntu-latest
+    # A manual dispatch from any other branch would publish
+    # unmerged code under the next main candidate number.
     if: &rc_repo_ok >-
-      github.repository == 'jeduden/mdsmith'
+      github.repository == 'jeduden/mdsmith' &&
+      github.ref == 'refs/heads/main'
     outputs:
       version: ${{ steps.rc.outputs.version }}
     steps:

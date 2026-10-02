@@ -20,8 +20,11 @@ var (
 	// rcTagRE matches a release-candidate tag (v1.2.3-rc.4).
 	rcTagRE = regexp.MustCompile(`^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-rc\.([1-9]\d*)$`)
 	// versionCoreRE pulls the major.minor.patch core out of any
-	// v-prefixed semver, ignoring a pre-release or build suffix.
-	versionCoreRE = regexp.MustCompile(`^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:[-+].*)?$`)
+	// v-prefixed semver, ignoring a pre-release or build suffix. The
+	// suffix must be non-empty dot-separated identifiers, so "v1.2.3-"
+	// or a suffix carrying spaces is rejected.
+	versionCoreRE = regexp.MustCompile(`^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)` +
+		`(?:[-+][0-9A-Za-z-]+(?:[.+-][0-9A-Za-z-]+)*)?$`)
 )
 
 // versionCore is the numeric major.minor.patch triple of a tag.
