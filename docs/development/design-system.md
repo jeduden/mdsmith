@@ -51,7 +51,7 @@ fails on drift.
 | `--ok-500`, `--warn-500`, `--err-500` | Diagnostic semantics, matching `mdsmith check` terminal output.                          |
 | `--term-*`                            | Terminal mock palette only. Never mixed with UI tokens.                                  |
 | `--tint-*`                            | bg/fg/line triads for icon tiles. Cycle them; never two adjacent tiles in one hue.       |
-| `--grad-*`                            | Warm-only gradients: hero glow, dark panels, gradient icon tiles.                        |
+| `--grad-*`                            | Warm-only gradients: hero glow and gradient icon tiles.                                  |
 
 Gradients carry two extra rules. Never place one behind body
 text on a light surface. Use at most one gradient surface per
@@ -103,8 +103,8 @@ viewport.
 - Cards: `--bg-raised` background, 1px `--border`, 6px
   radius, `--shadow-sm` at rest. No left-border accent
   stripe. Homepage feature cards carry no MDS rule-ID
-  chips; the codes live on each feature page and the
-  Rules index, where they are defined.
+  chips; the codes are cited on each feature page and
+  defined on the Rules index.
 - Hover: links underline; buttons darken one step on the
   forge ramp. Never opacity-only hover.
 - Press: 1px translate down. No scale effects.

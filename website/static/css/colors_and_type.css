@@ -220,12 +220,12 @@
                      0 10px 24px -8px rgba(15, 20, 25, 0.22);
 
   /* Gradients — warm only; the bluish-purple veto stands. Use for
-     hero glows, dark panels, and gradient icon tiles. Never behind body text on a light surface; max
-     one gradient surface per viewport. */
+     hero glows and gradient icon tiles. Never
+     behind body text on a light surface; max one gradient
+     surface per viewport. */
   --grad-forge: linear-gradient(135deg, #ECA152 0%, #D9651D 55%, #B84F12 100%);
   --grad-heat:  linear-gradient(90deg, #E58233 0%, #C3372C 100%);
   --grad-ember: linear-gradient(165deg, #FDF3EA 0%, #FAE2CB 100%);
-  --grad-steel: linear-gradient(150deg, #2A323D 0%, #0F1419 80%);
   --grad-glow:  radial-gradient(circle at 80% 0%, rgba(217, 101, 29, 0.06), transparent 40%),
                 radial-gradient(circle at 0% 100%, rgba(217, 101, 29, 0.04), transparent 50%);
 

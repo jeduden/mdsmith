@@ -125,18 +125,19 @@ test.describe("homepage positioning", () => {
   }) => {
     await page.goto("/");
 
-    // The codes are defined on each feature page and the Rules
-    // index; on the homepage they are undecodable to a first-time
-    // visitor, so the feature-grid cards omit them.
+    // The codes are defined on the Rules index and cited on each
+    // feature page; on the homepage they are undecodable to a
+    // first-time visitor, so the feature-grid cards omit them.
     await expect(page.locator(".card-grid .rule-chip")).toHaveCount(0);
     await expect(page.locator(".card-grid .card-rules")).toHaveCount(0);
     // No code may sneak back in through other markup either, such
-    // as a `<code>MDS034</code>` span in a card summary. Scan only
-    // the card copy (title, summary, "Learn more"): there is one
-    // .card-grid per pillar, and the lead cards' artifact mocks
+    // as a `<code>MDS034</code>` span in a card summary or a chip
+    // row beside .card-content. Scan the whole .card-body (icon
+    // tile, title, summary, "Learn more") but not the lead cards'
+    // artifact mocks, which follow .card-body inside the card and
     // show captured diagnostics (the graph SVG's "MDS027 missing
-    // anchor") on purpose.
-    const copy = await page.locator(".card-grid .card-content").allInnerTexts();
+    // anchor") on purpose. There is one .card-grid per pillar.
+    const copy = await page.locator(".card-grid .card-body").allInnerTexts();
     expect(copy.length).toBeGreaterThan(5);
     for (const text of copy) {
       expect(text).not.toMatch(/\bMDS\d{3}\b/);
