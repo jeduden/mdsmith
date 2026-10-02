@@ -21,10 +21,12 @@ func TestResolveVersion(t *testing.T) {
 		assert.Equal(t, "v9.9.9", resolveVersion())
 	})
 
-	// Pin the build-info branch rather than mirror resolveVersion's own
-	// fallback chain: a test binary always carries build info, so this
-	// fails loudly if that ever stops holding instead of silently
-	// exercising the "(devel)" literal under this subtest's name.
+	// Expect build info's Main.Version rather than mirror
+	// resolveVersion's own fallback chain: a test binary always carries
+	// build info, so this fails loudly if that ever stops holding. A
+	// test binary reports "(devel)" there, the same string as the final
+	// literal, so this pins the result, not which branch produced it;
+	// that literal is unreachable here without a seam.
 	t.Run("empty version falls back to build info", func(t *testing.T) {
 		version = ""
 		info, ok := debug.ReadBuildInfo()
