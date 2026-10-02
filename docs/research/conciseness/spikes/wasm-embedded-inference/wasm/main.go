@@ -49,7 +49,7 @@ func alloc(size int32) int32 {
 
 //go:wasmexport free
 func free(ptr int32) {
-	delete(keepAlive, uintptr(ptr))
+	delete(keepAlive, uintptr(uint32(ptr)))
 }
 
 //go:wasmexport classify
@@ -64,8 +64,9 @@ func classify(ptr, length int32) int64 {
 	if length > 0 {
 		// Resolve ptr through keepAlive rather than converting the raw
 		// address back to a pointer: only alloc'd buffers are valid
-		// input, and the slice length bounds the read.
-		buf, ok := keepAlive[uintptr(ptr)]
+		// input, and the slice length bounds the read. uint32 first so
+		// an address at or above 2 GiB is not sign-extended.
+		buf, ok := keepAlive[uintptr(uint32(ptr))]
 		if !ok || int(length) > len(buf) {
 			return 0
 		}
