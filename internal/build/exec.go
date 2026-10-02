@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
-	"time"
 )
 
 // defaultExecPath is the compiled-default PATH a recipe runs under when
@@ -101,9 +100,10 @@ type runOpts struct {
 //
 // The recipe runs in its own process group (Setpgid on Unix;
 // CREATE_NEW_PROCESS_GROUP plus a Job Object on Windows). On timeout
-// mdsmith signals the whole group (SIGTERM on Unix, CTRL_BREAK on
-// Windows), waits up to gracePeriod, then force-kills the group, so a
-// recipe that spawns daemons cannot leave orphans behind. Other targets
+// Unix sends SIGTERM to the group, waits up to gracePeriod, then sends
+// SIGKILL; Windows sends CTRL_BREAK and terminates the Job Object at
+// once, with no wait. Either way a recipe that spawns daemons cannot
+// leave orphans behind. Other targets
 // (exec_other.go: js/wasm, wasip1, plan9) have no group primitive: the
 // timeout kills only the leader, with no grace period, so that
 // guarantee holds on Unix and Windows only.
@@ -172,11 +172,6 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		return exitCode, true, fmt.Errorf("recipe cancelled: %w", ctx.Err())
 	}
 }
-
-// gracePeriod is how long mdsmith waits after the first (polite)
-// termination signal before force-killing the process group. It is a var,
-// not a const, so a kill-path test can shorten it.
-var gracePeriod = 5 * time.Second
 
 // afterStartFn indirects afterStart so a test can install a non-nil job
 // cleanup and exercise the deferred-cleanup branch on Unix.

@@ -379,10 +379,10 @@ directory. A recipe that invokes `mdsmith` (for example to run
 
 Each recipe runs in its own process group (a new session via `Setpgid`
 on Unix; `CREATE_NEW_PROCESS_GROUP` plus a Job Object on Windows). When
-`--build-timeout` expires mdsmith signals the whole group — `SIGTERM`
-on Unix, `CTRL_BREAK_EVENT` on Windows — waits five seconds, then force
--kills the group (`SIGKILL` / Job Object termination). A recipe that
-spawns a background daemon cannot leave an orphan behind.
+`--build-timeout` expires, Unix gets `SIGTERM` to the whole group, up
+to five seconds of grace, then `SIGKILL`; Windows gets
+`CTRL_BREAK_EVENT` and an immediate Job Object termination. A recipe
+that spawns a background daemon cannot leave an orphan behind.
 
 ### Atomic-write hardening
 

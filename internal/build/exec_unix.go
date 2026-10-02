@@ -8,6 +8,11 @@ import (
 	"time"
 )
 
+// gracePeriod is how long mdsmith waits after SIGTERM before sending
+// SIGKILL to the process group. Only Unix waits, so it lives here. It
+// is a var, not a const, so a kill-path test can shorten it.
+var gracePeriod = 5 * time.Second
+
 // configureProcessGroup puts the recipe in its own process group so a
 // timeout can signal the whole group, not just the leader. Setpgid makes
 // the child the leader of a new group whose pgid equals its pid.
