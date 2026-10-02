@@ -287,14 +287,16 @@ func (f *File) Memo(key string, build func() any) any {
 }
 
 // MemoFile is the *File-passing variant of Memo: build receives this
-// File as an argument instead of capturing it in a closure. Callers
-// whose build needs nothing beyond File data can pass a package-
-// level function value, which avoids the per-call closure allocation
-// the plain `Memo` form forces on every invocation. The hot
+// File as an argument, so a caller whose build needs nothing beyond
+// File data can pass a package-level function value. The hot
 // astutil.CollectSectionParagraphs path is the canonical user. Its
-// once-per-key and panic contract matches Memo's.
+// once-per-key, zero-alloc warm path, and panic contract match
+// Memo's.
 func (f *File) MemoFile(key string, build func(*File) any) any {
-	return memo.GetWith(memo.Load(&f.scratch, key), f, build)
+	// The adapter closure captures f and build, but Get's warm path
+	// inlines and its cold path does not leak build, so the closure
+	// stays on the stack (pinned by TestFile_MemoFile_*Alloc* tests).
+	return memo.Load(&f.scratch, key).Get(func() any { return build(f) })
 }
 
 // headingTextCacheKey pairs a heading node with the base offset its

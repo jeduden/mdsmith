@@ -55,28 +55,6 @@ func TestEntry_GetPanicMarksDone(t *testing.T) {
 	assert.Zero(t, calls)
 }
 
-// TestGetWith_PassesArgAndBuildsOnce pins that GetWith hands arg to
-// build and, like Get, builds once.
-func TestGetWith_PassesArgAndBuildsOnce(t *testing.T) {
-	var e Entry
-	calls := 0
-	build := func(n int) any { calls++; return n * 2 }
-
-	require.Equal(t, 42, GetWith(&e, 21, build))
-	require.Equal(t, 42, GetWith(&e, 99, build))
-	assert.Equal(t, 1, calls)
-}
-
-// TestGetWith_PanicMarksDone pins GetWith's panic contract, which
-// matches Get's.
-func TestGetWith_PanicMarksDone(t *testing.T) {
-	var e Entry
-	assert.Panics(t, func() {
-		GetWith(&e, 1, func(int) any { panic("boom") })
-	})
-	assert.Nil(t, GetWith(&e, 1, func(int) any { return "v" }))
-}
-
 // TestLoad_ReturnsSameEntryPerKey pins that one key maps to one Entry
 // and distinct keys to distinct entries.
 func TestLoad_ReturnsSameEntryPerKey(t *testing.T) {
@@ -96,21 +74,6 @@ func TestLoad_WarmPathAllocatesNothing(t *testing.T) {
 
 	allocs := testing.AllocsPerRun(200, func() {
 		Load(&m, "k").Get(build)
-	})
-	assert.Zero(t, allocs)
-}
-
-// TestGetWith_WarmPathAllocatesNothing pins GetWith's cache-hit cost
-// at zero allocs for a pointer argument, the shape lint.File.MemoFile
-// uses.
-func TestGetWith_WarmPathAllocatesNothing(t *testing.T) {
-	var m sync.Map
-	arg := &struct{ n int }{n: 1}
-	build := func(p *struct{ n int }) any { return p.n }
-	GetWith(Load(&m, "k"), arg, build)
-
-	allocs := testing.AllocsPerRun(200, func() {
-		GetWith(Load(&m, "k"), arg, build)
 	})
 	assert.Zero(t, allocs)
 }

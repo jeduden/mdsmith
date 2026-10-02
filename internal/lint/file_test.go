@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -288,6 +289,46 @@ func TestFile_Memo_WarmPathAllocatesNothing(t *testing.T) {
 		f.Memo("k", build)
 	})
 	assert.Zero(t, allocs, "Memo's cache-hit path must not allocate")
+}
+
+// memoFileBuild is a package-level MemoFile build, the shape the
+// hot astutil caller passes.
+func memoFileBuild(f *File) any { return len(f.Path) }
+
+// TestFile_MemoFile_WarmPathAllocatesNothing pins MemoFile's cache-hit
+// cost at zero allocs.
+func TestFile_MemoFile_WarmPathAllocatesNothing(t *testing.T) {
+	f := &File{Path: "t.md"}
+	f.MemoFile("k", memoFileBuild)
+
+	allocs := testing.AllocsPerRun(200, func() {
+		f.MemoFile("k", memoFileBuild)
+	})
+	assert.Zero(t, allocs, "MemoFile's cache-hit path must not allocate")
+}
+
+// TestFile_MemoFile_ColdPathMatchesMemo pins that MemoFile's cold
+// path allocates no more than Memo's with a non-capturing build: the
+// adapter that hands f to build must stay on the stack, which is the
+// whole reason MemoFile exists.
+func TestFile_MemoFile_ColdPathMatchesMemo(t *testing.T) {
+	keys := make([]string, 256)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("k%d", i)
+	}
+	plain := func() any { return 1 }
+	coldAllocs := func(call func(f *File, key string)) float64 {
+		f := &File{Path: "t.md"}
+		i := 0
+		return testing.AllocsPerRun(200, func() {
+			call(f, keys[i])
+			i++
+		})
+	}
+	memoAllocs := coldAllocs(func(f *File, k string) { f.Memo(k, plain) })
+	fileAllocs := coldAllocs(func(f *File, k string) { f.MemoFile(k, memoFileBuild) })
+	assert.LessOrEqual(t, fileAllocs, memoAllocs,
+		"MemoFile's cold path must not allocate beyond Memo's")
 }
 
 // TestFile_Memo_ConcurrentSingleBuild pins that build runs exactly

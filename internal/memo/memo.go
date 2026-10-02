@@ -37,32 +37,24 @@ type Entry struct {
 // marked done (deferred Store) and the mutex is released (deferred
 // Unlock), so the panic propagates without deadlocking the slot.
 // Later calls return the zero value instead of re-running build.
+//
+// The warm path is a done check that inlines into the caller; the
+// cold path lives in getSlow because its defers would otherwise keep
+// Get from inlining (see high-performance-go.md).
 func (e *Entry) Get(build func() any) any {
 	if e.done.Load() {
 		return e.val
 	}
+	return e.getSlow(build)
+}
+
+// getSlow is Get's mutex-guarded cold path.
+func (e *Entry) getSlow(build func() any) any {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.done.Load() {
 		defer e.done.Store(true)
 		e.val = build()
-	}
-	return e.val
-}
-
-// GetWith is Get for a build that takes one argument. A caller whose
-// build needs only arg can pass a package-level function value
-// instead of a closure that captures arg, which avoids a per-call
-// closure allocation. Panic safety matches Get.
-func GetWith[T any](e *Entry, arg T, build func(T) any) any {
-	if e.done.Load() {
-		return e.val
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if !e.done.Load() {
-		defer e.done.Store(true)
-		e.val = build(arg)
 	}
 	return e.val
 }

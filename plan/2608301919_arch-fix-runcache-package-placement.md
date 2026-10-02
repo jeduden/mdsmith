@@ -75,8 +75,10 @@ this scope mismatch:
    The build-once slot (`load`/`runCacheEntry`) duplicated
    `lint.File.Memo`'s `memoEntry`/`memoLoad` line for line,
    so both now use one primitive in the new stdlib-only leaf
-   `internal/memo` (`memo.Entry`, `memo.Load`,
-   `memo.GetWith`).
+   `internal/memo` (`memo.Entry`, `memo.Load`). `Get`
+   splits its warm path from an outlined cold path so it
+   inlines; `MemoFile` then wraps `Get` in a closure that
+   stays on the stack, so no generic `GetWith` is needed.
 4. Update every import across the files listed in task 2.
 5. Keep `internal/lint`'s per-file `Memo` and `MemoFile`
    methods in place; only the cross-file `RunCache` and the
