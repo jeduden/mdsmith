@@ -2,7 +2,7 @@
 id: 2608301919
 title: >-
   Relocate RunCache out of internal/lint
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   internal/runcache/runcache.go's RunCache memoizes state across
