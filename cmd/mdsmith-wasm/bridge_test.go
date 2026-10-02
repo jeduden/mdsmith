@@ -458,6 +458,20 @@ func TestBigIntArgs(t *testing.T) {
 	})
 }
 
+// TestBindMethods_SkipsNameWithoutSharedFunc checks that a name in the
+// method list with no shared func (the two lists drifted) is left off
+// the session object rather than throwing in bind on every
+// createSession. TestNewSessionProxy_KeysMatchSessionMethodNames then
+// reports the drift.
+func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
+	proxy := js.Global().Get("Object").New()
+	require.NotPanics(t, func() {
+		bindMethods(proxy, []string{"check", "missing"}, sharedMethods(), -1)
+	})
+	assert.Equal(t, js.TypeFunction, proxy.Get("check").Type())
+	assert.False(t, proxy.Call("hasOwnProperty", "missing").Bool())
+}
+
 // TestSharedMethods_NoSessionID calls each shared func directly with no
 // bound id: every method takes the disposed path instead of panicking,
 // and dispose does nothing.

@@ -189,13 +189,23 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 	id := nextSessionID
 	nextSessionID++
 	sessions[id] = sess
-	// Set the keys in sessionMethodNames order, not Go map order, so
-	// Object.keys(session) is the same for every session.
 	proxy := js.Global().Get("Object").New()
-	for _, name := range sessionMethodNames() {
-		proxy.Set(name, bindTo.Invoke(shared[name], js.Undefined(), id))
-	}
+	bindMethods(proxy, sessionMethodNames(), shared, id)
 	return proxy
+}
+
+// bindMethods sets each named method on proxy to its shared func bound
+// to id, in names order rather than Go map order, so Object.keys(session)
+// is the same for every session. A name with no shared func (the names
+// list and sharedMethodImpls drifted) is left off rather than passed to
+// bind, which would throw on every createSession;
+// TestNewSessionProxy_KeysMatchSessionMethodNames reports the drift.
+func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int) {
+	for _, name := range names {
+		if f, ok := shared[name]; ok {
+			proxy.Set(name, bindTo.Invoke(f, js.Undefined(), id))
+		}
+	}
 }
 
 // bindTo is Function.prototype.call.bind(Function.prototype.bind), as
