@@ -258,3 +258,40 @@ func TestExitCodeOf_ExitError(t *testing.T) {
 	assert.Equal(t, 7, exitCodeOf(err))
 	assert.Equal(t, 7, exitCodeOf(fmt.Errorf("wrapped: %w", err)))
 }
+
+func TestRunRecipe_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
+	// The leader exits at once, but a background child it left in the
+	// group keeps the captured stdout pipe open. The deadline still
+	// applies to the drain: runRecipe must kill the group (taking the
+	// child down), report a timeout, and return promptly.
+	old := gracePeriod
+	gracePeriod = 50 * time.Millisecond
+	t.Cleanup(func() { gracePeriod = old })
+	stage := t.TempDir()
+	pidFile := filepath.Join(stage, "child.pid")
+	script := writeScript(t, t.TempDir(), "orphan.sh",
+		`sleep 30 & echo $! > "`+pidFile+`"; echo started; exit 0`)
+
+	out := &lockedBuffer{}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	code, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     stage,
+		defExec: defaultExecConfig(),
+		stdout:  out,
+	})
+	require.ErrorContains(t, err, "recipe timed out")
+	assert.True(t, timedOut)
+	assert.Equal(t, -1, code, "a leader that exited 0 carries no ExitError")
+	assert.Less(t, time.Since(start), 3*time.Second)
+	assert.Contains(t, out.String(), "started")
+
+	b, rerr := os.ReadFile(pidFile)
+	require.NoError(t, rerr)
+	pid, perr := parsePID(strings.TrimSpace(string(b)))
+	require.NoError(t, perr)
+	assert.Eventually(t, func() bool { return !processAlive(pid) },
+		5*time.Second, 50*time.Millisecond, "the group kill must reach the child")
+}
