@@ -6,7 +6,6 @@ summary: >-
   another file. A Git merge driver auto-resolves conflicts inside
   those blocks.
 icon: list-checks
-link: "/guides/directives/generating-content/"
 weight: 12
 group: "Markdown as a single source of truth"
 ---

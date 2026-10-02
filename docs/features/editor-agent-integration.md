@@ -5,7 +5,6 @@ summary: >-
   engine, so diagnostics, quick-fixes, and navigation reach your
   editor and your agent.
 icon: plug
-link: "/guides/editors/vscode/"
 weight: 4
 group: "One engine, every surface"
 ---

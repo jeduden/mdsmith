@@ -17,11 +17,12 @@ the interactive JavaScript that the Go render probes in
 
 ## What is tested
 
-| Spec                     | Coverage                                                                              |
-| ------------------------ | ------------------------------------------------------------------------------------- |
-| `install-picker.spec.ts` | Chip filtering, Windows command swap, copy-to-clipboard, no-JS noscript fallback      |
-| `chrome.spec.ts`         | Scroll-triggered `is-scrolled` on `.topnav`, docs sidebar toggle                      |
-| `search.spec.ts`         | ⌘K search: JSON index fetch, dialog lifecycle, querying, keyboard nav, no-JS fallback |
+| Spec                     | Coverage                                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------------------- |
+| `install-picker.spec.ts` | Chip filtering, Windows command swap, copy-to-clipboard, no-JS noscript fallback              |
+| `chrome.spec.ts`         | Scroll-triggered `is-scrolled` on `.topnav`, docs sidebar toggle                              |
+| `search.spec.ts`         | ⌘K search: JSON index fetch, dialog lifecycle, querying, keyboard nav, no-JS fallback         |
+| `home.spec.ts`           | Hero, scope statement, runs-in row, badges, card tiles, no rule-ID chips, narrow install rows |
 
 ## Run locally
 

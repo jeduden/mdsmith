@@ -6,7 +6,6 @@ summary: >-
   the hot path — an order of magnitude faster than Node markdownlint,
   with a CI gate against regression.
 icon: zap
-link: "/reference/cli/check/"
 weight: 6
 group: "One engine, every surface"
 ---
