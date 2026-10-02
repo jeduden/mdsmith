@@ -232,3 +232,46 @@ func TestCreateSession(t *testing.T) {
 		})
 	}
 }
+
+// newTestProxy resolves createSession over an empty workspace and
+// returns the session proxy.
+func newTestProxy(t *testing.T) js.Value {
+	t.Helper()
+	opts := js.ValueOf(map[string]any{})
+	v, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{opts}).(js.Value))
+	require.False(t, rejected, "promise must resolve: %v", v)
+	return v
+}
+
+// TestNewSessionProxy_KeysMatchSessionMethodNames ties the proxy's real
+// keys to sessionMethodNames, the list the native parity test checks
+// against the Go Session, so a key added to or dropped from
+// newSessionProxy alone cannot drift past that test.
+func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
+	proxy := newTestProxy(t)
+	defer proxy.Call("dispose")
+	keys := js.Global().Get("Object").Call("keys", proxy)
+	got := make([]string, keys.Length())
+	for i := range got {
+		got[i] = keys.Index(i).String()
+	}
+	assert.ElementsMatch(t, sessionMethodNames(), got)
+}
+
+// TestNewSessionProxy_DisposeReleasesMethods checks that dispose()
+// releases the other method funcs, so syscall/js's handler table stops
+// pinning the Session, and that a second dispose() is still a no-op.
+func TestNewSessionProxy_DisposeReleasesMethods(t *testing.T) {
+	proxy := newTestProxy(t)
+	require.Equal(t, js.TypeObject, proxy.Call("check", "a.md", "# A\n").Type(),
+		"a live check returns a Promise")
+	require.Equal(t, js.TypeObject, proxy.Call("capabilities").Type(),
+		"a live capabilities returns an array")
+
+	proxy.Call("dispose")
+
+	// A released js.Func returns undefined instead of running.
+	assert.True(t, proxy.Call("check", "a.md", "# A\n").IsUndefined(), "check after dispose")
+	assert.True(t, proxy.Call("capabilities").IsUndefined(), "capabilities after dispose")
+	assert.NotPanics(t, func() { proxy.Call("dispose") }, "second dispose")
+}

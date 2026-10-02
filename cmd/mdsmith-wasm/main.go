@@ -5,7 +5,7 @@
 // globalThis.mdsmith.createSession — that mirrors pkg/mdsmith.NewSession
 // one-to-one, plus globalThis.mdsmith.version. The session object it
 // returns carries each Go Session method by the same name (check, fix,
-// kinds, capabilities, invalidate, dispose).
+// kinds, rename, move, capabilities, invalidate, dispose).
 //
 // Build with cmd/mdsmith-wasm/build.sh. The design — the open method
 // namespace, the cache contract, and the WASM limits — lives in
@@ -155,17 +155,27 @@ var objectToString js.Value
 // newSessionProxy builds the JS object whose methods forward to the Go
 // Session. Method names match the Go method names exactly; the WASM
 // smoke test and a native test assert the set equals
-// pkg/mdsmith.Session's capability list.
+// pkg/mdsmith.Session's capability list, and a js/wasm test asserts
+// the proxy's keys equal sessionMethodNames.
 func newSessionProxy(sess *mdsmith.Session) js.Value {
+	methods := []js.Func{
+		proxyCheck(sess),
+		proxyFix(sess),
+		proxyKinds(sess),
+		proxyRename(sess),
+		proxyMove(sess),
+		proxyCapabilities(sess),
+		proxyInvalidate(sess),
+	}
 	return js.ValueOf(map[string]any{
-		"check":        proxyCheck(sess),
-		"fix":          proxyFix(sess),
-		"kinds":        proxyKinds(sess),
-		"rename":       proxyRename(sess),
-		"move":         proxyMove(sess),
-		"capabilities": proxyCapabilities(sess),
-		"invalidate":   proxyInvalidate(sess),
-		"dispose":      proxyDispose(sess),
+		"check":        methods[0],
+		"fix":          methods[1],
+		"kinds":        methods[2],
+		"rename":       methods[3],
+		"move":         methods[4],
+		"capabilities": methods[5],
+		"invalidate":   methods[6],
+		"dispose":      proxyDispose(sess, methods),
 	})
 }
 
@@ -302,10 +312,23 @@ func proxyInvalidate(sess *mdsmith.Session) js.Func {
 	})
 }
 
-// proxyDispose builds the synchronous session.dispose().
-func proxyDispose(sess *mdsmith.Session) js.Func {
+// proxyDispose builds the synchronous session.dispose(). js.FuncOf
+// keeps every closure in syscall/js's handler table until Release, so
+// without releasing them each disposed session, workspace bytes
+// included, would stay reachable for the life of the engine. dispose
+// therefore releases the other method funcs; a call to one afterwards
+// returns undefined. Its own func stays registered so a second
+// dispose() is a no-op, but it drops its references and pins nothing.
+func proxyDispose(sess *mdsmith.Session, others []js.Func) js.Func {
 	return js.FuncOf(func(_ js.Value, _ []js.Value) any {
+		if sess == nil {
+			return js.Undefined()
+		}
 		sess.Dispose()
+		for _, f := range others {
+			f.Release()
+		}
+		sess, others = nil, nil
 		return js.Undefined()
 	})
 }
