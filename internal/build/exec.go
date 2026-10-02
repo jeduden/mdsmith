@@ -103,7 +103,10 @@ type runOpts struct {
 // CREATE_NEW_PROCESS_GROUP plus a Job Object on Windows). On timeout
 // mdsmith signals the whole group (SIGTERM on Unix, CTRL_BREAK on
 // Windows), waits up to gracePeriod, then force-kills the group, so a
-// recipe that spawns daemons cannot leave orphans behind.
+// recipe that spawns daemons cannot leave orphans behind. Other targets
+// (exec_other.go: js/wasm, wasip1, plan9) have no group primitive: the
+// timeout kills only the leader, with no grace period, so that
+// guarantee holds on Unix and Windows only.
 //
 // It returns the process exit code, whether the run timed out, and any
 // error. On success it returns (0, false, nil). On non-zero exit it

@@ -24,9 +24,10 @@ func TestKillGroup_Other_NilProcess(t *testing.T) {
 	assert.NotPanics(t, func() { killGroup(&exec.Cmd{}) })
 }
 
-func TestKillGroup_Other_KillsLeaderOnly(t *testing.T) {
-	// A zero os.Process makes Kill return an error; killGroup must
-	// swallow it rather than panic.
+func TestKillGroup_Other_IgnoresKillError(t *testing.T) {
+	// A zero os.Process makes Kill return "process not initialized";
+	// killGroup must swallow it rather than panic. No subprocess can
+	// start under js/wasm, so a live leader kill is not testable here.
 	cmd := &exec.Cmd{Process: &os.Process{}}
 	assert.NotPanics(t, func() { killGroup(cmd) })
 }
