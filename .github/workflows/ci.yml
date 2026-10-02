@@ -521,7 +521,8 @@ jobs:
   # BestSpeed, against an artifact of ~13.1 MiB / ~4.0 MiB) and the
   # Go↔JS method-set
   # parity (methods_test.go). Earlier steps build the whole module for
-  # js/wasm and run the js/wasm-only unit tests (bridge_test.go and the
+  # js/wasm, vet it (tests included) for js/wasm, wasip1, and plan9,
+  # and run the js/wasm-only unit tests (bridge_test.go and the
   # internal/build and internal/refactor stubs) under Node.
   # tinygo is built in the separate tinygo-wasm
   # job below, which is now enforcing (plan 247).
@@ -545,9 +546,16 @@ jobs:
       # golangci-lint (the lint job) runs under the native GOOS, so it
       # skips the //go:build js && wasm bridge entirely. go vet does
       # cross-compile, so run it here to give the bridge at least
-      # vet-level static analysis.
-      - name: Vet the WASM bridge
-        run: GOOS=js GOARCH=wasm go vet ./cmd/mdsmith-wasm/...
+      # vet-level static analysis. Unlike go build, go vet also
+      # type-checks _test.go files, so ./... catches a test helper
+      # defined only under `unix` or `windows` (neither tag covers js,
+      # wasip1, or plan9).
+      - name: Vet the whole module, tests included, for WASM
+        run: GOOS=js GOARCH=wasm go vet ./...
+      - name: Vet the whole module, tests included, for wasip1
+        run: GOOS=wasip1 GOARCH=wasm go vet ./...
+      - name: Vet the whole module, tests included, for plan9
+        run: GOOS=plan9 GOARCH=amd64 go vet ./...
       - name: Unit-test the WASM bridge helpers under Node
         # Runtime logic lives in mdsmith-release per
         # docs/development/release-tooling.md. test-js-wasm runs every
