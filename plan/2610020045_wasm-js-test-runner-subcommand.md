@@ -79,23 +79,26 @@ deviations from the task text:
 - The parser is `ListTestFuncs`, not `TestNames`, so no
   production function in the package starts with `Test`.
   It honours an aliased `testing` import.
-- `ReadTestJSON(stream) (log, passed)` replaces
-  `CountPasses`. The test run uses `go test -json`, not
-  `-v`: test2json frames each result, so a test whose own
-  output lacks a trailing newline still reports a pass
-  (with `-v` its `--- PASS` line is glued onto that
-  output). It returns the top-level passing names, so the
+- A `testJSONWriter` replaces `CountPasses`. The test run
+  uses `go test -json`, not `-v`: test2json frames each
+  result, so a test whose own output lacks a trailing
+  newline still reports a pass (with `-v` its `--- PASS`
+  line is glued onto that output). The writer decodes the
+  stream as it arrives, echoes each event's console text
+  at once (a hung test still shows progress in the CI
+  log), and collects the top-level passing names, so the
   error names each listed test that did not pass rather
-  than comparing two counts, plus the console text rebuilt
-  from the events.
+  than comparing two counts.
 - The native `go list` passes `-e`, so a package whose
   non-test files are all js/wasm-only (no native build)
   still lists, with every test file js/wasm-only.
 - A dot-imported `testing` counts: `func TestX(t *T)` is
   listed, as `go test` runs it.
-- The command runner is a `goRunFunc` that returns stdout.
-  The existing `Runner` interface only streams output, and
-  `go list` output has to be captured. The orchestrator is
+- The command runner is a `goRunFunc` that writes stdout
+  to a caller-supplied writer: a buffer for `go env` and
+  `go list`, the `testJSONWriter` for `go test`. The
+  existing `Runner` interface always writes to the
+  process's stdout, so it cannot capture `go list`. The orchestrator is
   `runJSWasmTestsWith`; `RunJSWasmTests` wires the real
   `go`, `os.ReadFile`, and `PATH` for it.
 - The `-exec` value quotes each argument for go's

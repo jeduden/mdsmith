@@ -38,8 +38,9 @@ const testFilesTemplate = `{{range .TestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}`
 	`{{range .XTestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}`
 
 // goRunFunc runs `go args...` with env appended to the process
-// environment and returns its stdout. Stderr is the caller's.
-type goRunFunc func(env []string, args ...string) ([]byte, error)
+// environment, writing its stdout to stdout as it is produced. Stderr
+// is the caller's.
+type goRunFunc func(stdout io.Writer, env []string, args ...string) error
 
 // jsWasmDeps are the side effects runJSWasmTestsWith needs, injectable so
 // a test can drive every branch without Go or Node.
@@ -52,7 +53,8 @@ type jsWasmDeps struct {
 
 // RunJSWasmTests runs pkg's js/wasm-only tests under Node from root
 // and fails unless every listed test passes. The go test console log
-// (the -v text, rebuilt from the -json stream) is written to out.
+// (the -v text, rebuilt from the -json stream) is streamed to out as
+// each line arrives, so a hung test still shows its progress.
 func RunJSWasmTests(root, pkg string, out io.Writer) error {
 	return runJSWasmTestsWith(jsWasmDeps{
 		run:      osGoRunner(root),
@@ -65,17 +67,26 @@ func RunJSWasmTests(root, pkg string, out io.Writer) error {
 // osGoRunner is the production goRunFunc: it runs go in dir with
 // stderr inherited, so `go list` and build errors reach the CI log.
 func osGoRunner(dir string) goRunFunc {
-	return func(env []string, args ...string) ([]byte, error) {
+	return func(stdout io.Writer, env []string, args ...string) error {
 		cmd := exec.Command("go", args...) //nolint:gosec // CI-only; args built here
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), env...)
+		cmd.Stdout = stdout
 		cmd.Stderr = os.Stderr
-		return cmd.Output()
+		return cmd.Run()
 	}
 }
 
+// output runs go through d.run and returns its whole stdout, for the
+// short go env and go list calls.
+func (d jsWasmDeps) output(env []string, args ...string) ([]byte, error) {
+	var b bytes.Buffer
+	err := d.run(&b, env, args...)
+	return b.Bytes(), err
+}
+
 func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
-	gorootOut, err := d.run(nil, "env", "GOROOT")
+	gorootOut, err := d.output(nil, "env", "GOROOT")
 	if err != nil {
 		return fmt.Errorf("go env GOROOT: %w", err)
 	}
@@ -100,28 +111,28 @@ func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
 	// the full Go and proxy environment. -json, not -v: test2json frames
 	// each result, so a test whose output lacks a trailing newline still
 	// reports its own pass event instead of a glued `x--- PASS` line.
-	stream, runErr := d.run(jsWasmEnv, "test", "-json", "-exec="+execFlag,
+	w := &testJSONWriter{out: d.out}
+	runErr := d.run(w, jsWasmEnv, "test", "-json", "-exec="+execFlag,
 		"-run", "^("+strings.Join(names, "|")+")$", pkg)
-	log, passed := ReadTestJSON(stream)
-	_, _ = d.out.Write(log)
+	w.Flush()
 	if runErr != nil {
 		return fmt.Errorf("go test %s under js/wasm: %w", pkg, runErr)
 	}
-	return checkAllPassed(names, passed)
+	return checkAllPassed(names, w.passed)
 }
 
 // jsOnlyFilesOf lists pkg's test files that only a js/wasm build
 // compiles, erroring when there are none so a broken lookup cannot
 // pass vacuously.
 func jsOnlyFilesOf(d jsWasmDeps, pkg string) ([]string, error) {
-	jsOut, err := d.run(jsWasmEnv, "list", "-f", testFilesTemplate, pkg)
+	jsOut, err := d.output(jsWasmEnv, "list", "-f", testFilesTemplate, pkg)
 	if err != nil {
 		return nil, fmt.Errorf("go list (js/wasm) %s: %w", pkg, err)
 	}
 	// -e: a package whose non-test files are all js/wasm-only has no
 	// native build, and plain `go list` exits 1 on it. Every one of its
 	// test files is then js/wasm-only.
-	nativeOut, err := d.run(nil, "list", "-e", "-f", testFilesTemplate, pkg)
+	nativeOut, err := d.output(nil, "list", "-e", "-f", testFilesTemplate, pkg)
 	if err != nil {
 		return nil, fmt.Errorf("go list (native) %s: %w", pkg, err)
 	}
@@ -258,27 +269,59 @@ func takesTestingT(fn *ast.FuncDecl, pkgName string) bool {
 	return ok && id.Name == pkgName
 }
 
-// ReadTestJSON decodes a `go test -json` stream. It returns the
-// console log the stream carries (every event's Output in order, which
-// is the `go test -v` text) and the top-level tests that reported a
-// "pass" event, in stream order. A line that is not a JSON event, such
-// as a `go: downloading` notice, passes through to the log unchanged.
-func ReadTestJSON(stream []byte) (log []byte, passed []string) {
-	for _, line := range bytes.Split(stream, []byte("\n")) {
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
+// testJSONWriter decodes a `go test -json` stream as it is written.
+// Each complete line's Output (the `go test -v` text) goes to out at
+// once, and the top-level tests that report a "pass" event collect in
+// passed, in stream order. A line that is not a JSON event, such as a
+// `go: downloading` notice, passes through to out unchanged.
+type testJSONWriter struct {
+	out     io.Writer
+	partial []byte // bytes after the last newline, awaiting the rest
+	passed  []string
+}
+
+// Write buffers p and decodes every line it completes. It never fails:
+// a write error on out must not abort the go test run it is fed from.
+func (w *testJSONWriter) Write(p []byte) (int, error) {
+	w.partial = append(w.partial, p...)
+	for {
+		i := bytes.IndexByte(w.partial, '\n')
+		if i < 0 {
+			break
 		}
-		var ev testEvent
-		if err := json.Unmarshal(line, &ev); err != nil {
-			log = append(append(log, line...), '\n')
-			continue
-		}
-		log = append(log, ev.Output...)
-		if ev.Action == "pass" && ev.Test != "" && !strings.Contains(ev.Test, "/") {
-			passed = append(passed, ev.Test)
-		}
+		w.line(w.partial[:i])
+		w.partial = w.partial[i+1:]
 	}
-	return log, passed
+	// Move the remainder to the front so the buffer does not grow
+	// with the length of the whole stream.
+	w.partial = append(w.partial[:0:0], w.partial...)
+	return len(p), nil
+}
+
+// Flush decodes a final line that had no trailing newline.
+func (w *testJSONWriter) Flush() {
+	if len(w.partial) > 0 {
+		w.line(w.partial)
+		w.partial = nil
+	}
+}
+
+// line decodes one stream line: blank lines are dropped, a non-JSON
+// line is echoed, and an event's Output is echoed with a top-level
+// "pass" recorded.
+func (w *testJSONWriter) line(b []byte) {
+	if len(bytes.TrimSpace(b)) == 0 {
+		return
+	}
+	var ev testEvent
+	if err := json.Unmarshal(b, &ev); err != nil {
+		_, _ = w.out.Write(append(slices.Clip(b), '\n'))
+		return
+	}
+	_, _ = io.WriteString(w.out, ev.Output)
+	if ev.Action == "pass" && ev.Test != "" && !strings.Contains(ev.Test, "/") {
+		w.passed = append(w.passed, ev.Test)
+	}
 }
 
 // jsWasmExecFlag builds the go test -exec value that runs the Node

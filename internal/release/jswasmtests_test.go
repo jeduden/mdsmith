@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -172,8 +173,11 @@ func result(action, test string) []testEvent {
 	}
 }
 
-func TestReadTestJSON(t *testing.T) {
-	evs := slices.Concat(
+// readTestJSONEvents is the stream TestTestJSONWriter_Write feeds:
+// passes, a skip, a failure, subtests, a result whose own output had
+// no trailing newline, and the package-level verdict.
+func readTestJSONEvents() []testEvent {
+	return slices.Concat(
 		[]testEvent{{Action: "run", Test: "TestA"}},
 		result("pass", "TestA/sub"),
 		result("pass", "TestA"),
@@ -189,18 +193,73 @@ func TestReadTestJSON(t *testing.T) {
 			{Action: "pass"}, // package-level: no Test
 		},
 	)
-	stream := "go: downloading example.com/m v1.0.0\n\n" + goTestJSON(t, evs...)
+}
 
-	log, passed := ReadTestJSON([]byte(stream))
-	assert.Equal(t, []string{"TestA", "TestD"}, passed)
-	assert.Contains(t, string(log), "go: downloading example.com/m v1.0.0\n")
-	assert.Contains(t, string(log), "partial--- PASS: TestD (0.00s)\n")
-	assert.Contains(t, string(log), "--- SKIP: TestB (0.00s)\n")
-	assert.True(t, strings.HasSuffix(string(log), "PASS\n"))
+func TestTestJSONWriter_Write(t *testing.T) {
+	stream := "go: downloading example.com/m v1.0.0\n\n" + goTestJSON(t, readTestJSONEvents()...)
 
-	log, passed = ReadTestJSON(nil)
-	assert.Nil(t, log)
-	assert.Nil(t, passed)
+	// Feed the stream in 7-byte chunks so lines split across writes.
+	var out bytes.Buffer
+	w := &testJSONWriter{out: &out}
+	for chunk := range slices.Chunk([]byte(stream), 7) {
+		n, err := w.Write(chunk)
+		require.NoError(t, err)
+		require.Equal(t, len(chunk), n)
+	}
+	w.Flush()
+	assert.Equal(t, []string{"TestA", "TestD"}, w.passed)
+	log := out.String()
+	assert.True(t, strings.HasPrefix(log, "go: downloading example.com/m v1.0.0\n"))
+	assert.Contains(t, log, "partial--- PASS: TestD (0.00s)\n")
+	assert.Contains(t, log, "--- SKIP: TestB (0.00s)\n")
+	assert.True(t, strings.HasSuffix(log, "PASS\n"))
+
+	// Output is written as soon as its line completes, not at the end.
+	out.Reset()
+	w = &testJSONWriter{out: &out}
+	line := goTestJSON(t, testEvent{Action: "output", Test: "TestA", Output: "hi\n"})
+	_, _ = w.Write([]byte(line[:5]))
+	assert.Empty(t, out.String())
+	_, _ = w.Write([]byte(line[5:]))
+	assert.Equal(t, "hi\n", out.String())
+}
+
+func TestTestJSONWriter_Flush(t *testing.T) {
+	var out bytes.Buffer
+	w := &testJSONWriter{out: &out}
+	w.Flush() // nothing buffered: no output
+	assert.Empty(t, out.String())
+
+	// A final event with no trailing newline is still decoded.
+	line := strings.TrimSuffix(goTestJSON(t, result("pass", "TestA")...), "\n")
+	_, _ = w.Write([]byte(line))
+	assert.Nil(t, w.passed)
+	w.Flush()
+	assert.Equal(t, []string{"TestA"}, w.passed)
+	assert.Equal(t, "--- PASS: TestA (0.00s)\n", out.String())
+}
+
+func TestTestJSONWriter_Line(t *testing.T) {
+	var out bytes.Buffer
+	w := &testJSONWriter{out: &out}
+	w.line([]byte("  "))
+	w.line([]byte("not json"))
+	w.line([]byte(`{"Action":"pass","Test":"TestX"}`))
+	w.line([]byte(`{"Action":"pass","Test":"TestX/sub"}`))
+	w.line([]byte(`{"Action":"skip","Test":"TestY"}`))
+	assert.Equal(t, "not json\n", out.String())
+	assert.Equal(t, []string{"TestX"}, w.passed)
+}
+
+func TestJSWasmDeps_Output(t *testing.T) {
+	f := &fakeGo{goroot: "/go"}
+	got, err := jsWasmDeps{run: f.run}.output(nil, "env", "GOROOT")
+	require.NoError(t, err)
+	assert.Equal(t, "/go\n", string(got))
+
+	f.failOn = "env"
+	_, err = jsWasmDeps{run: f.run}.output(nil, "env", "GOROOT")
+	assert.ErrorContains(t, err, "env boom")
 }
 
 func TestJSWasmExecFlag(t *testing.T) {
@@ -273,30 +332,35 @@ type fakeGo struct {
 	envs       [][]string
 }
 
-func (f *fakeGo) run(env []string, args ...string) ([]byte, error) {
+func (f *fakeGo) run(stdout io.Writer, env []string, args ...string) error {
 	f.calls = append(f.calls, args)
 	f.envs = append(f.envs, env)
-	isJS := len(env) > 0
+	out, err := f.answer(len(env) > 0, args)
+	_, _ = io.WriteString(stdout, out)
+	return err
+}
+
+func (f *fakeGo) answer(isJS bool, args []string) (string, error) {
 	switch {
 	case args[0] == "env":
 		if f.failOn == "env" {
-			return nil, errors.New("env boom")
+			return "", errors.New("env boom")
 		}
-		return []byte(f.goroot + "\n"), nil
+		return f.goroot + "\n", nil
 	case args[0] == "list" && isJS:
 		if f.failOn == "jslist" {
-			return nil, errors.New("jslist boom")
+			return "", errors.New("jslist boom")
 		}
-		return []byte(f.jsList), nil
+		return f.jsList, nil
 	case args[0] == "list":
 		if f.failOn == "nativelist" {
-			return nil, errors.New("nativelist boom")
+			return "", errors.New("nativelist boom")
 		}
-		return []byte(f.nativeList), nil
+		return f.nativeList, nil
 	case args[0] == "test":
-		return []byte(f.testLog), f.testErr
+		return f.testLog, f.testErr
 	}
-	return nil, errors.New("unexpected go " + strings.Join(args, " "))
+	return "", errors.New("unexpected go " + strings.Join(args, " "))
 }
 
 func newJSWasmFixture(t *testing.T, files map[string]string) (dir string, read func(string) ([]byte, error)) {
@@ -473,16 +537,15 @@ func TestSplitLines(t *testing.T) {
 }
 
 func TestOSGoRunner(t *testing.T) {
-	out, err := osGoRunner(t.TempDir())(nil, "env", "GOROOT")
-	require.NoError(t, err)
-	assert.NotEmpty(t, strings.TrimSpace(string(out)))
+	var out bytes.Buffer
+	require.NoError(t, osGoRunner(t.TempDir())(&out, nil, "env", "GOROOT"))
+	assert.NotEmpty(t, strings.TrimSpace(out.String()))
 
-	out, err = osGoRunner(t.TempDir())([]string{"GOOS=js", "GOARCH=wasm"}, "env", "GOOS")
-	require.NoError(t, err)
-	assert.Equal(t, "js", strings.TrimSpace(string(out)))
+	out.Reset()
+	require.NoError(t, osGoRunner(t.TempDir())(&out, []string{"GOOS=js", "GOARCH=wasm"}, "env", "GOOS"))
+	assert.Equal(t, "js", strings.TrimSpace(out.String()))
 
-	_, err = osGoRunner(t.TempDir())(nil, "no-such-go-subcommand")
-	assert.Error(t, err)
+	assert.Error(t, osGoRunner(t.TempDir())(io.Discard, nil, "no-such-go-subcommand"))
 }
 
 // TestRunJSWasmTests drives the production wiring against a
