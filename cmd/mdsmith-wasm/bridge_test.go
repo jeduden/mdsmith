@@ -62,6 +62,12 @@ func TestWorkspaceFromJS(t *testing.T) {
 		assert.Nil(t, workspaceFromJS(js.ValueOf([]any{})))
 	})
 
+	// A boxed String is array-like too: Object.keys gives "0", "1", ...
+	// with one-character string values.
+	t.Run("boxed string yields nil", func(t *testing.T) {
+		assert.Nil(t, workspaceFromJS(js.Global().Get("String").New("# A")))
+	})
+
 	t.Run("keeps string entries and drops others", func(t *testing.T) {
 		got := workspaceFromJS(js.ValueOf(map[string]any{
 			"a.md": "# A\n",
@@ -90,8 +96,11 @@ func TestIsRecord(t *testing.T) {
 	}{
 		{"plain object", js.ValueOf(map[string]any{"a": 1}), true},
 		{"empty object", js.ValueOf(map[string]any{}), true},
+		{"null prototype", js.Global().Get("Object").Call("create", js.Null()), true},
 		{"array", js.ValueOf([]any{"a"}), false},
 		{"empty array", js.ValueOf([]any{}), false},
+		{"boxed string", js.Global().Get("String").New("ab"), false},
+		{"map", js.Global().Get("Map").New(), false},
 		{"null", js.Null(), false},
 		{"undefined", js.Undefined(), false},
 		{"string", js.ValueOf("a"), false},
@@ -188,6 +197,9 @@ func TestCreateSession(t *testing.T) {
 		{"array workspace", []js.Value{obj(map[string]any{"workspace": []any{"# A"}})}, "createSession options.workspace must be an object of path to source strings"},
 		{"null workspace", []js.Value{obj(map[string]any{"workspace": nil})}, "createSession options.workspace must be an object of path to source strings"},
 		{"string workspace", []js.Value{obj(map[string]any{"workspace": "a.md"})}, "createSession options.workspace must be an object of path to source strings"},
+		{"boxed string workspace", []js.Value{obj(map[string]any{"workspace": js.Global().Get("String").New("# A")})}, "createSession options.workspace must be an object of path to source strings"},
+		{"null configYAML", []js.Value{obj(map[string]any{"configYAML": nil})}, "createSession options.configYAML must be a string"},
+		{"byte configYAML", []js.Value{obj(map[string]any{"configYAML": js.Global().Get("Uint8Array").New(2)})}, "createSession options.configYAML must be a string"},
 	}
 	for _, tt := range rejects {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
@@ -203,6 +215,7 @@ func TestCreateSession(t *testing.T) {
 	}{
 		{"absent workspace", map[string]any{}},
 		{"object workspace", map[string]any{"workspace": map[string]any{"a.md": "# A\n"}}},
+		{"string configYAML", map[string]any{"configYAML": ""}},
 	}
 	for _, tt := range resolves {
 		t.Run("resolves "+tt.name, func(t *testing.T) {

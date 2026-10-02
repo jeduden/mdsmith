@@ -62,6 +62,8 @@ func resolveVersion() string {
 // An absent workspace means an empty one; a present workspace that is
 // not a plain object (null, an array, a string) rejects, because an
 // array's indices would otherwise become file paths "0", "1", ...
+// Likewise an absent configYAML means the default config, and a present
+// non-string rejects.
 //
 // It returns a Promise because WebAssembly.instantiate is async on the
 // JS side; NewSession itself is synchronous, but a uniform Promise-
@@ -82,8 +84,15 @@ func createSession(_ js.Value, args []js.Value) any {
 			}
 		}
 		ws := mdsmith.NewMemWorkspace(files)
+		// Same rule as workspace: absent means the default config, and a
+		// present non-string (a Buffer, null) rejects rather than
+		// silently linting with the default config.
 		configYAML := ""
-		if cy := opts.Get("configYAML"); cy.Type() == js.TypeString {
+		if cy := opts.Get("configYAML"); !cy.IsUndefined() {
+			if cy.Type() != js.TypeString {
+				reject(jsError("createSession options.configYAML must be a string"))
+				return
+			}
 			configYAML = cy.String()
 		}
 
@@ -120,11 +129,17 @@ func workspaceFromJS(v js.Value) map[string][]byte {
 	return out
 }
 
-// isRecord reports whether v is a non-null, non-array JS object. JS
-// typeof reports "object" for arrays, which syscall/js mirrors as
-// js.TypeObject, so the Array.isArray check is needed on top.
+// isRecord reports whether v is a plain JS object: its
+// Object.prototype.toString tag is "[object Object]". JS typeof reports
+// "object" for null, arrays, boxed strings, arguments, and Maps alike,
+// which syscall/js mirrors as js.TypeObject. The tag rejects every one
+// of those, so an array-like's indices never become file paths, and it
+// still accepts an Object.create(null) record and an object from
+// another realm.
 func isRecord(v js.Value) bool {
-	return v.Type() == js.TypeObject && !js.Global().Get("Array").Call("isArray", v).Bool()
+	return v.Type() == js.TypeObject &&
+		js.Global().Get("Object").Get("prototype").Get("toString").
+			Call("call", v).String() == "[object Object]"
 }
 
 // newSessionProxy builds the JS object whose methods forward to the Go

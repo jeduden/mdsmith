@@ -64,12 +64,18 @@ changes, so they are left to this plan.
 5. Document the array rejection next to the
    `createSession` options in [engine-api.md][api].
 
-Implemented as planned, with two additions. An `isRecord`
-helper (non-null, non-array object) backs both checks,
-with its own `TestIsRecord`. It also makes `createSession`
-reject an array or `null` as the options object itself.
-A present `null` workspace rejects too; only an absent
-(`undefined`) workspace means an empty one.
+Implemented as planned, with three additions. An
+`isRecord` helper backs both checks, with its own
+`TestIsRecord`. It accepts only a plain object (an
+`Object.prototype.toString` tag of `[object Object]`),
+so a boxed `String`, `arguments`, or a `Map` rejects as
+an array does. It also makes `createSession` reject an
+array or `null` as the options object itself. A present
+`null` workspace rejects too; only an absent
+(`undefined`) workspace means an empty one. The same
+rule now covers `configYAML`: absent means the default
+config, and a present non-string (a `Buffer`, `null`)
+rejects instead of silently using the default config.
 
 ## Acceptance Criteria
 
