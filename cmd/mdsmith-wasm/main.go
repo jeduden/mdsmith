@@ -13,6 +13,7 @@
 package main
 
 import (
+	"math"
 	"runtime/debug"
 	"sync"
 	"syscall/js"
@@ -267,14 +268,21 @@ func sharedMethods() map[string]js.Value {
 
 // boundSession splits the session id a shared func is bound to off
 // args and looks up its live Session. sess is nil once that session is
-// disposed, and also when args[0] is not a number, which only a direct
-// call to a shared func (never one through a session object) can pass;
-// args then comes back whole.
+// disposed, and also when args[0] is not an integer number (a string,
+// a fraction, NaN, Infinity, or past ±2^53), which only a direct call to a shared func
+// (never one through a session object) can pass; args then comes back
+// whole, and no fraction is truncated onto a live id.
 func boundSession(args []js.Value) (id int, sess *mdsmith.Session, rest []js.Value) {
 	if len(args) == 0 || args[0].Type() != js.TypeNumber {
 		return 0, nil, args
 	}
-	id = args[0].Int()
+	f := args[0].Float()
+	// NaN fails f == Trunc(f); the 2^53 bound rejects Infinity and any
+	// value whose int conversion is implementation-defined.
+	if f != math.Trunc(f) || math.Abs(f) > 1<<53 {
+		return 0, nil, args
+	}
+	id = int(f)
 	return id, sessions[id], args[1:]
 }
 

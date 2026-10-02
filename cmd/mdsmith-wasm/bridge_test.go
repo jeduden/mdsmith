@@ -351,15 +351,21 @@ func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
 }
 
 // TestBoundSession checks how a shared func splits its bound session id
-// off args. A first arg that is not a number only reaches a shared func
-// called directly, never through a session object; it must look up no
-// session and keep args whole rather than panic in Value.Int.
+// off args. A first arg that is not an integer number only reaches a
+// shared func called directly, never through a session object; it must
+// look up no session and keep args whole rather than panic in Value.Int
+// or truncate a fraction, NaN, Infinity, or an id past 2^53 onto a
+// live id.
 func TestBoundSession(t *testing.T) {
 	proxy := newTestProxy(t)
 	defer proxy.Call("dispose")
 	liveID := nextSessionID - 1
 	require.NotNil(t, sessions[liveID], "newTestProxy registered the newest id")
 	src := js.ValueOf("a.md")
+	frac := js.ValueOf(float64(liveID) + 0.5)
+	nan := js.Global().Get("NaN")
+	inf := js.Global().Get("Infinity")
+	huge := js.ValueOf(0x1p64)
 
 	tests := []struct {
 		name     string
@@ -372,6 +378,10 @@ func TestBoundSession(t *testing.T) {
 		{"string first arg", []js.Value{src}, 0, false, []js.Value{src}},
 		{"unknown id", []js.Value{js.ValueOf(-1), src}, -1, false, []js.Value{src}},
 		{"live id", []js.Value{js.ValueOf(liveID), src}, liveID, true, []js.Value{src}},
+		{"fractional live id", []js.Value{frac, src}, 0, false, []js.Value{frac, src}},
+		{"NaN", []js.Value{nan, src}, 0, false, []js.Value{nan, src}},
+		{"beyond safe integer", []js.Value{huge, src}, 0, false, []js.Value{huge, src}},
+		{"Infinity", []js.Value{inf, src}, 0, false, []js.Value{inf, src}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -380,7 +390,9 @@ func TestBoundSession(t *testing.T) {
 			assert.Equal(t, tt.wantLive, sess != nil, "live session found")
 			require.Len(t, rest, len(tt.wantRest))
 			for i := range rest {
-				assert.True(t, rest[i].Equal(tt.wantRest[i]), "rest[%d]", i)
+				// Object.is, not ===, so a NaN arg equals itself.
+				same := js.Global().Get("Object").Call("is", rest[i], tt.wantRest[i]).Bool()
+				assert.True(t, same, "rest[%d]", i)
 			}
 		})
 	}
