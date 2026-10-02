@@ -64,6 +64,18 @@ jobs:
             go.sum
             tools/go.sum
       - run: go tool -modfile=tools/go.mod golangci-lint run
+      # The run above type-checks only the native (linux) GOOS, so files
+      # tagged js && wasm, !unix && !windows, or windows were never
+      # linted. `go tool` would compile the linter itself for the
+      # target GOOS, so build it once for the host, then lint the
+      # js/wasm (also covers the wasip1/plan9 fallback files) and
+      # windows views of the module.
+      - name: Build golangci-lint for the host
+        run: go build -modfile=tools/go.mod -o "$RUNNER_TEMP/golangci-lint" github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+      - name: Lint the js/wasm build
+        run: GOOS=js GOARCH=wasm "$RUNNER_TEMP/golangci-lint" run
+      - name: Lint the windows build
+        run: GOOS=windows GOARCH=amd64 "$RUNNER_TEMP/golangci-lint" run
 
   # Tracked manifests must stay pinned at 0.0.0-dev between releases;
   # the release workflow rewrites them with `mdsmith-release stamp`
