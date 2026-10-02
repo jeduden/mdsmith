@@ -2,7 +2,7 @@
 id: 2610020046
 title: >-
   Harden WASM bridge workspace input and version lookup
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   workspaceFromJS in cmd/mdsmith-wasm/main.go accepts a JS
@@ -64,18 +64,25 @@ changes, so they are left to this plan.
 5. Document the array rejection next to the
    `createSession` options in [engine-api.md][api].
 
+Implemented as planned, with two additions. An `isRecord`
+helper (non-null, non-array object) backs both checks,
+with its own `TestIsRecord`. It also makes `createSession`
+reject an array or `null` as the options object itself.
+A present `null` workspace rejects too; only an absent
+(`undefined`) workspace means an empty one.
+
 ## Acceptance Criteria
 
-- [ ] `createSession({workspace: []})` and
+- [x] `createSession({workspace: []})` and
       `createSession({workspace: ["# A"]})` reject the
       Promise.
-- [ ] Deleting the build-info branch of
+- [x] Deleting the build-info branch of
       `resolveVersion` makes a js && wasm unit test
       fail.
-- [ ] The bridge tests pass under Node in the `wasm`
+- [x] The bridge tests pass under Node in the `wasm`
       CI job.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues
 
 [p1914]: 2609201914_arch-fix-missing-unit-tests-0920.md

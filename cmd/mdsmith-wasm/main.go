@@ -24,6 +24,11 @@ import (
 // mirroring cmd/mdsmith. It falls back to the module build info.
 var version string
 
+// readBuildInfo is debug.ReadBuildInfo behind a seam so a test can
+// drive each resolveVersion branch; a test binary always reports
+// "(devel)", the same string as the final fallback.
+var readBuildInfo = debug.ReadBuildInfo
+
 func main() {
 	// Apply the shared batch GC policy (internal/gctune): the WASM engine
 	// runs the same check/fix work as the CLI, so it gets the same GOGC
@@ -45,7 +50,7 @@ func resolveVersion() string {
 	if version != "" {
 		return version
 	}
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+	if info, ok := readBuildInfo(); ok && info.Main.Version != "" {
 		return info.Main.Version
 	}
 	return "(devel)"
@@ -54,19 +59,29 @@ func resolveVersion() string {
 // createSession builds a Session from a JS options object and returns a
 // Promise that resolves to a JS session proxy. The options object has
 // the shape { workspace: Record<string,string>, configYAML: string }.
+// An absent workspace means an empty one; a present workspace that is
+// not a plain object (null, an array, a string) rejects, because an
+// array's indices would otherwise become file paths "0", "1", ...
 //
 // It returns a Promise because WebAssembly.instantiate is async on the
 // JS side; NewSession itself is synchronous, but a uniform Promise-
 // returning factory keeps the JS API ergonomic.
 func createSession(_ js.Value, args []js.Value) any {
 	return newPromise(func(resolve, reject func(any)) {
-		if len(args) < 1 || args[0].Type() != js.TypeObject {
+		if len(args) < 1 || !isRecord(args[0]) {
 			reject(jsError("createSession requires an options object"))
 			return
 		}
 		opts := args[0]
 
-		ws := mdsmith.NewMemWorkspace(workspaceFromJS(opts.Get("workspace")))
+		var files map[string][]byte
+		if wv := opts.Get("workspace"); !wv.IsUndefined() {
+			if files = workspaceFromJS(wv); files == nil {
+				reject(jsError("createSession options.workspace must be an object of path to source strings"))
+				return
+			}
+		}
+		ws := mdsmith.NewMemWorkspace(files)
 		configYAML := ""
 		if cy := opts.Get("configYAML"); cy.Type() == js.TypeString {
 			configYAML = cy.String()
@@ -85,10 +100,11 @@ func createSession(_ js.Value, args []js.Value) any {
 }
 
 // workspaceFromJS converts a JS Record<string,string> into the
-// map[string][]byte a MemWorkspace expects. A non-object value yields
-// an empty workspace.
+// map[string][]byte a MemWorkspace expects. A value that is not a
+// plain object (including null and an array) yields nil; a plain object
+// always yields a non-nil map, so a caller can tell the two apart.
 func workspaceFromJS(v js.Value) map[string][]byte {
-	if v.Type() != js.TypeObject {
+	if !isRecord(v) {
 		return nil
 	}
 	keys := js.Global().Get("Object").Call("keys", v)
@@ -102,6 +118,13 @@ func workspaceFromJS(v js.Value) map[string][]byte {
 		}
 	}
 	return out
+}
+
+// isRecord reports whether v is a non-null, non-array JS object. JS
+// typeof reports "object" for arrays, which syscall/js mirrors as
+// js.TypeObject, so the Array.isArray check is needed on top.
+func isRecord(v js.Value) bool {
+	return v.Type() == js.TypeObject && !js.Global().Get("Array").Call("isArray", v).Bool()
 }
 
 // newSessionProxy builds the JS object whose methods forward to the Go

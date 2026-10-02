@@ -246,6 +246,13 @@ becomes a Go `ConfigSource` exactly as the `-c` flag's text does.
 is async, and any Go method returning `(T, error)` maps to a
 `Promise<T>` that rejects with `new Error(msg)`.
 
+`createSession` rejects when `opts` is not a plain object. It also
+rejects when `opts.workspace` is present but is not a plain object of
+path-to-source strings: `null`, a string, and an array all reject.
+An array is rejected because its indices would otherwise become file
+paths `"0"`, `"1"`, and so on. An absent `workspace` means an empty
+workspace, and a non-string entry value is skipped.
+
 ## WASM limits and size budgets
 
 `GOOS=js GOARCH=wasm` has no filesystem, no subprocess, and no threads.

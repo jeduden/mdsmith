@@ -11,28 +11,37 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Not parallel: it writes the package-level version.
+// Not parallel: it writes the package-level version and readBuildInfo.
 func TestResolveVersion(t *testing.T) {
-	old := version
-	t.Cleanup(func() { version = old })
+	oldVersion, oldRead := version, readBuildInfo
+	t.Cleanup(func() { version, readBuildInfo = oldVersion, oldRead })
 
-	t.Run("set version wins", func(t *testing.T) {
+	stub := func(info *debug.BuildInfo, ok bool) func() (*debug.BuildInfo, bool) {
+		return func() (*debug.BuildInfo, bool) { return info, ok }
+	}
+
+	t.Run("set version wins over build info", func(t *testing.T) {
 		version = "v9.9.9"
+		readBuildInfo = stub(&debug.BuildInfo{Main: debug.Module{Version: "v1.2.3"}}, true)
 		assert.Equal(t, "v9.9.9", resolveVersion())
 	})
 
-	// Expect build info's Main.Version rather than mirror
-	// resolveVersion's own fallback chain: a test binary always carries
-	// build info, so this fails loudly if that ever stops holding. A
-	// test binary reports "(devel)" there, the same string as the final
-	// literal, so this pins the result, not which branch produced it;
-	// that literal is unreachable here without a seam.
-	t.Run("empty version falls back to build info", func(t *testing.T) {
+	t.Run("empty version uses build info main version", func(t *testing.T) {
 		version = ""
-		info, ok := debug.ReadBuildInfo()
-		require.True(t, ok, "test binary must carry build info")
-		require.NotEmpty(t, info.Main.Version)
-		assert.Equal(t, info.Main.Version, resolveVersion())
+		readBuildInfo = stub(&debug.BuildInfo{Main: debug.Module{Version: "v1.2.3"}}, true)
+		assert.Equal(t, "v1.2.3", resolveVersion())
+	})
+
+	t.Run("empty build info version falls back to devel", func(t *testing.T) {
+		version = ""
+		readBuildInfo = stub(&debug.BuildInfo{}, true)
+		assert.Equal(t, "(devel)", resolveVersion())
+	})
+
+	t.Run("missing build info falls back to devel", func(t *testing.T) {
+		version = ""
+		readBuildInfo = stub(nil, false)
+		assert.Equal(t, "(devel)", resolveVersion())
 	})
 }
 
@@ -44,6 +53,13 @@ func TestWorkspaceFromJS(t *testing.T) {
 		// reject it.
 		assert.Nil(t, workspaceFromJS(js.Null()))
 		assert.Nil(t, workspaceFromJS(js.ValueOf(3)))
+	})
+
+	// typeof reports "object" for an array too; Object.keys would
+	// turn its indices into file paths "0", "1", ...
+	t.Run("array yields nil", func(t *testing.T) {
+		assert.Nil(t, workspaceFromJS(js.ValueOf([]any{"# A"})))
+		assert.Nil(t, workspaceFromJS(js.ValueOf([]any{})))
 	})
 
 	t.Run("keeps string entries and drops others", func(t *testing.T) {
@@ -64,6 +80,28 @@ func TestWorkspaceFromJS(t *testing.T) {
 		require.NotNil(t, got)
 		assert.Empty(t, got)
 	})
+}
+
+func TestIsRecord(t *testing.T) {
+	tests := []struct {
+		name string
+		v    js.Value
+		want bool
+	}{
+		{"plain object", js.ValueOf(map[string]any{"a": 1}), true},
+		{"empty object", js.ValueOf(map[string]any{}), true},
+		{"array", js.ValueOf([]any{"a"}), false},
+		{"empty array", js.ValueOf([]any{}), false},
+		{"null", js.Null(), false},
+		{"undefined", js.Undefined(), false},
+		{"string", js.ValueOf("a"), false},
+		{"number", js.ValueOf(1), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isRecord(tt.v))
+		})
+	}
 }
 
 func TestURIAndSource(t *testing.T) {
@@ -105,6 +143,73 @@ func TestAllStrings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, allStrings(tt.args))
+		})
+	}
+}
+
+// awaitPromise blocks until p settles and reports its value and whether
+// it rejected. The Go js/wasm runtime yields to the JS event loop while
+// the channel receive blocks, so the then-callbacks can run.
+func awaitPromise(t *testing.T, p js.Value) (js.Value, bool) {
+	t.Helper()
+	type settled struct {
+		v        js.Value
+		rejected bool
+	}
+	ch := make(chan settled, 1)
+	onResolve := js.FuncOf(func(_ js.Value, a []js.Value) any {
+		ch <- settled{a[0], false}
+		return nil
+	})
+	onReject := js.FuncOf(func(_ js.Value, a []js.Value) any {
+		ch <- settled{a[0], true}
+		return nil
+	})
+	defer onResolve.Release()
+	defer onReject.Release()
+	p.Call("then", onResolve, onReject)
+	r := <-ch
+	return r.v, r.rejected
+}
+
+func TestCreateSession(t *testing.T) {
+	obj := func(m map[string]any) js.Value { return js.ValueOf(m) }
+
+	rejects := []struct {
+		name    string
+		args    []js.Value
+		wantMsg string
+	}{
+		{"no args", nil, "createSession requires an options object"},
+		{"string options", []js.Value{js.ValueOf("x")}, "createSession requires an options object"},
+		{"null options", []js.Value{js.Null()}, "createSession requires an options object"},
+		{"array options", []js.Value{js.ValueOf([]any{})}, "createSession requires an options object"},
+		{"empty array workspace", []js.Value{obj(map[string]any{"workspace": []any{}})}, "createSession options.workspace must be an object of path to source strings"},
+		{"array workspace", []js.Value{obj(map[string]any{"workspace": []any{"# A"}})}, "createSession options.workspace must be an object of path to source strings"},
+		{"null workspace", []js.Value{obj(map[string]any{"workspace": nil})}, "createSession options.workspace must be an object of path to source strings"},
+		{"string workspace", []js.Value{obj(map[string]any{"workspace": "a.md"})}, "createSession options.workspace must be an object of path to source strings"},
+	}
+	for _, tt := range rejects {
+		t.Run("rejects "+tt.name, func(t *testing.T) {
+			v, rejected := awaitPromise(t, createSession(js.Undefined(), tt.args).(js.Value))
+			require.True(t, rejected, "promise must reject")
+			assert.Equal(t, tt.wantMsg, v.Get("message").String())
+		})
+	}
+
+	resolves := []struct {
+		name string
+		opts map[string]any
+	}{
+		{"absent workspace", map[string]any{}},
+		{"object workspace", map[string]any{"workspace": map[string]any{"a.md": "# A\n"}}},
+	}
+	for _, tt := range resolves {
+		t.Run("resolves "+tt.name, func(t *testing.T) {
+			v, rejected := awaitPromise(t, createSession(js.Undefined(), []js.Value{obj(tt.opts)}).(js.Value))
+			require.False(t, rejected, "promise must resolve: %v", v)
+			assert.Equal(t, js.TypeFunction, v.Get("check").Type())
+			v.Call("dispose")
 		})
 	}
 }
