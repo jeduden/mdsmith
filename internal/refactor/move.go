@@ -763,7 +763,13 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	// `[[oldStem]]` to `[[newStem]]` would make the link resolve to that
 	// sibling (or become ambiguous) instead of the moved file. Leave the
 	// wikilinks alone, mirroring the source-side ambiguity guard above.
-	if countFilesWithStem(ws, newStem) > 0 {
+	// A Markdown destination is addressed by stem; a typed non-Markdown
+	// destination (`guide.mdx`) is addressed by exact file name.
+	if mdpath.IsMarkdownPath(dst) {
+		if countFilesWithStem(ws, newStem) > 0 {
+			return
+		}
+	} else if countFilesWithName(ws, strings.ToLower(path.Base(dst))) > 0 {
 		return
 	}
 	newSpelling := dstStemSpelling(dst)
@@ -833,6 +839,20 @@ func countFilesWithStem(ws Workspace, stem string) int {
 			continue
 		}
 		if fileStem(f) == stem {
+			n++
+		}
+	}
+	return n
+}
+
+// countFilesWithName reports how many workspace files have the given
+// lowercased basename. A typed wikilink such as `[[guide.mdx]]`
+// resolves by exact file name, so this guards a non-Markdown
+// destination where stem counting does not apply.
+func countFilesWithName(ws Workspace, base string) int {
+	n := 0
+	for _, f := range ws.Files() {
+		if strings.ToLower(path.Base(f)) == base {
 			n++
 		}
 	}

@@ -109,7 +109,7 @@ counts against the resolver's own index.
       in the workspace
 - [ ] Moving `LICENSE` to `COPYING` leaves every `[[license]]`
       link to `docs/license.md` unchanged
-- [ ] Moving `docs/guide.md` to `docs/guide.mdx` leaves
+- [x] Moving `docs/guide.md` to `docs/guide.mdx` leaves
       `[[guide]]` unchanged while `a/guide.mdx` exists
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool -modfile=tools/go.mod golangci-lint run`

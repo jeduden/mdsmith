@@ -85,6 +85,25 @@ func TestCountFilesWithStem(t *testing.T) {
 	}
 }
 
+func TestCountFilesWithName(t *testing.T) {
+	files := []string{"a.md", "img/api.png", "notes/b.mdx", "x/B.MDX"}
+	for name, tc := range map[string]struct {
+		files []string
+		base  string
+		want  int
+	}{
+		"no files":                     {nil, "api.png", 0},
+		"non-markdown keeps extension": {files, "api.png", 1},
+		"mdx keeps its extension":      {files, "b.mdx", 2},
+		"markdown name matches":        {files, "a.md", 1},
+		"no prefix match":              {files, "api", 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, countFilesWithName(stubWorkspace{files: tc.files}, tc.base))
+		})
+	}
+}
+
 func TestDstStemSpelling_NonMarkdownKeepsBase(t *testing.T) {
 	assert.Equal(t, "Service", dstStemSpelling("docs/Service.md"))
 	assert.Equal(t, "diagram.png", dstStemSpelling("img/diagram.png"))

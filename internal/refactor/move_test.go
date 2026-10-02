@@ -375,3 +375,19 @@ func TestMove_WikilinkRewrittenWithExtensionlessSibling(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "See [[terms]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
 }
+
+// TestMove_WikilinkLeftUntouchedWhenTypedDestNameCollides locks that a
+// move to a non-Markdown extension keeps an exact-name collision guard:
+// `[[guide.mdx]]` resolves by exact file name, so with a/guide.mdx
+// already present the rewrite could land on the wrong file.
+func TestMove_WikilinkLeftUntouchedWhenTypedDestNameCollides(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"docs/guide.md": "# Guide\n",
+		"a/guide.mdx":   "# Other\n",
+		"index.md":      "See [[guide]].\n",
+	})
+	plan, err := Move(ws, "docs/guide.md", "docs/guide.mdx")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"],
+		"typed destination name already taken: no wikilink is rewritten")
+}
