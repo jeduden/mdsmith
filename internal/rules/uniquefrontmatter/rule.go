@@ -22,6 +22,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/settings"
+	"github.com/jeduden/mdsmith/internal/runcache"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
@@ -84,6 +85,11 @@ type scopeIndex struct {
 	include []string
 	exclude []string
 }
+
+// RunCache detects ScopeInvalidator by runtime type assertion, so a
+// signature drift would silently fall back to dropping the index on
+// every edit; this assertion turns that drift into a compile error.
+var _ runcache.ScopeInvalidator = (*scopeIndex)(nil)
 
 // hostKey returns f.Path in the index's key space; see the
 // scopeIndex comment. An unresolvable host returns "" and misses

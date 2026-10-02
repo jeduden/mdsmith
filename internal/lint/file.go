@@ -191,11 +191,12 @@ type File struct {
 	// times. nil for struct-literal Files in unit tests; the
 	// catalog rule then takes the per-Check fallback path.
 	//
-	// The type lives in internal/runcache, a leaf package with no lint
-	// dependency, so lint can hold the field without an import cycle
-	// (engine imports schema, which imports lint, so engine cannot
-	// host it). The parse cache (parsecache.go) stays here as a facet
-	// of the parsed-file model. See plan/224 and plan/2608301919.
+	// The type lives in internal/runcache, a leaf package that imports
+	// nothing from lint, so lint can hold the field without an import
+	// cycle. internal/engine cannot host it: engine imports lint
+	// directly, so lint importing engine for this field would cycle.
+	// The parse cache (parsecache.go) stays here as a facet of the
+	// parsed-file model. See plan/2608301919.
 	RunCache *runcache.RunCache
 
 	// scratch backs Memo: per-Check rule memoization. A *File is

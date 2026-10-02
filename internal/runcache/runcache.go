@@ -1,3 +1,10 @@
+// Package runcache memoizes cross-file reads and derived values for one
+// whole lint pass. Its RunCache is shared by every host file an
+// engine.Run (or a long-lived LSP session) processes, so a target read,
+// schema parse, or corpus walk runs once per pass instead of once per
+// host file. It is a leaf package that imports only the standard
+// library, so internal/lint can hold a *RunCache on File without an
+// import cycle (plan/2608301919).
 package runcache
 
 import (
@@ -77,11 +84,11 @@ type RunCache struct {
 
 // runCacheEntry guards a single cache slot so build runs exactly once
 // per key even when multiple goroutines race for it. atomic.Bool +
-// mutex is used instead of sync.Once, matching file.go's memoEntry:
-// once.Do takes a func() argument, and the closure load would pass
-// (`func() { e.val = build() }`) captures e and build, so it
-// allocates on every call regardless of whether Do's internal check
-// makes it a no-op.
+// mutex is used instead of sync.Once, matching internal/lint/file.go's
+// memoEntry: once.Do takes a func() argument, and the closure load
+// would pass (`func() { e.val = build() }`) captures e and build, so
+// it allocates on every call regardless of whether Do's internal
+// check makes it a no-op.
 type runCacheEntry struct {
 	val  any
 	done atomic.Bool
@@ -92,7 +99,7 @@ type runCacheEntry struct {
 // cache value (whatever its concrete type) implements so RunCache.
 // Invalidate can drop downstream entries that depend on the
 // invalidated schema. The rule package's schemaParseResult satisfies
-// it; the lint package only sees the surface.
+// it; this package only sees the surface.
 //
 //   - SchemaIncludes returns absolute paths of every fragment the
 //     schema's <?include?> directives reached. Invalidate(fragment)
@@ -352,7 +359,7 @@ func (c *RunCache) Wikilinks(rootKey string, build func() any) any {
 // once per absPath in this cache's lifetime. The value carries
 // dynamic type any so the requiredstructure rule (MDS020) can store
 // its package-private *parsedSchema (or a (parsedSchema, error) tuple)
-// without leaking the type into the lint package. Concurrent callers
+// without leaking the type into this package. Concurrent callers
 // with the same key block on the same once and observe the same
 // value.
 //
@@ -650,7 +657,8 @@ func (c *RunCache) InvalidateWikilinks() {
 // second argument would otherwise allocate on every call — the same
 // value gets discarded whenever the key is already present, but Go
 // evaluates that argument before LoadOrStore can say so. build is
-// invoked directly (no wrapping closure), mirroring file.go's Memo.
+// invoked directly (no wrapping closure), mirroring internal/lint's
+// File.Memo.
 func load(m *sync.Map, key string, build func() any) any {
 	if v, ok := m.Load(key); ok {
 		return loadEntry(v.(*runCacheEntry), build)

@@ -7,5 +7,6 @@
 // The three standalone utilities that once lived here — gitignore
 // matching, byte-limit guards, and processing-instruction parsing — now
 // live in internal/gitignore, internal/bytelimit, and internal/piparser
-// respectively (plan/224).
+// respectively (plan/224). The cross-file, whole-run RunCache now lives
+// in internal/runcache (plan/2608301919).
 package lint

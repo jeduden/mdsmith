@@ -483,7 +483,7 @@ func TestRunCache_CompiledCUEConcurrentSingleBuild(t *testing.T) {
 // used to drive the include + CUE-source eviction tests below
 // without depending on the requiredstructure package's concrete
 // schemaParseResult. The fields mirror the rule package's surface
-// exactly so the tests pin the contract from the lint side.
+// exactly so the tests pin the contract from the runcache side.
 type testSchemaMeta struct {
 	includes   []string
 	cueSources []string
@@ -1175,7 +1175,7 @@ func TestDuplicateParagraphs_InvalidateDropsEveryKeyForPath(t *testing.T) {
 // is constructed before the call and discarded on a hit, and
 // e.once.Do(func() { e.val = build() }) allocates the wrapping closure
 // as an argument even when Do's internal check makes it a no-op — the
-// exact closure-box anti-pattern file.go's memoEntry doc comment
+// exact closure-box anti-pattern internal/lint/file.go's memoEntry doc comment
 // describes fixing for File.Memo, which had the same gap: a Load-first
 // check before the throwaway LoadOrStore value must run first.
 func TestLoad_WarmPathAllocatesNothing(t *testing.T) {

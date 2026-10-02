@@ -28,6 +28,11 @@ type schemaParseResult struct {
 	cueSources []string
 }
 
+// RunCache detects ParsedSchemaMetadata by runtime type assertion, so
+// a signature drift would silently disable fragment invalidation; this
+// assertion turns that drift into a compile error.
+var _ runcache.ParsedSchemaMetadata = schemaParseResult{}
+
 // SchemaIncludes implements runcache.ParsedSchemaMetadata so
 // RunCache.Invalidate can read the include chain without a
 // dependency on this package's private types. Returns nil for a

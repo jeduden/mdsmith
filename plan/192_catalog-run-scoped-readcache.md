@@ -55,7 +55,7 @@ is trivially safe there. Only the LSP path needs the hook.
    `Runner` and threaded to rules via a context value or a field
    on `*lint.File` that points at the shared cache (not a package
    global — testability and LSP isolation).
-   `lint.RunCache` in `internal/runcache/runcache.go`; the engine
+   `runcache.RunCache` in `internal/runcache/runcache.go`; the engine
    `Runner.RunCache` field threads it to each `*lint.File`.
 2. [x] Route `cachedFrontMatter` and `includeTargetsOf` through
    the run cache when present, falling back to the per-Check memo

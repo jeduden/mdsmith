@@ -88,7 +88,10 @@ facets of a single subject is fine.
    `lint` and add a comment in
    [internal/lint/file.go](../internal/lint/file.go)
    explaining the coupling. Document the
-   decision here.
+   decision here. (Superseded: plan
+   2608301919 moved `runcache.go` to
+   `internal/runcache`, which imports
+   nothing from `lint`, so no cycle.)
 5. Add `internal/lint/doc.go` with a
    package doc whose subject is one noun
    — the parsed Markdown file — e.g.

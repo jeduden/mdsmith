@@ -5,11 +5,12 @@ title: >-
 status: "✅"
 model: sonnet
 summary: >-
-  internal/runcache/runcache.go's RunCache memoizes state across
-  every host file in one engine.Run pass — a cross-file,
-  whole-run scope that answers a different question than
-  internal/lint's stated charter of modeling one parsed
-  Markdown file. Flagged by the 2026-08-30 audit as tax.
+  RunCache (then internal/lint/runcache.go) memoizes state
+  across every host file in one engine.Run pass — a
+  cross-file, whole-run scope that answers a different
+  question than internal/lint's stated charter of modeling
+  one parsed Markdown file. Flagged by the 2026-08-30 audit
+  as tax; moved to the leaf package internal/runcache.
 ---
 # Relocate RunCache out of internal/lint
 
@@ -63,9 +64,10 @@ this scope mismatch:
 3. Move `RunCache` and its dependent types from
    `internal/lint` to a new leaf package, `internal/runcache`.
    `internal/engine` would create an import cycle:
-   `engine` imports `schema`, `schema` imports `lint`, and
-   `lint.File` holds the `*RunCache` field; `schema` and
-   `linkgraph` also call `RunCache` directly.
+   `engine` imports `lint` directly, and `lint.File` holds
+   the `*RunCache` field, so `lint` would have to import
+   `engine`. `schema` and `linkgraph` also call `RunCache`
+   directly, and `engine` reaches `schema` via `config`.
 4. Update every import across the files listed in task 2.
 5. Keep `internal/lint`'s per-file `Memo` type in place;
    only the cross-file `RunCache` moves.

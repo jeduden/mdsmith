@@ -68,7 +68,7 @@ required-structure, is 19% of CPU. The cost is
 dominated by per-host-file re-parses of the schema
 file and per-file recompiles of the schema's CUE
 expression. Both are caches the existing
-[`lint.RunCache`][runcache] already proves the shape
+[`runcache.RunCache`][runcache] already proves the shape
 for (front matter, includes).
 
 [runcache]: ../internal/runcache/runcache.go
