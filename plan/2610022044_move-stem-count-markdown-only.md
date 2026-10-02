@@ -135,6 +135,10 @@ counts against the resolver's own index.
      through the wikilink grammar and the resolver's target
      checks, so a drive-letter name such as `C:x.md` is
      skipped too.
+  - Pick the spelling with `WikilinkReaches`: the bare stem
+     first, else the whole basename. This covers a dotted stem
+     and a stem ending in a space (`[[guide .md]]`). Refuse a
+     CR in the spelling, since CommonMark ends a line there.
   - Document these cases in
      [move.md](../docs/reference/cli/move.md).
 
@@ -153,8 +157,10 @@ counts against the resolver's own index.
 - [x] Moving `docs/v1.2.md` to `docs/v1.3.md` rewrites
       `[[v1.2.md]]` to `[[v1.3.md]]`
 - [x] No wikilink is rewritten to an empty name, to one
-      holding `#`, `|`, `[`, `]`, or a newline, or to one with
-      a leading or trailing space
+      holding `#`, `|`, `[`, `]`, a CR, or a newline, or to one
+      with a leading or trailing space
+- [x] Moving `docs/api.md` to `docs/guide .md` rewrites
+      `[[api]]` to `[[guide .md]]`
 - [x] Moving `docs/.md` leaves `[[.md.md]]` unchanged
 - [x] A listed `x/ guide.md` does not block moving
       `docs/guide.md` to `docs/manual.md`

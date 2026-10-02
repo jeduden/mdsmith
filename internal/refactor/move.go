@@ -62,8 +62,9 @@ func (e SourceNotFoundError) Error() string {
 //     wikilinks alone because a stem still resolves (a documented
 //     asymmetry with path links). Only a Markdown src with a non-empty
 //     stem is a stem target, and a dst no wikilink can name — no
-//     extension, an empty stem, a `#`, `|`, `[`, `]`, or newline in the
-//     name, or a leading or trailing space — gets no rewrite;
+//     extension, an empty stem, a `#`, `|`, `[`, `]`, CR, or newline in
+//     the name, or a name that starts or ends with a space — gets no
+//     rewrite;
 //   - outbound destinations inside src, when it has a Markdown
 //     extension or the workspace lists it (an `.mdx` file that
 //     `files:` matches) — every `[t](path)`, `![a](path)` and
@@ -744,9 +745,10 @@ func skipGap(src []byte, i int) int {
 func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst string) {
 	// Both ends are keyed the way NewWikilinkIndex keys files. Only a
 	// Markdown src has a stem key, so moving any other file retargets
-	// no `[[stem]]` link. A src key that no trimmed, non-empty target
-	// spells (`docs/.md` keys as "", ` guide.md` as " guide") matches no
-	// edge, so the edge lookup below returns early for it.
+	// no `[[stem]]` link. An empty src key (`docs/.md`) matches no edge,
+	// since no target spells it, so the edge lookup below returns early.
+	// ` guide.md` keys as " guide": a bare `[[guide]]` never reached it,
+	// while a folder-prefixed `[[x/ guide]]` did and is rewritten.
 	oldStem, ok := linkgraph.FileStemKey(path.Base(src))
 	if !ok {
 		return
@@ -763,10 +765,10 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	// The rewritten token must parse back as a wikilink that resolves by
 	// dst's key. WikilinkReaches checks that against the wikilink
 	// grammar, so a name with no extension (`COPYING`), an empty stem,
-	// a `#`, `|`, `[`, `]`, or newline, a leading or trailing space, or
-	// a drive-letter shape (`C:x.md`) gets no rewrite.
-	newSpelling := dstStemSpelling(dst)
-	if !linkgraph.WikilinkReaches(newSpelling, path.Base(dst)) {
+	// a `#`, `|`, `[`, `]`, CR, or newline, a name that starts or ends
+	// with a space, or a drive-letter shape (`C:x.md`) gets no rewrite.
+	newSpelling, ok := dstWikilinkSpelling(dst)
+	if !ok {
 		return
 	}
 	// A wikilink resolves by basename stem, and the index keys these
@@ -892,21 +894,24 @@ func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem b
 	return oldN, newN
 }
 
-// dstStemSpelling returns the basename stem of dst with its original
-// casing, so a rewritten wikilink reads naturally (`[[Service]]`, not a
-// lowercased match key). A Markdown extension is stripped unless the
-// stem holds a dot of its own: a bare `[[v1.3]]` reads `.3` as a typed
-// extension and looks up a file named exactly `v1.3`, so `v1.3.md`
-// keeps its extension. Any other name is kept whole.
-func dstStemSpelling(dst string) string {
+// dstWikilinkSpelling returns the token a rewritten wikilink names dst
+// by, with ok=false when no token reaches it (see
+// linkgraph.WikilinkReaches). A Markdown dst is first tried as its
+// basename stem in its original casing, so the link reads naturally
+// (`[[Service]]`, not a lowercased match key). When the bare stem does
+// not reach dst, the whole basename is tried: `[[v1.3]]` reads `.3` as
+// a typed extension and `[[guide ]]` loses its space to the target
+// trim, while `[[v1.3.md]]` and `[[guide .md]]` reach the file. Any
+// other name is only ever spelled whole.
+func dstWikilinkSpelling(dst string) (string, bool) {
 	base := path.Base(dst)
-	ext := path.Ext(base)
-	if !mdpath.HasMarkdownExt(ext) {
-		return base
+	if ext := path.Ext(base); mdpath.HasMarkdownExt(ext) {
+		if stem := strings.TrimSuffix(base, ext); linkgraph.WikilinkReaches(stem, base) {
+			return stem, true
+		}
 	}
-	stem := strings.TrimSuffix(base, ext)
-	if path.Ext(stem) != "" {
-		return base
+	if linkgraph.WikilinkReaches(base, base) {
+		return base, true
 	}
-	return stem
+	return "", false
 }

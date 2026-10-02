@@ -113,15 +113,35 @@ func TestWikilinkKeyHolders_UnlistedSourceCounts(t *testing.T) {
 	assert.Equal(t, 1, oldN, "a source listed with a ./ prefix is still listed")
 }
 
-func TestDstStemSpelling_NonMarkdownKeepsBase(t *testing.T) {
-	assert.Equal(t, "Service", dstStemSpelling("docs/Service.md"))
-	assert.Equal(t, "diagram.png", dstStemSpelling("img/diagram.png"))
+func TestDstWikilinkSpelling_NonMarkdownKeepsBase(t *testing.T) {
+	for dst, want := range map[string]string{
+		"docs/Service.md": "Service",
+		"img/diagram.png": "diagram.png",
+	} {
+		got, ok := dstWikilinkSpelling(dst)
+		assert.True(t, ok, dst)
+		assert.Equal(t, want, got, dst)
+	}
 }
 
-func TestDstStemSpelling_DottedStemKeepsMarkdownExt(t *testing.T) {
-	assert.Equal(t, "v1.3.md", dstStemSpelling("docs/v1.3.md"))
-	assert.Equal(t, "guide.md.md", dstStemSpelling("docs/guide.md.md"))
-	assert.Equal(t, "", dstStemSpelling("docs/.md"))
+// TestDstWikilinkSpelling_FallsBackToBase locks that the whole basename
+// is written whenever the bare stem would not reach dst: a dotted stem
+// reads as a typed extension, and a stem ending in a space loses it to
+// the target trim.
+func TestDstWikilinkSpelling_FallsBackToBase(t *testing.T) {
+	for dst, want := range map[string]string{
+		"docs/v1.3.md":     "v1.3.md",
+		"docs/guide.md.md": "guide.md.md",
+		"docs/guide .md":   "guide .md",
+	} {
+		got, ok := dstWikilinkSpelling(dst)
+		assert.True(t, ok, dst)
+		assert.Equal(t, want, got, dst)
+	}
+	for _, dst := range []string{"docs/.md", "docs/COPYING", "docs/ notes.md", "docs/C#.md"} {
+		_, ok := dstWikilinkSpelling(dst)
+		assert.False(t, ok, dst)
+	}
 }
 
 // locatedTokens parses body and returns each located destination as

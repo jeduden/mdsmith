@@ -53,8 +53,10 @@ code 2.
   asymmetry with path links that `--dry-run` makes visible. A
   new stem that holds a dot keeps its extension, so a move to
   `v1.3.md` writes `[[v1.3.md]]`: a bare `[[v1.3]]` would look
-  for a file named exactly `v1.3`. A new name with another
-  extension is written whole, as in `[[guide.mdx]]`.
+  for a file named exactly `v1.3`. A stem that ends in a space
+  keeps it too, so `guide .md` gives `[[guide .md]]`, since a
+  link target is trimmed. A new name with another extension is
+  written whole, as in `[[guide.mdx]]`.
 
 Each destination is found in the parsed document, so each one is
 rewritten exactly once. These forms are all handled:
@@ -129,8 +131,8 @@ cross-directory move, check them by hand.
   as written, because a bare `[[name]]` finds only Markdown
   files. So does a new name that a wikilink cannot spell: an
   empty stem such as `.md`, a `#`, `|`, `[`, or `]` as in `C#.md`,
-  a leading or trailing space, or a drive-letter shape such as
-  `C:x.md`. Those links break.
+  a line break, a name that starts or ends with a space, or a
+  drive-letter shape such as `C:x.md`. Those links break.
 - **Footnote text that is a lone link.** mdsmith reads
   `[^1]: [z](a.md)` as a footnote definition and leaves its text
   as written, so the link inside it is not repointed. Longer

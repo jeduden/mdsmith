@@ -445,7 +445,7 @@ func TestMove_WikilinkNotRewrittenToExtensionlessName(t *testing.T) {
 func TestMove_WikilinkNotRewrittenToUnspellableName(t *testing.T) {
 	for _, dst := range []string{
 		"docs/.md", "docs/C#.md", "docs/a|b.md", "docs/[x].md", "docs/x].txt",
-		"docs/guide.md ", "docs/ notes.md", "docs/a\nb.md", "docs/C:x.md",
+		"docs/guide.md ", "docs/ notes.md", "docs/a\nb.md", "docs/a\rb.md", "docs/C:x.md",
 	} {
 		t.Run(dst, func(t *testing.T) {
 			ws := newMemWorkspace(map[string]string{
@@ -474,6 +474,21 @@ func TestMove_WikilinkKeepsMarkdownExtForDottedStem(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "See [[v1.3.md]] and [[v1.3.md#notes|old]].\n",
 		applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_WikilinkKeepsMarkdownExtForTrailingSpaceStem locks that a
+// destination stem ending in a space keeps its Markdown extension: the
+// link target is trimmed, so `[[guide ]]` would look up `guide`, while
+// `[[guide .md]]` keeps the space inside the target and reaches the file.
+func TestMove_WikilinkKeepsMarkdownExtForTrailingSpaceStem(t *testing.T) {
+	src := "See [[api]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/api.md": "# API\n",
+		"index.md":    src,
+	})
+	plan, err := Move(ws, "docs/api.md", "docs/guide .md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[guide .md]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
 }
 
 // TestMove_WikilinkRewrittenWhenTypedDestNameEqualsOldStem locks that a
