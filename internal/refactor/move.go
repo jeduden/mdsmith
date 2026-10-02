@@ -739,6 +739,12 @@ func skipGap(src []byte, i int) int {
 // that keeps the basename leaves wikilinks alone: a stem still resolves
 // to the file at its new path.
 func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst string) {
+	// No `[[stem]]` link resolves to a non-Markdown file, so moving one
+	// retargets nothing. A destination without an extension is likewise
+	// unreachable: a bare `[[name]]` finds Markdown files only.
+	if !mdpath.IsMarkdownPath(src) || path.Ext(dst) == "" {
+		return
+	}
 	oldStem := fileStem(src)
 	newStem := fileStem(dst)
 	if oldStem == newStem {

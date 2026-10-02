@@ -3,6 +3,7 @@ package refactor
 import (
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -390,4 +391,57 @@ func TestMove_WikilinkLeftUntouchedWhenTypedDestNameCollides(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, plan.Edits["index.md"],
 		"typed destination name already taken: no wikilink is rewritten")
+}
+
+// TestMove_NonMarkdownSourceLeavesWikilinksAlone locks that moving a
+// non-Markdown file never rewrites `[[stem]]` links: no stem resolves to
+// it, so `[[license]]` still points at docs/license.md.
+func TestMove_NonMarkdownSourceLeavesWikilinksAlone(t *testing.T) {
+	for name, listed := range map[string]bool{"listed": true, "unlisted": false} {
+		t.Run(name, func(t *testing.T) {
+			files := map[string]string{
+				"docs/license.md": "# License\n",
+				"index.md":        "See [[license]].\n",
+			}
+			if listed {
+				files["LICENSE"] = "MIT\n"
+			}
+			ws := newMemWorkspace(files)
+			// An unlisted source is still resolvable on disk.
+			var w Workspace = ws
+			if !listed {
+				w = unlistedSource{memWorkspace: ws, rel: "LICENSE", body: "MIT\n"}
+			}
+			plan, err := Move(w, "LICENSE", "COPYING")
+			require.NoError(t, err)
+			assert.Empty(t, plan.Edits["index.md"])
+		})
+	}
+}
+
+// TestMove_WikilinkNotRewrittenToExtensionlessName locks that a move to
+// an extensionless name rewrites nothing: a bare `[[name]]` finds only
+// Markdown files, so it could never reach the destination.
+func TestMove_WikilinkNotRewrittenToExtensionlessName(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"docs/api.md": "# API\n",
+		"index.md":    "See [[api]].\n",
+	})
+	plan, err := Move(ws, "docs/api.md", "docs/COPYING")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"])
+}
+
+// unlistedSource resolves one file that Files() does not list, as
+// Resolve reads any file on disk.
+type unlistedSource struct {
+	*memWorkspace
+	rel, body string
+}
+
+func (u unlistedSource) Resolve(file string) (string, []byte, bool) {
+	if n := index.NormalizePath(file); n == u.rel {
+		return n, []byte(u.body), true
+	}
+	return u.memWorkspace.Resolve(file)
 }

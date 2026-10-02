@@ -1,7 +1,7 @@
 ---
 id: 2610022044
 title: Count only Markdown files as wikilink stem siblings on move
-status: "🔳"
+status: "✅"
 summary: >-
   The move planner's wikilink pass treats a non-Markdown file
   (for example an extensionless `LICENSE`) as a stem target,
@@ -107,10 +107,10 @@ counts against the resolver's own index.
 - [x] Moving `docs/license.md` to `docs/terms.md` rewrites
       `[[license]]` even when an extensionless `LICENSE` is
       in the workspace
-- [ ] Moving `LICENSE` to `COPYING` leaves every `[[license]]`
+- [x] Moving `LICENSE` to `COPYING` leaves every `[[license]]`
       link to `docs/license.md` unchanged
 - [x] Moving `docs/guide.md` to `docs/guide.mdx` leaves
       `[[guide]]` unchanged while `a/guide.mdx` exists
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues
