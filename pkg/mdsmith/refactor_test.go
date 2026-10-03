@@ -346,6 +346,33 @@ func (w *countingWorkspace) ReadFile(p string) ([]byte, error) {
 	return w.MemWorkspace.ReadFile(p)
 }
 
+// buildRefactorWorkspace defers its walk and index to the first edge
+// or Files query, so Resolve alone reads only the file it names, and
+// every later query reuses the one index.
+func TestBuildRefactorWorkspace_IndexesOnFirstQuery(t *testing.T) {
+	ws := &countingWorkspace{MemWorkspace: NewMemWorkspace(map[string][]byte{
+		"a.md": []byte("# Setup\n"),
+		"b.md": []byte("See [go](a.md#setup).\n"),
+	})}
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+
+	ws.reads = 0
+	w := s.buildRefactorWorkspace("", nil)
+	assert.Zero(t, ws.reads, "building reads no workspace file")
+
+	_, _, ok := w.Resolve("b.md")
+	require.True(t, ok)
+	assert.Equal(t, 1, ws.reads, "Resolve reads only the named file")
+
+	assert.Len(t, w.IncomingAnchorEdges("a.md", "setup"), 1)
+	indexed := ws.reads
+	assert.Greater(t, indexed, 1, "the first edge query indexes")
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, w.Files())
+	assert.Equal(t, indexed, ws.reads, "later queries reuse the index")
+}
+
 // A label rename and a failed detection touch only the target's own
 // bytes, so Session.Rename must not walk and index the workspace for
 // them; a heading rename still does, to find incoming anchors.

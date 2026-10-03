@@ -62,11 +62,10 @@ func (s *Session) Rename(uri string, source []byte, as, oldName, newName string)
 		return RefactorPlan{}, fmt.Errorf("rename: as must be %s, got %q",
 			refactor.RenameKindList("%q"), as)
 	}
-	// Lazy: only a heading rename consults the workspace, so a label
-	// rename or a failed detection never walks a large WASM vault.
-	ws := refactor.NewLazyWorkspace(func() refactor.Workspace {
-		return s.buildRefactorWorkspace(uri, source)
-	})
+	// The workspace indexes lazily: only a heading rename queries
+	// incoming edges, so a label rename or a failed detection never
+	// walks a large WASM vault.
+	ws := s.buildRefactorWorkspace(uri, source)
 	key := index.NormalizePath(uri)
 	p, err := refactor.Rename(ws, key, source, kind, oldName, newName)
 	if err != nil {
@@ -156,11 +155,29 @@ func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 	return rel, src, true
 }
 
-// buildRefactorWorkspace walks the session's workspace for Markdown
-// files and builds a transient index over them. overlayURI, when set,
-// substitutes overlaySource for that file's bytes so a rename computes
-// against the caller's current buffer rather than the last-saved file.
+// buildRefactorWorkspace returns a Workspace whose edge and Files
+// queries walk the session's workspace for Markdown files and build a
+// transient index over them on the first such query, reusing it after
+// that; Resolve alone reads only the file it names, so a label rename
+// or a failed detection never walks a large WASM vault. overlayURI,
+// when set, substitutes overlaySource for that file's bytes so a
+// rename computes against the caller's current buffer rather than the
+// last-saved file.
 func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte) *sessionRefactorWorkspace {
+	return &sessionRefactorWorkspace{
+		IndexEdges: refactor.NewLazyIndexEdges(func() *index.Index {
+			return s.indexRefactorWorkspace(overlayURI, overlaySource)
+		}),
+		s:             s,
+		overlayURI:    overlayURI,
+		overlaySource: overlaySource,
+	}
+}
+
+// indexRefactorWorkspace walks the session's workspace for Markdown
+// files and indexes them, reading overlaySource in place of
+// overlayURI's bytes when overlayURI is set.
+func (s *Session) indexRefactorWorkspace(overlayURI string, overlaySource []byte) *index.Index {
 	fsys := s.ws.FS()
 	var rels []string
 	// The walk callback swallows per-entry errors, so WalkDir's own return
@@ -185,10 +202,5 @@ func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte
 		}
 		return s.ws.ReadFile(rel)
 	})
-	return &sessionRefactorWorkspace{
-		IndexEdges:    refactor.NewIndexEdges(idx),
-		s:             s,
-		overlayURI:    overlayURI,
-		overlaySource: overlaySource,
-	}
+	return idx
 }

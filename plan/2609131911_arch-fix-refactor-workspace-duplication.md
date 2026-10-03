@@ -90,7 +90,11 @@ The 2026-09-13 audit (see [the audit log][audit-log]) found:
    Ship it with its own unit test.
 3. Update all three types to embed the helper instead of
    hand-writing the four pass-throughs; keep each type's own
-   `Resolve` method unchanged.
+   `Resolve` method unchanged. `sessionRefactorWorkspace`
+   takes `NewLazyIndexEdges`, so its walk and index wait for
+   the first edge or `Files` query. That retires
+   `refactor.LazyWorkspace`, the second lazy wrapper that
+   `Session.Rename` used, and leaves one lazy mechanism.
 4. `go build ./...` passes.
 5. `go test ./...` passes, including
    [cmd/mdsmith/rename_unit_test.go][cli-rename-test] and

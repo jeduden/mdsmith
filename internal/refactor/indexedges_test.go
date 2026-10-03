@@ -125,3 +125,25 @@ func TestNewLazyIndexEdges(t *testing.T) {
 	assert.Len(t, cp.Files(), 2)
 	assert.Equal(t, 1, builds, "built once, then reused by every copy")
 }
+
+// The build runs once even when it returns nil, so a failed build is
+// not repeated (a full walk and index) on every query.
+func TestNewLazyIndexEdges_NilBuildRunsOnce(t *testing.T) {
+	builds := 0
+	e := NewLazyIndexEdges(func() *index.Index { builds++; return nil })
+	assert.Empty(t, e.Files())
+	assert.Empty(t, e.IncomingPathEdges("a.md"))
+	assert.Equal(t, 1, builds)
+}
+
+// A label rename never queries edges, so a lazily indexed workspace is
+// never built.
+func TestRename_LabelNeverBuildsLazyIndex(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{"a.md": dispatchSrc})
+	ws.IndexEdges = NewLazyIndexEdges(func() *index.Index {
+		t.Fatal("a label rename built the index")
+		return nil
+	})
+	_, err := Rename(ws, "a.md", []byte(dispatchSrc), "", "docs", "rfc")
+	assert.NoError(t, err)
+}
