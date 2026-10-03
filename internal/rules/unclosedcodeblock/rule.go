@@ -1,8 +1,6 @@
 package unclosedcodeblock
 
 import (
-	"bytes"
-
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/fencepos"
@@ -92,32 +90,17 @@ var (
 )
 
 // hasClosingFence checks whether a fenced code block has a proper closing
-// fence line after its content.
+// fence line after its content. A block whose opening fence run cannot
+// be read (a hand-built node) counts as closed, so it is never flagged.
+// The closer is read through the block's containers (fencepos.CloseRun),
+// so a fence behind a list or block-quote marker is judged like a
+// top-level one, and a line that ends its container never closes it.
 func hasClosingFence(f *lint.File, fcb *ast.FencedCodeBlock) bool {
-	openStart, openEnd := fencepos.OpenLineRange(f.Source, fcb)
-	if openStart >= len(f.Source) {
+	if _, n, _ := fencepos.OpenRun(f.Source, fcb); n == 0 {
 		return true
 	}
-
-	fenceChar := fencepos.CharAt(f.Source, openStart)
-	if fenceChar == 0 {
-		return true
-	}
-
-	closeStart, closeEnd := fencepos.CloseLineRange(f.Source, fcb, openEnd)
-
-	// No closing line exists (at or past EOF).
-	if closeStart >= len(f.Source) {
-		return false
-	}
-
-	// Require a non-empty closing line; the fence characters are validated below.
-	if closeStart == closeEnd {
-		return false
-	}
-	closingLine := bytes.TrimLeft(f.Source[closeStart:closeEnd], " ")
-	minFence := []byte{fenceChar, fenceChar, fenceChar}
-	return bytes.HasPrefix(closingLine, minFence)
+	_, _, closed := fencepos.CloseRun(f.Source, fcb)
+	return closed
 }
 
 // enteringKinds is the static node-kind interest CheckNode declares

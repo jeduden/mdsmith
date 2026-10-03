@@ -248,3 +248,33 @@ func TestHasClosingFence_ClosingLineEmpty(t *testing.T) {
 		assert.Equal(t, "unclosed fenced code block", d.Message)
 	}
 }
+
+// TestCheck_ContainerOpener checks fences whose opener sits behind a
+// list or block-quote marker: the fence character is read at the
+// parser's node position, not at the line start, and a closer behind
+// a ">" marker still closes the block.
+func TestCheck_ContainerOpener(t *testing.T) {
+	cases := []struct {
+		src  string
+		want int // diagnostic line, 0 for none
+	}{
+		{"# T\n\n- ```\n  x\n", 3},
+		{"# T\n\n- ```\n  x\n  ```\n", 0},
+		{"# T\n\n1. ~~~\n   x\n", 3},
+		{"# T\n\n> ```\n> x\n", 3},
+		{"# T\n\n> ```\n> x\n> ```\n", 0},
+		{"# T\n\n> - ```\n>   x\n>   ```\n", 0},
+		{"# T\n\n> > ~~~\n> > x\n> > ~~~\n", 0},
+	}
+	for _, tc := range cases {
+		f, err := lint.NewFile("test.md", []byte(tc.src))
+		require.NoError(t, err)
+		diags := (&Rule{}).Check(f)
+		if tc.want == 0 {
+			assert.Empty(t, diags, tc.src)
+			continue
+		}
+		require.Len(t, diags, 1, tc.src)
+		assert.Equal(t, tc.want, diags[0].Line, tc.src)
+	}
+}

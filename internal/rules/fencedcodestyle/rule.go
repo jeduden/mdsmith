@@ -51,18 +51,18 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 		return nil
 	}
 
-	openStart, _ := fencepos.OpenLineRange(f.Source, fcb)
-	if openStart >= len(f.Source) {
+	runStart, _, fenceChar := fencepos.OpenRun(f.Source, fcb)
+	if fenceChar == 0 {
 		return nil
 	}
-	return r.verdict(f, fencepos.CharAt(f.Source, openStart), f.LineOfOffset(openStart))
+	return r.verdict(f, fenceChar, f.LineOfOffset(runStart))
 }
 
 // CheckBlock implements rule.BlockChecker. A BlockFencedCode span's Start
 // is the opening fence line (the line LineOfOffset(openStart) yields on
 // the AST path), and the fence character is the first backtick or tilde
-// after any leading spaces — exactly what fencepos.CharAt reads — so the
-// verdict is byte-identical.
+// after any leading spaces — what fencepos.OpenRun reads for the
+// top-level fences Layer 0 emits — so the verdict is byte-identical.
 func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
 	return r.verdict(f, fenceCharOfLine(f.Lines[span.Start-1]), span.Start)
 }
@@ -97,8 +97,8 @@ func (r *Rule) verdict(f *lint.File, fenceChar byte, line int) []lint.Diagnostic
 
 // fenceCharOfLine returns the opening fence character of a line the
 // Layer 0 scanner classified BlockFencedCode: the first backtick or
-// tilde after any leading spaces, mirroring fencepos.CharAt (which skips
-// all leading spaces from the line start), or 0 if neither is present.
+// tilde after any leading spaces, mirroring fencepos.OpenRun on a
+// top-level fence, or 0 if neither is present.
 func fenceCharOfLine(line []byte) byte {
 	i := 0
 	for i < len(line) && line[i] == ' ' {
@@ -110,13 +110,15 @@ func fenceCharOfLine(line []byte) byte {
 	return 0
 }
 
-// Fix implements rule.FixableRule.
+// Fix implements rule.FixableRule. It rewrites the opening fence run
+// and, when the block has one, the closing fence run in place, leaving
+// container markers ("- ", "> "), indent, and info strings untouched.
+// An unclosed block's following line belongs to another block, so it
+// is left alone.
 func (r *Rule) Fix(f *lint.File) []byte {
-	type fenceRange struct {
-		openStart, openEnd   int
-		closeStart, closeEnd int
-	}
-	var ranges []fenceRange
+	type fenceRun struct{ start, n int }
+	var runs []fenceRun
+	wantChar := r.wantChar()
 
 	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -126,44 +128,28 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		if !ok {
 			return ast.WalkContinue, nil
 		}
-
-		openStart, openEnd := fencepos.OpenLineRange(f.Source, fcb)
-		if openStart >= len(f.Source) {
+		openStart, openN, fenceChar := fencepos.OpenRun(f.Source, fcb)
+		if fenceChar == 0 || fenceChar == wantChar {
 			return ast.WalkContinue, nil
 		}
-
-		fenceChar := fencepos.CharAt(f.Source, openStart)
-		if fenceChar == 0 {
-			return ast.WalkContinue, nil
+		runs = append(runs, fenceRun{openStart, openN})
+		if closeStart, closeN, closed := fencepos.CloseRun(f.Source, fcb); closed {
+			runs = append(runs, fenceRun{closeStart, closeN})
 		}
-
-		wantChar := r.wantChar()
-		if fenceChar != wantChar {
-			closeStart, closeEnd := fencepos.CloseLineRange(f.Source, fcb, openEnd)
-			ranges = append(ranges, fenceRange{
-				openStart: openStart, openEnd: openEnd,
-				closeStart: closeStart, closeEnd: closeEnd,
-			})
-		}
-
 		return ast.WalkContinue, nil
 	})
 
-	if len(ranges) == 0 {
+	if len(runs) == 0 {
 		return f.Source
 	}
 
-	wantChar := r.wantChar()
-	result := make([]byte, 0, len(f.Source))
-	prev := 0
-	for _, fr := range ranges {
-		result = append(result, f.Source[prev:fr.openStart]...)
-		result = append(result, replaceFenceChars(f.Source[fr.openStart:fr.openEnd], wantChar)...)
-		result = append(result, f.Source[fr.openEnd:fr.closeStart]...)
-		result = append(result, replaceFenceChars(f.Source[fr.closeStart:fr.closeEnd], wantChar)...)
-		prev = fr.closeEnd
+	result := make([]byte, len(f.Source))
+	copy(result, f.Source)
+	for _, fr := range runs {
+		for i := fr.start; i < fr.start+fr.n; i++ {
+			result[i] = wantChar
+		}
 	}
-	result = append(result, f.Source[prev:]...)
 	return result
 }
 
@@ -172,24 +158,6 @@ func (r *Rule) wantChar() byte {
 		return '~'
 	}
 	return '`'
-}
-
-// replaceFenceChars replaces backtick or tilde chars in a fence line with the target char,
-// preserving count, leading spaces, and any info string.
-func replaceFenceChars(line []byte, targetChar byte) []byte {
-	result := make([]byte, len(line))
-	copy(result, line)
-	i := 0
-	// Skip leading spaces
-	for i < len(result) && result[i] == ' ' {
-		i++
-	}
-	// Replace fence characters
-	for i < len(result) && (result[i] == '`' || result[i] == '~') {
-		result[i] = targetChar
-		i++
-	}
-	return result
 }
 
 // ApplySettings implements rule.Configurable.

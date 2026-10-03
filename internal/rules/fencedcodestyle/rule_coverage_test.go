@@ -17,13 +17,14 @@ func TestCategory(t *testing.T) {
 	assert.Equal(t, "code", r.Category())
 }
 
-// --- replaceFenceChars with leading spaces ---
+// --- Fix with leading spaces ---
 
-func TestReplaceFenceChars_LeadingSpaces(t *testing.T) {
-	// A fence line with leading spaces: "  ~~~go" -> "  ```go"
-	line := []byte("  ~~~go")
-	result := replaceFenceChars(line, '`')
-	assert.Equal(t, []byte("  ```go"), result)
+func TestFix_LeadingSpaces(t *testing.T) {
+	// Indent and info string survive; only the fence runs change.
+	f, err := lint.NewFile("test.md", []byte("  ~~~go\nx\n  ~~~\n"))
+	require.NoError(t, err)
+	r := &Rule{Style: "backtick"}
+	assert.Equal(t, "  ```go\nx\n  ```\n", string(r.Fix(f)))
 }
 
 // --- Fix with empty block after paragraph (exercises previousSibling path) ---

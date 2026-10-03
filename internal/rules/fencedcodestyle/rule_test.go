@@ -278,3 +278,39 @@ func TestDefaultSettings_FencedCodeStyle(t *testing.T) {
 		t.Errorf("expected style=backtick, got %v", ds["style"])
 	}
 }
+
+// TestCheck_ContainerOpener reads the fence character at the parser's
+// node position, so a fence behind a list or block-quote marker is
+// checked like any other.
+func TestCheck_ContainerOpener(t *testing.T) {
+	for _, src := range []string{
+		"# T\n\n- ```\n  x\n  ```\n",
+		"# T\n\n> ```\n> x\n> ```\n",
+		"# T\n\n> - ```\n>   x\n>   ```\n",
+	} {
+		f, err := lint.NewFile("test.md", []byte(src))
+		require.NoError(t, err)
+		diags := (&Rule{Style: "tilde"}).Check(f)
+		require.Len(t, diags, 1, src)
+		assert.Equal(t, 3, diags[0].Line, src)
+	}
+}
+
+// TestFix_ContainerOpener rewrites the opener's run at its node
+// position and the closer's run behind the container prefix, and
+// leaves an unclosed block's following line (another block) alone.
+func TestFix_ContainerOpener(t *testing.T) {
+	cases := []struct{ src, want string }{
+		{"- ```\n  x\n  ```\n", "- ~~~\n  x\n  ~~~\n"},
+		{"1. ```go\n   x\n   ```\n", "1. ~~~go\n   x\n   ~~~\n"},
+		{"> ```\n> x\n> ```\n", "> ~~~\n> x\n> ~~~\n"},
+		{"> - ````\n>   x\n>   ````\n", "> - ~~~~\n>   x\n>   ~~~~\n"},
+		{"> ```\n> x\n\n~~~\ny\n~~~\n", "> ~~~\n> x\n\n~~~\ny\n~~~\n"},
+		{"> ```\n> x\n```\ny\n```\n", "> ~~~\n> x\n~~~\ny\n~~~\n"},
+	}
+	for _, tc := range cases {
+		f, err := lint.NewFile("test.md", []byte(tc.src))
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, string((&Rule{Style: "tilde"}).Fix(f)), tc.src)
+	}
+}
