@@ -41,6 +41,14 @@ func CloseLine(f *lint.File, fcb *ast.FencedCodeBlock) int {
 // OpenLineRange returns the byte range [start, end) of the opening
 // fence line (without trailing newline).
 func OpenLineRange(src []byte, fcb *ast.FencedCodeBlock) (int, int) {
+	// The parser records the opener's offset as the node position, so
+	// the line holding it is the opening fence line whatever the block
+	// holds and wherever it sits: indented, in a list item, or in a
+	// block quote. The Info and content walks below serve hand-built
+	// nodes, which carry no position.
+	if p := fcb.Pos(); p >= 0 && p < len(src) {
+		return lineAround(src, p)
+	}
 	if fcb.Info != nil {
 		// Walk back from info start to find line start
 		lineStart := fcb.Info.Segment.Start
@@ -68,12 +76,7 @@ func OpenLineRange(src []byte, fcb *ast.FencedCodeBlock) (int, int) {
 		}
 		return lineStart, lineEnd
 	}
-	// Empty code block with no info: the parser records the opener's
-	// offset as the node position, so take the line holding it.
-	if p := fcb.Pos(); p >= 0 && p < len(src) {
-		return lineAround(src, p)
-	}
-	// A hand-built node has no position: scan from the previous
+	// A hand-built empty block with no info: scan from the previous
 	// sibling or the start of the file.
 	searchStart := 0
 	if prev := fcb.PreviousSibling(); prev != nil {

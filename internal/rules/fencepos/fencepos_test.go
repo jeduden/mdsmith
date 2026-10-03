@@ -420,3 +420,34 @@ func TestOpenLineRange_EmptyBlockPositions(t *testing.T) {
 		emptyFenceOpenLines(t, "# T\n\n- a\n- b\n\n```\n```\n"),
 		"after a list")
 }
+
+// TestOpenLineRange_InfolessContentBlockPositions pins the opener line
+// of an info-less block with content whose first content segment does
+// not start a line: an indented fence, a list item, a block quote. A
+// walk back from that segment lands on the content line, not the
+// opener, so the node position must win.
+func TestOpenLineRange_InfolessContentBlockPositions(t *testing.T) {
+	for _, src := range []string{
+		"  ```\n  x\n  ```\n",
+		"- ```\n  x\n  ```\n",
+		"> ```\n> x\n> ```\n",
+	} {
+		f, err := lint.NewFile("test.md", []byte(src))
+		require.NoError(t, err)
+		var fcb *ast.FencedCodeBlock
+		_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if b, ok := n.(*ast.FencedCodeBlock); ok && entering && fcb == nil {
+				fcb = b
+			}
+			return ast.WalkContinue, nil
+		})
+		require.NotNil(t, fcb, src)
+		require.Nil(t, fcb.Info)
+		require.Equal(t, 1, fcb.Lines().Len())
+		start, end := OpenLineRange(f.Source, fcb)
+		assert.Equal(t, 0, start, src)
+		assert.Equal(t, 5, end, src)
+		assert.Equal(t, 1, OpenLine(f, fcb), src)
+		assert.Equal(t, 3, CloseLine(f, fcb), src)
+	}
+}
