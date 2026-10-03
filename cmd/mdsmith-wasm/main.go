@@ -233,9 +233,10 @@ var sessions = map[int]*mdsmith.Session{}
 // redraws. A disposed session's id is not retired (a retired set would
 // grow with every create/dispose), so it can be drawn again, at odds of
 // one in maxSessionID per draw; a stale method of the disposed session
-// would then reach the new one. The ids are not cryptographic:
-// math/rand/v2's global source is seeded from the OS, which on js/wasm
-// is crypto.getRandomValues. Plan 2610021439.
+// would then reach the new one. The ids are not cryptographic: under
+// standard Go, math/rand/v2's global source is seeded from the OS,
+// which on js/wasm is crypto.getRandomValues; TinyGo routes it through
+// its own runtime generator instead. Plan 2610021439.
 func newSessionID() int {
 	for {
 		id := 1 + drawSessionID(maxSessionID)
@@ -396,7 +397,9 @@ func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 
 // maxSessionID bounds a bound id before its int conversion: 2^53 under
 // standard Go, whose int is 64 bits, and math.MaxInt under TinyGo,
-// whose int is 32 bits on wasm. Either way int(f) is in range.
+// whose int is 32 bits on wasm. Either way int(f) is in range. It is
+// also the top of the range newSessionID draws from, so every id it
+// hands out passes boundSession's check.
 const maxSessionID = min(1<<53, math.MaxInt)
 
 // boundSession splits the session id a shared func is bound to off

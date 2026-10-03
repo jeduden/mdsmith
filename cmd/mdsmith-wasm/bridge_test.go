@@ -691,6 +691,7 @@ func TestBoundSession(t *testing.T) {
 	// Random ids can exceed 2^52, where float64 has no .5, so the
 	// fraction targets a small id registered by hand.
 	const smallID = 7
+	require.NotContains(t, sessions, smallID, "precondition: id 7 is free")
 	sessions[smallID] = sessions[liveID]
 	defer delete(sessions, smallID)
 	frac := js.ValueOf(smallID + 0.5)
@@ -1047,6 +1048,9 @@ func TestSharedFunc_GuessedIDsReachNoSession(t *testing.T) {
 	other := newTestProxy(t)
 	defer other.Call("dispose")
 	raw := sharedMethods()["capabilities"]
+	// Positive control: the raw func does reach a session by its id, so
+	// an empty result below means a miss, not a broken call path.
+	require.Positive(t, raw.Invoke(ownID).Length(), "raw func reaches its own session by id")
 	guess := func(id int) {
 		// ownID is the one id this script holds; past maxSessionID a
 		// float64 can round back onto it.

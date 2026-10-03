@@ -285,22 +285,24 @@ of them logs "call to released function".
 The id is drawn at random from 2^53 values (2^31 − 1 in the TinyGo
 build). A draw that a live session holds is redrawn. So a script that
 reaches a raw shared function cannot find a session by trying 0, 1,
-2, and so on. A disposed session's id is not retired, so a new
-session can draw it again, at odds of one in 2^53. A method kept from
-the disposed session would then reach the new one.
+2, and so on. The TinyGo range is small enough to sweep in full,
+though, so only the standard Go build holds against that. A disposed
+session's id is not retired, so a new session can draw it again, at
+odds of one in 2^53 (one in 2^31 − 1 under TinyGo). A method kept
+from the disposed session would then reach the new one.
 
 The engine also binds through a `bind` captured at load, so a later
-patch of `Function.prototype.bind` or `call` never sees one. This is
-hardening, not a privilege boundary. A `bind` or `call` patched before
-the engine loads sees each raw shared function and the id of every
-session. `wasm_exec.js` looks up `Reflect.apply` on every Go-to-JS
-call, so a patched `Reflect.apply` sees the same for each session
-created after the patch, and every session object the engine
-resolves.
+patch of `Function.prototype.bind` or `call` never sees a raw shared
+function. This is hardening, not a privilege boundary. A `bind` or
+`call` patched before the engine loads sees each raw shared function
+and the id of every session. `wasm_exec.js` looks up `Reflect.apply`
+on every Go-to-JS call, so a patched `Reflect.apply` sees the same
+for each session created while the patch is in place, and every
+session object the engine resolves.
 
 A random id or a token object crosses those calls too, so the engine
-does not try to hide it. The random id only shields the sessions
-created before such a patch.
+does not try to hide it. The random id shields only the sessions
+created while no such patch is in place.
 
 An argument of the wrong type, a `BigInt` included, makes an async
 method reject and `invalidate()` do nothing. So does an options object
