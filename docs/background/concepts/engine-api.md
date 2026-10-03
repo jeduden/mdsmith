@@ -269,11 +269,16 @@ private `WeakMap` maps every other method to it, so the token lives
 while any method does and no call but `dispose()` carries it. A
 `FinalizationRegistry` watches the token without keeping it alive.
 Once the object and every method taken off it are collected, the
-registry disposes the session's id, so a host that drops a session
-without `dispose()` still frees the Go session. That is a fallback:
-the Go and JS garbage collectors decide when it runs, so call
-`dispose()` when you are done with a session to free its caches and
-workspace at once.
+registry queues the session's id. The next engine call, to
+`createSession` or any session method, disposes each queued id. So a
+host that drops a session without `dispose()` still frees the Go
+session.
+
+That is a fallback: the Go and JS garbage collectors decide when it
+runs, so call `dispose()` when you are done with a session to free its
+caches and workspace at once. The queue is a native array push, not a
+Go function, so a garbage collection never calls into Go. After the Go
+program exits, a collected session raises no error in the host.
 
 Go holds the session's JS values until its own collector runs. On
 WebAssembly that happens only as the Go heap grows, so an engine that

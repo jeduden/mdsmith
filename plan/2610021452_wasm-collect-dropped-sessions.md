@@ -9,10 +9,11 @@ summary: >-
   `dispose()` runs. A host that drops a session
   object without calling `dispose()` leaks that
   Session, with its workspace and parse caches, for
-  the life of the engine. Bind a per-session token
-  into every method and register it with a
-  `FinalizationRegistry` that disposes its id once the
-  object and every method taken off it are collected.
+  the life of the engine. Tie a per-session token to
+  every method and register it with a
+  `FinalizationRegistry` that queues its id, for the
+  next engine call to dispose, once the object and
+  every method taken off it are collected.
 ---
 # Free wasm sessions dropped without dispose
 
@@ -45,7 +46,12 @@ red/green.
 
 1. Create one `FinalizationRegistry` at load whose
    callback disposes the id it is handed, and capture
-   its `register` as `main` captures `bind`.
+   its `register` as `main` captures `bind`. As built
+   after review: the callback is a bound native
+   `Array.prototype.push` onto a private queue, which
+   every engine entry point drains, so a collection
+   never calls into Go (plan
+   [2610030846](2610030846_wasm-finalizer-after-exit.md)).
 2. Write a failing js/wasm test. Create a session, drop
    it, run a forced GC (`node --expose-gc` and
    `globalThis.gc()`, if the test runner allows it),

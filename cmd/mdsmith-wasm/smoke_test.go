@@ -82,6 +82,25 @@ func TestWASMCheckMatchesNative(t *testing.T) {
 	}
 }
 
+// TestWASMFinalizerAfterExit runs the Node harness testdata/after_exit.cjs:
+// once the Go program has exited, a dropped session that JS collects must
+// raise no uncaught error in the host. Plan 2610030846.
+func TestWASMFinalizerAfterExit(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not on PATH; skipping WASM after-exit test")
+	}
+	wasmExec := wasmExecPath(t)
+	if _, err := os.Stat(wasmExec); err != nil {
+		t.Skipf("wasm_exec.js not found at %s; skipping", wasmExec)
+	}
+	harness := filepath.Join("testdata", "after_exit.cjs")
+	out, err := exec.Command(node, harness, wasmExec, buildWASM(t)).CombinedOutput()
+	if err != nil {
+		t.Fatalf("node harness failed: %v\n%s", err, out)
+	}
+}
+
 // wasmExecPath locates Go's wasm_exec.js under the active toolchain's
 // GOROOT via `go env GOROOT` (runtime.GOROOT is deprecated since Go
 // 1.24). The file moved to lib/wasm/ in recent Go releases.

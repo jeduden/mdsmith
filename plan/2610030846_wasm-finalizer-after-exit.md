@@ -1,9 +1,8 @@
 ---
 id: 2610030846
 title: Silence wasm session finalizers after the Go program exits
-status: "🔲"
+status: "✅"
 model: sonnet
-depends-on: [2610021800]
 summary: >-
   Once the wasm Go program exits (a panic in a
   `js.FuncOf` callback ends it), each session object
@@ -50,26 +49,44 @@ blocks. Other options:
 - Ship the wrapper in the JS loader that hosts already
   include (the Obsidian plugin and the npm wrapper),
   and pass it to the engine.
+- Make the cleanup callback a native function that
+  cannot reach Go: `Array.prototype.push` bound to a
+  private queue. Go drains the queue at the start of
+  each engine call.
+
+Chosen: the native push queue. It needs no plan
+2610021800 and no loader change. A collected session
+is freed on the next engine call rather than at
+collection time. A host that stops calling the engine
+does not lose memory to this delay: Go's own collector
+runs only during engine calls, and until it runs, Go
+holds the token anyway.
 
 ## Tasks
 
-1. Write a failing js/wasm or Node harness test that
+1. [x] Write a failing js/wasm or Node harness test that
    exits the Go program, drops a session object, forces
    a JS collection, and asserts that no uncaught error
-   is raised.
-2. Pick the approach (unregister on exit, or a wrapper
+   is raised. Built as
+   [after_exit.cjs](../cmd/mdsmith-wasm/testdata/after_exit.cjs),
+   run by `TestWASMFinalizerAfterExit`. It puts
+   `wasm_exec.js` in the state `runtime.wasmExit`
+   leaves, after a V8 collection has queued the cleanup
+   callbacks. It fails when no callback ran after the
+   exit, so it cannot pass without exercising the path.
+2. [x] Pick the approach (unregister on exit, or a wrapper
    from the loader), and record the choice in this plan.
-3. Implement it so the test passes.
-4. Document the behavior after exit in
+3. [x] Implement it so the test passes.
+4. [x] Document the behavior after exit in
    [engine-api.md](../docs/background/concepts/engine-api.md).
 
 ## Acceptance Criteria
 
-- [ ] Collecting a dropped session after the Go program
+- [x] Collecting a dropped session after the Go program
       exits raises no uncaught error
-- [ ] The fix uses no `eval` or `Function` constructor
-- [ ] All tests pass: `go test ./...` and
+- [x] The fix uses no `eval` or `Function` constructor
+- [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues, natively and with
       `GOOS=js GOARCH=wasm`

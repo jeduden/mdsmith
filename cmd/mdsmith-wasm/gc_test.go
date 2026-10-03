@@ -67,10 +67,48 @@ func collectUntil(t *testing.T, done func() bool) {
 }
 
 // collectGone collects until the session with the given id has left
-// sessions.
+// sessions, draining the finalizer queue each round as the next engine
+// call would.
 func collectGone(t *testing.T, id int64) {
 	t.Helper()
-	collectUntil(t, func() bool { _, ok := sessions[id]; return !ok })
+	collectUntil(t, func() bool {
+		drainFinalized()
+		_, ok := sessions[id]
+		return !ok
+	})
+}
+
+// queued reports whether id is on the finalizer queue.
+func queued(id int64) bool {
+	return finalizer.queue.Call("includes", id).Bool()
+}
+
+// TestDroppedSessionFreedOnNextCall checks that collection alone only
+// queues a dropped session's id, never calling into Go, and that each
+// engine entry point (a session method, dispose, createSession) then
+// frees it.
+func TestDroppedSessionFreedOnNextCall(t *testing.T) {
+	for name, call := range map[string]func(t *testing.T, keeper js.Value){
+		"session method": func(_ *testing.T, k js.Value) { k.Call("capabilities") },
+		"dispose":        func(_ *testing.T, k js.Value) { k.Call("dispose") },
+		"createSession": func(t *testing.T, _ js.Value) {
+			opts := js.Global().Get("Object").New()
+			sess, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
+			require.False(t, rejected, "createSession: %v", sess)
+			sess.Call("dispose")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			keeper, _ := newTestProxyWithID(t)
+			defer keeper.Call("dispose")
+			id := newDroppedSession(t)
+			collectUntil(t, func() bool { return queued(id) })
+			require.Contains(t, sessions, id, "collection queues the id and frees nothing")
+			call(t, keeper)
+			assert.NotContains(t, sessions, id)
+			assert.Zero(t, finalizer.queue.Length(), "the queue is drained")
+		})
+	}
 }
 
 // collectDropped drops a control session and collects until it has left
@@ -134,14 +172,14 @@ func countCalls(t *testing.T, fn js.Value, n *int) js.Value {
 
 func TestExplicitDisposeCancelsFinalizer(t *testing.T) {
 	sharedMethods() // creates the registry, so the seams hold its methods
-	oldReg, oldUnreg := registerFinalizer, unregisterFinalizer
+	old := finalizer
 	registers, unregisters := 0, 0
-	countReg := countCalls(t, oldReg, &registers)
-	countUnreg := countCalls(t, oldUnreg, &unregisters)
+	countReg := countCalls(t, old.register, &registers)
+	countUnreg := countCalls(t, old.unregister, &unregisters)
 	// Registered after countCalls, so the seams are restored before the
 	// counting funcs are released.
-	t.Cleanup(func() { registerFinalizer, unregisterFinalizer = oldReg, oldUnreg })
-	registerFinalizer, unregisterFinalizer = countReg, countUnreg
+	t.Cleanup(func() { finalizer = old })
+	finalizer.register, finalizer.unregister = countReg, countUnreg
 
 	// cycle returns the id of a session created and then disposed.
 	cycle := func() int64 {
@@ -167,20 +205,26 @@ func TestExplicitDisposeCancelsFinalizer(t *testing.T) {
 	assert.Contains(t, sessions, id, "a disposed session's finalizer never fires")
 }
 
-func TestFinalizeSession_DisposesLiveIDOnce(t *testing.T) {
+// enqueue pushes v onto the finalizer queue, as the registry's cleanup
+// callback does.
+func enqueue(v js.Value) { finalizer.queue.Call("push", v) }
+
+func TestDrainFinalized_DisposesLiveIDOnce(t *testing.T) {
 	proxy, id := newTestProxyWithID(t)
 	defer proxy.Call("dispose")
-	finalizeSession(js.Undefined(), []js.Value{js.ValueOf(id)})
+	enqueue(js.ValueOf(id))
+	enqueue(js.ValueOf(id))
+	assert.NotPanics(t, drainFinalized, "a repeated id is disposed once")
 	assert.NotContains(t, sessions, id)
-	assert.NotPanics(t, func() { finalizeSession(js.Undefined(), []js.Value{js.ValueOf(id)}) })
-	assert.NotPanics(t, func() { finalizeSession(js.Undefined(), nil) })
+	assert.Zero(t, finalizer.queue.Length())
+	assert.NotPanics(t, drainFinalized, "an empty queue is a no-op")
 }
 
-// TestFinalizeSession_IgnoresNonIDHeldValue passes held values that are
+// TestDrainFinalized_IgnoresNonIDHeldValue queues held values that are
 // not an integer id, as only a FinalizationRegistry patched before load
 // could. A panic in a js.FuncOf callback ends the Go program and every
 // session with it, so each must dispose nothing instead.
-func TestFinalizeSession_IgnoresNonIDHeldValue(t *testing.T) {
+func TestDrainFinalized_IgnoresNonIDHeldValue(t *testing.T) {
 	proxy, id := newTestProxyWithID(t)
 	defer proxy.Call("dispose")
 	for _, v := range []js.Value{
@@ -189,9 +233,21 @@ func TestFinalizeSession_IgnoresNonIDHeldValue(t *testing.T) {
 		js.Global().Get("BigInt").Invoke(1),
 		js.Global().Get("NaN"),
 	} {
-		assert.NotPanics(t, func() { finalizeSession(js.Undefined(), []js.Value{v}) })
+		enqueue(v)
 	}
+	assert.NotPanics(t, drainFinalized)
 	assert.Contains(t, sessions, id, "a non-id held value disposes nothing")
+	assert.Zero(t, finalizer.queue.Length())
+}
+
+// TestDrainFinalized_NoQueue checks a host with no usable registry,
+// where there is no queue, drains nothing without a JS exception.
+func TestDrainFinalized_NoQueue(t *testing.T) {
+	sharedMethods()
+	old := finalizer
+	t.Cleanup(func() { finalizer = old })
+	finalizer = sessionFinalizer{}
+	assert.NotPanics(t, drainFinalized)
 }
 
 func TestDisposeSession(t *testing.T) {
@@ -240,23 +296,22 @@ func recordFuncs(t *testing.T) *[]js.Func {
 }
 
 // TestBindFinalizer checks the real FinalizationRegistry yields bound
-// register and unregister funcs, and that a host whose registry is
-// missing or unusable (not a constructor, or a stub without register or
-// unregister) gets undefined for both instead of a JS exception, which
-// in main would stop the engine from loading. The finalizer func made
-// for a failed registry is released, and the test releases the one the
-// real registry holds, so no run leaves a func behind.
+// register, unregister, and keep-alive funcs and an empty queue, and
+// that its cleanup callback is no Go func, so collection never calls
+// into Go. A host whose registry is missing or unusable (not a
+// constructor, or a stub without register or unregister) gets undefined
+// for every field instead of a JS exception, which in main would stop
+// the engine from loading.
 func TestBindFinalizer(t *testing.T) {
 	sharedMethods() // captures bindTo, which bindFinalizer binds through
 	made := recordFuncs(t)
-	released := recordReleases(t)
-	reg, unreg, keep := bindFinalizer(js.Global().Get("FinalizationRegistry"))
-	assert.Equal(t, js.TypeFunction, reg.Type())
-	assert.Equal(t, js.TypeFunction, unreg.Type())
-	assert.Equal(t, js.TypeFunction, keep.Type())
-	require.Len(t, *made, 1, "one finalizer func per registry")
-	// The registry holds no entry, so its callback never runs.
-	t.Cleanup((*made)[0].Release)
+	f := bindFinalizer(js.Global().Get("FinalizationRegistry"))
+	assert.Equal(t, js.TypeFunction, f.register.Type())
+	assert.Equal(t, js.TypeFunction, f.unregister.Type())
+	assert.Equal(t, js.TypeFunction, f.keep.Type())
+	require.True(t, js.Global().Get("Array").Call("isArray", f.queue).Bool(), "queue is an array")
+	assert.Zero(t, f.queue.Length())
+	assert.Empty(t, *made, "the cleanup callback is no Go func")
 
 	fn := js.Global().Get("Function")
 	for name, ctor := range map[string]js.Value{
@@ -267,13 +322,12 @@ func TestBindFinalizer(t *testing.T) {
 		"no unregister":     fn.New("this.register = function () {}"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			*made, *released = nil, nil
-			var reg, unreg, keep js.Value
-			require.NotPanics(t, func() { reg, unreg, keep = bindFinalizer(ctor) })
-			assert.True(t, reg.IsUndefined(), "no registry, no register")
-			assert.True(t, unreg.IsUndefined(), "no registry, no unregister")
-			assert.True(t, keep.IsUndefined(), "no registry, no keep-alive")
-			assert.Len(t, *released, len(*made), "the finalizer func of a failed registry is released")
+			var f sessionFinalizer
+			require.NotPanics(t, func() { f = bindFinalizer(ctor) })
+			assert.True(t, f.register.IsUndefined(), "no registry, no register")
+			assert.True(t, f.unregister.IsUndefined(), "no registry, no unregister")
+			assert.True(t, f.keep.IsUndefined(), "no registry, no keep-alive")
+			assert.True(t, f.queue.IsUndefined(), "no registry, no queue")
 		})
 	}
 }
@@ -284,9 +338,9 @@ func TestBindFinalizer(t *testing.T) {
 // the only way to free a session.
 func TestSessionWithoutFinalizationRegistry(t *testing.T) {
 	sharedMethods()
-	oldReg, oldUnreg, oldKeep := registerFinalizer, unregisterFinalizer, keepTokenAlive
-	t.Cleanup(func() { registerFinalizer, unregisterFinalizer, keepTokenAlive = oldReg, oldUnreg, oldKeep })
-	registerFinalizer, unregisterFinalizer, keepTokenAlive = js.Undefined(), js.Undefined(), js.Undefined()
+	old := finalizer
+	t.Cleanup(func() { finalizer = old })
+	finalizer = sessionFinalizer{}
 
 	var proxy js.Value
 	var id int64
@@ -298,19 +352,19 @@ func TestSessionWithoutFinalizationRegistry(t *testing.T) {
 
 // TestBindMethods_TokenOnDisposeAndKeepAlive checks the token's two
 // holders: dispose is bound to it, for unregister, and every other
-// method is a keepTokenAlive key whose value is the token, so the token
+// method is a finalizer.keep key whose value is the token, so the token
 // lives as long as any method without riding along on each call.
 func TestBindMethods_TokenOnDisposeAndKeepAlive(t *testing.T) {
 	sharedMethods()
-	oldKeep := keepTokenAlive
-	t.Cleanup(func() { keepTokenAlive = oldKeep })
+	old := finalizer
+	t.Cleanup(func() { finalizer = old })
 	var keys, vals []js.Value
 	rec := js.FuncOf(func(_ js.Value, args []js.Value) any {
 		keys, vals = append(keys, args[0]), append(vals, args[1])
 		return nil
 	})
 	t.Cleanup(rec.Release)
-	keepTokenAlive = rec.Value
+	finalizer.keep = rec.Value
 
 	proxy := js.Global().Get("Object").New()
 	tok := js.Global().Get("Object").New()
