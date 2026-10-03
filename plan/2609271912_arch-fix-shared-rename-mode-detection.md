@@ -108,6 +108,13 @@ this duplication:
     a `NothingToRenameError{Kind, Name}` for both kinds, so
     the CLI exits 1 with `nothing to rename for label
     "docs"` and `Session.Rename` errors with the same text.
+12. [x] Review round 2: both hosts hard-coded "heading or
+    label" in their selector messages, flag help, and
+    ambiguity hints. `refactor.RenameKinds` is now the one
+    list `ParseRenameKind` accepts, and
+    `refactor.RenameKindList(verb)` renders it, so every
+    host message names a new kind without an edit. The
+    rendered text is unchanged.
 
 ## Acceptance Criteria
 

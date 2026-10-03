@@ -93,7 +93,7 @@ func TestSession_Rename_InvalidAs(t *testing.T) {
 	s := newRefactorSession(t, map[string][]byte{"a.md": src})
 	_, err := s.Rename("a.md", src, "bogus", "Setup", "Install")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "heading")
+	assert.Equal(t, `rename: as must be "heading" or "label", got "bogus"`, err.Error())
 }
 
 func TestSession_Rename_HeadingNotFound(t *testing.T) {

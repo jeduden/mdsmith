@@ -131,7 +131,7 @@ func parseRenameFlags(args []string) (renameOptions, []string, error) {
 	fs.StringVarP(&opts.configPath, "config", "c", "", "Override config file path")
 	fs.StringVarP(&opts.format, "format", "f", "text", "Output format: text, json")
 	fs.StringVar(&opts.as, "as", "",
-		"What to rename: heading or label (auto-detected when omitted)")
+		"What to rename: "+refactor.RenameKindList("%s")+" (auto-detected when omitted)")
 	fs.BoolVar(&opts.dryRun, "dry-run", false, "Print the edits without writing them")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&followSymlinks, "follow-symlinks", false,
@@ -144,7 +144,7 @@ func parseRenameFlags(args []string) (renameOptions, []string, error) {
 		fmt.Fprint(os.Stderr, "Usage: mdsmith rename [flags] <file> <old> <new>\n\n"+
 			"Retitle a heading (rewriting every workspace anchor that targets it)\n"+
 			"or rename a link-reference label (the def and every use in the file).\n"+
-			"The kind is auto-detected; pass --as heading or --as label to force it.\n"+
+			"The kind is auto-detected; pass "+refactor.RenameKindList("--as %s")+" to force it.\n"+
 			"To relocate a file, use mdsmith move.\n\n"+
 			"  mdsmith rename docs/a.md \"Old Title\" \"New Title\"\n"+
 			"  mdsmith rename docs/a.md --as label oldlabel newlabel\n\n"+
@@ -174,7 +174,8 @@ func runRename(args []string) int {
 	}
 	kind, err := refactor.ParseRenameKind(opts.as)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: --as must be heading or label, got %q\n", opts.as)
+		fmt.Fprintf(os.Stderr, "mdsmith: --as must be %s, got %q\n",
+			refactor.RenameKindList("%s"), opts.as)
 		return 2
 	}
 	if len(posArgs) != 3 {
@@ -275,8 +276,8 @@ func renameExitCode(err error, target, oldName, newName string) int {
 	switch {
 	case errors.Is(err, refactor.ErrAmbiguousRename):
 		fmt.Fprintf(os.Stderr,
-			"mdsmith: %q matches both a heading and a link-ref label in %s; pass --as heading or --as label\n",
-			oldName, target)
+			"mdsmith: %q matches both a heading and a link-ref label in %s; pass %s\n",
+			oldName, target, refactor.RenameKindList("--as %s"))
 		return 2
 	case errors.Is(err, refactor.ErrNoRenameTarget):
 		if looksLikePath(oldName) || looksLikePath(newName) {

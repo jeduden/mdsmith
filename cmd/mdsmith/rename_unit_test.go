@@ -46,8 +46,13 @@ func TestRunRename_FlagAndArgValidation(t *testing.T) {
 	renameWorkspace(t)
 	// --help is a pflag ErrHelp: reportFlagParseErr returns 0.
 	assert.Equal(t, 0, runRename([]string{"--help"}))
-	// Invalid --as value.
-	assert.Equal(t, 2, runRename([]string{"--as", "bogus", "a.md", "O", "N"}))
+	// Invalid --as value: the message lists every valid kind.
+	var code int
+	stderr := captureStderr(func() {
+		code = runRename([]string{"--as", "bogus", "a.md", "O", "N"})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, `mdsmith: --as must be heading or label, got "bogus"`)
 	// Wrong positional count.
 	assert.Equal(t, 2, runRename([]string{"--as", "heading", "a.md", "Old"}))
 	// Not workspace-relative.

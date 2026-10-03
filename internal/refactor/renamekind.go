@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 )
 
 // RenameKind names the symbol a rename targets. Its values are the
@@ -17,6 +19,43 @@ const (
 	KindHeading RenameKind = "heading"
 	KindLabel   RenameKind = "label"
 )
+
+// renameKinds is the one list of explicit kinds every host accepts;
+// ParseRenameKind, InvalidRenameKindError, and the hosts' selector
+// messages all derive from it.
+var renameKinds = []RenameKind{KindHeading, KindLabel}
+
+// RenameKinds returns a copy of the explicit kinds ParseRenameKind
+// accepts, in the order hosts list them.
+func RenameKinds() []RenameKind {
+	return append([]RenameKind(nil), renameKinds...)
+}
+
+// RenameKindList renders RenameKinds as an English "a or b" list,
+// formatting each kind with verb ("%s" bare, "%q" quoted), so a host's
+// invalid-selector message names every valid kind without
+// hard-coding them.
+func RenameKindList(verb string) string {
+	parts := make([]string, len(renameKinds))
+	for i, k := range renameKinds {
+		parts[i] = fmt.Sprintf(verb, string(k))
+	}
+	return joinOr(parts)
+}
+
+// joinOr joins parts as an English disjunction: "a", "a or b",
+// "a, b, or c".
+func joinOr(parts []string) string {
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	case 2:
+		return parts[0] + " or " + parts[1]
+	}
+	return strings.Join(parts[:len(parts)-1], ", ") + ", or " + parts[len(parts)-1]
+}
 
 // Sentinel outcomes of Rename that are not engine conflicts. Hosts
 // map them to their own message text and exit code or error value.
@@ -37,7 +76,7 @@ var (
 type InvalidRenameKindError struct{ Kind string }
 
 func (e InvalidRenameKindError) Error() string {
-	return fmt.Sprintf("rename kind must be %q or %q, got %q", KindHeading, KindLabel, e.Kind)
+	return fmt.Sprintf("rename kind must be %s, got %q", RenameKindList("%q"), e.Kind)
 }
 
 // NothingToRenameError reports that renaming the Kind symbol Name
@@ -75,8 +114,8 @@ func (e MissingSymbolError) Error() string {
 // ParseRenameKind validates a host's explicit kind selector. The
 // empty string is valid and means auto-detect.
 func ParseRenameKind(s string) (RenameKind, error) {
-	switch k := RenameKind(s); k {
-	case "", KindHeading, KindLabel:
+	k := RenameKind(s)
+	if k == "" || slices.Contains(renameKinds, k) {
 		return k, nil
 	}
 	return "", InvalidRenameKindError{Kind: s}

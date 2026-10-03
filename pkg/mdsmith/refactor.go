@@ -56,7 +56,8 @@ type RefactorPlan struct {
 func (s *Session) Rename(uri string, source []byte, as, oldName, newName string) (RefactorPlan, error) {
 	kind, err := refactor.ParseRenameKind(as)
 	if err != nil {
-		return RefactorPlan{}, fmt.Errorf("rename: as must be \"heading\" or \"label\", got %q", as)
+		return RefactorPlan{}, fmt.Errorf("rename: as must be %s, got %q",
+			refactor.RenameKindList("%q"), as)
 	}
 	ws := s.buildRefactorWorkspace(uri, source)
 	key := index.NormalizePath(uri)
@@ -91,7 +92,8 @@ func renameError(err error, uri, oldName string) error {
 	switch {
 	case errors.Is(err, refactor.ErrAmbiguousRename):
 		return fmt.Errorf(
-			"%q matches both a heading and a link-ref label; pass as=\"heading\" or as=\"label\"", oldName)
+			"%q matches both a heading and a link-ref label; pass %s",
+			oldName, refactor.RenameKindList("as=%q"))
 	case errors.Is(err, refactor.ErrNoRenameTarget):
 		return fmt.Errorf("no heading or link-ref label %q", oldName)
 	case errors.As(err, &missing):

@@ -20,6 +20,31 @@ func TestParseRenameKind(t *testing.T) {
 	assert.Contains(t, err.Error(), `"bogus"`)
 }
 
+func TestRenameKinds(t *testing.T) {
+	assert.Equal(t, []RenameKind{KindHeading, KindLabel}, RenameKinds())
+	for _, k := range RenameKinds() {
+		got, err := ParseRenameKind(string(k))
+		require.NoError(t, err, k)
+		assert.Equal(t, k, got)
+	}
+	a := RenameKinds()
+	a[0] = "mutated"
+	assert.Equal(t, KindHeading, RenameKinds()[0], "callers get a copy")
+}
+
+func TestRenameKindList(t *testing.T) {
+	assert.Equal(t, "heading or label", RenameKindList("%s"))
+	assert.Equal(t, `"heading" or "label"`, RenameKindList("%q"))
+	assert.Equal(t, "--as heading or --as label", RenameKindList("--as %s"))
+}
+
+func TestJoinOr(t *testing.T) {
+	assert.Equal(t, "", joinOr(nil))
+	assert.Equal(t, "a", joinOr([]string{"a"}))
+	assert.Equal(t, "a or b", joinOr([]string{"a", "b"}))
+	assert.Equal(t, "a, b, or c", joinOr([]string{"a", "b", "c"}))
+}
+
 func TestDetectRenameKind(t *testing.T) {
 	tests := []struct {
 		name string
