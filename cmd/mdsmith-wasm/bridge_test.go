@@ -483,6 +483,23 @@ func TestAsyncMethod(t *testing.T) {
 		require.True(t, rejected)
 		assert.Equal(t, "boom", v.Get("message").String())
 	})
+	t.Run("an error without a code leaves code unset", func(t *testing.T) {
+		m := asyncMethod(func(*mdsmith.Session, []js.Value) (any, error) {
+			return nil, errors.New("boom")
+		})
+		v, rejected := awaitPromise(t, m.call(nil, nil))
+		require.True(t, rejected)
+		assert.True(t, v.Get("code").IsUndefined())
+	})
+	t.Run("a coded error sets the Error's code", func(t *testing.T) {
+		m := asyncMethod(func(*mdsmith.Session, []js.Value) (any, error) {
+			return nil, mdsmith.ErrNothingToRename
+		})
+		v, rejected := awaitPromise(t, m.call(nil, nil))
+		require.True(t, rejected)
+		assert.Equal(t, "nothing to rename", v.Get("message").String())
+		assert.Equal(t, mdsmith.ErrorCodeNothingToRename, v.Get("code").String())
+	})
 	// That fn never runs after dispose is sharedFunc's job; see
 	// TestSharedFunc.
 	t.Run("disposed result rejects", func(t *testing.T) {
@@ -973,4 +990,29 @@ func recordReleases(t *testing.T) *[]js.Value {
 		oldRelease(f)
 	}
 	return released
+}
+
+// A same-name rename rejects with code "nothing-to-rename", so a JS
+// host can ignore the harmless no-op without matching message text.
+func TestProxyRename_NothingToRenameHasCode(t *testing.T) {
+	proxy := newTestProxy(t)
+	defer proxy.Call("dispose")
+	v, rejected := awaitPromise(t, proxy.Call("rename", "a.md", "# A\n", "", "A", "A"))
+	require.True(t, rejected)
+	assert.Equal(t, `nothing to rename for heading "A"`, v.Get("message").String())
+	assert.Equal(t, "nothing-to-rename", v.Get("code").String())
+
+	v, rejected = awaitPromise(t, proxy.Call("rename", "a.md", "# A\n", "", "Z", "B"))
+	require.True(t, rejected)
+	assert.True(t, v.Get("code").IsUndefined(), "a real failure has no code")
+}
+
+func TestJSErrorFor(t *testing.T) {
+	e := jsErrorFor(errors.New("boom"))
+	assert.True(t, e.InstanceOf(js.Global().Get("Error")))
+	assert.Equal(t, "boom", e.Get("message").String())
+	assert.True(t, e.Get("code").IsUndefined())
+
+	e = jsErrorFor(mdsmith.ErrNothingToRename)
+	assert.Equal(t, mdsmith.ErrorCodeNothingToRename, e.Get("code").String())
 }

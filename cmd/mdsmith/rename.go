@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -81,30 +82,43 @@ type renameSummary struct {
 // under is its workspace-relative path — the same string the CLI
 // writes back to disk.
 type cliRenameWorkspace struct {
-	idx      *index.Index
+	// idx builds the transient index on its first call and returns
+	// the same index after that. Only the engine's edge queries call
+	// it, so a label rename — and Resolve or applyPlan — reads no
+	// file beyond the ones it touches.
+	idx      func() *index.Index
 	relToAbs map[string]string
 	rootDir  string
 	maxBytes int64
 }
 
+// index returns the lazily built index, or nil for a workspace built
+// without one, whose nil-receiver edge queries then answer nothing.
+func (w cliRenameWorkspace) index() *index.Index {
+	if w.idx == nil {
+		return nil
+	}
+	return w.idx()
+}
+
 // Trivial index pass-through; no dedicated test by design (covered
 // by the heading-rename behavioral tests via the engine).
 func (w cliRenameWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
-	return w.idx.IncomingEdges(file, slug)
+	return w.index().IncomingEdges(file, slug)
 }
 
 // Trivial index pass-through; no dedicated test by design.
 func (w cliRenameWorkspace) IncomingPathEdges(file string) []index.Edge {
-	return w.idx.IncomingPathEdges(file)
+	return w.index().IncomingPathEdges(file)
 }
 
 // Trivial index pass-through; no dedicated test by design.
 func (w cliRenameWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
-	return w.idx.IncomingWikilinkEdges(stem)
+	return w.index().IncomingWikilinkEdges(stem)
 }
 
 // Trivial index pass-through; no dedicated test by design.
-func (w cliRenameWorkspace) Files() []string { return w.idx.Files() }
+func (w cliRenameWorkspace) Files() []string { return w.index().Files() }
 
 func (w cliRenameWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
@@ -130,7 +144,7 @@ func parseRenameFlags(args []string) (renameOptions, []string, error) {
 	fs.StringVarP(&opts.configPath, "config", "c", "", "Override config file path")
 	fs.StringVarP(&opts.format, "format", "f", "text", "Output format: text, json")
 	fs.StringVar(&opts.as, "as", "",
-		"What to rename: heading or label (auto-detected when omitted)")
+		"What to rename: "+refactor.RenameKindList("%s")+" (auto-detected when omitted)")
 	fs.BoolVar(&opts.dryRun, "dry-run", false, "Print the edits without writing them")
 	fs.BoolVar(&noGitignore, "no-gitignore", false, "Disable .gitignore filtering when walking directories")
 	fs.BoolVar(&followSymlinks, "follow-symlinks", false,
@@ -143,11 +157,11 @@ func parseRenameFlags(args []string) (renameOptions, []string, error) {
 		fmt.Fprint(os.Stderr, "Usage: mdsmith rename [flags] <file> <old> <new>\n\n"+
 			"Retitle a heading (rewriting every workspace anchor that targets it)\n"+
 			"or rename a link-reference label (the def and every use in the file).\n"+
-			"The kind is auto-detected; pass --as heading or --as label to force it.\n"+
+			"The kind is auto-detected; pass "+refactor.RenameKindList("--as %s")+" to force it.\n"+
 			"To relocate a file, use mdsmith move.\n\n"+
 			"  mdsmith rename docs/a.md \"Old Title\" \"New Title\"\n"+
 			"  mdsmith rename docs/a.md --as label oldlabel newlabel\n\n"+
-			"Exit codes: 0 rewritten, 1 no match, 2 error or conflict\n\nFlags:\n")
+			"Exit codes: 0 rewritten, 1 no match or nothing to rename, 2 error or conflict\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 
@@ -171,8 +185,10 @@ func runRename(args []string) int {
 			return code
 		}
 	}
-	if opts.as != "" && opts.as != "heading" && opts.as != "label" {
-		fmt.Fprintf(os.Stderr, "mdsmith: --as must be heading or label, got %q\n", opts.as)
+	kind, err := refactor.ParseRenameKind(opts.as)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mdsmith: --as must be %s, got %q\n",
+			refactor.RenameKindList("%s"), opts.as)
 		return 2
 	}
 	if len(posArgs) != 3 {
@@ -191,15 +207,15 @@ func runRename(args []string) int {
 		return code
 	}
 
-	plan, code := computeRenamePlan(ws, target, src, oldName, newName, opts.as)
+	plan, code := computeRenamePlan(ws, target, src, oldName, newName, kind)
 	if code >= 0 {
 		return code
 	}
 	return applyPlan(os.Stdout, ws, plan, opts.format, opts.dryRun)
 }
 
-// buildRenameWorkspace discovers the workspace, builds the transient
-// index, and reads the target file's bytes. A non-negative return
+// buildRenameWorkspace discovers the workspace, prepares the lazy
+// transient index, and reads the target file's bytes. A non-negative return
 // code means stop (1 = empty workspace, 2 = error); src is the target
 // source on the success path.
 func buildRenameWorkspace(opts renameOptions, target string) (cliRenameWorkspace, []byte, int) {
@@ -215,9 +231,10 @@ func buildRenameWorkspace(opts renameOptions, target string) (cliRenameWorkspace
 	return ws, src, -1
 }
 
-// buildWorkspace discovers the workspace and builds the transient index
-// shared by `rename` and `move`, without resolving any particular
-// target file (each command resolves its own). A non-negative return
+// buildWorkspace discovers the workspace and prepares the transient
+// index shared by `rename` and `move` — built on first use, so a
+// rename that never queries edges never indexes — without resolving
+// any particular target file (each command resolves its own). A non-negative return
 // code means stop (1 = empty workspace, 2 = error).
 func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 	cfg, cfgPath, _, files, code := discoverFiles(opts.configPath, false, opts.walk)
@@ -241,100 +258,63 @@ func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 		relToAbs[rel] = srcPath
 		rels = append(rels, rel)
 	}
-	idx := index.New(rootDir)
-	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
-		return bytelimit.ReadFileLimited(relToAbs[rel], maxBytes)
+	idx := sync.OnceValue(func() *index.Index {
+		idx := index.New(rootDir)
+		idx.BuildSerial(rels, func(rel string) ([]byte, error) {
+			return bytelimit.ReadFileLimited(relToAbs[rel], maxBytes)
+		})
+		return idx
 	})
 	return cliRenameWorkspace{idx: idx, relToAbs: relToAbs, rootDir: rootDir, maxBytes: maxBytes}, -1
 }
 
-// computeRenamePlan resolves the rename mode — explicit --as, or
-// auto-detected from src — and runs the engine, mapping a typed engine
-// error to the CLI exit contract: 1 when an explicit mode finds
-// nothing, 2 on a conflict, invalid input, an ambiguous auto-detect, or
-// a request that looks like a file move.
+// computeRenamePlan runs the shared refactor.Rename dispatch — kind
+// from --as, or "" to auto-detect from src — and maps its outcome to
+// the CLI exit contract: 1 when an explicit kind finds nothing or the
+// rename has no effect, 2 on a conflict, invalid input, an ambiguous
+// or absent auto-detect, or a request that looks like a file move.
 func computeRenamePlan(
 	ws cliRenameWorkspace, target string, src []byte,
-	oldName, newName, as string,
+	oldName, newName string, kind refactor.RenameKind,
 ) (refactor.Plan, int) {
-	mode := as
-	if mode == "" {
-		m, code := detectRenameMode(target, src, oldName, newName)
-		if code >= 0 {
-			return refactor.Plan{}, code
-		}
-		mode = m
+	plan, err := refactor.Rename(ws, target, src, kind, oldName, newName)
+	if err != nil {
+		return refactor.Plan{}, renameExitCode(err, target, oldName, newName)
 	}
-	if mode == "heading" {
-		return headingPlan(ws, target, src, oldName, newName)
-	}
-	return linkRefPlan(target, src, oldName, newName)
+	return plan, -1
 }
 
-// detectRenameMode auto-detects whether oldName names a heading or a
-// link-ref label in src. It returns the mode with code -1, or a
-// non-negative exit code when the choice is ambiguous (both match),
-// or absent (neither) — steering a path-shaped request to `mdsmith
-// move`.
-func detectRenameMode(target string, src []byte, oldName, newName string) (string, int) {
-	_, isHeading := refactor.FindHeadingLine(src, oldName)
-	isLabel := refactor.HasLinkRef(src, oldName)
+// renameExitCode prints the CLI message for a refactor.Rename error
+// and returns its exit code. An absent auto-detect steers a
+// path-shaped request to `mdsmith move`.
+func renameExitCode(err error, target, oldName, newName string) int {
+	var missing refactor.MissingSymbolError
 	switch {
-	case isHeading && isLabel:
+	case errors.Is(err, refactor.ErrAmbiguousRename):
 		fmt.Fprintf(os.Stderr,
-			"mdsmith: %q matches both a heading and a link-ref label in %s; pass --as heading or --as label\n",
-			oldName, target)
-		return "", 2
-	case isHeading:
-		return "heading", -1
-	case isLabel:
-		return "label", -1
-	}
-	if looksLikePath(oldName) || looksLikePath(newName) {
+			"mdsmith: %q matches both %s in %s; pass %s\n",
+			oldName, refactor.RenameSymbolList("and", true), target, refactor.RenameKindList("--as %s"))
+		return 2
+	case errors.Is(err, refactor.ErrNoRenameTarget):
+		if looksLikePath(oldName) || looksLikePath(newName) {
+			fmt.Fprintf(os.Stderr,
+				"mdsmith: %q looks like a file path; to relocate a file use: mdsmith move %s %s\n",
+				firstPathish(oldName, newName), oldName, newName)
+			return 2
+		}
 		fmt.Fprintf(os.Stderr,
-			"mdsmith: %q looks like a file path; to relocate a file use: mdsmith move %s %s\n",
-			firstPathish(oldName, newName), oldName, newName)
-		return "", 2
-	}
-	fmt.Fprintf(os.Stderr,
-		"mdsmith: no heading or link-ref label %q in %s (to relocate a file, use mdsmith move)\n",
-		oldName, target)
-	return "", 2
-}
-
-// headingPlan runs the heading rename, mapping a missing heading to
-// exit 1 and an engine conflict to exit 2.
-func headingPlan(ws cliRenameWorkspace, target string, src []byte, oldName, newName string) (refactor.Plan, int) {
-	line, ok := refactor.FindHeadingLine(src, oldName)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "mdsmith: no heading %q in %s\n", oldName, target)
-		return refactor.Plan{}, 1
-	}
-	plan, err := refactor.Heading(ws, target, target, src, line, oldName, newName)
-	if err != nil {
+			"mdsmith: no %s %q in %s (to relocate a file, use mdsmith move)\n",
+			refactor.RenameSymbolList("or", false), oldName, target)
+		return 2
+	case errors.Is(err, refactor.ErrNothingToRename):
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return refactor.Plan{}, 2
+		return 1
+	case errors.As(err, &missing):
+		fmt.Fprintf(os.Stderr, "mdsmith: %v in %s\n", missing, target)
+		return 1
 	}
-	if len(plan.Edits) == 0 {
-		fmt.Fprintf(os.Stderr, "mdsmith: nothing to rename for heading %q\n", oldName)
-		return refactor.Plan{}, 1
-	}
-	return plan, -1
-}
-
-// linkRefPlan runs the link-ref rename, mapping a missing label to exit
-// 1 and an engine conflict or invalid label to exit 2.
-func linkRefPlan(target string, src []byte, oldName, newName string) (refactor.Plan, int) {
-	plan, err := refactor.LinkRef(target, src, oldName, newName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return refactor.Plan{}, 2
-	}
-	if len(plan.Edits[target]) == 0 {
-		fmt.Fprintf(os.Stderr, "mdsmith: no link reference %q in %s\n", oldName, target)
-		return refactor.Plan{}, 1
-	}
-	return plan, -1
+	fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+	return 2
 }
 
 // looksLikePath reports whether s reads as a file path rather than a

@@ -245,7 +245,8 @@ type methodImpl struct {
 
 // asyncMethod builds the entry for a method that returns a Promise.
 // fn runs inside the Promise executor; a non-nil error rejects with
-// Error(err.Error()), otherwise the Promise resolves to toJS(value). A
+// Error(err.Error()) — carrying mdsmith.ErrorCode(err) as its `code`
+// when the error has one — otherwise the Promise resolves to toJS(value). A
 // JS exception raised on the way (a js.Error panic) rejects with that
 // exception, as newPromise does for every executor. After dispose the
 // Promise rejects with Error("session disposed").
@@ -258,7 +259,7 @@ func asyncMethod(fn func(sess *mdsmith.Session, args []js.Value) (any, error)) m
 			return newPromise(func(resolve, reject func(any)) {
 				v, err := fn(sess, args)
 				if err != nil {
-					reject(jsError(err.Error()))
+					reject(jsErrorFor(err))
 					return
 				}
 				resolve(toJS(v))

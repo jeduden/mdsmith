@@ -46,8 +46,13 @@ func TestRunRename_FlagAndArgValidation(t *testing.T) {
 	renameWorkspace(t)
 	// --help is a pflag ErrHelp: reportFlagParseErr returns 0.
 	assert.Equal(t, 0, runRename([]string{"--help"}))
-	// Invalid --as value.
-	assert.Equal(t, 2, runRename([]string{"--as", "bogus", "a.md", "O", "N"}))
+	// Invalid --as value: the message lists every valid kind.
+	var code int
+	stderr := captureStderr(func() {
+		code = runRename([]string{"--as", "bogus", "a.md", "O", "N"})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, `mdsmith: --as must be heading or label, got "bogus"`)
 	// Wrong positional count.
 	assert.Equal(t, 2, runRename([]string{"--as", "heading", "a.md", "Old"}))
 	// Not workspace-relative.
@@ -234,80 +239,6 @@ func TestBuildWorkspace(t *testing.T) {
 	})
 }
 
-func TestDetectRenameMode(t *testing.T) {
-	src := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
-	mode, code := detectRenameMode("a.md", src, "Setup", "Install")
-	assert.Equal(t, "heading", mode)
-	assert.Equal(t, -1, code)
-
-	mode, code = detectRenameMode("a.md", src, "docs", "manual")
-	assert.Equal(t, "label", mode)
-	assert.Equal(t, -1, code)
-
-	both := []byte("# docs\n\nSee [docs].\n\n[docs]: u\n")
-	stderr := captureStderr(func() {
-		_, code = detectRenameMode("a.md", both, "docs", "x")
-	})
-	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "matches both a heading and a link-ref label")
-
-	stderr = captureStderr(func() {
-		_, code = detectRenameMode("a.md", src, "ghost", "x")
-	})
-	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, `no heading or link-ref label "ghost"`)
-
-	// A path-shaped request with no matching symbol is steered to move.
-	stderr = captureStderr(func() {
-		_, code = detectRenameMode("a.md", src, "old.md", "new.md")
-	})
-	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "mdsmith move old.md new.md")
-}
-
-func TestHeadingPlan(t *testing.T) {
-	renameWorkspace(t)
-	ws, src, code := buildRenameWorkspace(renameOptions{}, "a.md")
-	require.Equal(t, -1, code)
-
-	plan, c := headingPlan(ws, "a.md", src, "Setup", "Install")
-	assert.Equal(t, -1, c)
-	assert.Contains(t, plan.Edits, "a.md")
-	// The anchor link in b.md is rewritten too.
-	assert.Contains(t, plan.Edits, "b.md")
-
-	// A no-op rename produces no edits and exits 1.
-	_, c = headingPlan(ws, "a.md", src, "Setup", "Setup")
-	assert.Equal(t, 1, c, "no edits exits 1")
-
-	_, c = headingPlan(ws, "a.md", src, "Ghost", "X")
-	assert.Equal(t, 1, c, "missing heading exits 1")
-
-	// A new name that slugs onto an existing heading is an engine error.
-	two := []byte("# Setup\n\n# Other\n")
-	stderr := captureStderr(func() {
-		_, c = headingPlan(ws, "a.md", two, "Setup", "Other")
-	})
-	assert.Equal(t, 2, c)
-	assert.Contains(t, stderr, "collide")
-}
-
-func TestLinkRefPlan(t *testing.T) {
-	src := []byte("See [docs].\n\n[docs]: u\n")
-	plan, c := linkRefPlan("a.md", src, "docs", "manual")
-	assert.Equal(t, -1, c)
-	assert.Len(t, plan.Edits["a.md"], 2)
-
-	_, c = linkRefPlan("a.md", src, "ghost", "x")
-	assert.Equal(t, 1, c, "missing label exits 1")
-
-	stderr := captureStderr(func() {
-		_, c = linkRefPlan("a.md", src, "docs", "bad]name")
-	})
-	assert.Equal(t, 2, c, "invalid label rune exits 2")
-	assert.Contains(t, stderr, "label cannot contain")
-}
-
 func TestLooksLikePath(t *testing.T) {
 	assert.True(t, looksLikePath("docs/a.md"))
 	assert.True(t, looksLikePath("a.md"))
@@ -345,17 +276,99 @@ func TestResolveWriteMode(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o644), resolveWriteMode(dangling))
 }
 
+// TestComputeRenamePlan pins every exit path computeRenamePlan maps
+// from refactor.Rename: -1 with a plan on success, 1 when an explicit
+// kind finds nothing (or a rename changes no byte), 2 on an ambiguous
+// or absent auto-detect, a path-shaped request, or an engine conflict.
 func TestComputeRenamePlan(t *testing.T) {
 	renameWorkspace(t)
 	ws, src, code := buildRenameWorkspace(renameOptions{}, "a.md")
 	require.Equal(t, -1, code)
 
-	plan, c := computeRenamePlan(ws, "a.md", src, "Setup", "Install", "heading")
+	plan, c := computeRenamePlan(ws, "a.md", src, "Setup", "Install", refactor.KindHeading)
 	assert.Equal(t, -1, c)
 	assert.Contains(t, plan.Edits, "a.md")
+	// The anchor link in b.md is rewritten too.
+	assert.Contains(t, plan.Edits, "b.md")
 
-	_, c = computeRenamePlan(ws, "a.md", src, "Ghost", "X", "heading")
-	assert.Equal(t, 1, c)
+	plan, c = computeRenamePlan(ws, "a.md", src, "Setup", "Install", "")
+	assert.Equal(t, -1, c, "auto-detects the heading")
+	assert.Contains(t, plan.Edits, "b.md")
+
+	labelSrc := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
+	plan, c = computeRenamePlan(ws, "a.md", labelSrc, "docs", "manual", "")
+	assert.Equal(t, -1, c, "auto-detects the label")
+	assert.Len(t, plan.Edits["a.md"], 2)
+
+	cases := []struct {
+		name     string
+		src      []byte
+		old, neu string
+		kind     refactor.RenameKind
+		code     int
+		stderr   string
+	}{
+		{"no-op heading", src, "Setup", "Setup", "", 1, `nothing to rename for heading "Setup"`},
+		{"no-op label", labelSrc, "docs", "docs", "", 1, `nothing to rename for label "docs"`},
+		{"same-bytes heading", []byte("# *Setup*\n"), "Setup", "*Setup*", "", 1,
+			`nothing to rename for heading "Setup"`},
+		{"missing label, colliding new name", labelSrc, "ghost", "docs", refactor.KindLabel, 1,
+			`no link reference "ghost" in a.md`},
+		{"missing heading", src, "Ghost", "X", refactor.KindHeading, 1, `no heading "Ghost" in a.md`},
+		{"missing label", labelSrc, "ghost", "x", refactor.KindLabel, 1, `no link reference "ghost" in a.md`},
+		{"ambiguous", []byte("# docs\n\nSee [docs].\n\n[docs]: u\n"), "docs", "x", "", 2,
+			"matches both a heading and a link-ref label in a.md; pass --as heading or --as label"},
+		{"neither", labelSrc, "ghost", "x", "", 2, `no heading or link-ref label "ghost" in a.md`},
+		{"path-shaped", labelSrc, "old.md", "new.md", "", 2, "mdsmith move old.md new.md"},
+		{"heading collision", []byte("# Setup\n\n# Other\n"), "Setup", "Other", refactor.KindHeading, 2, "collide"},
+		{"invalid label rune", labelSrc, "docs", "bad]name", refactor.KindLabel, 2, "label cannot contain"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got int
+			stderr := captureStderr(func() {
+				_, got = computeRenamePlan(ws, "a.md", tc.src, tc.old, tc.neu, tc.kind)
+			})
+			assert.Equal(t, tc.code, got)
+			assert.Contains(t, stderr, tc.stderr)
+		})
+	}
+}
+
+// TestRenameExitCode maps each refactor.Rename outcome straight to its
+// exit code and message, without a workspace.
+func TestRenameExitCode(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      error
+		old, neu string
+		code     int
+		stderr   string
+	}{
+		{"ambiguous", refactor.ErrAmbiguousRename, "docs", "x", 2,
+			`"docs" matches both a heading and a link-ref label in a.md; pass --as heading or --as label`},
+		{"neither", refactor.ErrNoRenameTarget, "ghost", "x", 2,
+			`no heading or link-ref label "ghost" in a.md (to relocate a file, use mdsmith move)`},
+		{"neither, new name path-shaped", refactor.ErrNoRenameTarget, "ghost", "docs/new.md", 2,
+			`"docs/new.md" looks like a file path; to relocate a file use: mdsmith move ghost docs/new.md`},
+		{"nothing to rename", refactor.NothingToRenameError{Kind: refactor.KindHeading, Name: "Setup"},
+			"Setup", "Setup", 1, `nothing to rename for heading "Setup"`},
+		{"nothing to rename label", refactor.NothingToRenameError{Kind: refactor.KindLabel, Name: "docs"},
+			"docs", "docs", 1, `nothing to rename for label "docs"`},
+		{"missing symbol", refactor.MissingSymbolError{Kind: refactor.KindLabel, Name: "ghost"}, "ghost", "x", 1,
+			`no link reference "ghost" in a.md`},
+		{"engine error", refactor.ErrEmptyLabel, "docs", "", 2, "mdsmith: label cannot be empty"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got int
+			stderr := captureStderr(func() {
+				got = renameExitCode(tc.err, "a.md", tc.old, tc.neu)
+			})
+			assert.Equal(t, tc.code, got)
+			assert.Contains(t, stderr, tc.stderr)
+		})
+	}
 }
 
 func TestApplyPlan_Errors(t *testing.T) {
@@ -684,4 +697,46 @@ func TestReplaceWithStaged(t *testing.T) {
 	got, err = os.ReadFile(p)
 	require.NoError(t, err)
 	assert.Equal(t, "new", string(got))
+}
+
+// TestBuildWorkspace_IndexesOnFirstUse pins that buildWorkspace only
+// discovers files: the index is built when an engine call first needs
+// it, so a label rename (which never asks) reads no other file. A
+// link written after buildWorkspace returns shows up in the index only
+// because the index is built after it.
+func TestBuildWorkspace_IndexesOnFirstUse(t *testing.T) {
+	dir := renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"),
+		[]byte("See [go](a.md#setup).\n\nAnd [again](a.md#setup).\n"), 0o644))
+	assert.Len(t, ws.IncomingAnchorEdges("a.md", "setup"), 2, "indexed after the edit")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"), []byte("no links\n"), 0o644))
+	assert.Len(t, ws.IncomingAnchorEdges("a.md", "setup"), 2, "built once, then reused")
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, ws.Files())
+}
+
+// TestCliRenameWorkspace_EdgePassThroughs pins that the path and
+// wikilink edge queries answer from the same lazily built index as the
+// anchor query.
+func TestCliRenameWorkspace_EdgePassThroughs(t *testing.T) {
+	dir := renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"),
+		[]byte("See [go](a.md) and [[a]].\n"), 0o644))
+	assert.Len(t, ws.IncomingPathEdges("a.md"), 1)
+	assert.Len(t, ws.IncomingWikilinkEdges("a"), 1)
+}
+
+// A cliRenameWorkspace built without an index (as several unit tests
+// construct it) answers edge queries with nothing instead of panicking,
+// as the nil *index.Index it replaced did.
+func TestCliRenameWorkspace_Index_ZeroValue(t *testing.T) {
+	var ws cliRenameWorkspace
+	assert.Nil(t, ws.index())
+	assert.Empty(t, ws.IncomingAnchorEdges("a.md", "x"))
+	assert.Empty(t, ws.IncomingPathEdges("a.md"))
+	assert.Empty(t, ws.IncomingWikilinkEdges("a"))
+	assert.Empty(t, ws.Files())
 }

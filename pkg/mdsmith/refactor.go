@@ -1,6 +1,7 @@
 package mdsmith
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"path"
@@ -47,40 +48,31 @@ type RefactorPlan struct {
 // source) and rewrites every dependent reference across the workspace.
 // as selects the kind — "heading" or "label" — or "" to auto-detect
 // from source (a heading whose visible text is oldName, or a label
-// normalizing to oldName; ambiguous or absent is an error). The plan
-// carries only edits: a symbol rename never moves a file.
+// normalizing to oldName; ambiguous or absent is an error). It also
+// errors, rather than returning an empty plan, when an explicit kind
+// finds no heading or label named oldName, or when the rename would
+// have no effect (a heading or label renamed to its own text, or a
+// heading renamed to the visible text it already renders as); that
+// last error matches ErrNothingToRename, so a host can treat it as the
+// harmless no-op it is. The plan carries only edits: a symbol rename
+// never moves a file.
 func (s *Session) Rename(uri string, source []byte, as, oldName, newName string) (RefactorPlan, error) {
-	ws := s.buildRefactorWorkspace(uri, source)
+	kind, err := refactor.ParseRenameKind(as)
+	if err != nil {
+		return RefactorPlan{}, fmt.Errorf("rename: as must be %s, got %q",
+			refactor.RenameKindList("%q"), as)
+	}
+	// Lazy: only a heading rename consults the workspace, so a label
+	// rename or a failed detection never walks a large WASM vault.
+	ws := refactor.NewLazyWorkspace(func() refactor.Workspace {
+		return s.buildRefactorWorkspace(uri, source)
+	})
 	key := index.NormalizePath(uri)
-
-	mode := as
-	if mode == "" {
-		m, err := detectRenameKind(source, oldName)
-		if err != nil {
-			return RefactorPlan{}, err
-		}
-		mode = m
+	p, err := refactor.Rename(ws, key, source, kind, oldName, newName)
+	if err != nil {
+		return RefactorPlan{}, renameError(err, uri, oldName)
 	}
-	switch mode {
-	case "heading":
-		line, ok := refactor.FindHeadingLine(source, oldName)
-		if !ok {
-			return RefactorPlan{}, fmt.Errorf("no heading %q in %s", oldName, uri)
-		}
-		p, err := refactor.Heading(ws, key, key, source, line, oldName, newName)
-		if err != nil {
-			return RefactorPlan{}, err
-		}
-		return toRefactorPlan(p), nil
-	case "label":
-		p, err := refactor.LinkRef(key, source, oldName, newName)
-		if err != nil {
-			return RefactorPlan{}, err
-		}
-		return toRefactorPlan(p), nil
-	default:
-		return RefactorPlan{}, fmt.Errorf("rename: as must be \"heading\" or \"label\", got %q", as)
-	}
+	return toRefactorPlan(p), nil
 }
 
 // Move computes a RefactorPlan that relocates the workspace file src to
@@ -98,23 +90,24 @@ func (s *Session) Move(src, dst string) (RefactorPlan, error) {
 	return toRefactorPlan(p), nil
 }
 
-// detectRenameKind picks "heading" or "label" for oldName in source, or
-// errors when both or neither match — the same auto-detect the CLI's
-// rename runs.
-func detectRenameKind(source []byte, oldName string) (string, error) {
-	_, isHeading := refactor.FindHeadingLine(source, oldName)
-	isLabel := refactor.HasLinkRef(source, oldName)
+// renameError rewords refactor.Rename's sentinel outcomes into the
+// engine API's error text. Engine conflicts and a NothingToRenameError
+// (whose text already names the kind, and which matches
+// ErrNothingToRename) pass through unchanged.
+// Each case mirrors a CLI exit path (see cmd/mdsmith/rename.go).
+func renameError(err error, uri, oldName string) error {
+	var missing refactor.MissingSymbolError
 	switch {
-	case isHeading && isLabel:
-		return "", fmt.Errorf(
-			"%q matches both a heading and a link-ref label; pass as=\"heading\" or as=\"label\"", oldName)
-	case isHeading:
-		return "heading", nil
-	case isLabel:
-		return "label", nil
-	default:
-		return "", fmt.Errorf("no heading or link-ref label %q", oldName)
+	case errors.Is(err, refactor.ErrAmbiguousRename):
+		return fmt.Errorf(
+			"%q matches both %s; pass %s",
+			oldName, refactor.RenameSymbolList("and", true), refactor.RenameKindList("as=%q"))
+	case errors.Is(err, refactor.ErrNoRenameTarget):
+		return fmt.Errorf("no %s %q", refactor.RenameSymbolList("or", false), oldName)
+	case errors.As(err, &missing):
+		return fmt.Errorf("%w in %s", missing, uri)
 	}
+	return err
 }
 
 // toRefactorPlan converts the internal refactor.Plan to the public

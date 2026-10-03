@@ -141,7 +141,7 @@ func TestRefDefEditsInBody_SkipsNonMatchingAndOutOfRange(t *testing.T) {
 	// touches the "a" def. Exercises the normLabel-mismatch skip.
 	body := []byte("[a]: u\n[other]: v\n")
 	lines := splitLines(body)
-	edits := refDefEditsInBody(body, lines, 0, "a", "z")
+	edits := refDefEditsInBody(validRefDefMatches(body), lines, 0, "a", "z")
 	assert.Len(t, edits, 1)
 }
 
@@ -150,7 +150,7 @@ func TestRefDefEditsInBody_DefLinePastLineTable(t *testing.T) {
 	// but the caller hands in an empty line table, so the
 	// out-of-range guard skips it instead of indexing past the end.
 	body := []byte("[a]: u\n")
-	edits := refDefEditsInBody(body, [][]byte{}, 0, "a", "z")
+	edits := refDefEditsInBody(validRefDefMatches(body), [][]byte{}, 0, "a", "z")
 	assert.Empty(t, edits)
 }
 

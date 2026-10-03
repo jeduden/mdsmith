@@ -249,6 +249,14 @@ becomes a Go `ConfigSource` exactly as the `-c` flag's text does.
 is async, and any Go method returning `(T, error)` maps to a
 `Promise<T>` that rejects with `new Error(msg)`.
 
+Some outcomes are not failures. A rename to the symbol's own text,
+or to the text a heading already renders as, has no effect. In Go,
+`Session.Rename` then returns an error that matches
+`mdsmith.ErrNothingToRename` under `errors.Is`. In JS, the
+rejected `Error` has `code` set to `"nothing-to-rename"`, the value of
+`mdsmith.ErrorCode(err)`. A host can check the code and ignore the
+no-op without reading the message. Other errors leave `code` unset.
+
 No session registers a function of its own. The method functions
 are shared by all sessions and registered once. Each method on a
 session object is a `bind` of one of them with a session id, so the
