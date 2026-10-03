@@ -94,10 +94,10 @@ func renameError(err error, uri, oldName string) error {
 	switch {
 	case errors.Is(err, refactor.ErrAmbiguousRename):
 		return fmt.Errorf(
-			"%q matches both a heading and a link-ref label; pass %s",
-			oldName, refactor.RenameKindList("as=%q"))
+			"%q matches both %s; pass %s",
+			oldName, refactor.RenameSymbolList("and", true), refactor.RenameKindList("as=%q"))
 	case errors.Is(err, refactor.ErrNoRenameTarget):
-		return fmt.Errorf("no heading or link-ref label %q", oldName)
+		return fmt.Errorf("no %s %q", refactor.RenameSymbolList("or", false), oldName)
 	case errors.As(err, &missing):
 		return fmt.Errorf("%w in %s", missing, uri)
 	}

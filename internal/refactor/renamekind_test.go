@@ -59,6 +59,35 @@ func TestRenameKindList(t *testing.T) {
 	assert.Equal(t, "--as heading or --as label", RenameKindList("--as %s"))
 }
 
+func TestRenameSymbolList(t *testing.T) {
+	assert.Equal(t, "a heading and a link-ref label", RenameSymbolList("and", true))
+	assert.Equal(t, "heading or link-ref label", RenameSymbolList("or", false))
+}
+
+func TestRenameKindNouns(t *testing.T) {
+	assert.Equal(t, "heading", KindHeading.symbolNoun())
+	assert.Equal(t, "link-ref label", KindLabel.symbolNoun())
+	assert.Equal(t, "heading", KindHeading.missingNoun())
+	assert.Equal(t, "link reference", KindLabel.missingNoun())
+	assert.Equal(t, "widget", RenameKind("widget").symbolNoun(), "an unlisted kind names itself")
+	assert.Equal(t, "widget", RenameKind("widget").missingNoun())
+	for _, k := range renameKinds {
+		assert.Contains(t, kindNouns, k, "every listed kind declares its nouns")
+	}
+}
+
+func TestSentinelTextDerivesFromKinds(t *testing.T) {
+	assert.Equal(t, "name matches both a heading and a link-ref label", ErrAmbiguousRename.Error())
+	assert.Equal(t, "no heading or link-ref label matches the name", ErrNoRenameTarget.Error())
+}
+
+func TestJoinList(t *testing.T) {
+	assert.Equal(t, "", joinList(nil, "and"))
+	assert.Equal(t, "a", joinList([]string{"a"}, "and"))
+	assert.Equal(t, "a and b", joinList([]string{"a", "b"}, "and"))
+	assert.Equal(t, "a, b, and c", joinList([]string{"a", "b", "c"}, "and"))
+}
+
 func TestJoinOr(t *testing.T) {
 	assert.Equal(t, "", joinOr(nil))
 	assert.Equal(t, "a", joinOr([]string{"a"}))
@@ -226,6 +255,9 @@ func TestMissingSymbolError_Error(t *testing.T) {
 		MissingSymbolError{Kind: KindHeading, Name: "Setup"}.Error())
 	assert.Equal(t, `no link reference "docs"`,
 		MissingSymbolError{Kind: KindLabel, Name: "docs"}.Error())
+	assert.Equal(t, `no widget "w"`,
+		MissingSymbolError{Kind: "widget", Name: "w"}.Error(),
+		"an unlisted kind is not mislabeled a link reference")
 }
 
 func TestRenameHeadingAt(t *testing.T) {

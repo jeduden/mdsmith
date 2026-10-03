@@ -275,8 +275,8 @@ func renameExitCode(err error, target, oldName, newName string) int {
 	switch {
 	case errors.Is(err, refactor.ErrAmbiguousRename):
 		fmt.Fprintf(os.Stderr,
-			"mdsmith: %q matches both a heading and a link-ref label in %s; pass %s\n",
-			oldName, target, refactor.RenameKindList("--as %s"))
+			"mdsmith: %q matches both %s in %s; pass %s\n",
+			oldName, refactor.RenameSymbolList("and", true), target, refactor.RenameKindList("--as %s"))
 		return 2
 	case errors.Is(err, refactor.ErrNoRenameTarget):
 		if looksLikePath(oldName) || looksLikePath(newName) {
@@ -286,8 +286,8 @@ func renameExitCode(err error, target, oldName, newName string) int {
 			return 2
 		}
 		fmt.Fprintf(os.Stderr,
-			"mdsmith: no heading or link-ref label %q in %s (to relocate a file, use mdsmith move)\n",
-			oldName, target)
+			"mdsmith: no %s %q in %s (to relocate a file, use mdsmith move)\n",
+			refactor.RenameSymbolList("or", false), oldName, target)
 		return 2
 	case errors.Is(err, refactor.ErrNothingToRename):
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)

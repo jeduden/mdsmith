@@ -25,6 +25,51 @@ const (
 // messages all derive from it.
 var renameKinds = []RenameKind{KindHeading, KindLabel}
 
+// kindName holds the nouns a kind's messages use: symbol in the
+// auto-detect messages ("a heading and a link-ref label"), missing in
+// MissingSymbolError ("no link reference").
+type kindName struct{ symbol, missing string }
+
+// kindNouns names every kind in renameKinds; a new kind adds its row
+// here and every host message picks it up.
+var kindNouns = map[RenameKind]kindName{
+	KindHeading: {symbol: "heading", missing: "heading"},
+	KindLabel:   {symbol: "link-ref label", missing: "link reference"},
+}
+
+// symbolNoun is k's noun in the auto-detect messages; an unlisted kind
+// names itself.
+func (k RenameKind) symbolNoun() string {
+	if n, ok := kindNouns[k]; ok {
+		return n.symbol
+	}
+	return string(k)
+}
+
+// missingNoun is k's noun in MissingSymbolError; an unlisted kind
+// names itself.
+func (k RenameKind) missingNoun() string {
+	if n, ok := kindNouns[k]; ok {
+		return n.missing
+	}
+	return string(k)
+}
+
+// RenameSymbolList renders every kind's symbol noun joined by conj
+// ("and", "or"), each prefixed by "a" when article is set, so a host's
+// ambiguity and no-target messages name every kind auto-detect tries:
+// RenameSymbolList("and", true) is "a heading and a link-ref label".
+func RenameSymbolList(conj string, article bool) string {
+	parts := make([]string, len(renameKinds))
+	for i, k := range renameKinds {
+		parts[i] = k.symbolNoun()
+		if article {
+			parts[i] = "a " + parts[i]
+		}
+	}
+	return joinList(parts, conj)
+}
+
 // RenameKindList renders renameKinds as an English "a or b" list,
 // formatting each kind with verb ("%s" bare, "%q" quoted), so a host's
 // invalid-selector message names every valid kind without
@@ -39,16 +84,20 @@ func RenameKindList(verb string) string {
 
 // joinOr joins parts as an English disjunction: "a", "a or b",
 // "a, b, or c".
-func joinOr(parts []string) string {
+func joinOr(parts []string) string { return joinList(parts, "or") }
+
+// joinList joins parts as an English list with conj: "a", "a conj b",
+// "a, b, conj c".
+func joinList(parts []string, conj string) string {
 	switch len(parts) {
 	case 0:
 		return ""
 	case 1:
 		return parts[0]
 	case 2:
-		return parts[0] + " or " + parts[1]
+		return parts[0] + " " + conj + " " + parts[1]
 	}
-	return strings.Join(parts[:len(parts)-1], ", ") + ", or " + parts[len(parts)-1]
+	return strings.Join(parts[:len(parts)-1], ", ") + ", " + conj + " " + parts[len(parts)-1]
 }
 
 // Sentinel outcomes of Rename that are not engine conflicts. Hosts
@@ -56,9 +105,9 @@ func joinOr(parts []string) string {
 var (
 	// ErrAmbiguousRename: auto-detect found both a heading and a
 	// link-ref label named oldName.
-	ErrAmbiguousRename = errors.New("name matches both a heading and a link-ref label")
+	ErrAmbiguousRename = errors.New("name matches both " + RenameSymbolList("and", true))
 	// ErrNoRenameTarget: auto-detect found neither.
-	ErrNoRenameTarget = errors.New("no heading or link-ref label matches the name")
+	ErrNoRenameTarget = errors.New("no " + RenameSymbolList("or", false) + " matches the name")
 	// ErrNothingToRename: the symbol exists but renaming it changes
 	// no byte. Rename returns it as a NothingToRenameError, which
 	// matches this sentinel under errors.Is.
@@ -99,10 +148,7 @@ type MissingSymbolError struct {
 }
 
 func (e MissingSymbolError) Error() string {
-	if e.Kind == KindHeading {
-		return fmt.Sprintf("no heading %q", e.Name)
-	}
-	return fmt.Sprintf("no link reference %q", e.Name)
+	return fmt.Sprintf("no %s %q", e.Kind.missingNoun(), e.Name)
 }
 
 // ParseRenameKind validates a host's explicit kind selector. The
