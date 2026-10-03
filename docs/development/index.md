@@ -126,13 +126,15 @@ When adding or changing a rule, add both:
    Discovered automatically by
    `internal/integration/rules_test.go`.
 
-A Go test that spawns a process or opens a pipe cannot
+A Go test that needs a real process or pipe cannot
 run under `GOOS=js GOARCH=wasm`. Put it in a file tagged
 `//go:build unix || windows` (for `internal/build`,
 a `*_proc_test.go` file). CI runs the whole
 `internal/build` package under Node with
 `mdsmith-release test-js-wasm --all ./internal/build`,
-so an untagged test of that kind fails the build.
+so an untagged one fails the build when it fails there.
+CI cannot see a test that passes there only because
+its process never started, so tag that one too.
 
 ## Config Merge Semantics
 

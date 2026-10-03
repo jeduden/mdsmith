@@ -541,7 +541,8 @@ jobs:
   # parity (methods_test.go). Earlier steps build the whole module for
   # js/wasm, vet it (tests included) for js/wasm, wasip1, and plan9,
   # and run the js/wasm-only unit tests (bridge_test.go and the
-  # internal/build and cmd/mdsmith stubs) under Node.
+  # internal/build and cmd/mdsmith stubs) under Node, then the whole
+  # internal/build package under Node.
   # tinygo is built in the separate tinygo-wasm
   # job below, which is now enforcing (plan 247).
   wasm:
