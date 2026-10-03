@@ -29,11 +29,12 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	var diags []lint.Diagnostic
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if _, ok := codeLines[lineNum]; ok {
-			continue
-		}
 		trimmed := bytes.TrimRight(line, " \t")
 		if len(trimmed) < len(line) {
+			// Consult the code-line map only for the rare candidate line.
+			if _, ok := codeLines[lineNum]; ok {
+				continue
+			}
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     lineNum,
