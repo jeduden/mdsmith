@@ -15,10 +15,10 @@ package main
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"math"
-	"math/rand/v2"
 	"runtime/debug"
 	"sync"
 	"syscall/js"
@@ -190,7 +190,9 @@ var objectToString js.Value
 // never reaches a released func, so syscall/js logs nothing. See plan
 // 2610021237. The id is registered only after every method is bound:
 // a bind that throws (one patched before load) rejects createSession
-// without leaving a Session no session object can dispose.
+// without leaving a Session no session object can dispose. A resolve
+// that throws after this returns still leaves one; plan 2610021800
+// tracks that.
 func newSessionProxy(sess *mdsmith.Session) js.Value {
 	shared := sharedMethods()
 	id := newSessionID()
@@ -222,8 +224,11 @@ func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id 
 // session id. It does not cover Reflect.apply: wasm_exec.js looks that
 // up on every Go-to-JS call, so a Reflect.apply replaced at any time
 // sees each raw shared func and id here, and every session object the
-// engine resolves. A random id or token hides nothing from that
-// script; it is a documented limit (docs/background/concepts/engine-api.md).
+// engine resolves. Nor does it cover Reflect.get: wasm_exec.js reads
+// each incoming call's arguments through it, so a Reflect.get replaced
+// at any time sees the bound id of each session whose method is called.
+// A random id or token hides nothing from that script; it is a
+// documented limit (docs/background/concepts/engine-api.md).
 var bindTo js.Value
 
 // sessions maps a live session's id to its Session. js/wasm runs every
@@ -266,25 +271,27 @@ const sessionIDHalfBits = 27
 const sessionIDRounds = 10
 
 // sessionIDCipher is the per-load AES-128 key of the id permutation.
-// The key comes from math/rand/v2's global source, which on js/wasm
-// reads crypto.getRandomValues: standard Go seeds its runtime
-// generator from it, and TinyGo's runtime.rand calls wasi-libc's
-// arc4random, whose random_get its wasm_exec.js serves from it. AES is
-// already linked into the standard build, so it adds no size there.
+// The key comes from crypto/rand, which on js/wasm reads
+// crypto.getRandomValues: standard Go calls it directly, and TinyGo's
+// arc4random_buf reaches it through the random_get its wasm_exec.js
+// serves. The AES core is already linked into the standard build; the
+// crypto/aes wrapper, the decrypt path a cipher.Block reaches, and
+// crypto/rand add about 18 KiB raw to it.
 var sessionIDCipher = newSessionIDCipher()
 
 // newSessionIDCipher draws a fresh 128-bit key and returns its AES
-// block.
+// block. A failed read panics through mustCipher, like a bad key.
 func newSessionIDCipher() cipher.Block {
 	var key [16]byte
-	binary.LittleEndian.PutUint64(key[:8], rand.Uint64())
-	binary.LittleEndian.PutUint64(key[8:], rand.Uint64())
-	return mustCipher(aes.NewCipher(key[:]))
+	_, rerr := rand.Read(key[:])
+	blk, err := aes.NewCipher(key[:])
+	return mustCipher(blk, errors.Join(rerr, err))
 }
 
-// mustCipher returns blk, or panics on err. aes.NewCipher fails only
-// on a key that is not 16, 24, or 32 bytes, which newSessionIDCipher
-// never passes, so the panic marks a programming error at load.
+// mustCipher returns blk, or panics on err. crypto/rand.Read never
+// fails on js/wasm, and aes.NewCipher fails only on a key that is not
+// 16, 24, or 32 bytes, which newSessionIDCipher never passes, so the
+// panic marks a programming error at load.
 func mustCipher(blk cipher.Block, err error) cipher.Block {
 	if err != nil {
 		panic(err)
@@ -306,8 +313,11 @@ var sessionIDCounter uint64
 func permuteSessionID(x uint64, blk cipher.Block, half uint) uint64 {
 	mask := uint64(1)<<half - 1
 	l, r := x>>half&mask, x&mask
+	// Encrypt through the cipher.Block interface moves its buffer to
+	// the heap, so every round shares this one block.
+	var buf [aes.BlockSize]byte
 	for i := range sessionIDRounds {
-		l, r = r, l^(roundSessionID(blk, byte(i), r)&mask)
+		l, r = r, l^(roundSessionID(blk, &buf, byte(i), r)&mask)
 	}
 	return l<<half | r
 }
@@ -315,13 +325,13 @@ func permuteSessionID(x uint64, blk cipher.Block, half uint) uint64 {
 // roundSessionID is the Feistel round function: AES under blk of the
 // block holding round in byte 0 and r little-endian in bytes 1 to 8,
 // zero after, read back as its low 64 bits little-endian. The round
-// index in the block makes each round an independent function.
-func roundSessionID(blk cipher.Block, round byte, r uint64) uint64 {
-	var in, out [aes.BlockSize]byte
-	in[0] = round
-	binary.LittleEndian.PutUint64(in[1:], r)
-	blk.Encrypt(out[:], in[:])
-	return binary.LittleEndian.Uint64(out[:])
+// index in the block makes each round an independent function. buf is
+// the caller's scratch block, encrypted in place and overwritten.
+func roundSessionID(blk cipher.Block, buf *[aes.BlockSize]byte, round byte, r uint64) uint64 {
+	*buf = [aes.BlockSize]byte{round}
+	binary.LittleEndian.PutUint64(buf[1:], r)
+	blk.Encrypt(buf[:], buf[:])
+	return binary.LittleEndian.Uint64(buf[:])
 }
 
 // methodImpl pairs a forwarding session method's implementation with

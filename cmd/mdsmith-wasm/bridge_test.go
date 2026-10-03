@@ -1114,7 +1114,8 @@ func TestPermuteSessionID_IsBijection(t *testing.T) {
 // TestRoundSessionID pins the Feistel round function: the low 64 bits,
 // little-endian, of AES-128 over the block holding the round index in
 // byte 0 and the half little-endian in bytes 1 to 8. The key is
-// FIPS-197's, whose C.1 vector checks the cipher itself.
+// FIPS-197's, whose C.1 vector checks the cipher itself. The scratch
+// block starts dirty, so a byte left from an earlier round would show.
 func TestRoundSessionID(t *testing.T) {
 	blk := mustCipher(aes.NewCipher(fipsKey))
 	var out [16]byte
@@ -1122,9 +1123,10 @@ func TestRoundSessionID(t *testing.T) {
 	require.NoError(t, err)
 	blk.Encrypt(out[:], pt)
 	require.Equal(t, "69c4e0d86a7b0430d8cdb78070b4c55a", hex.EncodeToString(out[:]))
-	assert.Equal(t, uint64(0x825b8f87373ba1c6), roundSessionID(blk, 0, 0))
-	assert.Equal(t, uint64(0x574272ad725f2164), roundSessionID(blk, 3, 0x123456))
-	assert.Equal(t, uint64(0xb4a429fecc1ba37c), roundSessionID(blk, 9, 0x7ffffff))
+	buf := [aes.BlockSize]byte{0: 0xff, 9: 0xff, 15: 0xff}
+	assert.Equal(t, uint64(0x825b8f87373ba1c6), roundSessionID(blk, &buf, 0, 0))
+	assert.Equal(t, uint64(0x574272ad725f2164), roundSessionID(blk, &buf, 3, 0x123456))
+	assert.Equal(t, uint64(0xb4a429fecc1ba37c), roundSessionID(blk, &buf, 9, 0x7ffffff))
 }
 
 // TestMustCipher checks mustCipher returns the block it is given and
@@ -1137,11 +1139,22 @@ func TestMustCipher(t *testing.T) {
 }
 
 // TestSessionIDCipher_IsAES128 checks the load-time id cipher is an
-// AES block, the PRF the Feistel rounds rely on.
+// AES block, the PRF the Feistel rounds rely on, and that each
+// newSessionIDCipher call draws a fresh key: a fixed key (all zero, or
+// a constant) would encrypt the same block the same way every time and
+// make every load's ids the same sequence.
 func TestSessionIDCipher_IsAES128(t *testing.T) {
 	require.NotNil(t, sessionIDCipher)
 	assert.Equal(t, aes.BlockSize, sessionIDCipher.BlockSize())
 	assert.Equal(t, 10, sessionIDRounds)
+	var zero, a, b [aes.BlockSize]byte
+	newSessionIDCipher().Encrypt(a[:], zero[:])
+	newSessionIDCipher().Encrypt(b[:], zero[:])
+	assert.NotEqual(t, a, b, "two keys encrypt the zero block alike")
+	zeroKey := mustCipher(aes.NewCipher(make([]byte, 16)))
+	var z [aes.BlockSize]byte
+	zeroKey.Encrypt(z[:], zero[:])
+	assert.NotEqual(t, z, a, "the key is all zero")
 }
 
 // TestNewSessionID_NeverRepeats draws 4096 ids in a row and checks none
