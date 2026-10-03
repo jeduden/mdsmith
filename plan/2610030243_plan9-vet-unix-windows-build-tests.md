@@ -61,7 +61,14 @@ errors only then.
    `plan9`, as it is. Skip each `sh` or recipe test
    through `skipWithoutPOSIXTools`. The `echo`/`touch`
    hook tests and the `recipeOutput` pipe tests need no
-   `sh`, so they run on plan9 unskipped.
+   `sh`, so they run on plan9 unskipped. The two
+   release-tooling spawn files,
+   `internal/release/jswasmtests_proc_test.go` and
+   `cmd/mdsmith-release/testjswasm_proc_test.go`, take
+   the same tag. They run only the go toolchain and
+   `os.Pipe`, which plan9 has, so they need no skip.
+   Plan [2610031843](2610031843_dev-guide-plan9-proc-test-tag.md)
+   updates the developer guide's tag advice.
 4. Guard the tag in CI:
    [proctags_test.go](../internal/build/proctags_test.go)
    fails when an `internal/build` test file builds on

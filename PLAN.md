@@ -296,4 +296,5 @@ footer: ""
 | 2610030846 | ✅     | sonnet | [Silence wasm session finalizers after the Go program exits](plan/2610030846_wasm-finalizer-after-exit.md)                                              |
 | 2610031253 | ✅     | sonnet | [Free the session when a then getter rejects the create](plan/2610031253_wasm-create-then-getter-leak.md)                                               |
 | 2610031420 | 🔲     | sonnet | [Free the func when js.FuncOf's wrapper call throws](plan/2610031420_wasm-funcof-wrapper-throw-leak.md)                                                 |
+| 2610031843 | 🔲     | haiku  | [Name the plan9 spawn-test tag in the developer guide](plan/2610031843_dev-guide-plan9-proc-test-tag.md)                                                |
 <?/catalog?>
