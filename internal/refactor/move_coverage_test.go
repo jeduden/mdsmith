@@ -1,10 +1,13 @@
 package refactor
 
 import (
+	"path"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
@@ -26,6 +29,13 @@ func (s stubWorkspace) IncomingAnchorEdges(string, string) []index.Edge { return
 func (s stubWorkspace) IncomingPathEdges(string) []index.Edge           { return s.pathEdges }
 func (s stubWorkspace) IncomingWikilinkEdges(string) []index.Edge       { return s.wikilinkEdges }
 func (s stubWorkspace) Files() []string                                 { return s.files }
+func (s stubWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	fsys := fstest.MapFS{}
+	for _, f := range s.files {
+		fsys[index.NormalizePath(f)] = &fstest.MapFile{}
+	}
+	return linkgraph.NewWikilinkIndex(fsys)
+}
 func (s stubWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
 	if s.unresolvable[rel] {
@@ -54,6 +64,16 @@ func TestRelFrom_ErrorFallsBackToTarget(t *testing.T) {
 	assert.Equal(t, "b", relFrom("../a", "b"))
 }
 
+// holderIndex builds the wikilink index over files, as the resolver
+// would index a workspace holding exactly them.
+func holderIndex(files ...string) *linkgraph.WikilinkIndex {
+	fsys := fstest.MapFS{}
+	for _, f := range files {
+		fsys[f] = &fstest.MapFile{}
+	}
+	return linkgraph.NewWikilinkIndex(fsys)
+}
+
 func TestWikilinkKeyHolders_OldStem(t *testing.T) {
 	files := []string{"a.md", "docs/API.md", "api/api.md", "img/api.png", "notes/b.mdx", "notes/c.markdown"}
 	licenseFiles := []string{"notes/LICENSE", "docs/license.md"}
@@ -73,11 +93,12 @@ func TestWikilinkKeyHolders_OldStem(t *testing.T) {
 		"stem is not a prefix match":     {files, "ap", 0},
 	} {
 		t.Run(name, func(t *testing.T) {
-			// src is listed as the first file so it adds no extra holder.
-			files := append([]string{"src.txt"}, tc.files...)
-			oldN, _ := wikilinkKeyHolders(files, "src.txt", tc.stem, "zzz", true)
-			assert.Equal(t, tc.want, oldN)
-			_, newN := wikilinkKeyHolders(files, "src.txt", "zzz", tc.stem, true)
+			idx := holderIndex(tc.files...)
+			// src.txt is no Markdown file, so the index never holds it
+			// under a stem and it adds exactly one oldStem holder.
+			oldN, _ := wikilinkKeyHolders(idx, "src.txt", tc.stem, "zzz", true)
+			assert.Equal(t, tc.want+1, oldN)
+			_, newN := wikilinkKeyHolders(idx, "src.txt", "zzz", tc.stem, true)
 			assert.Equal(t, tc.want, newN, "a Markdown destination counts stems the same way")
 		})
 	}
@@ -97,21 +118,27 @@ func TestWikilinkKeyHolders_NewName(t *testing.T) {
 		"no prefix match":              {files, "api", 0},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, newN := wikilinkKeyHolders(tc.files, "", "zzz", tc.base, false)
+			_, newN := wikilinkKeyHolders(holderIndex(tc.files...), "", "zzz", tc.base, false)
 			assert.Equal(t, tc.want, newN)
 		})
 	}
 }
 
-func TestWikilinkKeyHolders_UnlistedSourceCounts(t *testing.T) {
+func TestWikilinkKeyHolders_UnindexedSourceCounts(t *testing.T) {
 	files := []string{"docs/guide.md"}
-	oldN, _ := wikilinkKeyHolders(files, "a/guide.md", "guide", "manual", true)
-	assert.Equal(t, 2, oldN, "an unlisted source holds its own stem")
-	oldN, _ = wikilinkKeyHolders(append(files, "a/guide.md"), "a/guide.md", "guide", "manual", true)
-	assert.Equal(t, 2, oldN, "a listed source is not counted twice")
-	r := &destResolver{ws: stubWorkspace{files: []string{"./a/guide.md"}}, src: "a/guide.md"}
-	oldN, _ = wikilinkKeyHolders(r.paths(), "a/guide.md", "guide", "manual", true)
-	assert.Equal(t, 1, oldN, "a source listed with a ./ prefix is still listed")
+	oldN, _ := wikilinkKeyHolders(holderIndex(files...), "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 2, oldN, "a source the index lacks holds its own stem")
+	oldN, _ = wikilinkKeyHolders(holderIndex("docs/guide.md", "a/guide.md"), "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 2, oldN, "an indexed source is not counted twice")
+	oldN, _ = wikilinkKeyHolders(nil, "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 1, oldN, "a nil index holds only the source")
+}
+
+// spellDst calls dstWikilinkSpelling the way the planner does, passing
+// FileStemKey's answer for dst's basename.
+func spellDst(dst string) (spelling string, needsPrefix, ok bool) {
+	_, isMarkdown := linkgraph.FileStemKey(path.Base(dst))
+	return dstWikilinkSpelling(dst, isMarkdown)
 }
 
 func TestDstWikilinkSpelling_NonMarkdownKeepsBase(t *testing.T) {
@@ -119,8 +146,9 @@ func TestDstWikilinkSpelling_NonMarkdownKeepsBase(t *testing.T) {
 		"docs/Service.md": "Service",
 		"img/diagram.png": "diagram.png",
 	} {
-		got, ok := dstWikilinkSpelling(dst)
+		got, needsPrefix, ok := spellDst(dst)
 		assert.True(t, ok, dst)
+		assert.False(t, needsPrefix, dst)
 		assert.Equal(t, want, got, dst)
 	}
 }
@@ -128,22 +156,27 @@ func TestDstWikilinkSpelling_NonMarkdownKeepsBase(t *testing.T) {
 // TestDstWikilinkSpelling_FallsBackToBase locks that the whole basename
 // is written whenever the bare stem would not reach dst: a dotted stem
 // reads as a typed extension, and a stem ending in a space loses it to
-// the target trim.
+// the target trim. A name the resolver refuses as a drive path or trims
+// bare is returned without its `./` and flagged needsPrefix.
 func TestDstWikilinkSpelling_FallsBackToBase(t *testing.T) {
-	for dst, want := range map[string]string{
-		"docs/v1.3.md":     "v1.3.md",
-		"docs/guide.md.md": "guide.md.md",
-		"docs/guide .md":   "guide .md",
-		"docs/C:x.md":      "./C:x",
-		"img/C:x.png":      "./C:x.png",
-		"docs/ notes.md":   "./ notes",
+	for dst, want := range map[string]struct {
+		spelling    string
+		needsPrefix bool
+	}{
+		"docs/v1.3.md":     {"v1.3.md", false},
+		"docs/guide.md.md": {"guide.md.md", false},
+		"docs/guide .md":   {"guide .md", false},
+		"docs/C:x.md":      {"C:x", true},
+		"img/C:x.png":      {"C:x.png", true},
+		"docs/ notes.md":   {" notes", true},
 	} {
-		got, ok := dstWikilinkSpelling(dst)
+		got, needsPrefix, ok := spellDst(dst)
 		assert.True(t, ok, dst)
-		assert.Equal(t, want, got, dst)
+		assert.Equal(t, want.spelling, got, dst)
+		assert.Equal(t, want.needsPrefix, needsPrefix, dst)
 	}
 	for _, dst := range []string{"docs/.md", "docs/COPYING", "docs/guide.md ", "docs/C#.md"} {
-		_, ok := dstWikilinkSpelling(dst)
+		_, _, ok := spellDst(dst)
 		assert.False(t, ok, dst)
 	}
 }
@@ -257,50 +290,6 @@ func TestOutboundEdit(t *testing.T) {
 		e, ok := outboundEdit(r, located("[t](a.md)", "a.md"), "docs/a.md", "guide/b.md")
 		require.True(t, ok)
 		assert.Equal(t, "b.md", e.NewText)
-	})
-}
-
-func TestWikilinkStemBytes(t *testing.T) {
-	t.Run("not a wikilink returns false", func(t *testing.T) {
-		_, _, ok := wikilinkStemBytes([]byte("[x](y)"), 0)
-		assert.False(t, ok)
-	})
-	t.Run("out-of-range bracket start returns false", func(t *testing.T) {
-		_, _, ok := wikilinkStemBytes([]byte("[["), 0)
-		assert.False(t, ok)
-	})
-	t.Run("empty stem returns false", func(t *testing.T) {
-		_, _, ok := wikilinkStemBytes([]byte("[[#frag]]"), 0)
-		assert.False(t, ok)
-	})
-	t.Run("folder prefix narrows to the basename stem", func(t *testing.T) {
-		row := []byte("[[folder/Page#f|alias]]")
-		s, e, ok := wikilinkStemBytes(row, 0)
-		require.True(t, ok)
-		assert.Equal(t, "Page", string(row[s:e]))
-	})
-	// The resolver turns `\` into `/` and reads path.Base of the
-	// trimmed target, so the range is the last segment the same way.
-	for row, want := range map[string]string{
-		`[[docs\Page]]`:        "Page",
-		`[[Page\|alias]]`:      "Page",
-		"[[docs/Page/ ]]":      "Page",
-		`[[docs\Page\#f|a]]`:   "Page",
-		"[[ Page ]]":           "Page",
-		"[[x/Page.md#f]]":      "Page.md",
-		`[[a\b/c\Page.md|al]]`: "Page.md",
-		"[[x/ guide]]":         " guide",
-		"[[api /]]":            "api ",
-	} {
-		t.Run(row, func(t *testing.T) {
-			s, e, ok := wikilinkStemBytes([]byte(row), 0)
-			require.True(t, ok)
-			assert.Equal(t, want, row[s:e])
-		})
-	}
-	t.Run("only separators returns false", func(t *testing.T) {
-		_, _, ok := wikilinkStemBytes([]byte(`[[/\ ]]`), 0)
-		assert.False(t, ok)
 	})
 }
 

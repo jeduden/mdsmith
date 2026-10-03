@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"slices"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/refactor"
@@ -57,7 +58,10 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 		return
 	}
 	_, _, root := s.snapshotConfig()
-	ws := lspRenameWorkspace{s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex())}
+	ws := lspRenameWorkspace{
+		s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex()),
+		wikilinks: sync.OnceValue(s.buildWikilinkIndex),
+	}
 
 	moves := planRenameBatch(ws, root, p.Files)
 	merged := map[string][]textEdit{}

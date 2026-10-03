@@ -3,9 +3,11 @@ package lsp
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"slices"
 
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/refactor"
 )
@@ -329,6 +331,24 @@ func (s *Server) handleRename(msg *requestMessage) {
 type lspRenameWorkspace struct {
 	refactor.IndexEdges
 	s *Server
+	// wikilinks, when set, supplies the wikilink index so a batch of
+	// moves builds it once; nil builds one per WikilinkIndex call.
+	wikilinks func() *linkgraph.WikilinkIndex
+}
+
+// WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
+// resolution reads, over the whole workspace root on disk.
+func (w lspRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	if w.wikilinks != nil {
+		return w.wikilinks()
+	}
+	return w.s.buildWikilinkIndex()
+}
+
+// buildWikilinkIndex walks the workspace root for the wikilink index.
+func (s *Server) buildWikilinkIndex() *linkgraph.WikilinkIndex {
+	_, _, root := s.snapshotConfig()
+	return linkgraph.NewWikilinkIndex(os.DirFS(root))
 }
 
 func (w lspRenameWorkspace) Resolve(file string) (string, []byte, bool) {

@@ -1,7 +1,7 @@
 ---
 id: 2610022104
 title: Count wikilink stem siblings against the resolver's index on move
-status: "🔲"
+status: "✅"
 summary: >-
   The move planner's `wikilinkKeyHolders` counts files from
   `ws.Files()`, but the wikilink resolver indexes every
@@ -97,16 +97,16 @@ files with `linkgraph.FileStemKey`, the same function
 
 ## Acceptance Criteria
 
-- [ ] A gitignored Markdown file that `[[stem]]` resolves to
+- [x] A gitignored Markdown file that `[[stem]]` resolves to
       blocks the stem rewrite on move
-- [ ] A `node_modules` README does not block a `[[readme]]`
+- [x] A `node_modules` README does not block a `[[readme]]`
       rewrite on move
-- [ ] An unlisted `logo.png` blocks moving `docs/logo.md` to
+- [x] An unlisted `logo.png` blocks moving `docs/logo.md` to
       `docs/logo.png`
-- [ ] The move planner's stem counts come from the same index
+- [x] The move planner's stem counts come from the same index
       `[[stem]]` resolution reads
-- [ ] The move planner reuses `linkgraph`'s base-segment
+- [x] The move planner reuses `linkgraph`'s base-segment
       span, Markdown test, and name key, with no copies
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues

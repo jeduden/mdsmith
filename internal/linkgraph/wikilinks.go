@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 
@@ -277,6 +278,27 @@ func (idx *WikilinkIndex) Resolve(target string) (string, bool) {
 	return "", false
 }
 
+// StemPaths returns the Markdown files the resolver reaches by the
+// stem key (as FileStemKey returns it), shallowest first. The slice is
+// the index's own: callers must not modify it. A nil index returns nil.
+func (idx *WikilinkIndex) StemPaths(key string) []string {
+	if idx == nil {
+		return nil
+	}
+	return idx.stems[key]
+}
+
+// NamePaths returns the files, of any extension, the resolver reaches
+// by the exact-name key (as FileNameKey returns it), shallowest first.
+// The slice is the index's own: callers must not modify it. A nil
+// index returns nil.
+func (idx *WikilinkIndex) NamePaths(key string) []string {
+	if idx == nil {
+		return nil
+	}
+	return idx.names[key]
+}
+
 // skipHeavyDirs returns fs.SkipDir for known-heavy subtrees that
 // never carry wikilink targets users want resolved (`.git`,
 // `node_modules`). Used as a fs.WalkDirFunc verdict for directory
@@ -347,6 +369,40 @@ func WikilinkStem(target string) (string, bool) {
 		return "", false
 	}
 	return FileNameKey(stem), true
+}
+
+// WikilinkBaseSpan returns the byte span, within row, of the base
+// segment of the wikilink whose `[[` starts at bracketStart: the part
+// of the target the resolver keys by (path.Base of the trimmed target
+// with `\` read as `/`). Any folder prefix, anchor, and alias lie
+// outside the span, as does the `\` that escapes a `|` in a table
+// cell. The span comes from the same match ExtractWikiLinks reads, so
+// the two cannot disagree on where a target ends. ok is false when no
+// wikilink starts there or the resolver refuses its target.
+func WikilinkBaseSpan(row []byte, bracketStart int) (start, end int, ok bool) {
+	if bracketStart < 0 || bracketStart >= len(row) {
+		return 0, 0, false
+	}
+	m := wikilinkRE.FindSubmatchIndex(row[bracketStart:])
+	if m == nil || m[0] != 0 {
+		return 0, 0, false
+	}
+	raw := row[bracketStart+m[4] : bracketStart+m[5]]
+	if _, ok := normalizeTarget(string(raw)); !ok {
+		return 0, 0, false
+	}
+	trimmed := bytes.TrimRightFunc(bytes.TrimLeftFunc(raw, unicode.IsSpace), unicode.IsSpace)
+	lo := len(raw) - len(bytes.TrimLeftFunc(raw, unicode.IsSpace))
+	hi := lo + len(trimmed)
+	for hi > lo && (raw[hi-1] == '/' || raw[hi-1] == '\\') {
+		hi--
+	}
+	for j := lo; j < hi; j++ {
+		if raw[j] == '/' || raw[j] == '\\' {
+			lo = j + 1
+		}
+	}
+	return bracketStart + m[4] + lo, bracketStart + m[4] + hi, true
 }
 
 // wikilinkSearchKey splits target into the lookup parameters

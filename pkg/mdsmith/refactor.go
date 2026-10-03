@@ -7,6 +7,7 @@ import (
 	"path"
 
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/refactor"
 )
@@ -141,6 +142,12 @@ type sessionRefactorWorkspace struct {
 	s             *Session
 	overlayURI    string
 	overlaySource []byte
+}
+
+// WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
+// resolution reads, over the session workspace's whole file tree.
+func (w *sessionRefactorWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	return linkgraph.NewWikilinkIndex(w.s.ws.FS())
 }
 
 func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {

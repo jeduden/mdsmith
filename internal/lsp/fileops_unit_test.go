@@ -6,10 +6,12 @@ import (
 	"slices"
 	"strconv"
 	"testing"
+	"testing/fstest"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/refactor"
 )
 
@@ -280,6 +282,14 @@ func newMemRenameWorkspace(files map[string]string) memRenameWorkspace {
 	idx := index.New(".")
 	idx.BuildSerial(rels, func(rel string) ([]byte, error) { return []byte(files[rel]), nil })
 	return memRenameWorkspace{IndexEdges: refactor.NewIndexEdges(idx), files: files}
+}
+
+func (w memRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	fsys := fstest.MapFS{}
+	for rel := range w.files {
+		fsys[rel] = &fstest.MapFile{}
+	}
+	return linkgraph.NewWikilinkIndex(fsys)
 }
 
 func (w memRenameWorkspace) Resolve(file string) (string, []byte, bool) {

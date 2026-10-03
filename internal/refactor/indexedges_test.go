@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,6 +35,8 @@ type indexHost struct {
 type resolveStub struct{}
 
 func (resolveStub) Resolve(string) (string, []byte, bool) { return "", nil, false }
+
+func (resolveStub) WikilinkIndex() *linkgraph.WikilinkIndex { return nil }
 
 // emptyIndexEdges lists every IndexEdges that has no index to forward
 // to; each must answer every query with nothing.

@@ -3,8 +3,10 @@ package refactor
 import (
 	"errors"
 	"testing"
+	"testing/fstest"
 
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
@@ -35,6 +37,14 @@ func newMemWorkspace(files map[string]string) *memWorkspace {
 		return bytesMap[rel], nil
 	})
 	return &memWorkspace{IndexEdges: NewIndexEdges(idx), files: bytesMap}
+}
+
+func (w *memWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	fsys := fstest.MapFS{}
+	for rel := range w.files {
+		fsys[rel] = &fstest.MapFile{}
+	}
+	return linkgraph.NewWikilinkIndex(fsys)
 }
 
 func (w *memWorkspace) Resolve(file string) (string, []byte, bool) {

@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
-	"unicode"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
@@ -801,7 +801,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	// The rewritten token must parse back as a wikilink that resolves by
 	// dst's key; linkgraph.WikilinkReaches holds the list of names that
 	// cannot, and such a dst gets no rewrite.
-	newSpelling, ok := dstWikilinkSpelling(dst)
+	newSpelling, needsPrefix, ok := dstWikilinkSpelling(dst, dstIsMarkdown)
 	if !ok {
 		return
 	}
@@ -838,7 +838,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	if !dstIsMarkdown {
 		newKey = linkgraph.FileNameKey(path.Base(dst))
 	}
-	oldHolders, newHolders := wikilinkKeyHolders(r.paths(), src, oldStem, newKey, dstIsMarkdown)
+	oldHolders, newHolders := wikilinkKeyHolders(ws.WikilinkIndex(), src, oldStem, newKey, dstIsMarkdown)
 	if oldHolders > 1 || newHolders > 0 {
 		return
 	}
@@ -852,15 +852,15 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 			continue
 		}
 		row := lines[e.SourceLine-1]
-		start, end, ok := wikilinkStemBytes(row, e.SourceCol-1)
+		start, end, ok := linkgraph.WikilinkBaseSpan(row, e.SourceCol-1)
 		if !ok {
 			continue
 		}
 		text := newSpelling
-		if start > 0 && (row[start-1] == '/' || row[start-1] == '\\') {
-			// A folder prefix already keeps the name from reading as
-			// a drive path, so the `./` guard is not needed.
-			text = strings.TrimPrefix(text, "./")
+		// A folder prefix already keeps the name from reading as a
+		// drive path, so the `./` guard is only for a bare link.
+		if needsPrefix && (start == 0 || row[start-1] != '/' && row[start-1] != '\\') {
+			text = "./" + text
 		}
 		changes[key] = append(changes[key], Edit{
 			Range: Range{
@@ -872,96 +872,47 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	}
 }
 
-// wikilinkStemBytes returns the byte range of the basename-stem token
-// inside a `[[target#anchor|alias]]` link starting at bracketStart.
-// The range is the segment the resolver reads: it trims the target,
-// turns `\` into `/`, and takes path.Base, so trailing whitespace and
-// separators are dropped and the segment starts after the last `/` or
-// `\`. Any folder prefix, anchor, and alias are preserved, and so is
-// the `\` that escapes a `|` inside a table cell (`[[api\|alias]]`).
-func wikilinkStemBytes(row []byte, bracketStart int) (int, int, bool) {
-	i := bracketStart
-	if i < 0 || i+1 >= len(row) || row[i] != '[' || row[i+1] != '[' {
-		return 0, 0, false
-	}
-	start := i + 2
-	end := start
-	for end < len(row) {
-		c := row[end]
-		if c == '#' || c == '|' || c == ']' {
-			break
-		}
-		end++
-	}
-	tgt := row[start:end]
-	lo := start + len(tgt) - len(bytes.TrimLeftFunc(tgt, unicode.IsSpace))
-	end = start + len(bytes.TrimRightFunc(tgt, unicode.IsSpace))
-	for end > lo && (row[end-1] == '/' || row[end-1] == '\\') {
-		end--
-	}
-	stemStart := lo
-	for j := lo; j < end; j++ {
-		if row[j] == '/' || row[j] == '\\' {
-			stemStart = j + 1
-		}
-	}
-	if stemStart >= end {
-		return 0, 0, false
-	}
-	return stemStart, end, true
-}
-
-// wikilinkKeyHolders counts, in one pass over files, the Markdown
-// files addressed by oldStem and the files holding newKey. newKey is a
-// stem when newIsStem (a Markdown destination) and otherwise a
-// lowercased exact basename, since a typed wikilink such as
+// wikilinkKeyHolders counts the files the resolver reaches by oldStem
+// and by newKey, reading idx, the index `[[stem]]` resolution reads.
+// newKey is a stem when newIsStem (a Markdown destination) and
+// otherwise a lowercased exact basename, since a typed wikilink such as
 // `[[guide.mdx]]` resolves by file name. src always counts as an
-// oldStem holder, listed or not, because Resolve reads it from disk.
-// files must already be normalized (destResolver.paths), so a listed
-// `./src` compares equal to src and is not counted a second time.
-func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem bool) (oldN, newN int) {
-	srcListed := false
-	for _, f := range files {
-		if f == src {
-			srcListed = true
-		}
-		base := path.Base(f)
-		stem, isMD := linkgraph.FileStemKey(base)
-		if isMD && stem == oldStem {
-			oldN++
-		}
-		if newIsStem {
-			if isMD && stem == newKey {
-				newN++
-			}
-		} else if linkgraph.FileNameKey(base) == newKey {
-			newN++
-		}
-	}
-	if !srcListed {
+// oldStem holder: the resolver reads it from disk, and an index built
+// before the file existed, or over a host buffer, may not hold it.
+func wikilinkKeyHolders(idx *linkgraph.WikilinkIndex, src, oldStem, newKey string, newIsStem bool) (oldN, newN int) {
+	old := idx.StemPaths(oldStem)
+	oldN = len(old)
+	if !slices.Contains(old, src) {
 		oldN++
 	}
-	return oldN, newN
+	if newIsStem {
+		return oldN, len(idx.StemPaths(newKey))
+	}
+	return oldN, len(idx.NamePaths(newKey))
 }
 
 // dstWikilinkSpelling returns the token a rewritten wikilink names dst
 // by, with ok=false when no token reaches it (see
-// linkgraph.WikilinkReaches). A Markdown dst is first tried as its
-// basename stem in its original casing, so the link reads naturally
-// (`[[Service]]`, not a lowercased match key). When the bare stem does
-// not reach dst, the whole basename is tried: `[[v1.3]]` reads `.3` as
-// a typed extension and `[[guide ]]` loses its space to the target
-// trim, while `[[v1.3.md]]` and `[[guide .md]]` reach the file. Any
-// other name is only ever spelled whole. A name the resolver refuses as
-// a drive path (`C:x.md`) is tried last behind a `./` prefix, which the
-// resolver drops when it reads the basename; the caller strips that
-// prefix again for a link that already has a folder prefix.
-func dstWikilinkSpelling(dst string) (string, bool) {
+// linkgraph.WikilinkReaches). dstIsMarkdown is FileStemKey's answer for
+// dst's basename. A Markdown dst is first tried as its basename stem in
+// its original casing, so the link reads naturally (`[[Service]]`, not
+// a lowercased match key). When the bare stem does not reach dst, the
+// whole basename is tried: `[[v1.3]]` reads `.3` as a typed extension
+// and `[[guide ]]` loses its space to the target trim, while
+// `[[v1.3.md]]` and `[[guide .md]]` reach the file. Any other name is
+// only ever spelled whole.
+//
+// A name the resolver refuses as a drive path (`C:x.md`) or trims bare
+// reaches dst only behind a `./`, which the resolver drops when it
+// reads the basename. The spelling is then returned without the `./`
+// and needsPrefix is true: a link that already has a folder prefix
+// writes it as is, any other writes `./` first.
+func dstWikilinkSpelling(dst string, dstIsMarkdown bool) (spelling string, needsPrefix, ok bool) {
 	base := path.Base(dst)
 	var candidates [2]string
 	n := 0
-	if ext := path.Ext(base); mdpath.HasMarkdownExt(ext) {
-		candidates[n] = strings.TrimSuffix(base, ext)
+	if dstIsMarkdown {
+		candidates[n] = strings.TrimSuffix(base, path.Ext(base))
 		n++
 	}
 	candidates[n] = base
@@ -969,9 +920,9 @@ func dstWikilinkSpelling(dst string) (string, bool) {
 	for _, prefix := range [...]string{"", "./"} {
 		for _, c := range candidates[:n] {
 			if linkgraph.WikilinkReaches(prefix+c, base) {
-				return prefix + c, true
+				return c, prefix != "", true
 			}
 		}
 	}
-	return "", false
+	return "", false, false
 }
