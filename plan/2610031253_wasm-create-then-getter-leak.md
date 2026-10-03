@@ -52,6 +52,14 @@ non-enumerable, so `Object.keys(session)` and
 unchanged. The create now resolves instead of rejecting, and
 the caller owns a session it can dispose.
 
+The descriptor has a null prototype. A page's
+`Object.prototype.get` then cannot make the call throw. Its
+`Object.prototype.enumerable` cannot list `then` in
+`Object.keys`. The engine captures `Object.defineProperty`
+and the descriptor once at load, beside `bind`. A
+replacement installed later never runs and never sees the
+session object.
+
 ## Tasks
 
 1. Write a failing js/wasm test that defines a

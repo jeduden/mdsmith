@@ -264,10 +264,11 @@ binding is collected once that method is unreachable. A method taken
 off the object, such as `const { check } = session`, keeps its
 binding after the object is gone.
 
-The session object also has a non-enumerable own `then` property set
-to `undefined`. It is not in `Object.keys`. It stops the Promise
-resolve in `createSession` from reading a `then` that a page defined
-on `Object.prototype`, which would reject the create and strand the
+The session object also has a non-enumerable, read-only own `then`
+property set to `undefined`. It is not in `Object.keys`, and it cannot
+be reassigned or deleted. It stops the Promise resolve in
+`createSession` from reading a `then` that a page defined on
+`Object.prototype`, which would reject the create and strand the
 session.
 
 Each session also has a token object. `dispose` is bound to it, and a
@@ -326,7 +327,12 @@ reaches a later one.
 
 The engine also binds through a `bind` captured at load, so a later
 patch of `Function.prototype.bind` or `call` never sees a raw shared
-function. This is hardening, not a privilege boundary. A `bind` or
+function. It adds the session's own `then` through an
+`Object.defineProperty` captured at load as well. A later patch of
+`Object.defineProperty` neither skips that property nor sees the
+session object.
+
+All of this is hardening, not a privilege boundary. A `bind` or
 `call` patched before the engine loads sees each raw shared function
 and the id of every session. `wasm_exec.js` looks up `Reflect.apply`
 on every Go-to-JS call, so a patched `Reflect.apply` sees the same
