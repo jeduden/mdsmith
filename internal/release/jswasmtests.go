@@ -194,7 +194,7 @@ func (d jsWasmDeps) goTestNamed(pkg, execFlag string, names []string) ([]string,
 
 // goTest runs `go test -json` with extra args on pkg under Node,
 // streaming the console log to d.out, and returns the names that
-// reported a pass.
+// reported a pass and no skip (see testJSONWriter.unmasked).
 //
 // env -i in execFlag: wasm_exec.js caps args plus environment at
 // ~8 KB. It wraps only the Node runtime, so the go command keeps the
@@ -209,7 +209,7 @@ func (d jsWasmDeps) goTest(pkg, execFlag string, extra ...string) ([]string, err
 	if runErr != nil {
 		return nil, fmt.Errorf("go test %s under js/wasm: %w", pkg, runErr)
 	}
-	return w.passed, nil
+	return w.unmasked(), nil
 }
 
 func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
@@ -413,13 +413,27 @@ func takesTestingT(fn *ast.FuncDecl, pkgName string) bool {
 // testJSONWriter decodes a `go test -json` stream as it is written.
 // Each complete line's Output (the `go test -v` text) goes to out at
 // once, and the top-level tests that report a "pass" event collect in
-// passed, in stream order. A line that is not a JSON event, such as a
+// passed, and those that report "skip" in skipped, in stream order. A line that is not a JSON event, such as a
 // `go: downloading` notice, passes through to out unchanged; a
 // mangled `{`-led event is dropped (see echoNonEvent).
 type testJSONWriter struct {
 	out     io.Writer
 	partial []byte // bytes after the last newline, awaiting the rest
 	passed  []string
+	skipped []string
+}
+
+// unmasked returns passed without the names that also skipped. go test
+// reports a TestX of the internal and of the external test package
+// under the same name, so one's pass must not hide the other's skip.
+func (w *testJSONWriter) unmasked() []string {
+	var out []string
+	for _, n := range w.passed {
+		if !slices.Contains(w.skipped, n) {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // Write buffers p and decodes every line it completes. It never fails:
@@ -450,7 +464,7 @@ func (w *testJSONWriter) Flush() {
 
 // line decodes one stream line: blank lines are dropped, a line that
 // is not an event goes through echoNonEvent, and an event's Output is
-// echoed with a top-level "pass" recorded.
+// echoed with a top-level "pass" or "skip" recorded.
 func (w *testJSONWriter) line(b []byte) {
 	if len(bytes.TrimSpace(b)) == 0 {
 		return
@@ -461,8 +475,14 @@ func (w *testJSONWriter) line(b []byte) {
 		return
 	}
 	_, _ = io.WriteString(w.out, ev.Output)
-	if ev.Action == "pass" && ev.Test != "" && !strings.Contains(ev.Test, "/") {
+	if ev.Test == "" || strings.Contains(ev.Test, "/") {
+		return
+	}
+	switch ev.Action {
+	case "pass":
 		w.passed = append(w.passed, ev.Test)
+	case "skip":
+		w.skipped = append(w.skipped, ev.Test)
 	}
 }
 

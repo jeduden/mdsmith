@@ -250,8 +250,20 @@ func TestTestJSONWriter_Line(t *testing.T) {
 	w.line([]byte(`{"Action":"pass","Test":"TestX"}`))
 	w.line([]byte(`{"Action":"pass","Test":"TestX/sub"}`))
 	w.line([]byte(`{"Action":"skip","Test":"TestY"}`))
+	w.line([]byte(`{"Action":"skip","Test":"TestY/sub"}`))
 	assert.Equal(t, "not json\n", out.String())
 	assert.Equal(t, []string{"TestX"}, w.passed)
+	assert.Equal(t, []string{"TestY"}, w.skipped)
+}
+
+// TestTestJSONWriter_Unmasked drops a passed name that also skipped:
+// go test reports a TestX of the internal and of the external test
+// package under the same name, so one's pass must not hide the other's
+// skip.
+func TestTestJSONWriter_Unmasked(t *testing.T) {
+	w := &testJSONWriter{passed: []string{"TestX", "TestY", "TestZ"}, skipped: []string{"TestY"}}
+	assert.Equal(t, []string{"TestX", "TestZ"}, w.unmasked())
+	assert.Nil(t, (&testJSONWriter{}).unmasked())
 }
 
 func TestJSWasmDeps_Output(t *testing.T) {
@@ -535,6 +547,14 @@ func TestRunJSWasmTestsWith(t *testing.T) {
 		assert.Contains(t, err.Error(), "1 of 2")
 		assert.Contains(t, err.Error(), "TestB")
 		assert.NotContains(t, err.Error(), "TestA")
+	})
+
+	t.Run("a same-named pass does not mask a skip", func(t *testing.T) {
+		log := goTestJSON(t, slices.Concat(
+			result("skip", "TestA"), result("pass", "TestA"), result("pass", "TestB"))...)
+		f := x.fake(log, nil)
+		err := runJSWasmTestsWith(x.deps(f, &bytes.Buffer{}), "./p")
+		require.EqualError(t, err, "1 of 2 js/wasm-only tests passed; not passed: TestA")
 	})
 
 	t.Run("failing go test fails and still prints the log", func(t *testing.T) {
@@ -904,6 +924,16 @@ func TestRunJSWasmPackageWith_JSOnlySkips(t *testing.T) {
 		err := runJSWasmPackageWith(x.deps(f, &bytes.Buffer{}), "./p", false)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not passed: TestB")
+	})
+
+	t.Run("a same-named pass does not mask a js/wasm-only skip", func(t *testing.T) {
+		// TestB in the internal and the external test package: both
+		// report Test "TestB", one passing and one skipping.
+		log := goTestJSON(t, slices.Concat(
+			result("pass", "TestA"), result("pass", "TestB"), result("skip", "TestB"), result("pass", "TestN"))...)
+		f := x.fake(log, nil)
+		err := runJSWasmPackageWith(x.deps(f, &bytes.Buffer{}), "./p", false)
+		require.EqualError(t, err, "1 of 2 js/wasm-only tests passed; not passed: TestB")
 	})
 
 	t.Run("all js/wasm-only tests passing succeeds, shared skip allowed", func(t *testing.T) {
