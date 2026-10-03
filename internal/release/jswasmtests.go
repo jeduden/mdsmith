@@ -89,14 +89,65 @@ func (d jsWasmDeps) output(env []string, args ...string) ([]byte, error) {
 	return b.Bytes(), err
 }
 
-func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
-	gorootOut, err := d.output(nil, "env", "GOROOT")
+// RunJSWasmPackage runs every test in pkg under Node, whatever its
+// build tags, and fails on any go test failure. Unlike RunJSWasmTests
+// it does not require each test to pass by name: a skip is fine.
+func RunJSWasmPackage(root, pkg string, out io.Writer) error {
+	return runJSWasmPackageWith(jsWasmDeps{
+		run:      osGoRunner(root),
+		readFile: os.ReadFile,
+		path:     os.Getenv("PATH"),
+		out:      out,
+	}, pkg)
+}
+
+func runJSWasmPackageWith(d jsWasmDeps, pkg string) error {
+	goroot, err := d.goroot()
 	if err != nil {
-		return fmt.Errorf("go env GOROOT: %w", err)
+		return err
 	}
-	goroot := strings.TrimSpace(string(gorootOut))
+	execFlag, err := jsWasmExecFlag(d.path, goroot)
+	if err != nil {
+		return err
+	}
+	_, err = d.goTest(pkg, execFlag, nil)
+	return err
+}
+
+// goroot returns `go env GOROOT`, erroring on empty output.
+func (d jsWasmDeps) goroot() (string, error) {
+	out, err := d.output(nil, "env", "GOROOT")
+	if err != nil {
+		return "", fmt.Errorf("go env GOROOT: %w", err)
+	}
+	goroot := strings.TrimSpace(string(out))
 	if goroot == "" {
-		return errors.New("go env GOROOT: empty output")
+		return "", errors.New("go env GOROOT: empty output")
+	}
+	return goroot, nil
+}
+
+// goTest runs `go test -json` on pkg under Node, streaming the console
+// log to d.out, and returns the names that reported a pass. A non-nil
+// names becomes the -run filter.
+func (d jsWasmDeps) goTest(pkg, execFlag string, names []string) ([]string, error) {
+	args := []string{"test", "-json", "-exec=" + execFlag}
+	if names != nil {
+		args = append(args, "-run", "^("+strings.Join(names, "|")+")$")
+	}
+	w := &testJSONWriter{out: d.out}
+	runErr := d.run(w, jsWasmEnv, append(args, pkg)...)
+	w.Flush()
+	if runErr != nil {
+		return nil, fmt.Errorf("go test %s under js/wasm: %w", pkg, runErr)
+	}
+	return w.passed, nil
+}
+
+func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
+	goroot, err := d.goroot()
+	if err != nil {
+		return err
 	}
 	files, err := jsOnlyFilesOf(d, pkg)
 	if err != nil {
@@ -115,14 +166,11 @@ func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
 	// the full Go and proxy environment. -json, not -v: test2json frames
 	// each result, so a test whose output lacks a trailing newline still
 	// reports its own pass event instead of a glued `x--- PASS` line.
-	w := &testJSONWriter{out: d.out}
-	runErr := d.run(w, jsWasmEnv, "test", "-json", "-exec="+execFlag,
-		"-run", "^("+strings.Join(names, "|")+")$", pkg)
-	w.Flush()
-	if runErr != nil {
-		return fmt.Errorf("go test %s under js/wasm: %w", pkg, runErr)
+	passed, err := d.goTest(pkg, execFlag, names)
+	if err != nil {
+		return err
 	}
-	return checkAllPassed(names, w.passed)
+	return checkAllPassed(names, passed)
 }
 
 // jsOnlyFilesOf lists pkg's test files that only a js/wasm build

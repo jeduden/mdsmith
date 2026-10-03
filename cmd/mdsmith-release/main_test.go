@@ -1003,3 +1003,13 @@ func captureFile(t *testing.T, target **os.File, fn func()) string {
 	}()
 	return <-done
 }
+
+// TestRunTestJSWasmAll dispatches `test-js-wasm --all` at a package
+// that does not exist: the whole-package run fails in go test, before
+// Node is needed, with the js/wasm error.
+func TestRunTestJSWasmAll(t *testing.T) {
+	var code int
+	stderr := captureStderr(t, func() { code = run([]string{"test-js-wasm", "--all", "./internal/does-not-exist"}) })
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "under js/wasm")
+}

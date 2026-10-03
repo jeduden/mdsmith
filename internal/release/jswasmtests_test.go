@@ -686,3 +686,71 @@ func parseFuncDecl(t *testing.T, sig string) *ast.FuncDecl {
 	require.NoError(t, err)
 	return f.Decls[0].(*ast.FuncDecl)
 }
+
+// TestRunJSWasmPackageWith covers the --all mode: the whole package
+// runs under Node, with no -run filter, and any go test failure fails.
+func TestRunJSWasmPackageWith(t *testing.T) {
+	t.Run("pass runs the whole package", func(t *testing.T) {
+		f := &fakeGo{goroot: "/go", testLog: goTestJSON(t, result("pass", "TestA")...)}
+		var out bytes.Buffer
+		d := jsWasmDeps{run: f.run, path: "/bin", out: &out}
+		require.NoError(t, runJSWasmPackageWith(d, "./p"))
+		assert.Contains(t, out.String(), "--- PASS: TestA")
+		require.Len(t, f.calls, 2)
+		assert.Equal(t, []string{"env", "GOROOT"}, f.calls[0])
+		assert.Equal(t, []string{
+			"test", "-json",
+			"-exec=env -i 'PATH=/bin' '/go/lib/wasm/go_js_wasm_exec'",
+			"./p",
+		}, f.calls[1])
+		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm"}, f.envs[1])
+	})
+
+	t.Run("a skipped test does not fail", func(t *testing.T) {
+		f := &fakeGo{goroot: "/go", testLog: goTestJSON(t, result("skip", "TestA")...)}
+		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
+		require.NoError(t, runJSWasmPackageWith(d, "./p"))
+	})
+
+	t.Run("go test failure fails and still prints the log", func(t *testing.T) {
+		f := &fakeGo{
+			goroot:  "/go",
+			testLog: goTestJSON(t, result("fail", "TestA")...),
+			testErr: errors.New("exit status 1"),
+		}
+		var out bytes.Buffer
+		d := jsWasmDeps{run: f.run, path: "/bin", out: &out}
+		err := runJSWasmPackageWith(d, "./p")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exit status 1")
+		assert.Contains(t, out.String(), "--- FAIL: TestA")
+	})
+
+	t.Run("go env failure", func(t *testing.T) {
+		f := &fakeGo{failOn: "env"}
+		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
+		require.ErrorContains(t, runJSWasmPackageWith(d, "./p"), "go env GOROOT")
+	})
+
+	t.Run("empty GOROOT", func(t *testing.T) {
+		f := &fakeGo{}
+		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
+		require.ErrorContains(t, runJSWasmPackageWith(d, "./p"), "empty output")
+	})
+
+	t.Run("unquotable path", func(t *testing.T) {
+		f := &fakeGo{goroot: "/go"}
+		d := jsWasmDeps{run: f.run, path: `a'"b`, out: &bytes.Buffer{}}
+		require.ErrorContains(t, runJSWasmPackageWith(d, "./p"), "cannot quote")
+	})
+}
+
+// TestRunJSWasmPackage drives the production wiring against a
+// package that does not exist: go test fails before Node is needed.
+func TestRunJSWasmPackage(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	require.NoError(t, err)
+	err = RunJSWasmPackage(root, "./internal/does-not-exist", &bytes.Buffer{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "under js/wasm")
+}
