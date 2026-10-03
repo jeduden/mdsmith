@@ -192,10 +192,19 @@ func hasSlidevMarkers(lines [][]byte) bool {
 // isCodeFence reports whether a line opens or closes a fenced code
 // block (``` or ~~~, three or more). A `---` or `::slot::` inside such
 // a block is literal content — a slide showing YAML or a diff — not a
-// separator, so the scanners skip it.
+// separator, so the scanners skip it. A backtick run followed by
+// another backtick ("```a`b") is paragraph text, not a fence:
+// CommonMark forbids backticks in a backtick fence's info string.
 func isCodeFence(line []byte) bool {
 	t := bytes.TrimLeft(line, " ")
-	return bytes.HasPrefix(t, []byte("```")) || bytes.HasPrefix(t, []byte("~~~"))
+	if bytes.HasPrefix(t, []byte("~~~")) {
+		return true
+	}
+	if !bytes.HasPrefix(t, []byte("```")) {
+		return false
+	}
+	rest := bytes.TrimLeft(t, "`")
+	return bytes.IndexByte(rest, '`') < 0
 }
 
 // slide is one logical slide with its frontmatter and slot markers.
