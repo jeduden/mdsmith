@@ -3,7 +3,7 @@ package build
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,10 +31,12 @@ func TestTokenizeHook_AbsentParam_ExpandsEmpty(t *testing.T) {
 
 // --- RunHooks / RunAfterHooks integration ---
 
-// failEntry builds a HookEntry that calls a non-existent binary so the hook fails.
+// failEntry builds a HookEntry that calls a non-existent binary so the
+// hook fails to start. A start failure looks the same natively and under
+// js/wasm, so the tests that use it need no real process.
 func failEntry(name string) HookEntry {
 	return HookEntry{
-		Tokens: []string{"false"},
+		Tokens: []string{"/no/such/fail-hook"},
 		Name:   name,
 	}
 }
@@ -127,14 +129,9 @@ func TestRunAfterHooks_OutputLines_OnFail(t *testing.T) {
 	assert.Contains(t, out, "hook teardown: FAIL")
 }
 
-// silentDiscard is an io.Writer that discards all writes.
-type silentDiscard struct{}
-
-func (silentDiscard) Write(p []byte) (int, error) { return len(p), nil }
-
 func TestRunHooks_HookEntryEmptyTokens_Skipped(t *testing.T) {
 	hooks := []HookEntry{{Tokens: nil, Name: "empty"}}
-	result := RunHooks(context.Background(), hooks, t.TempDir(), silentDiscard{})
+	result := RunHooks(context.Background(), hooks, t.TempDir(), io.Discard)
 	assert.Nil(t, result)
 }
 
@@ -148,9 +145,6 @@ func TestRunHook_NonExistentBinary_ReturnsFailure(t *testing.T) {
 
 func TestRunAfterHooks_EmptyTokens_Skipped(t *testing.T) {
 	hooks := []HookEntry{{Tokens: nil, Name: "empty"}}
-	result := RunAfterHooks(context.Background(), hooks, t.TempDir(), silentDiscard{})
+	result := RunAfterHooks(context.Background(), hooks, t.TempDir(), io.Discard)
 	assert.Nil(t, result)
 }
-
-// Ensure fmt import is used (compiler would catch this anyway, but making explicit).
-var _ = fmt.Sprintf
