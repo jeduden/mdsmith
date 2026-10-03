@@ -345,9 +345,17 @@ func (w lspRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return w.s.buildWikilinkIndex()
 }
 
-// buildWikilinkIndex walks the workspace root for the wikilink index.
+// buildWikilinkIndex walks the current workspace root for the wikilink
+// index.
 func (s *Server) buildWikilinkIndex() *linkgraph.WikilinkIndex {
 	_, _, root := s.snapshotConfig()
+	return wikilinkIndexAt(root)
+}
+
+// wikilinkIndexAt walks root for the wikilink index. A caller that
+// already spelled its move paths against a root passes that root, so a
+// config reload in between cannot key the index to another directory.
+func wikilinkIndexAt(root string) *linkgraph.WikilinkIndex {
 	return linkgraph.NewWikilinkIndex(os.DirFS(root))
 }
 

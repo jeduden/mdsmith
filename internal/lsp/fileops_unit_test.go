@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"math/rand/v2"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -355,4 +356,37 @@ func TestIsInsert(t *testing.T) {
 	t.Parallel()
 	assert.True(t, isInsert(edAt(1, 3, 3, "x")))
 	assert.False(t, isInsert(edAt(1, 3, 4, "")))
+}
+
+// TestWikilinkIndexAt locks that the move guard's index walks every file
+// under root, a `.mdx` the Markdown index omits included, and skips
+// node_modules, the way the wikilink resolver does.
+func TestWikilinkIndexAt(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, rel := range []string{"docs/guide.md", "a/guide.mdx", "node_modules/p/guide.md"} {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		assert.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		assert.NoError(t, os.WriteFile(p, []byte("# G\n"), 0o644))
+	}
+	idx := wikilinkIndexAt(root)
+	assert.Equal(t, []string{"docs/guide.md"}, idx.StemPaths("guide"))
+	assert.Equal(t, []string{"a/guide.mdx"}, idx.NamePaths("guide.mdx"))
+	assert.Nil(t, wikilinkIndexAt(filepath.Join(root, "missing")), "an unreadable root builds no index")
+}
+
+// TestLSPRenameWorkspace_WikilinkIndex locks both sources of the move
+// guard's index: the batch's shared builder when set, and otherwise a
+// walk of the server's current root.
+func TestLSPRenameWorkspace_WikilinkIndex(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	assert.NoError(t, os.WriteFile(filepath.Join(root, "guide.md"), []byte("# G\n"), 0o644))
+	s := New(Options{})
+	s.rootDir = root
+	assert.Equal(t, []string{"guide.md"}, lspRenameWorkspace{s: s}.WikilinkIndex().StemPaths("guide"))
+
+	shared := linkgraph.NewWikilinkIndex(fstest.MapFS{"x/manual.md": {}})
+	ws := lspRenameWorkspace{s: s, wikilinks: func() *linkgraph.WikilinkIndex { return shared }}
+	assert.Same(t, shared, ws.WikilinkIndex())
 }
