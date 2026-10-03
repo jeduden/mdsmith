@@ -324,7 +324,7 @@ func TestJSWasmDeps_GoTest(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []string{"TestA"}, passed)
 		assert.Equal(t, [][]string{{"test", "-json", "-exec=X", "-run", "^(TestA|TestB)$", "./p"}}, f.calls)
-		assert.Equal(t, [][]string{{"GOOS=js", "GOARCH=wasm"}}, f.envs)
+		assert.Equal(t, [][]string{{"GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0"}}, f.envs)
 		assert.Contains(t, out.String(), "--- SKIP: TestB")
 	})
 
@@ -436,7 +436,7 @@ type fakeGo struct {
 func (f *fakeGo) run(stdout io.Writer, env []string, args ...string) error {
 	f.calls = append(f.calls, args)
 	f.envs = append(f.envs, env)
-	out, err := f.answer(len(env) > 0, args)
+	out, err := f.answer(slices.Contains(env, "GOOS=js"), args)
 	_, _ = io.WriteString(stdout, out)
 	return err
 }
@@ -526,9 +526,9 @@ func TestRunJSWasmTestsWith(t *testing.T) {
 
 		require.Len(t, f.calls, 4)
 		assert.Equal(t, []string{"env", "GOROOT"}, f.calls[0])
-		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm"}, f.envs[1])
+		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0"}, f.envs[1])
 		assert.Equal(t, []string{"list", "-f", testFilesTemplate, "./p"}, f.calls[1])
-		assert.Nil(t, f.envs[2])
+		assert.Equal(t, nativeListEnv, f.envs[2])
 		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[2])
 		assert.Equal(t, []string{
 			"test", "-json",
@@ -536,7 +536,7 @@ func TestRunJSWasmTestsWith(t *testing.T) {
 			"-run", "^(TestA|TestB)$",
 			"./p",
 		}, f.calls[3])
-		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm"}, f.envs[3])
+		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0"}, f.envs[3])
 	})
 
 	t.Run("skipped test is named", func(t *testing.T) {
@@ -694,6 +694,39 @@ func TestJSOnlyFilesOf(t *testing.T) {
 	assert.EqualError(t, err, "test-js-wasm needs exactly one package; ./none matches 0")
 }
 
+// TestNativeListEnv pins the native go list to one host-independent
+// target with cgo off, as js/wasm always has it: a host's cgo or OS
+// tags must not change which test files count as js/wasm-only.
+func TestNativeListEnv(t *testing.T) {
+	assert.Equal(t, []string{"GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0"}, nativeListEnv)
+}
+
+// TestListJSOnlyFilesHostIndependent runs the real go list on a module
+// with cgo, !cgo and !linux test files beside a js-tagged one. Whatever
+// the host's CGO_ENABLED or OS, both lists run with cgo off, so the cgo
+// file is in neither and the !cgo file is shared, and the native list
+// targets linux, so the !linux file is js/wasm-only.
+func TestListJSOnlyFilesHostIndependent(t *testing.T) {
+	dir, _ := newJSWasmFixture(t, map[string]string{
+		"go.mod":         "module example.com/p\ngo 1.25\n",
+		"p.go":           "package p\n",
+		"cgo_test.go":    "//go:build cgo\npackage p\n",
+		"nocgo_test.go":  "//go:build !cgo\npackage p\n",
+		"notlnx_test.go": "//go:build !linux\npackage p\n",
+		"js_test.go":     "//go:build js && wasm\npackage p\n",
+	})
+	want := []string{filepath.Join(dir, "js_test.go"), filepath.Join(dir, "notlnx_test.go")}
+	// "" leaves cgo at the host default: on with a C compiler.
+	for _, cgo := range []string{"", "0", "1"} {
+		t.Run("CGO_ENABLED="+cgo, func(t *testing.T) {
+			t.Setenv("CGO_ENABLED", cgo)
+			got, err := listJSOnlyFiles(osJSWasmDeps(dir, io.Discard), "m", ".")
+			require.NoError(t, err)
+			assert.Equal(t, want, got)
+		})
+	}
+}
+
 func TestListJSOnlyFiles(t *testing.T) {
 	t.Run("extra flags reach the js/wasm list only", func(t *testing.T) {
 		f := &fakeGo{
@@ -707,7 +740,7 @@ func TestListJSOnlyFiles(t *testing.T) {
 		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[0])
 		assert.Equal(t, jsWasmEnv, f.envs[0])
 		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[1])
-		assert.Nil(t, f.envs[1])
+		assert.Equal(t, nativeListEnv, f.envs[1])
 	})
 
 	t.Run("no js/wasm-only files is not an error", func(t *testing.T) {
@@ -870,14 +903,14 @@ func TestRunJSWasmPackageWith(t *testing.T) {
 		require.Len(t, f.calls, 4)
 		assert.Equal(t, []string{"env", "GOROOT"}, f.calls[0])
 		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[1])
-		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm"}, f.envs[1])
+		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0"}, f.envs[1])
 		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[2])
 		assert.Equal(t, []string{
 			"test", "-json",
 			"-exec=env -i 'PATH=/bin' '/go/lib/wasm/go_js_wasm_exec'",
 			"./p",
 		}, f.calls[3])
-		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm"}, f.envs[3])
+		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0"}, f.envs[3])
 	})
 
 	t.Run("a skipped test does not fail", func(t *testing.T) {

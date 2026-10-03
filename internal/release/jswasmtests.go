@@ -5,7 +5,7 @@
 // A native `go test` never compiles a file that only a js/wasm build
 // selects, so those tests need their own run. The runner finds them by
 // diffing the test files `go list` reports under GOOS=js GOARCH=wasm
-// against a native `go list`, parses each file with go/parser to list
+// against a linux/amd64 `go list`, both with cgo off, parses each file with go/parser to list
 // its TestXxx(*testing.T) functions, runs exactly those under Node with
 // `go test -json`, and fails unless every one of them reports a "pass"
 // event. A skipped test therefore fails the step by name; a
@@ -34,8 +34,18 @@ import (
 )
 
 // jsWasmEnv is the extra environment for the js/wasm `go list` and
-// `go test` calls.
-var jsWasmEnv = []string{"GOOS=js", "GOARCH=wasm"}
+// `go test` calls. CGO_ENABLED=0: an inherited CGO_ENABLED=1 would set
+// the cgo build tag even for js/wasm, which has no cgo, and change the
+// files the js/wasm list reports.
+var jsWasmEnv = []string{"GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0"}
+
+// nativeListEnv is the extra environment for the native `go list` the
+// js/wasm one is diffed against. It pins one target, the linux/amd64 CI
+// runner, with cgo off as js/wasm always has it, so the host's OS, arch
+// and cgo tags cannot change which test files count as js/wasm-only: a
+// //go:build !cgo file is shared everywhere, a !linux one js/wasm-only
+// everywhere.
+var nativeListEnv = []string{"GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0"}
 
 // pkgLinePrefix starts the line testFilesTemplate prints for each
 // package matched, ahead of that package's test files.
@@ -266,7 +276,7 @@ func listJSOnlyFiles(d jsWasmDeps, mode, pkg string, listFlags ...string) ([]str
 	// -e: a package whose non-test files are all js/wasm-only has no
 	// native build, and plain `go list` exits 1 on it. Every one of its
 	// test files is then js/wasm-only.
-	nativeOut, err := d.output(nil, "list", "-e", "-f", testFilesTemplate, pkg)
+	nativeOut, err := d.output(nativeListEnv, "list", "-e", "-f", testFilesTemplate, pkg)
 	if err != nil {
 		return nil, fmt.Errorf("go list (native) %s: %w", pkg, err)
 	}
