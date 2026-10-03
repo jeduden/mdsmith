@@ -434,3 +434,48 @@ func TestCheckRCCurrentReportsDeleteTransportError(t *testing.T) {
 	_, _, err := CheckRCCurrent(opts)
 	assert.ErrorContains(t, err, "connection reset")
 }
+
+func TestPreviousNotesTag(t *testing.T) {
+	tags := []string{"v0.55.0", "v0.55.1", "v0.55.0-rc.7", "v0.56.0-rc.1", "v0.56.0-rc.2", "v0.49.0-marketplace"}
+	cases := []struct {
+		name    string
+		tags    []string
+		version string
+		want    string
+		wantOK  bool
+	}{
+		{"candidate starts at the previous candidate", tags, "v0.56.0-rc.3", "v0.56.0-rc.2", true},
+		{"rerun of a candidate skips itself", tags, "v0.56.0-rc.2", "v0.56.0-rc.1", true},
+		{"first candidate starts at the last stable", tags, "v0.56.0-rc.1", "v0.55.1", true},
+		{"stable release keeps the last stable", tags, "v0.56.0", "v0.55.1", true},
+		{"candidates of another line are ignored", tags, "v0.57.0-rc.1", "v0.55.1", true},
+		{"rc numbers compare numerically",
+			[]string{"v0.55.1", "v0.56.0-rc.9", "v0.56.0-rc.10"}, "v0.56.0-rc.11", "v0.56.0-rc.10", true},
+		{"no earlier tag at all", []string{"v0.1.0-rc.2"}, "v0.1.0-rc.1", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok, err := PreviousNotesTag(tc.tags, tc.version)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantOK, ok)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+	_, _, err := PreviousNotesTag(tags, "latest")
+	assert.Error(t, err)
+}
+
+func TestGenerateReleaseNotesPinsPreviousCandidate(t *testing.T) {
+	var got map[string]string
+	srv := tagsServer(t, func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+		_, _ = fmt.Fprint(w, `{"body":"## What's Changed"}`)
+	})
+	_, err := GenerateReleaseNotes(NotesOptions{
+		GitHubRepoOptions: GitHubRepoOptions{Repository: "jeduden/mdsmith", Token: "test-token", APIBaseURL: srv.URL},
+		Tag:               "v0.56.0-rc.3",
+		Target:            "abc123",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "v0.56.0-rc.2", got["previous_tag_name"])
+}

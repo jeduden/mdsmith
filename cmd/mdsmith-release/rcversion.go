@@ -51,11 +51,14 @@ func runReleaseNotes(_ string, args []string) int {
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: mdsmith-release release-notes <out-path>\n\n"+
 			"Write GitHub-generated release notes for RELEASE_TAG at\n"+
-			"GITHUB_SHA to <out-path>. The range starts at the last\n"+
-			"stable tag below RELEASE_TAG, never at a release\n"+
-			"candidate, so a stable release lists every merge since\n"+
-			"the previous stable one. Reads GITHUB_REPOSITORY,\n"+
-			"GITHUB_TOKEN, and GITHUB_API_URL.\n")
+			"GITHUB_SHA to <out-path>. A stable release's range starts\n"+
+			"at the last stable tag below RELEASE_TAG, never at a\n"+
+			"release candidate, so it lists every merge since the\n"+
+			"previous stable one. A candidate's range starts at the\n"+
+			"previous candidate of the same version (the last stable\n"+
+			"tag for its first candidate), so it lists only its own\n"+
+			"merges. Reads GITHUB_REPOSITORY, GITHUB_TOKEN, and\n"+
+			"GITHUB_API_URL.\n")
 	}
 	if err := fs.Parse(args); err != nil {
 		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: release-notes"); code >= 0 {

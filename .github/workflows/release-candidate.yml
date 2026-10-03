@@ -270,8 +270,10 @@ jobs:
             --bundle checksums.txt.bundle \
             checksums.txt
       - name: Generate release notes
-        # Notes span from the last stable tag, so each candidate lists
-        # everything the next stable release would ship.
+        # Notes start at the previous candidate of the same version
+        # (the last stable tag for the first one), so each candidate
+        # lists only the merges it adds. The stable release's notes
+        # still span every merge since the previous stable release.
         env:
           RELEASE_TAG: ${{ needs.version.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
