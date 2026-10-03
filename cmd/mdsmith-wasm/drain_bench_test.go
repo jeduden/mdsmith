@@ -21,18 +21,22 @@ func BenchmarkDrainFinalizedEmpty(b *testing.B) {
 
 // BenchmarkInvalidate measures session.invalidate(uri) through the
 // session object, drain included: the cheapest engine call a host makes
-// on every edit.
+// on every edit. The framework runs it once per b.N it tries, so each
+// run releases its func and disposes its session.
 func BenchmarkInvalidate(b *testing.B) {
 	sharedMethods()
 	opts := js.Global().Get("Object").New()
-	p := exposeAPI().Get("createSession").Invoke(opts)
+	p := testAPI().Get("createSession").Invoke(opts)
 	ch := make(chan js.Value, 1)
 	f := js.FuncOf(func(_ js.Value, a []js.Value) any { ch <- a[0]; return nil })
 	p.Call("then", f)
 	s := <-ch
+	f.Release()
 	uri := js.ValueOf("a.md")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s.Call("invalidate", uri)
 	}
+	b.StopTimer()
+	s.Call("dispose")
 }
