@@ -133,6 +133,12 @@ func TestWikilinkKeyHolders_UnindexedSourceCounts(t *testing.T) {
 	assert.Equal(t, 2, oldN, "an indexed source is not counted twice")
 	oldN, _ = wikilinkKeyHolders(nil, "a/guide.md", "guide", "manual", true)
 	assert.Equal(t, 1, oldN, "a nil index holds only the source")
+	// The nil-index fallback indexes r.paths(), which normalizes the
+	// listing, so a source listed as `./a/guide.md` is found, not
+	// counted a second time.
+	r := &destResolver{ws: stubWorkspace{files: []string{"./a/guide.md"}}, src: "a/guide.md"}
+	oldN, _ = wikilinkKeyHolders(linkgraph.NewWikilinkIndexFromPaths(r.paths()), "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 1, oldN, "a source listed with a ./ prefix is still indexed")
 }
 
 // spellDst calls dstWikilinkSpelling the way the planner does, passing
