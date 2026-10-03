@@ -34,6 +34,7 @@ func sentinelEntry(t *testing.T, dir, name, sentinel string) HookEntry {
 
 // skipWithoutUnixTools skips on Windows, where the hooks below cannot
 // run: `echo` is a cmd builtin with no binary, and `touch` is absent.
+// plan9 ships both as binaries, so these tests run there.
 func skipWithoutUnixTools(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -42,7 +43,6 @@ func skipWithoutUnixTools(t *testing.T) {
 }
 
 func TestRunHooks_SingleSuccess(t *testing.T) {
-	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	result := RunHooks(context.Background(), []HookEntry{echoEntry("greet", "hi")}, t.TempDir(), &w)
@@ -51,7 +51,6 @@ func TestRunHooks_SingleSuccess(t *testing.T) {
 }
 
 func TestRunHooks_MultipleSuccess(t *testing.T) {
-	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	dir := t.TempDir()
 	hooks := []HookEntry{
@@ -68,7 +67,6 @@ func TestRunHooks_MultipleSuccess(t *testing.T) {
 }
 
 func TestRunHooks_UsesRootAsWorkDir(t *testing.T) {
-	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	dir := t.TempDir()
 	// The hook creates a file named "ok" — relative to cwd (= root).
@@ -81,7 +79,6 @@ func TestRunHooks_UsesRootAsWorkDir(t *testing.T) {
 }
 
 func TestRunAfterHooks_AllSucceed_ReturnsNil(t *testing.T) {
-	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	result := RunAfterHooks(context.Background(),
@@ -91,7 +88,6 @@ func TestRunAfterHooks_AllSucceed_ReturnsNil(t *testing.T) {
 }
 
 func TestRunAfterHooks_FailContinues(t *testing.T) {
-	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	dir := t.TempDir()
 	sentinel := filepath.Join(dir, "second-ran")
@@ -108,7 +104,6 @@ func TestRunAfterHooks_FailContinues(t *testing.T) {
 }
 
 func TestRunHooks_OutputLines(t *testing.T) {
-	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	hooks := []HookEntry{
@@ -122,7 +117,6 @@ func TestRunHooks_OutputLines(t *testing.T) {
 
 // Regression: zero-exit hook must not produce a FAIL line.
 func TestRunHooks_SuccessNoFailLine(t *testing.T) {
-	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	hooks := []HookEntry{echoEntry("x", "hello")}
@@ -132,7 +126,6 @@ func TestRunHooks_SuccessNoFailLine(t *testing.T) {
 }
 
 func TestRunAfterHooks_UnnamedHook_UsesFirstToken(t *testing.T) {
-	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	h := echoEntry("echo", "hello")
@@ -160,10 +153,7 @@ func TestRunHook_ExitCodePreserved(t *testing.T) {
 // a process killed by a signal yields ExitCode() == -1, which runHook normalizes to 1.
 // Only meaningful on Unix (Windows processes don't signal-kill the same way).
 func TestRunHook_SignalKilled_NormalizesExitCode(t *testing.T) {
-	skipOnPlan9(t)
-	if runtime.GOOS == "windows" {
-		t.Skip("signal kill not available on windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	// `sh -c 'kill -9 $$'` kills the shell with SIGKILL, giving exit code -1.
 	result := runHook(context.Background(), []string{"sh", "-c", "kill -9 $$"}, t.TempDir())
 	require.NotNil(t, result)

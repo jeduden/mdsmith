@@ -18,10 +18,7 @@ import (
 )
 
 func TestRunRecipe_NonNilJobCleanup(t *testing.T) {
-	skipOnPlan9(t)
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	// On Unix afterStart returns nil; inject a non-nil cleanup so runRecipe
 	// installs and runs the deferred-cleanup branch.
 	var ran atomic.Bool
@@ -44,10 +41,7 @@ func TestRunRecipe_NonNilJobCleanup(t *testing.T) {
 }
 
 func TestRunRecipe_HermeticEnvVisibleToProcess(t *testing.T) {
-	skipOnPlan9(t)
-	if runtime.GOOS == "windows" {
-		t.Skip("sh not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	t.Setenv("HOME", "/home/tester")
 	t.Setenv("SECRET_TOKEN", "leak-me")
 
@@ -75,10 +69,7 @@ func TestRunRecipe_HermeticEnvVisibleToProcess(t *testing.T) {
 }
 
 func TestRunRecipe_CmdDirIsStaging(t *testing.T) {
-	skipOnPlan9(t)
-	if runtime.GOOS == "windows" {
-		t.Skip("sh not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	stage := t.TempDir()
 	realStage, err := filepath.EvalSymlinks(stage)
 	require.NoError(t, err)
@@ -100,10 +91,7 @@ func TestRunRecipe_CmdDirIsStaging(t *testing.T) {
 }
 
 func TestRunRecipe_TimeoutErrorMessageIsDeterministic(t *testing.T) {
-	skipOnPlan9(t)
-	if runtime.GOOS == "windows" {
-		t.Skip("sh not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	stage := t.TempDir()
 	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 120`)
 
@@ -122,10 +110,7 @@ func TestRunRecipe_TimeoutErrorMessageIsDeterministic(t *testing.T) {
 }
 
 func TestRunRecipe_CancellationReported(t *testing.T) {
-	skipOnPlan9(t)
-	if runtime.GOOS == "windows" {
-		t.Skip("sh not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	stage := t.TempDir()
 	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 120`)
 
@@ -145,15 +130,25 @@ func TestRunRecipe_CancellationReported(t *testing.T) {
 	assert.Contains(t, err.Error(), "cancelled")
 }
 
-// skipOnPlan9 skips a process or pipe test on plan9. These files carry
-// `unix || windows || plan9`, the complement of exec_other.go's tag, so
-// GOOS=plan9 go vet still type-checks them (plan 2610030243). Their
-// tests assume POSIX tools such as `sh`, and plan9 has only `rc`; the
-// tests plan9 runs live in exec_plan9_test.go and
-// exec_plan9_proc_test.go.
+// skipOnPlan9 skips a test that runs a `#!/bin/sh` script on plan9,
+// which has only `rc`. These files carry `unix || windows || plan9`,
+// the complement of exec_other.go's tag, so GOOS=plan9 go vet still
+// type-checks them (plan 2610030243). The rc-based tests plan9 runs
+// live in exec_plan9_test.go and exec_plan9_proc_test.go.
 func skipOnPlan9(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "plan9" {
 		t.Skip("plan9 has no sh; see exec_plan9_test.go")
+	}
+}
+
+// skipWithoutPOSIXTools skips a test whose recipe needs the named POSIX
+// tools (an `sh` script, `cp`, ...): Windows lacks them and plan9 has
+// only `rc`.
+func skipWithoutPOSIXTools(t *testing.T, tools string) {
+	t.Helper()
+	skipOnPlan9(t)
+	if runtime.GOOS == "windows" {
+		t.Skip(tools + " is not available on Windows")
 	}
 }
