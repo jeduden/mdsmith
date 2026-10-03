@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/jeduden/mdsmith/internal/mdfence"
 )
 
 // GitHubRelease is the subset of a GitHub release the website's
@@ -316,13 +318,12 @@ type headingRewriter struct {
 	lines []string
 	shift int
 	ids   headingIDs
-	// fenceChar and fenceLen describe the open fenced code block's
-	// opening run; fenceChar is 0 outside one. fenceIn lists the
+	// fence is the open fenced code block's opener, read by
+	// internal/mdfence; its Char is 0 outside one. fenceIn lists the
 	// block quotes and list items the fence was opened in,
 	// outermost first; it is empty for a top-level fence.
-	fenceChar byte
-	fenceLen  int
-	fenceIn   []fenceContainer
+	fence   mdfence.Fence
+	fenceIn []fenceContainer
 	// paraStart is the first line of the open plain paragraph (one a
 	// setext underline can turn into a heading), or -1. canStart
 	// reports whether the next plain line opens a new paragraph rather
@@ -333,17 +334,17 @@ type headingRewriter struct {
 
 func (w *headingRewriter) visit(i int) {
 	line := w.lines[i]
-	if w.fenceChar != 0 {
+	if w.fence.Char != 0 {
 		if rest, inside := stripContainers(line, w.fenceIn); inside {
-			if w.isCloser(rest) {
-				w.fenceChar, w.fenceIn, w.canStart = 0, nil, true
+			if mdfence.Close([]byte(rest), w.fence) {
+				w.fence, w.fenceIn, w.canStart = mdfence.Fence{}, nil, true
 			}
 			return
 		}
 		// The line ends a block quote or list item the fence was
 		// opened in, and the fence with it: fenced code has no lazy
 		// continuation. The line itself is an ordinary one.
-		w.fenceChar, w.fenceIn, w.canStart = 0, nil, true
+		w.fence, w.fenceIn, w.canStart = mdfence.Fence{}, nil, true
 	}
 	trimmed := strings.TrimLeft(line, " ")
 	indent := len(line) - len(trimmed)
@@ -420,28 +421,11 @@ func stripContainers(line string, cs []fenceContainer) (string, bool) {
 	return line, true
 }
 
-// openingFence returns the fence character and run length when s
-// (indent removed) opens a fenced code block, or (0, 0). A backtick
-// fence's info string cannot hold a backtick, so "```go``` text" is
-// inline code in a paragraph, not a fence.
-func openingFence(s string) (byte, int) {
-	c, n := fenceMarker([]byte(s))
-	if c == '`' && strings.IndexByte(s[n:], '`') >= 0 {
-		return 0, 0
-	}
-	return c, n
-}
-
-func (w *headingRewriter) isCloser(line string) bool {
-	c, n := fenceMarker([]byte(line))
-	return c == w.fenceChar && n >= w.fenceLen && fenceLineEmptyAfter([]byte(line), n)
-}
-
 // block handles a non-blank line indented at most three spaces;
 // indent is its leading spaces and trimmed the rest.
 func (w *headingRewriter) block(i int, indent, trimmed string) {
-	if c, n := openingFence(trimmed); c != 0 {
-		w.fenceChar, w.fenceLen, w.paraStart = c, n, -1
+	if f, ok := mdfence.Open([]byte(trimmed)); ok {
+		w.fence, w.paraStart = f, -1
 		return
 	}
 	if level := atxLevel(trimmed); level > 0 {
@@ -483,11 +467,11 @@ func (w *headingRewriter) containedATX(i int, indent, trimmed string) {
 	if p == 0 || pad > 3 {
 		return
 	}
-	if c, n := openingFence(inner); c != 0 {
+	if f, ok := mdfence.Open([]byte(inner)); ok {
 		// A fence opened behind the markers ("- ```sh"): its lines
 		// are code, not headings, until the matching closer at the
 		// containers' content indent, or until a container ends.
-		w.fenceChar, w.fenceLen = c, n
+		w.fence = f
 		w.fenceIn = fenceContainers(len(indent), trimmed[:p], pad)
 		return
 	}
