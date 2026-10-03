@@ -797,3 +797,131 @@ func TestIsAttributeToken(t *testing.T) {
 		})
 	}
 }
+
+const (
+	rc1Notes = "## What's Changed\n* a by @x in u1\n* b by @x in u2\n\n" +
+		"## New Contributors\n* @y made their first contribution in u1\n\n\n" +
+		"**Full Changelog**: https://github.com/o/r/compare/v0.55.1...v0.56.0-rc.1"
+	rc2Notes = "## What's Changed\n* a by @x in u1\n* b by @x in u2\n* c by @x in u3\n\n" +
+		"## New Contributors\n* @y made their first contribution in u1\n\n\n" +
+		"**Full Changelog**: https://github.com/o/r/compare/v0.55.1...v0.56.0-rc.2"
+)
+
+func TestCandidateDelta(t *testing.T) {
+	cases := []struct {
+		name, body, prev, want string
+	}{
+		{
+			name: "cumulative notes keep only the new entries",
+			body: rc2Notes, prev: rc1Notes,
+			want: "## What's Changed\n* c by @x in u3\n\n" +
+				"**Full Changelog**: https://github.com/o/r/compare/v0.56.0-rc.1...v0.56.0-rc.2",
+		},
+		{
+			name: "notes already since the previous candidate stay whole",
+			body: "## What's Changed\n* c by @x in u3\n\n" +
+				"**Full Changelog**: https://github.com/o/r/compare/v0.56.0-rc.1...v0.56.0-rc.2",
+			prev: rc1Notes,
+			want: "## What's Changed\n* c by @x in u3\n\n" +
+				"**Full Changelog**: https://github.com/o/r/compare/v0.56.0-rc.1...v0.56.0-rc.2",
+		},
+		{
+			name: "nothing new leaves only the compare link",
+			body: strings.Replace(rc1Notes, "v0.56.0-rc.1", "v0.56.0-rc.2", 1),
+			prev: rc1Notes,
+			want: "**Full Changelog**: https://github.com/o/r/compare/v0.56.0-rc.1...v0.56.0-rc.2",
+		},
+		{
+			name: "text before the first heading is subtracted too",
+			body: "intro\nshared\n## H\n* new",
+			prev: "shared",
+			want: "intro\n## H\n* new",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, candidateDelta(tc.body, tc.prev, "v0.56.0-rc.1", "v0.56.0-rc.2"))
+		})
+	}
+}
+
+func TestRebaseCompareLink(t *testing.T) {
+	const tag = "v0.56.0-rc.2"
+	cases := map[string]string{
+		"FC: /r/compare/v0.55.1...v0.56.0-rc.2":      "FC: /r/compare/v0.56.0-rc.1...v0.56.0-rc.2",
+		"FC: /r/compare/v0.56.0-rc.1...v0.56.0-rc.2": "FC: /r/compare/v0.56.0-rc.1...v0.56.0-rc.2",
+		"FC: /r/commits/v0.56.0-rc.2":                "FC: /r/commits/v0.56.0-rc.2",
+		"see /compare/a b...v0.56.0-rc.2":            "see /compare/a b...v0.56.0-rc.2",
+		"/compare/v0.55.1...v0.57.0":                 "/compare/v0.55.1...v0.57.0",
+		"/compare/v0.55.1...v0.56.0-rc.20":           "/compare/v0.55.1...v0.56.0-rc.20",
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			assert.Equal(t, want, rebaseCompareLink(in, "v0.56.0-rc.1", tag))
+		})
+	}
+}
+
+func TestIsFullChangelogLine(t *testing.T) {
+	assert.True(t, isFullChangelogLine("**Full Changelog**: https://x"))
+	assert.True(t, isFullChangelogLine("  **Full Changelog**: https://x"))
+	assert.False(t, isFullChangelogLine("* Full Changelog"))
+}
+
+func TestBuildSiteReleasesCandidatesListOnlyTheirOwnChanges(t *testing.T) {
+	got := BuildSiteReleases([]GitHubRelease{
+		{TagName: "v0.55.1", Body: "## What's Changed\n* old", PublishedAt: mustTime(t, "2026-08-01T00:00:00Z")},
+		{TagName: "v0.56.0-rc.1", Prerelease: true, Body: rc1Notes, PublishedAt: mustTime(t, "2026-08-02T00:00:00Z")},
+		{TagName: "v0.56.0-rc.2", Prerelease: true, Body: rc2Notes, PublishedAt: mustTime(t, "2026-08-03T00:00:00Z")},
+	})
+	require.Len(t, got.Candidates, 2)
+	assert.Equal(t, "#### What's Changed {#v0-56-0-rc-2-whats-changed}\n* c by @x in u3\n\n"+
+		"**Full Changelog**: https://github.com/o/r/compare/v0.56.0-rc.1...v0.56.0-rc.2",
+		got.Candidates[0].Body, "rc.2 lists only what rc.1 did not")
+	assert.Contains(t, got.Candidates[1].Body, "* a by @x in u1", "the oldest candidate keeps its full notes")
+	assert.Contains(t, got.Candidates[1].Body, "compare/v0.55.1...v0.56.0-rc.1")
+	assert.Equal(t, "#### What's Changed {#v0-55-1-whats-changed}\n* old", got.Stable[0].Body,
+		"stable notes are not subtracted")
+}
+
+func TestSubtractPredecessors(t *testing.T) {
+	cands := []SiteRelease{
+		{Tag: "v1.0.0-rc.3", Body: "* a\n* b\n* c"},
+		{Tag: "v1.0.0-rc.2", Body: "* a\n* b"},
+		{Tag: "v1.0.0-rc.1", Body: "* a"},
+	}
+	subtractPredecessors(cands)
+	assert.Equal(t, []string{"* c", "* b", "* a"},
+		[]string{cands[0].Body, cands[1].Body, cands[2].Body},
+		"each candidate is subtracted against its predecessor's raw body")
+	subtractPredecessors(nil)
+}
+
+func TestFinalizeBodies(t *testing.T) {
+	rs := []SiteRelease{{Tag: "v1.0.0", Body: "## A\n{{< x >}}"}}
+	finalizeBodies(rs)
+	assert.Equal(t, "#### A {#v1-0-0-a}\n{\u200b{< x >}}", rs[0].Body)
+}
+
+func TestIsHeadingLine(t *testing.T) {
+	assert.True(t, isHeadingLine("## A"))
+	assert.True(t, isHeadingLine("   # A"))
+	assert.False(t, isHeadingLine("    # code"))
+	assert.False(t, isHeadingLine("#123 fixed"))
+	assert.False(t, isHeadingLine("* item"))
+}
+
+func TestIsTagByte(t *testing.T) {
+	for _, c := range []byte("09azAZ.-_+") {
+		assert.True(t, isTagByte(c), string(c))
+	}
+	for _, c := range []byte(" )/]\"") {
+		assert.False(t, isTagByte(c), string(c))
+	}
+}
+
+func TestCollapseBlankLines(t *testing.T) {
+	assert.Equal(t, "a\n\nb", collapseBlankLines([]string{"", "a", "", "  ", "", "b", "", ""}))
+	assert.Equal(t, "", collapseBlankLines([]string{"", " "}))
+	assert.Equal(t, "", collapseBlankLines(nil))
+}

@@ -388,8 +388,8 @@ func TestExtern(t *testing.T)
 // spawn test file tagged `unix || windows` again would drop out of the
 // GOOS=plan9 vet, and an sh test without a plan9 skip would fail on
 // plan9. The release-tooling packages carry the same spawn tag, so
-// their test files are checked here too. Plan 2610031920 moves this
-// guard to the module level.
+// their test files are checked here too. The plan's Follow-ups
+// section moves this guard to the module level.
 func TestProcTestFilesCoverPlan9(t *testing.T) {
 	for _, dir := range []string{".", "../release", "../../cmd/mdsmith-release"} {
 		assert.Empty(t, checkProcTestDir(t, dir), "dir %s", dir)

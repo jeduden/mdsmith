@@ -94,8 +94,7 @@ errors only then.
    `skipWithoutPOSIXTools`, which the test still
    needs for Windows. Untagged files build on js, so
    the js/wasm gate covers them instead.
-   [Plan 2610031920](2610031920_module-wide-plan9-spawn-guard.md)
-   takes the guard module-wide.
+   See Follow-ups for taking the guard module-wide.
 
 ## Acceptance Criteria
 
@@ -112,3 +111,45 @@ errors only then.
 - [x] `mdsmith check .` passes.
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues
+
+## Follow-ups
+
+`PLAN.md` is at the 300-line cap that MDS022 sets, so a
+new plan file would add a catalog row and fail the check.
+Raising the cap means editing `.mdsmith.yml`, which needs
+the maintainer's consent. These items live here until
+that happens, then move into their own plan (model
+sonnet, depends on this plan).
+
+**Take the guard module-wide.** `TestProcTestFilesCoverPlan9`
+lives in `internal/build` and reaches `../release` and
+`../../cmd/mdsmith-release` by relative path, so the build
+package's tests depend on how two other packages are laid
+out. These spawn-style test files go unchecked:
+
+- `cmd/mdsmith/e2e_main_test.go` and
+  `cmd/mdsmith/fileop_exec_test.go`
+- `internal/refactor/fileop_exec_test.go`
+- `internal/rules/externallink/probe_net_test.go`
+- `internal/rules/recipesafety/register_test.go`
+
+The tag rule is the complement of `exec_other.go`'s stubs,
+which fits only `internal/build`, so each package needs a
+contract of its own. Two more gaps:
+
+- About 28 untagged tests in `internal/release` and
+  `cmd/mdsmith-release` write fake `#!/bin/sh` tools with no
+  plan9 skip, and no js/wasm gate runs those packages.
+- The `cp` and `cat` recipe tests skip on plan9 through
+  `skipWithoutPOSIXTools`. Recipes run argv with no shell and
+  plan9 has both tools, but CI has no plan9 runner to show
+  which tests could run there.
+
+Tasks: move the checker and its unit tests to a module-level
+test such as one under `internal/integration` and drop the
+relative paths; write the plan9 tag contract for each package
+above; add a plan9 skip or `//go:build !plan9` to the untagged
+release-tooling tests that run `sh` and extend the sh check to
+them; find out whether a plan9 runner (a 9front VM in CI) is
+practical and, if so, split `skipWithoutPOSIXTools` so the
+`cp`/`cat` tests run there.

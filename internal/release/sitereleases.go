@@ -50,9 +50,11 @@ const releaseHeadingShift = 2
 // BuildSiteReleases splits published releases into stable ones and
 // candidates by GitHub's prerelease flag, drops drafts, normalizes
 // each body, and sorts both lists newest first (tag descending on a
-// tie, so the output is stable). Normalizing demotes and scopes the
-// body's headings and defuses Hugo shortcode syntax (see
-// defuseShortcodes).
+// tie, so the output is stable). Each candidate's body loses the
+// entries its next-older candidate already listed (see
+// candidateDelta), so a candidate shows only its own changes.
+// Normalizing then demotes and scopes the body's headings and
+// defuses Hugo shortcode syntax (see defuseShortcodes).
 func BuildSiteReleases(rels []GitHubRelease) SiteReleases {
 	out := SiteReleases{Stable: []SiteRelease{}, Candidates: []SiteRelease{}}
 	for _, r := range rels {
@@ -63,14 +65,12 @@ func BuildSiteReleases(rels []GitHubRelease) SiteReleases {
 		if name == "" {
 			name = r.TagName
 		}
-		body := strings.TrimSpace(strings.ReplaceAll(r.Body, "\r\n", "\n"))
-		body = rewriteHeadings(body, releaseHeadingShift, headingSlug(r.TagName))
 		sr := SiteRelease{
 			Tag:       r.TagName,
 			Name:      name,
 			URL:       r.HTMLURL,
 			Published: r.PublishedAt,
-			Body:      defuseShortcodes(body),
+			Body:      strings.TrimSpace(strings.ReplaceAll(r.Body, "\r\n", "\n")),
 		}
 		if r.Prerelease {
 			out.Candidates = append(out.Candidates, sr)
@@ -81,7 +81,139 @@ func BuildSiteReleases(rels []GitHubRelease) SiteReleases {
 	sortNewestFirst(out.Stable)
 	sortNewestFirst(out.Candidates)
 	out.Candidates = candidatesAfterStable(out.Candidates, out.Stable)
+	subtractPredecessors(out.Candidates)
+	finalizeBodies(out.Stable)
+	finalizeBodies(out.Candidates)
 	return out
+}
+
+// finalizeBodies demotes and scopes each body's headings and defuses
+// its Hugo shortcode syntax. It runs after subtractPredecessors,
+// which compares raw bodies: the heading rewrite scopes ids per tag,
+// so rewritten headings would never compare equal.
+func finalizeBodies(rs []SiteRelease) {
+	for i := range rs {
+		body := rewriteHeadings(rs[i].Body, releaseHeadingShift, headingSlug(rs[i].Tag))
+		rs[i].Body = defuseShortcodes(body)
+	}
+}
+
+// subtractPredecessors rewrites each candidate's body, newest first,
+// to candidateDelta against the next-older candidate's raw body. The
+// oldest candidate keeps its full notes.
+func subtractPredecessors(cands []SiteRelease) {
+	for i := 0; i+1 < len(cands); i++ {
+		prev := cands[i+1]
+		cands[i].Body = candidateDelta(cands[i].Body, prev.Body, prev.Tag, cands[i].Tag)
+	}
+}
+
+// candidateDelta returns body without the entries prev already
+// lists, for a candidate tag whose previous candidate is prevTag.
+// Candidate notes published before release-notes started each
+// candidate at the previous one span every change since the last
+// stable release, and published releases are immutable, so the page
+// subtracts instead. Notes that already start at prevTag share no
+// entries with prev and come back whole.
+//
+// An entry is a non-blank line that is not an ATX heading; lines are
+// compared with surrounding spaces trimmed. A heading left with no
+// entries is dropped. GitHub's "**Full Changelog**" line ends the
+// last section, and its compare link is rebased onto prevTag. Runs
+// of blank lines collapse to one.
+func candidateDelta(body, prev, prevTag, tag string) string {
+	seen := map[string]bool{}
+	for _, l := range strings.Split(prev, "\n") {
+		if t := strings.TrimSpace(l); t != "" && !isHeadingLine(l) {
+			seen[t] = true
+		}
+	}
+	lines := strings.Split(body, "\n")
+	out := make([]string, 0, len(lines))
+	var heading string
+	pending := false
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		switch {
+		case t == "":
+			if !pending {
+				out = append(out, "")
+			}
+		case isHeadingLine(l):
+			heading, pending = l, true
+		case isFullChangelogLine(l):
+			pending = false
+			out = append(out, rebaseCompareLink(l, prevTag, tag))
+		case seen[t]:
+		default:
+			if pending {
+				out = append(out, heading)
+				pending = false
+			}
+			out = append(out, l)
+		}
+	}
+	return collapseBlankLines(out)
+}
+
+// isHeadingLine reports whether l is an ATX heading indented at most
+// three spaces.
+func isHeadingLine(l string) bool {
+	t := strings.TrimLeft(l, " ")
+	return len(l)-len(t) <= 3 && atxLevel(t) > 0
+}
+
+// isFullChangelogLine reports whether l is GitHub's generated
+// "**Full Changelog**: <compare link>" line.
+func isFullChangelogLine(l string) bool {
+	return strings.HasPrefix(strings.TrimSpace(l), "**Full Changelog**")
+}
+
+// rebaseCompareLink points a ".../compare/<base>...<tag>" link in l
+// at prevTag as its base. A line without such a link, with
+// whitespace in the base, or whose "...<tag>" only prefixes a longer
+// tag (rc.2 inside rc.20) comes back unchanged.
+func rebaseCompareLink(l, prevTag, tag string) string {
+	const marker = "/compare/"
+	i := strings.Index(l, marker)
+	if i < 0 {
+		return l
+	}
+	start := i + len(marker)
+	rest := l[start:]
+	j := strings.Index(rest, "..."+tag)
+	if j <= 0 || strings.ContainsAny(rest[:j], " \t") {
+		return l
+	}
+	if end := j + 3 + len(tag); end < len(rest) && isTagByte(rest[end]) {
+		return l
+	}
+	return l[:start] + prevTag + rest[j:]
+}
+
+// isTagByte reports whether c can continue a version tag.
+func isTagByte(c byte) bool {
+	return c == '.' || c == '-' || c == '_' || c == '+' ||
+		('0' <= c && c <= '9') || ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
+}
+
+// collapseBlankLines joins lines, folding each run of blank lines
+// into one and dropping leading and trailing blank lines.
+func collapseBlankLines(lines []string) string {
+	kept := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if strings.TrimSpace(l) == "" && (len(kept) == 0 || kept[len(kept)-1] == "") {
+			continue
+		}
+		if strings.TrimSpace(l) == "" {
+			l = ""
+		}
+		kept = append(kept, l)
+	}
+	for len(kept) > 0 && kept[len(kept)-1] == "" {
+		kept = kept[:len(kept)-1]
+	}
+	return strings.Join(kept, "\n")
 }
 
 // shortcodeDefuser puts a zero-width space between the braces of
@@ -101,10 +233,10 @@ func defuseShortcodes(body string) string {
 }
 
 // candidatesAfterStable keeps the candidates that are newer than
-// the stable releases. Each candidate's notes span every change since
-// the previous stable release, and one is cut per merge, so keeping
-// the candidates a stable release has already shipped would grow the
-// page by a whole changelog per merge, forever.
+// the stable releases. One candidate is cut per merge, and the stable
+// release that follows lists all their changes, so keeping the
+// candidates a stable release has already shipped would grow the
+// page by one entry per merge, forever.
 //
 // A candidate with a v-prefixed semver tag is kept when its
 // major.minor.patch is above the highest plain vX.Y.Z stable tag, as
