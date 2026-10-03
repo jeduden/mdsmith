@@ -10,6 +10,7 @@ import (
 	"testing/fstest"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
@@ -366,8 +367,8 @@ func TestWikilinkIndexAt(t *testing.T) {
 	root := t.TempDir()
 	for _, rel := range []string{"docs/guide.md", "a/guide.mdx", "node_modules/p/guide.md"} {
 		p := filepath.Join(root, filepath.FromSlash(rel))
-		assert.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
-		assert.NoError(t, os.WriteFile(p, []byte("# G\n"), 0o644))
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte("# G\n"), 0o644))
 	}
 	idx := wikilinkIndexAt(root)
 	assert.Equal(t, []string{"docs/guide.md"}, idx.StemPaths("guide"))
@@ -381,7 +382,7 @@ func TestWikilinkIndexAt(t *testing.T) {
 func TestLSPRenameWorkspace_WikilinkIndex(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	assert.NoError(t, os.WriteFile(filepath.Join(root, "guide.md"), []byte("# G\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "guide.md"), []byte("# G\n"), 0o644))
 	s := New(Options{})
 	s.rootDir = root
 	assert.Equal(t, []string{"guide.md"}, lspRenameWorkspace{s: s}.WikilinkIndex().StemPaths("guide"))
