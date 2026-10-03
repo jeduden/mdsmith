@@ -1,7 +1,7 @@
 ---
 id: 2610031420
 title: Free the func when js.FuncOf's wrapper call throws
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   `syscall/js.FuncOf` stores the handler in its private
@@ -50,29 +50,50 @@ Possible fixes:
 - Propose a fix upstream that makes `FuncOf` release
   the id when the wrapper call panics.
 
+## Decision
+
+Fix 2: capture `Reflect.apply` at load (`captureGlobals`) and
+compare it with the current one before each `FuncOf`
+(`reflectApplyIntact`, checked at the top of `newPromise`).
+It is the smallest change: no pool, no per-call context
+slot, no upstream dependency, and every per-call func goes
+through `newPromise`, so one check covers it. The
+size budgets are unaffected.
+
+Deviation: the plan says to refuse with a rejection. A
+rejection needs a Promise, and building or rejecting one
+goes through the same patched `Reflect.apply` (`Call`) or a
+second `FuncOf`, so `newPromise` returns `undefined`, as it
+does for a patched `Promise` that fails.
+
+Known limit: a `Reflect.apply` accessor that returns the
+original on the first read and throws on the next passes the
+check. Recorded in engine-api.md.
+
 ## Tasks
 
-1. Write a failing js/wasm test that patches
+1. [x] Write a failing js/wasm test that patches
    `Reflect.apply` to throw on `_makeFuncWrapper`,
-   calls an async session method, and asserts the
-   func-table size (counted through the `funcOf` seam)
-   is unchanged.
-2. Pick one of the fixes above and record why in this
+   calls an async session method, and asserts no func
+   is registered through the `funcOf` seam and the
+   wrapper is never called. (Red: the unguarded
+   `FuncOf` panicked out of the test.)
+2. [x] Pick one of the fixes above and record why in this
    plan.
-3. Make the test pass. The engine-api.md size budgets
+3. [x] Make the test pass. The engine-api.md size budgets
    must still hold.
-4. Update
+4. [x] Update
    [engine-api.md](../docs/background/concepts/engine-api.md)
    with the hostile-global behavior that results.
 
 ## Acceptance Criteria
 
-- [ ] A throwing `_makeFuncWrapper` call leaves no func
+- [x] A throwing `_makeFuncWrapper` call leaves no func
       registered after the call
-- [ ] The session the call ran against is collectable
+- [x] The session the call ran against is collectable
       after `dispose()`
-- [ ] All tests pass: `go test ./...` and
+- [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues, natively and with
       `GOOS=js GOARCH=wasm`

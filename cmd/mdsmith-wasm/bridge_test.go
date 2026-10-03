@@ -1936,6 +1936,7 @@ func TestCaptureGlobals_SurvivesThrowingCaptures(t *testing.T) {
 		const throwingBind = { bind() { throw new TypeError('bind'); } };
 		return {
 			Object: o,
+			Reflect,
 			Function: { prototype: { call: throwingBind, bind: Function.prototype.bind } },
 		};`).Invoke()
 	require.NotPanics(t, func() { captureGlobals(fake) }, "a throwing capture does not stop the load")
@@ -1957,18 +1958,22 @@ func TestCaptureGlobals_SurvivesThrowingCaptures(t *testing.T) {
 // that reruns it can put the load-time captures back.
 type loadCaptures struct {
 	bindTo, objectCtor, objectKeys, objectCreate, recordTag js.Value
-	defineProperty, methodDesc                              js.Value
+	defineProperty, methodDesc, reflectApply                js.Value
 	thenHider                                               thenHiderValues
 }
 
 func saveCaptures() loadCaptures {
-	return loadCaptures{bindTo, objectCtor, objectKeys, objectCreate, recordTag, defineProperty, methodDesc, thenHider}
+	return loadCaptures{
+		bindTo, objectCtor, objectKeys, objectCreate, recordTag,
+		defineProperty, methodDesc, reflectApply, thenHider,
+	}
 }
 
 func (c loadCaptures) restore() {
 	bindTo, objectCtor, objectKeys, objectCreate, recordTag =
 		c.bindTo, c.objectCtor, c.objectKeys, c.objectCreate, c.recordTag
 	defineProperty, methodDesc, thenHider = c.defineProperty, c.methodDesc, c.thenHider
+	reflectApply = c.reflectApply
 }
 
 // TestNewMethodKeys checks that newMethodKeys pairs each name, in order,
@@ -1997,4 +2002,85 @@ func TestFrozenDesc(t *testing.T) {
 	require.Equal(t, 1, keys.Length())
 	assert.Equal(t, "writable", keys.Index(0).String())
 	assert.True(t, d.Get("writable").Bool())
+}
+
+// patchApplyThrowOnWrapper replaces Reflect.apply with one that throws
+// when called for syscall/js's _makeFuncWrapper (the call js.FuncOf
+// makes after it stores the handler in its private func table) and
+// otherwise delegates. It returns a JS object whose n property counts
+// those throws, and restores Reflect.apply when t ends. A caller must
+// not run in parallel.
+func patchApplyThrowOnWrapper(t *testing.T) (state js.Value, restore func()) {
+	t.Helper()
+	reflectObj := js.Global().Get("Reflect")
+	orig := reflectObj.Get("apply")
+	state = js.Global().Get("Object").New()
+	state.Set("n", 0)
+	patched := js.Global().Get("Function").New("orig", "state", `return function (target, thisArg, args) {
+		if (thisArg && thisArg._makeFuncWrapper === target) {
+			state.n++;
+			throw new TypeError("makeFuncWrapper");
+		}
+		return orig(target, thisArg, args);
+	}`).Invoke(orig, state)
+	restore = func() { reflectObj.Set("apply", orig) }
+	t.Cleanup(restore)
+	reflectObj.Set("apply", patched)
+	return state, restore
+}
+
+// TestNewPromise_WrapperThrowRegistersNoFunc patches Reflect.apply to
+// throw on js.FuncOf's _makeFuncWrapper call. FuncOf stores the handler
+// in its func table before that call and drops the id when it panics, so
+// the entry could never be released. An async method and createSession
+// must therefore not call FuncOf at all while Reflect.apply is not the
+// function captured at load: they return undefined, register no session,
+// and leave the session usable. Not parallel: it swaps Reflect.apply and
+// the funcOf seam.
+func TestNewPromise_WrapperThrowRegistersNoFunc(t *testing.T) {
+	proxy := newTestProxy(t)
+	defer proxy.Call("dispose")
+	calls := 0
+	oldOf := funcOf
+	t.Cleanup(func() { funcOf = oldOf })
+	funcOf = func(fn func(js.Value, []js.Value) any) js.Func {
+		calls++
+		return oldOf(fn)
+	}
+	before := maps.Clone(sessions)
+
+	state, restore := patchApplyThrowOnWrapper(t)
+	method := proxy.Call("check", "a.md", "# A\n")
+	create := jsValue(t, createSession(js.Undefined(), []js.Value{js.ValueOf(map[string]any{})}))
+	restore()
+
+	assert.True(t, method.IsUndefined(), "an async method yields undefined")
+	assert.True(t, create.IsUndefined(), "createSession yields undefined")
+	assert.Zero(t, calls, "no func is registered while Reflect.apply is patched")
+	assert.Zero(t, state.Get("n").Int(), "_makeFuncWrapper is never called")
+	assert.Equal(t, before, sessions, "no session is registered")
+	// The session is intact and, once disposed, leaves the registry.
+	awaitPromise(t, proxy.Call("check", "a.md", "# A\n"))
+}
+
+// TestReflectApplyIntact checks the comparison newPromise relies on: the
+// load-time Reflect.apply is intact, a replacement (even one that
+// delegates) is not, and a capture that failed (undefined) never is.
+// Not parallel: it swaps Reflect.apply and reflectApply.
+func TestReflectApplyIntact(t *testing.T) {
+	sharedMethods()
+	require.True(t, reflectApplyIntact(), "the load-time Reflect.apply is intact")
+
+	reflectObj := js.Global().Get("Reflect")
+	orig := reflectObj.Get("apply")
+	t.Cleanup(func() { reflectObj.Set("apply", orig) })
+	reflectObj.Set("apply", js.Global().Get("Function").New("orig",
+		"return function (f, t, a) { return orig(f, t, a); }").Invoke(orig))
+	assert.False(t, reflectApplyIntact(), "a delegating replacement is not intact")
+	reflectObj.Set("apply", orig)
+
+	saved := reflectApply
+	t.Cleanup(func() { reflectApply = saved })
+	reflectApply = js.Undefined()
+	assert.False(t, reflectApplyIntact(), "a failed capture is never intact")
 }

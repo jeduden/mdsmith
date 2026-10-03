@@ -740,6 +740,26 @@ func captureGlobals(g js.Value) {
 	})
 	thenHider = tryJS(func() thenHiderValues { return newThenHider(objectCtor) })
 	methodDesc = tryJS(func() js.Value { return newMethodDesc(objectCtor) })
+	reflectApply = tryJS(func() js.Value { return g.Get("Reflect").Get("apply") })
+}
+
+// reflectApply is Reflect.apply as captureGlobals saw it, undefined when
+// that capture failed. It is not called: wasm_exec.js looks Reflect.apply
+// up on every Go-to-JS call, so a later patch still sees every call. It
+// is the reference reflectApplyIntact compares against.
+var reflectApply js.Value
+
+// reflectApplyIntact reports whether Reflect.apply is still the function
+// captured at load. js.FuncOf stores its handler in a private func table
+// and then calls _makeFuncWrapper through Reflect.apply; a patched one
+// that throws makes FuncOf panic after the store, and no code outside
+// syscall/js can free the entry. Callers that register a func per call
+// (newPromise) check this first and refuse instead. A failed check
+// (Reflect or its apply is unreadable) counts as changed.
+func reflectApplyIntact() bool {
+	return tryJS(func() bool {
+		return !reflectApply.IsUndefined() && js.Global().Get("Reflect").Get("apply").Equal(reflectApply)
+	})
 }
 
 // tryJS returns f(), or the zero T when f fails on the JS side

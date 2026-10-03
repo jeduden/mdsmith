@@ -21,6 +21,10 @@ import (
 // Promise with that exception, and a *js.ValueError rejects it with an
 // Error (see rejectOnJSError), so no executor needs its own guard.
 //
+// A Reflect.apply that is no longer the function captured at load makes
+// newPromise return undefined before it registers the handler (see
+// reflectApplyIntact).
+//
 // A patched Promise can fail around the executor too. A constructor
 // that throws, or a Promise that is no constructor, would end the
 // program, and a handler it never ran would stay registered: newPromise
@@ -36,6 +40,13 @@ import (
 // swallows that failure, and the Promise stays as the constructor left
 // it, never settling. Any other panic is re-raised (recoverJS).
 func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
+	// js.FuncOf stores the handler before it calls _makeFuncWrapper through
+	// Reflect.apply, and a patched one that throws strands the entry. Refuse
+	// before registering anything; Go cannot reject without a Promise, and
+	// building one needs the same call.
+	if !reflectApplyIntact() {
+		return js.Undefined()
+	}
 	// One heap object for the handler and its flags: the escaping
 	// callback captures it.
 	st := new(promiseHandler)

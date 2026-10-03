@@ -394,10 +394,19 @@ it was passed, and the create rejects with that error. A `Promise`
 that throws after it ran the executor disposes every session the
 create registered, so none stays registered.
 
-A patched `Reflect.apply` that throws while the engine builds a
-callback's JS wrapper leaks that callback. `syscall/js` stores it in
-the Go runtime's func table first, then drops its id on the panic.
-Plan 2610031420 tracks that leak.
+The engine captures `Reflect.apply` at load. `createSession` and each
+async method compare it with the current one before they register a
+Promise executor callback. `syscall/js` stores a callback in the Go
+runtime's func table, then builds its JS wrapper through
+`Reflect.apply`. A `Reflect.apply` that throws there would strand the
+table entry, and nothing can free it.
+
+If `Reflect.apply` is no longer the captured function, even a
+replacement that delegates to it, the call registers nothing and
+returns `undefined`, like a failing `Promise`. No session is created.
+An existing session stays usable once `Reflect.apply` is restored. A
+getter that returns the original on the first read and throws on the
+next is not detected.
 
 A `Reflect.get` or `Reflect.set` that throws while Go reads a
 callback's arguments or writes back its result still stops the Go
