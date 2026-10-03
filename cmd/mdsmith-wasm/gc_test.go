@@ -216,3 +216,38 @@ func TestProxyDispose_DirectCallWithoutToken(t *testing.T) {
 		})
 	}
 }
+
+func TestBindFinalizer(t *testing.T) {
+	reg, unreg := bindFinalizer(js.Global().Get("FinalizationRegistry"))
+	assert.Equal(t, js.TypeFunction, reg.Type())
+	assert.Equal(t, js.TypeFunction, unreg.Type())
+	for name, ctor := range map[string]js.Value{
+		"undefined":    js.Undefined(),
+		"non-function": js.ValueOf(1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			var reg, unreg js.Value
+			require.NotPanics(t, func() { reg, unreg = bindFinalizer(ctor) })
+			assert.True(t, reg.IsUndefined(), "no registry, no register")
+			assert.True(t, unreg.IsUndefined(), "no registry, no unregister")
+		})
+	}
+}
+
+// TestSessionWithoutFinalizationRegistry runs a session through create
+// and dispose with the seams bindFinalizer leaves on a host that has no
+// FinalizationRegistry: the engine still loads and works, dispose() being
+// the only way to free a session.
+func TestSessionWithoutFinalizationRegistry(t *testing.T) {
+	sharedMethods()
+	oldReg, oldUnreg := registerFinalizer, unregisterFinalizer
+	t.Cleanup(func() { registerFinalizer, unregisterFinalizer = oldReg, oldUnreg })
+	registerFinalizer, unregisterFinalizer = js.Undefined(), js.Undefined()
+
+	var proxy js.Value
+	var id int64
+	require.NotPanics(t, func() { proxy, id = newTestProxyWithID(t) })
+	require.Contains(t, sessions, id)
+	require.NotPanics(t, func() { proxy.Call("dispose") })
+	assert.NotContains(t, sessions, id)
+}

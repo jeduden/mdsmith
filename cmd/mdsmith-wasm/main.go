@@ -205,7 +205,9 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 	proxy := js.Global().Get("Object").New()
 	token := js.Global().Get("Object").New()
 	bindMethods(proxy, sessionMethodNames(), shared, id, token)
-	registerFinalizer.Invoke(token, id, token)
+	if jsType(registerFinalizer) == js.TypeFunction {
+		registerFinalizer.Invoke(token, id, token)
+	}
 	sessions[id] = sess
 	return proxy
 }
@@ -241,7 +243,8 @@ func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id 
 var bindTo js.Value
 
 // registerFinalizer and unregisterFinalizer are the FinalizationRegistry
-// methods bound to the one registry sharedMethods creates.
+// methods bound to the one registry sharedMethods creates, or undefined
+// on a host with no FinalizationRegistry (see bindFinalizer).
 // registerFinalizer(token, id, token) arranges for finalizeSession(id)
 // to run once token is collected; unregisterFinalizer(token) cancels
 // that, the token being its own unregister token.
@@ -478,15 +481,25 @@ func sharedMethods() map[string]js.Value {
 			sharedFuncs[name] = funcOf(sharedFunc(impl)).Value
 		}
 		sharedFuncs["dispose"] = funcOf(proxyDispose).Value
-		// The registry and its two methods are captured here, with
-		// bindTo, so a later patch of FinalizationRegistry never sees
-		// a token. The finalizer func is never released, like the
-		// shared funcs.
-		registry := js.Global().Get("FinalizationRegistry").New(funcOf(finalizeSession))
-		registerFinalizer = bindTo.Invoke(registry.Get("register"), registry)
-		unregisterFinalizer = bindTo.Invoke(registry.Get("unregister"), registry)
+		registerFinalizer, unregisterFinalizer = bindFinalizer(js.Global().Get("FinalizationRegistry"))
 	})
 	return sharedFuncs
+}
+
+// bindFinalizer creates the one FinalizationRegistry from ctor and
+// returns its register and unregister methods bound to it. They are
+// captured once, with bindTo, so a later patch of FinalizationRegistry
+// never sees a token. The finalizer func is never released, like the
+// shared funcs. When ctor is not a function (a host with no
+// FinalizationRegistry) both come back undefined: the engine still
+// loads, and dispose() is the only way to free a session there.
+func bindFinalizer(ctor js.Value) (register, unregister js.Value) {
+	if jsType(ctor) != js.TypeFunction {
+		return js.Undefined(), js.Undefined()
+	}
+	registry := ctor.New(funcOf(finalizeSession))
+	return bindTo.Invoke(registry.Get("register"), registry),
+		bindTo.Invoke(registry.Get("unregister"), registry)
 }
 
 // sharedFunc is the body of a forwarding method's shared func: it
@@ -656,8 +669,9 @@ func proxyDispose(_ js.Value, args []js.Value) any {
 	if id, sess, _ := boundSession(args); sess != nil {
 		// Cancel the registered finalizer first, so the registry drops
 		// its entry with the session. A direct call with no token
-		// object has nothing to cancel.
-		if len(args) > 1 && jsType(args[1]) == js.TypeObject {
+		// object, or a host with no FinalizationRegistry, has nothing
+		// to cancel.
+		if len(args) > 1 && jsType(args[1]) == js.TypeObject && jsType(unregisterFinalizer) == js.TypeFunction {
 			unregisterFinalizer.Invoke(args[1])
 		}
 		disposeSession(id)
