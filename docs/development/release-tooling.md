@@ -70,7 +70,7 @@ setup step.
 | `record-rotation <t> <d>`    | `record-secret-rotation.yml`                                      |
 | `merge-coverage -o <o> <p>`  | `ci.yml` test job                                                 |
 | `test-summary`               | `ci.yml` test job                                                 |
-| `test-js-wasm <pkg>`         | `ci.yml` wasm job                                                 |
+| `test-js-wasm [--all] <pkg>` | `ci.yml` wasm job                                                 |
 | `bench [workdir]`            | `benchmark.yml` record; `release.yml` benchmark-publish; `run.sh` |
 | `bench-check <base> <fresh>` | `release.yml` benchmark-publish + bench-regression-gate           |
 | `render-bench-page <out>`    | `release.yml` benchmark-publish                                   |

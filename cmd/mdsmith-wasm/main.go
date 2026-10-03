@@ -13,6 +13,10 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"math"
 	"runtime/debug"
@@ -184,14 +188,17 @@ var objectToString js.Value
 // (a stored `const d = session.dispose`, a frozen session object, a
 // read-only method) finds no session and takes the disposed path: it
 // never reaches a released func, so syscall/js logs nothing. See plan
-// 2610021237.
+// 2610021237. The id is registered only after every method is bound:
+// a bind that throws (one patched before load) rejects createSession
+// without leaving a Session no session object can dispose. A resolve
+// that throws after this returns still leaves one; plan 2610021800
+// tracks that.
 func newSessionProxy(sess *mdsmith.Session) js.Value {
 	shared := sharedMethods()
-	id := nextSessionID
-	nextSessionID++
-	sessions[id] = sess
+	id := newSessionID()
 	proxy := js.Global().Get("Object").New()
 	bindMethods(proxy, sessionMethodNames(), shared, id)
+	sessions[id] = sess
 	return proxy
 }
 
@@ -201,7 +208,7 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 // list and sharedMethodImpls drifted) is left off rather than passed to
 // bind, which would throw on every createSession;
 // TestNewSessionProxy_KeysMatchSessionMethodNames reports the drift.
-func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int) {
+func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int64) {
 	for _, name := range names {
 		if f, ok := shared[name]; ok {
 			proxy.Set(name, bindTo.Invoke(f, js.Undefined(), id))
@@ -217,16 +224,115 @@ func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id 
 // session id. It does not cover Reflect.apply: wasm_exec.js looks that
 // up on every Go-to-JS call, so a Reflect.apply replaced at any time
 // sees each raw shared func and id here, and every session object the
-// engine resolves. Plan 2610021439 tracks that gap.
+// engine resolves. Nor does it cover Reflect.get: wasm_exec.js reads
+// each incoming call's arguments through it, so a Reflect.get replaced
+// at any time sees the bound id of each session whose method is called.
+// A random id or token hides nothing from that script; it is a
+// documented limit (docs/background/concepts/engine-api.md).
 var bindTo js.Value
 
 // sessions maps a live session's id to its Session. js/wasm runs every
 // goroutine on one thread with no preemption, and nothing between a
 // read and a write here blocks, so it needs no lock.
-var (
-	sessions      = map[int]*mdsmith.Session{}
-	nextSessionID int
-)
+var sessions = map[int64]*mdsmith.Session{}
+
+// newSessionID hands out the next id: a keyed Feistel permutation of a
+// counter, shifted to start at 1. The permutation is a bijection and
+// the counter never repeats, so no id is handed out twice, live or
+// disposed, and a method kept from a disposed session can never reach
+// a later one. The key is drawn at load, so the ids are not a counting
+// sequence: a script that holds a raw shared func cannot find a
+// session by counting up from 0 or stepping from an id it knows. The
+// permutation spans 2^54 values; a counter value whose image is at or
+// past maxSessionID is skipped, which happens about half the time, so
+// every id is in [1, maxSessionID] and the loop ends after two tries
+// on average. The id is an int64, not an int, so TinyGo, whose int is
+// 32 bits on wasm, gets the same range. Plan 2610021439.
+func newSessionID() int64 {
+	for {
+		x := permuteSessionID(sessionIDCounter, sessionIDCipher, sessionIDHalfBits)
+		sessionIDCounter++
+		if x < maxSessionID {
+			return int64(x) + 1
+		}
+	}
+}
+
+// sessionIDHalfBits is the width of each Feistel half: two halves of
+// 27 bits span 2^54 values, the smallest even width that covers [0,
+// maxSessionID).
+const sessionIDHalfBits = 27
+
+// sessionIDRounds is the number of Feistel rounds: 10, as in NIST
+// SP 800-38G's FF1, which is the same AES-keyed Feistel shape. With
+// AES as the round function, a script that records the ids handed out
+// after it patched Reflect.apply learns nothing that predicts the ids
+// handed out before: recovering the key means breaking AES-128.
+const sessionIDRounds = 10
+
+// sessionIDCipher is the per-load AES-128 key of the id permutation.
+// The key comes from crypto/rand, which on js/wasm reads
+// crypto.getRandomValues: standard Go calls it directly, and TinyGo's
+// arc4random_buf reaches it through the random_get its wasm_exec.js
+// serves. The AES core is already linked into the standard build; the
+// crypto/aes wrapper, the decrypt path a cipher.Block reaches, and
+// crypto/rand add about 18 KiB raw to it.
+var sessionIDCipher = newSessionIDCipher()
+
+// newSessionIDCipher draws a fresh 128-bit key and returns its AES
+// block. A failed read panics through mustCipher, like a bad key.
+func newSessionIDCipher() cipher.Block {
+	var key [16]byte
+	_, rerr := rand.Read(key[:])
+	blk, err := aes.NewCipher(key[:])
+	return mustCipher(blk, errors.Join(rerr, err))
+}
+
+// mustCipher returns blk, or panics on err. crypto/rand.Read never
+// fails on js/wasm, and aes.NewCipher fails only on a key that is not
+// 16, 24, or 32 bytes, which newSessionIDCipher never passes, so the
+// panic marks a programming error at load.
+func mustCipher(blk cipher.Block, err error) cipher.Block {
+	if err != nil {
+		panic(err)
+	}
+	return blk
+}
+
+// sessionIDCounter is the next counter value newSessionID permutes.
+// permuteSessionID reads only its low 54 bits, so ids start to repeat
+// after 2^54 counter values, which yield 2^53 ids: at one id per
+// microsecond, after over 280 years.
+var sessionIDCounter uint64
+
+// permuteSessionID maps x in [0, 2^(2*half)) to a distinct value in
+// the same range with a balanced Feistel network of sessionIDRounds
+// rounds keyed by blk. Each round XORs one half with the round
+// function of the other, which is invertible whatever that function
+// returns, so the whole is a bijection.
+func permuteSessionID(x uint64, blk cipher.Block, half uint) uint64 {
+	mask := uint64(1)<<half - 1
+	l, r := x>>half&mask, x&mask
+	// Encrypt through the cipher.Block interface moves its buffer to
+	// the heap, so every round shares this one block.
+	var buf [aes.BlockSize]byte
+	for i := range sessionIDRounds {
+		l, r = r, l^(roundSessionID(blk, &buf, byte(i), r)&mask)
+	}
+	return l<<half | r
+}
+
+// roundSessionID is the Feistel round function: AES under blk of the
+// block holding round in byte 0 and r little-endian in bytes 1 to 8,
+// zero after, read back as its low 64 bits little-endian. The round
+// index in the block makes each round an independent function. buf is
+// the caller's scratch block, encrypted in place and overwritten.
+func roundSessionID(blk cipher.Block, buf *[aes.BlockSize]byte, round byte, r uint64) uint64 {
+	*buf = [aes.BlockSize]byte{round}
+	binary.LittleEndian.PutUint64(buf[1:], r)
+	blk.Encrypt(buf[:], buf[:])
+	return binary.LittleEndian.Uint64(buf[:])
+}
 
 // methodImpl pairs a forwarding session method's implementation with
 // the result it returns once its session is disposed. Build one with
@@ -245,7 +351,8 @@ type methodImpl struct {
 
 // asyncMethod builds the entry for a method that returns a Promise.
 // fn runs inside the Promise executor; a non-nil error rejects with
-// Error(err.Error()), otherwise the Promise resolves to toJS(value). A
+// Error(err.Error()) — carrying mdsmith.ErrorCode(err) as its `code`
+// when the error has one — otherwise the Promise resolves to toJS(value). A
 // JS exception raised on the way (a js.Error panic) rejects with that
 // exception, as newPromise does for every executor. After dispose the
 // Promise rejects with Error("session disposed").
@@ -258,7 +365,7 @@ func asyncMethod(fn func(sess *mdsmith.Session, args []js.Value) (any, error)) m
 			return newPromise(func(resolve, reject func(any)) {
 				v, err := fn(sess, args)
 				if err != nil {
-					reject(jsError(err.Error()))
+					reject(jsErrorFor(err))
 					return
 				}
 				resolve(toJS(v))
@@ -372,10 +479,12 @@ func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 	}
 }
 
-// maxSessionID bounds a bound id before its int conversion: 2^53 under
-// standard Go, whose int is 64 bits, and math.MaxInt under TinyGo,
-// whose int is 32 bits on wasm. Either way int(f) is in range.
-const maxSessionID = min(1<<53, math.MaxInt)
+// maxSessionID bounds a bound id before its int64 conversion, so
+// int64(f) is in range and exact: 2^53 is the largest float64 below
+// which every integer is exact. It is also the top of the range
+// newSessionID hands ids out from, so every id passes boundSession's
+// check.
+const maxSessionID = 1 << 53
 
 // boundSession splits the session id a shared func is bound to off
 // args and looks up its live Session. sess is nil once that session is
@@ -384,17 +493,17 @@ const maxSessionID = min(1<<53, math.MaxInt)
 // direct call to a shared func (never one through a session object)
 // can pass; args then comes back whole, and no fraction is truncated
 // onto a live id.
-func boundSession(args []js.Value) (id int, sess *mdsmith.Session, rest []js.Value) {
+func boundSession(args []js.Value) (id int64, sess *mdsmith.Session, rest []js.Value) {
 	if len(args) == 0 || jsType(args[0]) != js.TypeNumber {
 		return 0, nil, args
 	}
 	f := args[0].Float()
 	// NaN fails f == Trunc(f); the maxSessionID bound rejects Infinity
-	// and any value whose int conversion is implementation-defined.
+	// and any value whose int64 conversion is implementation-defined.
 	if f != math.Trunc(f) || math.Abs(f) > maxSessionID {
 		return 0, nil, args
 	}
-	id = int(f)
+	id = int64(f)
 	return id, sessions[id], args[1:]
 }
 

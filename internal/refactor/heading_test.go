@@ -14,10 +14,11 @@ import (
 
 // memWorkspace is a concrete Workspace backed by a real index over an
 // in-memory file set. It is not a mock — the edge graph is the
-// production index.New + BuildSerial, the same path the LSP server and
-// the CLI use; only the byte source is a map instead of disk.
+// production index.New + BuildSerial behind the production IndexEdges,
+// the same path the LSP server and the CLI use; only the byte source
+// is a map instead of disk.
 type memWorkspace struct {
-	idx   *index.Index
+	IndexEdges
 	files map[string][]byte
 }
 
@@ -33,22 +34,8 @@ func newMemWorkspace(files map[string]string) *memWorkspace {
 	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
 		return bytesMap[rel], nil
 	})
-	return &memWorkspace{idx: idx, files: bytesMap}
+	return &memWorkspace{IndexEdges: NewIndexEdges(idx), files: bytesMap}
 }
-
-func (w *memWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
-	return w.idx.IncomingEdges(file, slug)
-}
-
-func (w *memWorkspace) IncomingPathEdges(file string) []index.Edge {
-	return w.idx.IncomingPathEdges(file)
-}
-
-func (w *memWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
-	return w.idx.IncomingWikilinkEdges(stem)
-}
-
-func (w *memWorkspace) Files() []string { return w.idx.Files() }
 
 func (w *memWorkspace) Resolve(file string) (string, []byte, bool) {
 	n := index.NormalizePath(file)
@@ -78,6 +65,39 @@ func TestHeading_RewritesCrossFileAnchorsAndRefDef(t *testing.T) {
 	for _, e := range bEdits {
 		assert.Equal(t, "install", e.NewText)
 	}
+}
+
+func TestHeading_SlugsRenderedTextNotRawMarkup(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"a.md": "# Setup\n\n[ref]: x.md\n",
+		"b.md": "See [setup](a.md#setup).\n",
+	})
+	// The renamed heading renders as "Install", so its anchor is
+	// #install, not the raw-markup slug #installxmd.
+	changes, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Setup", "[Install](x.md)")
+	require.NoError(t, err)
+	require.Len(t, changes["b.md"], 1)
+	assert.Equal(t, "install", changes["b.md"][0].NewText)
+
+	// A full reference link renders its text only when the label is
+	// defined in the file, so the slug follows the file's ref-defs.
+	changes, err = callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Setup", "[Install][ref]")
+	require.NoError(t, err)
+	assert.Equal(t, "install", changes["b.md"][0].NewText)
+}
+
+func TestHeading_EmptyRenderedSlugRejected(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{"a.md": "# Title\n"})
+	_, err := callHeading(ws, "a.md", "a.md", ws.files["a.md"], 1, "Title", "[](x.md)")
+	assert.ErrorIs(t, err, ErrEmptyHeadingSlug)
+}
+
+func TestRenderedHeadingText(t *testing.T) {
+	src := []byte("---\nk: v\n---\n# Setup\n")
+	assert.Equal(t, "Install", renderedHeadingText(src, 4, "**Install**"))
+	// A line that is not a heading falls back to the raw text.
+	assert.Equal(t, "raw", renderedHeadingText([]byte("prose\n"), 1, "raw"))
+	assert.Equal(t, "raw", renderedHeadingText([]byte("# A\n"), 9, "raw"))
 }
 
 func TestHeading_PlanCarriesNoFileOp(t *testing.T) {
@@ -227,13 +247,13 @@ func TestHeading_RefDefInCodeBlockNotRewritten(t *testing.T) {
 
 // --- direct helper coverage for branches Heading can't easily drive --
 
-func TestFindHeadingLine(t *testing.T) {
-	src := []byte("---\ntitle: x\n---\n# Intro\n\n## Setup\n")
-	line, ok := FindHeadingLine(src, "Setup")
+func TestFindHeadingLineIn(t *testing.T) {
+	ps := parseSource([]byte("---\ntitle: x\n---\n# Intro\n\n## Setup\n"))
+	line, ok := findHeadingLineIn(ps, "Setup")
 	require.True(t, ok)
 	assert.Equal(t, 6, line) // 3 front-matter lines + body line 3
 
-	_, ok = FindHeadingLine(src, "Missing")
+	_, ok = findHeadingLineIn(ps, "Missing")
 	assert.False(t, ok)
 }
 

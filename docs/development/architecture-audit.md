@@ -70,18 +70,17 @@ None.
   `go build ./...`, `go test ./...`, and
   `go tool -modfile=tools/go.mod golangci-lint run` are green;
   behavior is unchanged.
-- `cmd/mdsmith/rename.go`'s `detectRenameMode` and
-  `pkg/mdsmith/refactor.go`'s `detectRenameKind` both wrap the
-  same `refactor.FindHeadingLine` / `refactor.HasLinkRef` pair
-  in an identical "both → error, heading, label, neither →
-  error" switch. [go.md][go]'s "Common violations to flag":
-  logic reimplemented per host surface instead of living once
-  on the shared engine both the CLI and the public
-  `pkg/mdsmith` API call —
-  [engine-api.md][engine-api] documents the two as mirroring
-  one-to-one, so a future refinement to the
-  ambiguous/no-match messaging is likely to drift between them
-  — [plan/2609271912][2609271912].
+- `cmd/mdsmith/rename.go`'s `detectRenameMode` and `pkg/mdsmith/refactor.go`'s
+  `detectRenameKind` both wrap the same `refactor.FindHeadingLine` /
+  `refactor.HasLinkRef` pair in an identical "both → error, heading, label,
+  neither → error" switch. [go.md][go]'s "Common violations to flag": logic
+  reimplemented per host surface instead of living once on the shared engine
+  both the CLI and the public `pkg/mdsmith` API call —
+  [engine-api.md][engine-api] documents the two as mirroring one-to-one, so a
+  future refinement to the ambiguous/no-match messaging is likely to drift
+  between them — [plan/2609271912][2609271912]. Resolved: both hosts call
+  `refactor.Rename` (shared detection and dispatch) and keep only their own
+  message and exit-code wrapping.
 - `internal/index/build.go`'s `frontMatterSymbols`,
   `frontMatterScalar`, and `frontMatterStringList` are no
   longer called by any production path; `frontMatterAll`
@@ -132,8 +131,9 @@ None.
   CLI rejects), `internal/lsp`'s `isAbsPath`, and the drive-letter checks
   in `internal/schema`, `internal/rules/build`, and `internal/lsp`.
 - `cliRenameWorkspace` and `sessionRefactorWorkspace` share
-  four matching `Workspace` pass-throughs (`Resolve`
-  differs by design) — [plan/2609131911][2609131911].
+  four matching `Workspace` pass-throughs (`Resolve` differs by
+  design) — [plan/2609131911][2609131911]. Resolved: they and
+  `lspRenameWorkspace` embed `refactor.IndexEdges`.
 - `internal/refactor/move.go`'s `recomputeToken`, `encodePathToken`,
   `pathEdit`, `countFilesWithStem` lack tests by name ([tests.md][tests])
   — [plan/2609131913][2609131913]. Resolved: the first three became the

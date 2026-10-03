@@ -1,9 +1,7 @@
 # Plans
 
 <?catalog
-glob:
-  - "plan/*.md"
-  - "!plan/proto.md"
+glob: ["plan/*.md", "!plan/proto.md"]
 sort: numeric:id
 header: |
 

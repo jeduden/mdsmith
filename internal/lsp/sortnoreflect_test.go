@@ -110,8 +110,9 @@ func TestSortLocations_NoReflectSort(t *testing.T) {
 // internally — the "reflect in hot paths" anti-pattern in
 // docs/development/high-performance-go.md, already fixed the same way
 // elsewhere in this codebase (internal/backlinks.sortBacklinkRecords,
-// internal/refactor.stableSortEdits). It runs once per LSP rename or
-// willRenameFiles response, on the move/rename engine's new hot path.
+// internal/refactor.stableSortEdits). It runs once per LSP link-reference
+// rename response; a willRenameFiles response sorts through
+// dropConflictingTextEdits instead.
 func TestSortTextEditsBottomUp_NoReflectSort(t *testing.T) {
 	if testing.Short() {
 		t.Skip("alloc gate skipped in -short mode")

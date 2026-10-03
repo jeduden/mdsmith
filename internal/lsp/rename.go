@@ -327,28 +327,9 @@ func (s *Server) handleRename(msg *requestMessage) {
 // the URI the file's edits group under (the client URI for open
 // buffers, the canonical workspace URI otherwise).
 type lspRenameWorkspace struct {
-	s   *Server
-	idx *index.Index
+	refactor.IndexEdges
+	s *Server
 }
-
-// Trivial index pass-through; no dedicated test by design (the
-// rename engine's behavioral tests exercise it through Heading).
-func (w lspRenameWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
-	return w.idx.IncomingEdges(file, slug)
-}
-
-// Trivial index pass-through; no dedicated test by design.
-func (w lspRenameWorkspace) IncomingPathEdges(file string) []index.Edge {
-	return w.idx.IncomingPathEdges(file)
-}
-
-// Trivial index pass-through; no dedicated test by design.
-func (w lspRenameWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
-	return w.idx.IncomingWikilinkEdges(stem)
-}
-
-// Trivial index pass-through; no dedicated test by design.
-func (w lspRenameWorkspace) Files() []string { return w.idx.Files() }
 
 func (w lspRenameWorkspace) Resolve(file string) (string, []byte, bool) {
 	return w.s.resolveURIAndSource(file)
@@ -363,7 +344,7 @@ func (s *Server) renameHeading(
 	msg *requestMessage, p renameParams,
 	source []byte, rel string, line int, res index.LocateResult, newName string,
 ) {
-	ws := lspRenameWorkspace{s: s, idx: s.ensureIndex()}
+	ws := lspRenameWorkspace{s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex())}
 	plan, err := refactor.Heading(ws, p.TextDocument.URI, rel, source, line, res.Name, newName)
 	if err != nil {
 		s.writeRenameError(msg.ID, err)
