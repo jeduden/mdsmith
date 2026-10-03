@@ -1005,13 +1005,13 @@ func captureFile(t *testing.T, target **os.File, fn func()) string {
 }
 
 // TestRunTestJSWasmAll dispatches `test-js-wasm --all` at a package
-// that does not exist: the whole-package run fails in go test, before
-// Node is needed, with the js/wasm error.
+// that does not exist: the js/wasm go list fails, before go test or
+// Node runs, and names the load error.
 func TestRunTestJSWasmAll(t *testing.T) {
 	var code int
 	stderr := captureStderr(t, func() { code = run([]string{"test-js-wasm", "--all", "./internal/does-not-exist"}) })
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr, "mdsmith-release: go test ./internal/does-not-exist under js/wasm")
+	assert.Contains(t, stderr, "mdsmith-release: go list (js/wasm) ./internal/does-not-exist")
 }
 
 // TestRunTestJSWasmAllRequireJSOnly dispatches `test-js-wasm --all

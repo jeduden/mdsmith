@@ -712,16 +712,16 @@ func TestListJSOnlyFilesHostIndependent(t *testing.T) {
 }
 
 func TestListJSOnlyFiles(t *testing.T) {
-	t.Run("extra flags reach the js/wasm list only", func(t *testing.T) {
+	t.Run("only the native list passes -e", func(t *testing.T) {
 		f := &fakeGo{
 			jsList:     "#pkg example.com/p\n/p/a_test.go\n/p/b_test.go\n",
 			nativeList: "#pkg example.com/p\n/p/b_test.go\n",
 		}
-		got, err := listJSOnlyFiles(jsWasmDeps{run: f.run}, "m", "./p", "-e")
+		got, err := listJSOnlyFiles(jsWasmDeps{run: f.run}, "m", "./p")
 		require.NoError(t, err)
 		assert.Equal(t, []string{"/p/a_test.go"}, got)
 		require.Len(t, f.calls, 2)
-		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[0])
+		assert.Equal(t, []string{"list", "-f", testFilesTemplate, "./p"}, f.calls[0])
 		assert.Equal(t, jsWasmEnv, f.envs[0])
 		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[1])
 		assert.Equal(t, nativeListEnv, f.envs[1])
@@ -879,7 +879,7 @@ func TestRunJSWasmPackageWith(t *testing.T) {
 		assert.Contains(t, out.String(), "--- PASS: TestA")
 		require.Len(t, f.calls, 4)
 		assert.Equal(t, []string{"env", "GOROOT"}, f.calls[0])
-		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[1])
+		assert.Equal(t, []string{"list", "-f", testFilesTemplate, "./p"}, f.calls[1])
 		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0"}, f.envs[1])
 		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[2])
 		assert.Equal(t, []string{
@@ -1102,13 +1102,11 @@ func TestOSJSWasmDeps(t *testing.T) {
 func TestRunJSWasmPackage(t *testing.T) {
 	root, err := filepath.Abs("../..")
 	require.NoError(t, err)
-	err = RunJSWasmPackage(root, "./internal/does-not-exist", false, &bytes.Buffer{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "go test ./internal/does-not-exist under js/wasm")
-
-	// With requireJSOnly go test never runs, so go list must name the
-	// load failure instead of a misleading "no js/wasm-only Test".
-	err = RunJSWasmPackage(root, "./internal/does-not-exist", true, &bytes.Buffer{})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "go list (js/wasm) ./internal/does-not-exist")
+	// go list names the load failure in both sub-modes, before go test
+	// (or, under requireJSOnly, a misleading "no js/wasm-only Test").
+	for _, requireJSOnly := range []bool{false, true} {
+		err = RunJSWasmPackage(root, "./internal/does-not-exist", requireJSOnly, &bytes.Buffer{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "go list (js/wasm) ./internal/does-not-exist")
+	}
 }

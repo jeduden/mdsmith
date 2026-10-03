@@ -137,15 +137,9 @@ func runJSWasmPackageWith(d jsWasmDeps, pkg string, requireJSOnly bool) error {
 	}
 	// The js/wasm-only tests must pass by name, as in the default mode;
 	// a skip of a test the native build shares stays fine. Unlike the
-	// default mode, a package may have no such files or tests.
-	// -e lets a missing package still list once so go test reports why.
-	// requireJSOnly fails such a package before go test, so it leaves -e
-	// off and go list reports the load error itself.
-	var listFlags []string
-	if !requireJSOnly {
-		listFlags = []string{"-e"}
-	}
-	files, err := listJSOnlyFiles(d, "test-js-wasm --all", pkg, listFlags...)
+	// default mode, a package may have no such files or tests. A
+	// missing package fails at go list, before go test.
+	files, err := listJSOnlyFiles(d, "test-js-wasm --all", pkg)
 	if err != nil {
 		return err
 	}
@@ -255,12 +249,11 @@ func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
 
 // listJSOnlyFiles lists pkg's test files that only a js/wasm build
 // compiles, for both modes; an empty list is the caller's call, as
-// --all also runs a package that has none. mode names the command in the one-package error; listFlags go
-// to the js/wasm `go list`. --all passes -e, unless requireJSOnly, so a
-// missing package still lists once and go test reports why.
-func listJSOnlyFiles(d jsWasmDeps, mode, pkg string, listFlags ...string) ([]string, error) {
-	args := append(append([]string{"list"}, listFlags...), "-f", testFilesTemplate, pkg)
-	jsOut, err := d.output(jsWasmEnv, args...)
+// --all also runs a package that has none. mode names the command in
+// the one-package error. The js/wasm `go list` goes without -e, so it
+// reports a missing package's load error itself.
+func listJSOnlyFiles(d jsWasmDeps, mode, pkg string) ([]string, error) {
+	jsOut, err := d.output(jsWasmEnv, "list", "-f", testFilesTemplate, pkg)
 	if err != nil {
 		return nil, fmt.Errorf("go list (js/wasm) %s: %w", pkg, err)
 	}
