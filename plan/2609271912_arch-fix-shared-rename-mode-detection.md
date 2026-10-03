@@ -118,9 +118,10 @@ this duplication:
 13. [x] Review round 2: `Session.Rename` walked and indexed
     the whole workspace before `refactor.Rename` ran, even
     for a label rename or a failed detection, which never
-    consult it. It now passes a `lazyRefactorWorkspace`
-    that builds the index on first use, so only a heading
-    rename pays for the walk.
+    consult it. It now passes a lazy workspace (since task
+    15, the shared `refactor.LazyWorkspace`) that builds
+    the index on first use, so only a heading rename pays
+    for the walk.
 14. [x] Review round 3: two outcomes still disagreed with
     the exit-code table. A heading renamed to its own
     source spelling (`# *Setup*`, Setup → `*Setup*`)
@@ -131,6 +132,26 @@ this duplication:
     collision with `[docs]` (exit 2). `Rename` now checks
     that the label exists before `LinkRef` runs, as it does
     for a heading, and reports `no link reference` (exit 1).
+15. [x] Review round 3: the rest of that round's findings.
+
+  - The CLI indexed the workspace before dispatch.
+      `buildWorkspace` now builds its index on first use
+      (`sync.OnceValue`). `pkg/mdsmith`'s private lazy
+      wrapper became `refactor.LazyWorkspace`.
+  - A label rename parsed the source five times. A lazy
+      `parsedSource` now shares one parse across detection,
+      the existence check, and `LinkRef`'s planner.
+  - The no-op check spliced a copy of the whole file. It
+      now compares each edit's text in place.
+  - `MissingSymbolError` called any non-heading kind a
+      "link reference", and the hosts hard-coded the
+      auto-detect noun list. Both now derive from a
+      `kindNouns` table through `RenameSymbolList`.
+  - A Go or JS host could detect the new no-op error only
+      by its text. `pkg/mdsmith` exports
+      `ErrNothingToRename` and `ErrorCode`, and the WASM
+      binding sets `code: "nothing-to-rename"` on the
+      rejected `Error`.
 
 ## Acceptance Criteria
 
@@ -146,7 +167,9 @@ this duplication:
       keeps its error text, but now errors where the CLI
       exits 1 instead of returning an empty plan: a
       same-name heading or label rename and a missing
-      explicit label.
+      explicit label. The no-op error matches
+      `mdsmith.ErrNothingToRename`, and in JS it carries
+      `code: "nothing-to-rename"` (task 15).
 - [x] `go test ./...` is green.
 - [x] `mdsmith check .` is green.
 
