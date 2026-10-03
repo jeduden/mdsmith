@@ -7,7 +7,9 @@ name: Deploy mdsmith.dev
 # (workflow_dispatch), optionally stamping a specific version. A
 # tool release also ships the site by calling this workflow (see
 # release.yml's `pages` job, which gates on the frozen release),
-# passing the release version so the published site shows it. The
+# passing the release version so the published site shows it, and
+# release-candidate.yml calls it after each candidate publishes so
+# the /releases/ page lists the new candidate. The
 # site is pure HTML built from docs/**/*.md and the homepage data
 # files, so it never needs the registry-publish credentials.
 #
@@ -143,6 +145,15 @@ jobs:
             --config ./website/build-output.mdsmith.yml \
             --no-gitignore \
             ./website/content/docs
+      - name: Fetch release notes
+        # Write website/data/releases.json (gitignored) from the
+        # GitHub releases API so the render below exercises the
+        # /releases/ page with the real release list, and the link
+        # probes cover its links. contents: read is enough to list
+        # published releases.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go run ./cmd/mdsmith-release sync-releases
       - name: Install Hugo
         # `go install` resolves via the Go module proxy with sumdb
         # checksum verification, so the binary is pinned by content
@@ -345,6 +356,17 @@ jobs:
             --config ./website/build-output.mdsmith.yml \
             --no-gitignore \
             ./website/content/docs
+      - name: Fetch release notes
+        # The /releases/ page renders website/data/releases.json:
+        # every published release, stable ones first, then the
+        # release candidates, each with its notes. The file is
+        # gitignored and written here from the GitHub releases API
+        # at deploy time. release-candidate.yml calls this workflow
+        # after each candidate publishes, so a new candidate's notes
+        # reach the site without a docs change.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go run ./cmd/mdsmith-release sync-releases
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
         id: pages
       - name: Build site

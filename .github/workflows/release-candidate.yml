@@ -307,3 +307,19 @@ jobs:
           RELEASE_TAG: ${{ needs.version.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: go run ./cmd/mdsmith-release publish-release
+
+  # Redeploy mdsmith.dev so its /releases/ page lists this candidate
+  # and its notes (pages.yml fetches the release list at build time).
+  # A plain docs-only deploy would not pick the candidate up: a merge
+  # that touches no docs or website path never triggers pages.yml.
+  # No version input, so the site keeps the latest stable version.
+  # Runs even when check-rc skipped a stale candidate's publish; the
+  # site then shows the release list as it stands, which is harmless.
+  pages:
+    needs: [release]
+    if: *rc_repo_ok
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

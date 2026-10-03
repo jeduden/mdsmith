@@ -19,6 +19,7 @@ the website cannot drift out of sync with the binary.
 | `layouts/index.html`           | Homepage template (hero · positioning band · feature grid · install picker). |
 | `layouts/_default/single.html` | Docs page template (sidebar + prose).                                        |
 | `layouts/_default/list.html`   | Section index template.                                                      |
+| `layouts/releases/page.html`   | Release-notes page template (`/releases/`).                                  |
 | `layouts/partials/`            | `topnav`, `footer`, `hero`, `feature-grid`, etc.                             |
 | `layouts/shortcodes/`          | `callout`, `diag`, `pill`, `chip`, `install-cmd`.                            |
 | `layouts/_default/_markup/`    | Goldmark render hooks (headings, code blocks).                               |
@@ -138,6 +139,36 @@ release-channel docs, gated against drift in CI:
 - **Feature cards** — the shared Markdown described
   below.
 
+## Release notes page
+
+`/releases/` lists the notes of every published GitHub
+release. Stable releases come first, newest open. The
+release candidates follow below, each collapsed. Each
+entry links to its GitHub release for the downloads.
+
+- **Page** — `content/releases.md` holds the title,
+  summary, and intro. Hugo picks
+  `layouts/releases/page.html` by content path; each
+  entry renders through `partials/release-entry.html`.
+- **Data** — `data/releases.json`, written by
+  `mdsmith-release sync-releases` from the GitHub
+  releases API. The file is gitignored. Drafts are
+  skipped, and GitHub's `prerelease` flag decides
+  stable versus candidate. Each body's headings are
+  demoted two levels and get tag-scoped ids, so
+  "What's Changed" never repeats an id on the page.
+- **Without data** — a local or e2e build has no data
+  file. The page then shows a "not bundled" note and
+  the GitHub Releases link.
+
+To preview with real data, run from the repository
+root with a token that can read the repository:
+
+```bash
+GITHUB_REPOSITORY=jeduden/mdsmith GITHUB_TOKEN="$(gh auth token)" \
+  go run ./cmd/mdsmith-release sync-releases
+```
+
 ## Shared feature copy
 
 Feature copy lives once, as Markdown, in
@@ -168,6 +199,11 @@ present more, never different, content.
 `website/` and publishes it to GitHub Pages on every `v*`
 tag push.
 
+Each release candidate also redeploys the site. After
+the publish, `release-candidate.yml` calls `pages.yml`.
+That way the release notes page lists the new
+candidate.
+
 A push to `main` also deploys, via the path filter in
 `.github/workflows/pages.yml`. That filter watches
 `docs/**`, `website/**`, the workflow itself, and
@@ -180,7 +216,8 @@ file is the change that triggers the deploy.
 
 The job installs Hugo via `go install` (sumdb verifies
 the binary). It runs `mdsmith-release build-website
---no-fix`, then `hugo --minify`. It hands the output to
+--no-fix` and `mdsmith-release sync-releases`, then
+`hugo --minify`. It hands the output to
 the `actions/upload-pages-artifact` and
 `actions/deploy-pages` pair.
 
