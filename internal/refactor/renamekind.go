@@ -1,6 +1,7 @@
 package refactor
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 )
@@ -25,8 +26,9 @@ var (
 	ErrAmbiguousRename = errors.New("name matches both a heading and a link-ref label")
 	// ErrNoRenameTarget: auto-detect found neither.
 	ErrNoRenameTarget = errors.New("no heading or link-ref label matches the name")
-	// ErrNothingToRename: the heading exists but the new name equals
-	// the old one, so the plan has no edits.
+	// ErrNothingToRename: the symbol exists but renaming it changes
+	// no byte. Rename returns it as a NothingToRenameError, which
+	// matches this sentinel under errors.Is.
 	ErrNothingToRename = errors.New("nothing to rename")
 )
 
@@ -36,6 +38,24 @@ type InvalidRenameKindError struct{ Kind string }
 
 func (e InvalidRenameKindError) Error() string {
 	return fmt.Sprintf("rename kind must be %q or %q, got %q", KindHeading, KindLabel, e.Kind)
+}
+
+// NothingToRenameError reports that renaming the Kind symbol Name
+// leaves the file byte-identical: a heading renamed to its own text,
+// or a label renamed to the spelling every occurrence already has.
+// errors.Is matches it against ErrNothingToRename.
+type NothingToRenameError struct {
+	Kind RenameKind
+	Name string
+}
+
+func (e NothingToRenameError) Error() string {
+	return fmt.Sprintf("nothing to rename for %s %q", e.Kind, e.Name)
+}
+
+// Is makes errors.Is(err, ErrNothingToRename) hold.
+func (e NothingToRenameError) Is(target error) bool {
+	return target == ErrNothingToRename
 }
 
 // MissingSymbolError reports that an explicitly requested heading or
@@ -69,7 +89,8 @@ func ParseRenameKind(s string) (RenameKind, error) {
 // dispatch the CLI and pkg/mdsmith share; besides the engine's own
 // errors (HeadingCollisionError, InvalidLabelRuneError, …) it returns
 // ErrAmbiguousRename, ErrNoRenameTarget, MissingSymbolError,
-// ErrNothingToRename, or InvalidRenameKindError.
+// NothingToRenameError (matching ErrNothingToRename), or
+// InvalidRenameKindError.
 //
 // fileKey must be the file's workspace-relative path: a heading rename
 // uses it both as the key the file's own edits group under and as the
@@ -110,20 +131,26 @@ func renameHeadingAt(ws Workspace, fileKey string, source []byte, line int, oldN
 		return Plan{}, err
 	}
 	if len(p.Edits) == 0 {
-		return Plan{}, ErrNothingToRename
+		return Plan{}, NothingToRenameError{Kind: KindHeading, Name: oldName}
 	}
 	return p, nil
 }
 
 // renameLabel runs the link-ref rename, turning a plan with no edits
-// (no definition of oldName) into a MissingSymbolError.
+// (no definition of oldName) into a MissingSymbolError and a plan
+// whose edits leave source byte-identical into a NothingToRenameError,
+// so a same-name label rename reports like a same-name heading rename.
 func renameLabel(fileKey string, source []byte, oldName, newName string) (Plan, error) {
 	p, err := LinkRef(fileKey, source, oldName, newName)
 	if err != nil {
 		return Plan{}, err
 	}
-	if len(p.Edits[fileKey]) == 0 {
+	edits := p.Edits[fileKey]
+	if len(edits) == 0 {
 		return Plan{}, MissingSymbolError{Kind: KindLabel, Name: oldName}
+	}
+	if out, err := ApplyEdits(source, edits); err == nil && bytes.Equal(out, source) {
+		return Plan{}, NothingToRenameError{Kind: KindLabel, Name: oldName}
 	}
 	return p, nil
 }

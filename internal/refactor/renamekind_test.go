@@ -112,6 +112,14 @@ func TestRename_DispatchErrors(t *testing.T) {
 	t.Run("same-name heading is nothing to rename", func(t *testing.T) {
 		_, err := Rename(ws, "a.md", src, "", "Setup", "Setup")
 		assert.ErrorIs(t, err, ErrNothingToRename)
+		assert.Equal(t, `nothing to rename for heading "Setup"`, err.Error())
+	})
+	t.Run("same-name label is nothing to rename", func(t *testing.T) {
+		_, err := Rename(ws, "a.md", src, "", "docs", "docs")
+		assert.ErrorIs(t, err, ErrNothingToRename)
+		assert.Equal(t, `nothing to rename for label "docs"`, err.Error())
+		_, err = Rename(ws, "a.md", src, KindLabel, "docs", "docs")
+		assert.ErrorIs(t, err, ErrNothingToRename)
 	})
 	t.Run("engine error passes through", func(t *testing.T) {
 		two := []byte("# Setup\n\n# Other\n")
@@ -134,6 +142,16 @@ func TestInvalidRenameKindError_Error(t *testing.T) {
 	assert.Equal(t, `rename kind must be "heading" or "label", got "file"`, err.Error())
 }
 
+func TestNothingToRenameError(t *testing.T) {
+	h := NothingToRenameError{Kind: KindHeading, Name: "Setup"}
+	assert.Equal(t, `nothing to rename for heading "Setup"`, h.Error())
+	assert.ErrorIs(t, h, ErrNothingToRename)
+	l := NothingToRenameError{Kind: KindLabel, Name: "docs"}
+	assert.Equal(t, `nothing to rename for label "docs"`, l.Error())
+	assert.ErrorIs(t, l, ErrNothingToRename)
+	assert.False(t, l.Is(ErrNoRenameTarget))
+}
+
 func TestMissingSymbolError_Error(t *testing.T) {
 	assert.Equal(t, `no heading "Setup"`,
 		MissingSymbolError{Kind: KindHeading, Name: "Setup"}.Error())
@@ -151,7 +169,8 @@ func TestRenameHeadingAt(t *testing.T) {
 	assert.Contains(t, p.Edits, "b.md", "the incoming anchor is rewritten")
 
 	_, err = renameHeadingAt(ws, "a.md", src, 1, "Setup", " Setup ")
-	assert.ErrorIs(t, err, ErrNothingToRename, "a same-text rename has no edits")
+	assert.Equal(t, NothingToRenameError{Kind: KindHeading, Name: "Setup"}, err,
+		"a same-text rename has no edits")
 
 	_, err = renameHeadingAt(ws, "a.md", src, 1, "Setup", "!!!")
 	assert.ErrorIs(t, err, ErrEmptyHeadingSlug, "engine errors pass through")
@@ -171,4 +190,13 @@ func TestRenameLabel(t *testing.T) {
 
 	_, err = renameLabel("a.md", src, "docs", " ")
 	assert.ErrorIs(t, err, ErrEmptyLabel, "engine errors pass through")
+
+	_, err = renameLabel("a.md", src, "docs", "docs")
+	assert.Equal(t, NothingToRenameError{Kind: KindLabel, Name: "docs"}, err,
+		"a rename that leaves every occurrence byte-identical has nothing to do")
+
+	mixed := []byte("See [docs] and [x][DOCS].\n\n[docs]: u\n")
+	p, err = renameLabel("a.md", mixed, "docs", "docs")
+	require.NoError(t, err, "respelling [DOCS] to [docs] is a real edit")
+	assert.NotEmpty(t, p.Edits["a.md"])
 }

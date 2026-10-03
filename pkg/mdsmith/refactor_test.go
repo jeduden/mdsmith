@@ -123,6 +123,16 @@ func TestSession_Rename_SameNameHeadingErrors(t *testing.T) {
 	assert.Equal(t, `nothing to rename for heading "Setup"`, err.Error())
 }
 
+// A label renamed to its own spelling everywhere yields no edits and
+// errors like the heading case.
+func TestSession_Rename_SameNameLabelErrors(t *testing.T) {
+	src := []byte("# T\n\nSee [docs].\n\n[docs]: u\n")
+	s := newRefactorSession(t, map[string][]byte{"a.md": src})
+	_, err := s.Rename("a.md", src, "label", "docs", "docs")
+	require.Error(t, err)
+	assert.Equal(t, `nothing to rename for label "docs"`, err.Error())
+}
+
 // An explicit label that is not defined errors, matching the CLI's
 // exit-1 "no link reference" outcome.
 func TestSession_Rename_LabelNotFound(t *testing.T) {
@@ -201,7 +211,8 @@ func TestRenameError(t *testing.T) {
 			`"docs" matches both a heading and a link-ref label; pass as="heading" or as="label"`,
 		},
 		{refactor.ErrNoRenameTarget, `no heading or link-ref label "docs"`},
-		{refactor.ErrNothingToRename, `nothing to rename for heading "docs"`},
+		{refactor.NothingToRenameError{Kind: refactor.KindHeading, Name: "docs"}, `nothing to rename for heading "docs"`},
+		{refactor.NothingToRenameError{Kind: refactor.KindLabel, Name: "docs"}, `nothing to rename for label "docs"`},
 		{refactor.MissingSymbolError{Kind: refactor.KindHeading, Name: "docs"}, `no heading "docs" in a.md`},
 		{refactor.MissingSymbolError{Kind: refactor.KindLabel, Name: "docs"}, `no link reference "docs" in a.md`},
 		{refactor.ErrEmptyLabel, refactor.ErrEmptyLabel.Error()},

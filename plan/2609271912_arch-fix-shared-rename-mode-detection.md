@@ -101,17 +101,27 @@ this duplication:
     `FindHeadingLine` unexported (`hasLinkRef`,
     `findHeadingLine`), since neither has callers outside
     `internal/refactor`.
+11. [x] Review round 2: a label renamed to the spelling
+    every occurrence already has rewrote the file with
+    identical bytes and exited 0, while the heading
+    equivalent exited 1. `ErrNothingToRename` now comes as
+    a `NothingToRenameError{Kind, Name}` for both kinds, so
+    the CLI exits 1 with `nothing to rename for label
+    "docs"` and `Session.Rename` errors with the same text.
 
 ## Acceptance Criteria
 
 - [x] The `isHeading`/`isLabel` detection switch exists in
       exactly one place: `internal/refactor`.
 - [x] `cmd/mdsmith rename` produces the same user-visible
-      messages and exit codes as before the change.
+      messages and exit codes as before the change, except
+      that a no-op label rename now exits 1 like a no-op
+      heading rename (task 11).
       `pkg/mdsmith`'s `Session.Rename` (and its WASM binding)
       keeps its error text, but now errors where the CLI
       exits 1 instead of returning an empty plan: a
-      same-name heading rename and a missing explicit label.
+      same-name heading or label rename and a missing
+      explicit label.
 - [x] `go test ./...` is green.
 - [x] `mdsmith check .` is green.
 

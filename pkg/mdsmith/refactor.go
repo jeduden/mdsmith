@@ -50,9 +50,9 @@ type RefactorPlan struct {
 // from source (a heading whose visible text is oldName, or a label
 // normalizing to oldName; ambiguous or absent is an error). It also
 // errors, rather than returning an empty plan, when an explicit kind
-// finds no heading or label named oldName, or when a heading's new
-// text equals its old text. The plan carries only edits: a symbol
-// rename never moves a file.
+// finds no heading or label named oldName, or when the rename would
+// change no byte (a heading or label renamed to its own text). The
+// plan carries only edits: a symbol rename never moves a file.
 func (s *Session) Rename(uri string, source []byte, as, oldName, newName string) (RefactorPlan, error) {
 	kind, err := refactor.ParseRenameKind(as)
 	if err != nil {
@@ -83,7 +83,8 @@ func (s *Session) Move(src, dst string) (RefactorPlan, error) {
 }
 
 // renameError rewords refactor.Rename's sentinel outcomes into the
-// engine API's error text; engine conflicts pass through unchanged.
+// engine API's error text; engine conflicts and NothingToRenameError
+// (whose text already names the kind) pass through unchanged.
 // Each case mirrors a CLI exit path (see cmd/mdsmith/rename.go).
 func renameError(err error, uri, oldName string) error {
 	var missing refactor.MissingSymbolError
@@ -93,8 +94,6 @@ func renameError(err error, uri, oldName string) error {
 			"%q matches both a heading and a link-ref label; pass as=\"heading\" or as=\"label\"", oldName)
 	case errors.Is(err, refactor.ErrNoRenameTarget):
 		return fmt.Errorf("no heading or link-ref label %q", oldName)
-	case errors.Is(err, refactor.ErrNothingToRename):
-		return fmt.Errorf("nothing to rename for heading %q", oldName)
 	case errors.As(err, &missing):
 		return fmt.Errorf("%w in %s", missing, uri)
 	}

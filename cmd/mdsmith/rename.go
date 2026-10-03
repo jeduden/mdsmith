@@ -290,7 +290,7 @@ func renameExitCode(err error, target, oldName, newName string) int {
 			oldName, target)
 		return 2
 	case errors.Is(err, refactor.ErrNothingToRename):
-		fmt.Fprintf(os.Stderr, "mdsmith: nothing to rename for heading %q\n", oldName)
+		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 1
 	case errors.As(err, &missing):
 		fmt.Fprintf(os.Stderr, "mdsmith: %v in %s\n", missing, target)

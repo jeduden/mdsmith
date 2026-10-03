@@ -305,6 +305,7 @@ func TestComputeRenamePlan(t *testing.T) {
 		stderr   string
 	}{
 		{"no-op heading", src, "Setup", "Setup", "", 1, `nothing to rename for heading "Setup"`},
+		{"no-op label", labelSrc, "docs", "docs", "", 1, `nothing to rename for label "docs"`},
 		{"missing heading", src, "Ghost", "X", refactor.KindHeading, 1, `no heading "Ghost" in a.md`},
 		{"missing label", labelSrc, "ghost", "x", refactor.KindLabel, 1, `no link reference "ghost" in a.md`},
 		{"ambiguous", []byte("# docs\n\nSee [docs].\n\n[docs]: u\n"), "docs", "x", "", 2,
@@ -342,8 +343,10 @@ func TestRenameExitCode(t *testing.T) {
 			`no heading or link-ref label "ghost" in a.md (to relocate a file, use mdsmith move)`},
 		{"neither, new name path-shaped", refactor.ErrNoRenameTarget, "ghost", "docs/new.md", 2,
 			`"docs/new.md" looks like a file path; to relocate a file use: mdsmith move ghost docs/new.md`},
-		{"nothing to rename", refactor.ErrNothingToRename, "Setup", "Setup", 1,
-			`nothing to rename for heading "Setup"`},
+		{"nothing to rename", refactor.NothingToRenameError{Kind: refactor.KindHeading, Name: "Setup"},
+			"Setup", "Setup", 1, `nothing to rename for heading "Setup"`},
+		{"nothing to rename label", refactor.NothingToRenameError{Kind: refactor.KindLabel, Name: "docs"},
+			"docs", "docs", 1, `nothing to rename for label "docs"`},
 		{"missing symbol", refactor.MissingSymbolError{Kind: refactor.KindLabel, Name: "ghost"}, "ghost", "x", 1,
 			`no link reference "ghost" in a.md`},
 		{"engine error", refactor.ErrEmptyLabel, "docs", "", 2, "mdsmith: label cannot be empty"},

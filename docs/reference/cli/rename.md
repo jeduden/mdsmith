@@ -142,11 +142,11 @@ mdsmith rename --format json docs/guide.md --as heading "Setup" "Install"
 
 ## Exit codes
 
-| Code | Meaning                                                                                      |
-| ---- | -------------------------------------------------------------------------------------------- |
-| 0    | Rewritten                                                                                    |
-| 1    | No matching heading or label (with an explicit `--as`), or a heading renamed to its own text |
-| 2    | Conflict, invalid input, ambiguous kind, rejected edit, or move-shaped request               |
+| Code | Meaning                                                                                  |
+| ---- | ---------------------------------------------------------------------------------------- |
+| 0    | Rewritten                                                                                |
+| 1    | No matching heading or label (with an explicit `--as`), or a rename that changes no byte |
+| 2    | Conflict, invalid input, ambiguous kind, rejected edit, or move-shaped request           |
 
 ## See also
 
