@@ -90,36 +90,29 @@ func TestWordFrequency_LastWordBelowMinLength(t *testing.T) {
 	assert.Empty(t, freq)
 }
 
-// TestWordFrequencyInto verifies that WordFrequencyInto correctly accumulates
-// word counts into a caller-owned map across multiple accumulate/clear cycles,
-// exercising the zero-allocation reuse behavior it exists for.
+// TestWordFrequencyInto verifies that WordFrequencyInto adds to the
+// counts already in a caller-owned map, that a caller-side clear starts
+// a fresh scope unit, and that the clear/accumulate reuse cycle on
+// lowercase prose allocates nothing — the contract it exists for.
 func TestWordFrequencyInto(t *testing.T) {
-	// Create a reusable frequency map to be cleared and reused across
-	// multiple scope units (simulating a rule that maintains one map
-	// across multiple paragraphs or sections).
 	freq := make(map[string]int)
 
-	// First accumulation: count words in first text unit.
+	// Two calls with no clear between them: counts add up, they are
+	// not reset or overwritten.
 	mdtext.WordFrequencyInto(freq, "hello world hello", 4)
-	assert.Equal(t, 2, freq["hello"])
-	assert.Equal(t, 1, freq["world"])
-	assert.Equal(t, 2, len(freq))
+	assert.Equal(t, map[string]int{"hello": 2, "world": 1}, freq)
+	mdtext.WordFrequencyInto(freq, "world peace", 4)
+	assert.Equal(t, map[string]int{"hello": 2, "world": 2, "peace": 1}, freq)
 
-	// Clear the map (simulating the start of a new scope unit).
-	clear(freq)
-	assert.Empty(t, freq)
-
-	// Second accumulation: count words in a different text unit.
-	mdtext.WordFrequencyInto(freq, "world peace peace", 4)
-	assert.Equal(t, 1, freq["world"])
-	assert.Equal(t, 2, freq["peace"])
-	assert.Equal(t, 2, len(freq))
-
-	// Clear and accumulate again to verify the pattern continues
-	// (the contract is that this reuse stays zero-alloc).
+	// A clear starts a new scope unit: earlier words do not leak in.
 	clear(freq)
 	mdtext.WordFrequencyInto(freq, "testing testing data", 4)
-	assert.Equal(t, 2, freq["testing"])
-	assert.Equal(t, 1, freq["data"])
-	assert.Equal(t, 2, len(freq))
+	assert.Equal(t, map[string]int{"testing": 2, "data": 1}, freq)
+
+	// Steady-state reuse of the warmed map is zero-alloc.
+	allocs := testing.AllocsPerRun(100, func() {
+		clear(freq)
+		mdtext.WordFrequencyInto(freq, "testing testing data", 4)
+	})
+	assert.Zero(t, allocs)
 }
