@@ -32,7 +32,17 @@ func sentinelEntry(t *testing.T, dir, name, sentinel string) HookEntry {
 	}
 }
 
+// skipWithoutUnixTools skips on Windows, where the hooks below cannot
+// run: `echo` is a cmd builtin with no binary, and `touch` is absent.
+func skipWithoutUnixTools(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("echo and touch are not binaries on Windows")
+	}
+}
+
 func TestRunHooks_SingleSuccess(t *testing.T) {
+	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	result := RunHooks(context.Background(), []HookEntry{echoEntry("greet", "hi")}, t.TempDir(), &w)
 	assert.Nil(t, result)
@@ -40,6 +50,7 @@ func TestRunHooks_SingleSuccess(t *testing.T) {
 }
 
 func TestRunHooks_MultipleSuccess(t *testing.T) {
+	skipWithoutUnixTools(t)
 	dir := t.TempDir()
 	hooks := []HookEntry{
 		sentinelEntry(t, dir, "a", "a.txt"),
@@ -55,6 +66,7 @@ func TestRunHooks_MultipleSuccess(t *testing.T) {
 }
 
 func TestRunHooks_UsesRootAsWorkDir(t *testing.T) {
+	skipWithoutUnixTools(t)
 	dir := t.TempDir()
 	// The hook creates a file named "ok" — relative to cwd (= root).
 	hook := HookEntry{Tokens: []string{"touch", "ok"}, Name: "sentinel"}
@@ -66,6 +78,7 @@ func TestRunHooks_UsesRootAsWorkDir(t *testing.T) {
 }
 
 func TestRunAfterHooks_AllSucceed_ReturnsNil(t *testing.T) {
+	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	result := RunAfterHooks(context.Background(),
 		[]HookEntry{echoEntry("a", "1"), echoEntry("b", "2")},
@@ -74,6 +87,7 @@ func TestRunAfterHooks_AllSucceed_ReturnsNil(t *testing.T) {
 }
 
 func TestRunAfterHooks_FailContinues(t *testing.T) {
+	skipWithoutUnixTools(t)
 	dir := t.TempDir()
 	sentinel := filepath.Join(dir, "second-ran")
 	hooks := []HookEntry{
@@ -89,6 +103,7 @@ func TestRunAfterHooks_FailContinues(t *testing.T) {
 }
 
 func TestRunHooks_OutputLines(t *testing.T) {
+	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	hooks := []HookEntry{
 		{Tokens: []string{"echo", "hello"}, Name: "greet"},
@@ -101,6 +116,7 @@ func TestRunHooks_OutputLines(t *testing.T) {
 
 // Regression: zero-exit hook must not produce a FAIL line.
 func TestRunHooks_SuccessNoFailLine(t *testing.T) {
+	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	hooks := []HookEntry{echoEntry("x", "hello")}
 	result := RunHooks(context.Background(), hooks, t.TempDir(), &w)
@@ -109,6 +125,7 @@ func TestRunHooks_SuccessNoFailLine(t *testing.T) {
 }
 
 func TestRunAfterHooks_UnnamedHook_UsesFirstToken(t *testing.T) {
+	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	h := echoEntry("echo", "hello")
 	h.Name = "" // force the name-from-token path
