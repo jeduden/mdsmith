@@ -188,7 +188,7 @@ func TestBuild_UndeclaredWriteDetected(t *testing.T) {
 }
 
 func TestBuild_LstatErrorRefusesOutput(t *testing.T) {
-	skipWithoutPOSIXTools(t, "sh")
+	skipWithoutPOSIXTools(t, "cp")
 	old := lstatFn
 	lstatFn = func(string) (os.FileInfo, error) { return nil, os.ErrPermission }
 	t.Cleanup(func() { lstatFn = old })

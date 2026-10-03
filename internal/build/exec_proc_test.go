@@ -134,8 +134,8 @@ func TestRunRecipe_CancellationReported(t *testing.T) {
 // which has only `rc`. These files carry `unix || windows || plan9`,
 // the complement of exec_other.go's tag, so GOOS=plan9 go vet still
 // type-checks them (plan 2610030243). The rc-based tests plan9 runs
-// live in exec_plan9_test.go and exec_plan9_proc_test.go.
-func skipOnPlan9(t *testing.T) {
+// live in exec_plan9_test.go.
+func skipOnPlan9(t testing.TB) {
 	t.Helper()
 	if runtime.GOOS == "plan9" {
 		t.Skip("plan9 has no sh; see exec_plan9_test.go")
@@ -146,7 +146,7 @@ func skipOnPlan9(t *testing.T) {
 // tools (an `sh` script, `cp`, ...): Windows lacks them and plan9 has
 // only `rc`. The skip names tools on both, since a `cp` or `cat` test
 // is skipped on plan9 for its POSIX recipe, not for a missing binary.
-func skipWithoutPOSIXTools(t *testing.T, tools string) {
+func skipWithoutPOSIXTools(t testing.TB, tools string) {
 	t.Helper()
 	switch runtime.GOOS {
 	case "plan9":
