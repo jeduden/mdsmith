@@ -10,6 +10,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// procPrelude mirrors the package's real sh and skip helpers, so the
+// checker resolves them from their bodies as it does in the package.
+const procPrelude = `package build
+
+func writeScript(t *testing.T, dir, name, body string) string {
+	t.Helper()
+	require.NoError(t, os.WriteFile(name, []byte("#!/bin/sh\n"+body+"\n"), 0o755))
+	return name
+}
+func skipOnPlan9(t testing.TB) {
+	t.Helper()
+	if runtime.GOOS == "plan9" {
+		t.Skip("plan9 has no sh")
+	}
+}
+func skipWithoutPOSIXTools(t testing.TB, tools string) {
+	t.Helper()
+	switch runtime.GOOS {
+	case "plan9":
+		t.Skip(tools + " needs POSIX tools")
+	case "windows":
+		t.Skip(tools + " is not available on Windows")
+	}
+}
+`
+
+// checkProcTestFile checks one file of a package that also holds
+// procPrelude.
+func checkProcTestFile(name string, src []byte) []string {
+	return checkProcTestPkg(map[string][]byte{name: src})
+}
+
+// checkProcTestPkg checks files as one package that also holds
+// procPrelude.
+func checkProcTestPkg(files map[string][]byte) []string {
+	files["prelude_test.go"] = []byte(procPrelude)
+	return checkProcTestFiles(files)
+}
+
 func TestCheckProcTestFile_UnixWindowsTagFails(t *testing.T) {
 	src := "//go:build unix || windows\n\npackage build\n"
 	errs := checkProcTestFile("x_proc_test.go", []byte(src))
@@ -23,12 +62,14 @@ func TestCheckProcTestFile_ProcTagPasses(t *testing.T) {
 }
 
 func TestCheckProcTestFile_OtherTagsIgnored(t *testing.T) {
-	for _, tag := range []string{"", "//go:build unix\n\n", "//go:build plan9\n\n", "//go:build js && wasm\n\n"} {
+	for _, tag := range []string{"", "//go:build unix\n\n", "//go:build js && wasm\n\n"} {
 		src := tag + "package build\n\nfunc TestX(t *testing.T) { writeScript(t, \"\", \"a.sh\", \"\") }\n"
 		assert.Empty(t, checkProcTestFile("x_test.go", []byte(src)), "tag %q", tag)
 	}
 }
 
+// An sh script, an sh argv, or an sh recipe needs a plan9 skip; a
+// recipe that runs no sh, such as cp, does not, since plan9 has cp.
 func TestCheckProcTestFile_ShTestWithoutSkipFails(t *testing.T) {
 	src := `//go:build unix || windows || plan9
 
@@ -36,15 +77,74 @@ package build
 
 func TestScript(t *testing.T) { writeScript(t, "", "a.sh", "") }
 func TestSh(t *testing.T) { runHook(nil, []string{"sh", "-c", "x"}, "") }
+func TestShRecipe(t *testing.T) { recipeCmd("sh -c x") }
 func TestCp(t *testing.T) { recipeCmd("cp {inputs} {outputs}") }
 func TestNoSpawn(t *testing.T) { _ = 1 }
 `
 	errs := checkProcTestFile("x_proc_test.go", []byte(src))
-	require.Len(t, errs, 3)
 	joined := strings.Join(errs, "\n")
-	for _, name := range []string{"TestScript", "TestSh", "TestCp"} {
+	require.Len(t, errs, 3, joined)
+	for _, name := range []string{"TestScript ", "TestSh ", "TestShRecipe "} {
 		assert.Contains(t, joined, name)
 	}
+}
+
+// A file that builds on plan9 but not js runs its tests only where a
+// process can start, plan9 among them, so its sh tests need the skip
+// even when it is not a spawn file. One that also builds on js is left
+// to the js/wasm gate.
+func TestCheckProcTestFile_Plan9NonJSFilesChecked(t *testing.T) {
+	for _, tag := range []string{"//go:build unix || plan9\n\n", "//go:build plan9\n\n"} {
+		src := tag + "package build\n\nfunc TestX(t *testing.T) { writeScript(t, \"\", \"a.sh\", \"\") }\n"
+		errs := checkProcTestFile("x_test.go", []byte(src))
+		require.Len(t, errs, 1, "tag %q", tag)
+		assert.Contains(t, errs[0], "TestX ", "tag %q", tag)
+	}
+}
+
+// A plan9 skip written inline, as an if or a switch on runtime.GOOS,
+// counts as the helpers do, so a package without them can comply. A
+// skip under any other condition does not.
+func TestCheckProcTestFile_InlinePlan9SkipPasses(t *testing.T) {
+	src := `//go:build unix || windows || plan9
+
+package build
+
+func TestIf(t *testing.T) {
+	if runtime.GOOS == "plan9" {
+		t.Skip("no sh")
+	}
+	runHook(nil, []string{"sh"}, "")
+}
+func TestSwitch(t *testing.T) {
+	switch runtime.GOOS {
+	case "windows", "plan9":
+		t.Skipf("no %s", "sh")
+	}
+	runHook(nil, []string{"sh"}, "")
+}
+func TestWrongOS(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh is not available")
+	}
+	runHook(nil, []string{"sh"}, "")
+}
+`
+	errs := checkProcTestFile("x_proc_test.go", []byte(src))
+	require.Len(t, errs, 1, strings.Join(errs, "\n"))
+	assert.Contains(t, errs[0], "TestWrongOS ")
+}
+
+// Comparing a name with "sh" runs nothing, so it is no sh use.
+func TestCheckProcTestFile_ShComparisonIsNoUse(t *testing.T) {
+	src := `//go:build unix || windows || plan9
+
+package build
+
+func isSh(name string) bool { return name == "sh" || "/bin/sh" != name }
+func TestCompare(t *testing.T) { _ = isSh("x") }
+`
+	assert.Empty(t, checkProcTestFile("x_proc_test.go", []byte(src)))
 }
 
 func TestCheckProcTestFile_ShTestWithSkipPasses(t *testing.T) {
@@ -161,7 +261,7 @@ func TestShArgv(t *testing.T) { runHook(nil, shArgv(), "") }
 func TestViaHelper(t *testing.T) { viaHelper(t) }
 func TestCustomSkip(t *testing.T) { skipNoSh(t); scriptRecipe(t) }
 `
-	errs := checkProcTestFiles(map[string][]byte{
+	errs := checkProcTestPkg(map[string][]byte{
 		"helpers_test.go": []byte(helpers),
 		"x_proc_test.go":  []byte(proc),
 	})
@@ -169,6 +269,102 @@ func TestCustomSkip(t *testing.T) { skipNoSh(t); scriptRecipe(t) }
 	require.Len(t, errs, 3, joined)
 	for _, name := range []string{"TestScriptRecipe", "TestShArgv", "TestViaHelper"} {
 		assert.Contains(t, joined, name)
+	}
+}
+
+// A helper's verdict does not depend on declaration order: one that
+// calls a later-declared sh helper before its own skip needs sh, and
+// one that calls a later-declared skip helper before sh is a skip.
+func TestCheckProcTestFiles_HelperOrderIndependent(t *testing.T) {
+	helpers := `package build
+
+func shThenSkip(t *testing.T) { mkScript(t); skipOnPlan9(t) }
+func skipThenSh(t *testing.T) { skipNoSh(t); writeScript(t, "", "a.sh", "") }
+func mkScript(t *testing.T) { writeScript(t, "", "a.sh", "") }
+func skipNoSh(t *testing.T) { skipOnPlan9(t) }
+`
+	proc := `//go:build unix || windows || plan9
+
+package build
+
+func TestShThenSkip(t *testing.T) { shThenSkip(t) }
+func TestSkipThenSh(t *testing.T) { skipThenSh(t) }
+`
+	errs := checkProcTestPkg(map[string][]byte{
+		"helpers_test.go": []byte(helpers),
+		"x_proc_test.go":  []byte(proc),
+	})
+	joined := strings.Join(errs, "\n")
+	require.Len(t, errs, 1, joined)
+	assert.Contains(t, joined, "TestShThenSkip ")
+}
+
+// A recursive helper resolves: its call to itself reaches neither, so
+// what follows decides it.
+func TestCheckProcTestFiles_RecursiveHelperResolves(t *testing.T) {
+	src := `//go:build unix || windows || plan9
+
+package build
+
+func again(t *testing.T) { again(t); writeScript(t, "", "a.sh", "") }
+func TestAgain(t *testing.T) { again(t) }
+`
+	errs := checkProcTestFile("x_proc_test.go", []byte(src))
+	require.Len(t, errs, 1, strings.Join(errs, "\n"))
+	assert.Contains(t, errs[0], "TestAgain ")
+}
+
+// Only plan9's build of the package runs a spawn test there, so only a
+// helper that builds on plan9 decides whether a call to it needs sh.
+func TestCheckProcTestFiles_OnlyPlan9HelpersCount(t *testing.T) {
+	files := map[string][]byte{
+		"a_unix_test.go":  []byte("package build\n\nfunc mk(t *testing.T) { skipOnPlan9(t) }\n"),
+		"b_plan9_test.go": []byte("package build\n\nfunc mk(t *testing.T) { writeScript(t, \"\", \"a.sh\", \"\") }\n"),
+		"x_proc_test.go": []byte("//go:build unix || windows || plan9\n\npackage build\n\n" +
+			"func TestX(t *testing.T) { mk(t) }\n"),
+	}
+	errs := checkProcTestPkg(files)
+	require.Len(t, errs, 1, strings.Join(errs, "\n"))
+	assert.Contains(t, errs[0], "TestX ")
+}
+
+// A helper passed by name runs as surely as one called directly, a
+// /bin/sh argv needs sh as "sh" does, a method or a func-valued var is
+// a helper too, and go test runs a fuzz target's seeds and, under
+// -bench, a benchmark, so each of these needs a skip first.
+func TestCheckProcTestFile_IndirectShUsesFail(t *testing.T) {
+	src := `//go:build unix || windows || plan9
+
+package build
+
+type fx struct{}
+
+func (fx) script(t *testing.T) { writeScript(t, "", "a.sh", "") }
+
+var mkScript = func(t *testing.T) { writeScript(t, "", "a.sh", "") }
+
+func scriptSub(t *testing.T) { writeScript(t, "", "a.sh", "") }
+func TestFuncRef(t *testing.T) { t.Run("a", scriptSub) }
+func TestBinSh(t *testing.T) { runHook(nil, []string{"/bin/sh", "-c", "x"}, "") }
+func TestMethod(t *testing.T) { fx{}.script(t) }
+func TestMethodRef(t *testing.T) { t.Run("a", fx{}.script) }
+func TestFuncVar(t *testing.T) { mkScript(t) }
+func FuzzScript(f *testing.F) { f.Fuzz(func(t *testing.T, s string) { writeScript(t, "", "a.sh", s) }) }
+func FuzzSkipped(f *testing.F) {
+	f.Fuzz(func(t *testing.T, s string) { skipOnPlan9(t); writeScript(t, "", "a.sh", s) })
+}
+func BenchmarkScript(b *testing.B) { runHook(nil, []string{"sh"}, "") }
+func BenchmarkSkipped(b *testing.B) { skipOnPlan9(b); runHook(nil, []string{"sh"}, "") }
+`
+	errs := checkProcTestFile("x_proc_test.go", []byte(src))
+	joined := strings.Join(errs, "\n")
+	want := []string{
+		"TestFuncRef", "TestBinSh", "TestMethod", "TestMethodRef",
+		"TestFuncVar", "FuzzScript", "BenchmarkScript",
+	}
+	require.Len(t, errs, len(want), joined)
+	for _, name := range want {
+		assert.Contains(t, joined, name+" ")
 	}
 }
 
@@ -192,7 +388,8 @@ func TestExtern(t *testing.T)
 // spawn test file tagged `unix || windows` again would drop out of the
 // GOOS=plan9 vet, and an sh test without a plan9 skip would fail on
 // plan9. The release-tooling packages carry the same spawn tag, so
-// their test files are checked here too.
+// their test files are checked here too. Plan 2610031920 moves this
+// guard to the module level.
 func TestProcTestFilesCoverPlan9(t *testing.T) {
 	for _, dir := range []string{".", "../release", "../../cmd/mdsmith-release"} {
 		assert.Empty(t, checkProcTestDir(t, dir), "dir %s", dir)
