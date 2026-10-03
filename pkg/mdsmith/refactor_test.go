@@ -18,7 +18,7 @@ type failFS struct{}
 func (failFS) Open(string) (fs.File, error) { return nil, fs.ErrPermission }
 
 // failFSWorkspace reads files normally but hands the refactor walk a
-// failing FS, exercising buildRefactorWorkspace's walk-error branch.
+// failing FS, exercising indexRefactorWorkspace's walk-error branch.
 type failFSWorkspace struct{ *MemWorkspace }
 
 func (failFSWorkspace) FS() fs.FS { return failFS{} }
@@ -334,6 +334,28 @@ func TestSession_BuildRefactorWorkspace(t *testing.T) {
 	assert.Empty(t, plain.IncomingAnchorEdges("sub/b.md", "b"))
 }
 
+// indexRefactorWorkspace indexes every Markdown file in the session's
+// workspace, skipping other extensions, and reads the overlay buffer in
+// place of the overlay file's saved bytes.
+func TestSession_IndexRefactorWorkspace(t *testing.T) {
+	s := newRefactorSession(t, map[string][]byte{
+		"a.md":      []byte("# A\n"),
+		"sub/b.md":  []byte("# B\n"),
+		"notes.txt": []byte("[b](sub/b.md#b)\n"),
+	})
+	t.Run("indexes only Markdown files", func(t *testing.T) {
+		idx := s.indexRefactorWorkspace("", nil)
+		assert.ElementsMatch(t, []string{"a.md", "sub/b.md"}, idx.Files())
+		assert.Empty(t, idx.IncomingEdges("sub/b.md", "b"))
+	})
+	t.Run("overlay replaces the saved bytes", func(t *testing.T) {
+		idx := s.indexRefactorWorkspace("./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
+		edges := idx.IncomingEdges("sub/b.md", "b")
+		require.Len(t, edges, 1)
+		assert.Equal(t, "a.md", edges[0].SourceFile)
+	})
+}
+
 // countingWorkspace counts ReadFile calls so a test can tell whether
 // Session.Rename indexed the workspace.
 type countingWorkspace struct {
@@ -344,6 +366,33 @@ type countingWorkspace struct {
 func (w *countingWorkspace) ReadFile(p string) ([]byte, error) {
 	w.reads++
 	return w.MemWorkspace.ReadFile(p)
+}
+
+// buildRefactorWorkspace defers its walk and index to the first edge
+// or Files query, so Resolve alone reads only the file it names, and
+// every later query reuses the one index.
+func TestBuildRefactorWorkspace_IndexesOnFirstQuery(t *testing.T) {
+	ws := &countingWorkspace{MemWorkspace: NewMemWorkspace(map[string][]byte{
+		"a.md": []byte("# Setup\n"),
+		"b.md": []byte("See [go](a.md#setup).\n"),
+	})}
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+
+	ws.reads = 0
+	w := s.buildRefactorWorkspace("", nil)
+	assert.Zero(t, ws.reads, "building reads no workspace file")
+
+	_, _, ok := w.Resolve("b.md")
+	require.True(t, ok)
+	assert.Equal(t, 1, ws.reads, "Resolve reads only the named file")
+
+	assert.Len(t, w.IncomingAnchorEdges("a.md", "setup"), 1)
+	indexed := ws.reads
+	assert.Greater(t, indexed, 1, "the first edge query indexes")
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, w.Files())
+	assert.Equal(t, indexed, ws.reads, "later queries reuse the index")
 }
 
 // A label rename and a failed detection touch only the target's own

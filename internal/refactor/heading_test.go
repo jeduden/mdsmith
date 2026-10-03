@@ -14,10 +14,11 @@ import (
 
 // memWorkspace is a concrete Workspace backed by a real index over an
 // in-memory file set. It is not a mock — the edge graph is the
-// production index.New + BuildSerial, the same path the LSP server and
-// the CLI use; only the byte source is a map instead of disk.
+// production index.New + BuildSerial behind the production IndexEdges,
+// the same path the LSP server and the CLI use; only the byte source
+// is a map instead of disk.
 type memWorkspace struct {
-	idx   *index.Index
+	IndexEdges
 	files map[string][]byte
 }
 
@@ -33,22 +34,8 @@ func newMemWorkspace(files map[string]string) *memWorkspace {
 	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
 		return bytesMap[rel], nil
 	})
-	return &memWorkspace{idx: idx, files: bytesMap}
+	return &memWorkspace{IndexEdges: NewIndexEdges(idx), files: bytesMap}
 }
-
-func (w *memWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
-	return w.idx.IncomingEdges(file, slug)
-}
-
-func (w *memWorkspace) IncomingPathEdges(file string) []index.Edge {
-	return w.idx.IncomingPathEdges(file)
-}
-
-func (w *memWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
-	return w.idx.IncomingWikilinkEdges(stem)
-}
-
-func (w *memWorkspace) Files() []string { return w.idx.Files() }
 
 func (w *memWorkspace) Resolve(file string) (string, []byte, bool) {
 	n := index.NormalizePath(file)
