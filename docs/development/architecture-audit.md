@@ -159,11 +159,11 @@ TypeScript). New packages this cycle:
 - `internal/schema` — a one-question-per-file split (compose,
   extend, filename, parse_file, parse_inline, validate) with
   no reverse-layer imports.
-- `internal/gitattributes` and `internal/directivefiles` —
-  the two other packages the 2026-08-23 `internal/githooks`
-  SRP split ([plan/2608021916][2608021916]) produced. That
-  plan is now fully merged (PR #815); its "picked up as this
-  cycle's fix" note from 2026-08-23 is closed.
+- `internal/gitattributes` and `internal/directivefiles`
+  (dead; since deleted by [plan/2608301918][2608301918]) —
+  the other two packages of the 2026-08-23 `internal/githooks`
+  SRP split ([plan/2608021916][2608021916]); that plan
+  merged in PR #815, closing its 2026-08-23 note.
 
 Rule-ID collisions hit this project once before
 ([plan/2608091910][2608091910]). Checked for a repeat:
@@ -179,9 +179,9 @@ Clean surfaces, verified:
 - No rule-to-rule imports. No reverse-layer imports. No
   Liskov breaks.
 - `internal/linkgraph`, `internal/schema`,
-  `internal/gitattributes`, `internal/directivefiles`: each
-  answers one question, each has dedicated tests, none
-  imports `internal/rules/...`.
+  `internal/gitattributes`, `internal/directivefiles` (now
+  deleted): each answers one question, has dedicated tests,
+  and imports no `internal/rules/...`.
 - `cmd/mdsmith/discover.go`: correction, it was dead code
   (no caller since #213); deleted by [plan/2608301918][2608301918].
 - `internal/rules/catalog/rule.go` and
@@ -224,10 +224,10 @@ None.
 - `internal/mdtext/wordfreq.go`'s `WordFrequencyInto` and
   three helpers in `internal/directivefiles/directivefiles.go`
   (`openingFence`, `isClosingFence`, `isIndentedCodeBlock`)
-  have no dedicated unit test by name, only behavior-level
-  coverage via their callers — [tests.md][tests] requires a
-  test by the function's own name —
-  [plan/2608301918][2608301918].
+  have no dedicated unit test by name — [tests.md][tests]
+  requires one — [plan/2608301918][2608301918]. Correction:
+  that file was dead code and is deleted, helpers and all;
+  the package no longer exists.
 - `internal/lint/runcache.go`'s `RunCache` caches state across
   every file in a whole `engine.Run` pass, which answers a
   different question than [go.md][go]'s stated charter for
