@@ -63,7 +63,11 @@ red/green.
    session object: a method taken off it outlives it,
    and the callback would dispose a session that method
    still uses. Bound arguments keep the token alive
-   while any method is reachable. Do not keep the token
+   while any method is reachable. As built after review:
+   only `dispose` binds the token, so a hot-path call
+   carries no extra object, and a private `WeakMap` maps
+   every other method to the token, which keeps it
+   alive just the same. Do not keep the token
    on the Go side as an unregister token: a `js.Value`
    held in Go pins it, so it is never collected.
    `proxyDispose` gets the bound id and the token, and

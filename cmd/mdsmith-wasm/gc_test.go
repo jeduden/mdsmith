@@ -250,9 +250,10 @@ func TestBindFinalizer(t *testing.T) {
 	sharedMethods() // captures bindTo, which bindFinalizer binds through
 	made := recordFuncs(t)
 	released := recordReleases(t)
-	reg, unreg := bindFinalizer(js.Global().Get("FinalizationRegistry"))
+	reg, unreg, keep := bindFinalizer(js.Global().Get("FinalizationRegistry"))
 	assert.Equal(t, js.TypeFunction, reg.Type())
 	assert.Equal(t, js.TypeFunction, unreg.Type())
+	assert.Equal(t, js.TypeFunction, keep.Type())
 	require.Len(t, *made, 1, "one finalizer func per registry")
 	// The registry holds no entry, so its callback never runs.
 	t.Cleanup((*made)[0].Release)
@@ -267,10 +268,11 @@ func TestBindFinalizer(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			*made, *released = nil, nil
-			var reg, unreg js.Value
-			require.NotPanics(t, func() { reg, unreg = bindFinalizer(ctor) })
+			var reg, unreg, keep js.Value
+			require.NotPanics(t, func() { reg, unreg, keep = bindFinalizer(ctor) })
 			assert.True(t, reg.IsUndefined(), "no registry, no register")
 			assert.True(t, unreg.IsUndefined(), "no registry, no unregister")
+			assert.True(t, keep.IsUndefined(), "no registry, no keep-alive")
 			assert.Len(t, *released, len(*made), "the finalizer func of a failed registry is released")
 		})
 	}
@@ -282,9 +284,9 @@ func TestBindFinalizer(t *testing.T) {
 // the only way to free a session.
 func TestSessionWithoutFinalizationRegistry(t *testing.T) {
 	sharedMethods()
-	oldReg, oldUnreg := registerFinalizer, unregisterFinalizer
-	t.Cleanup(func() { registerFinalizer, unregisterFinalizer = oldReg, oldUnreg })
-	registerFinalizer, unregisterFinalizer = js.Undefined(), js.Undefined()
+	oldReg, oldUnreg, oldKeep := registerFinalizer, unregisterFinalizer, keepTokenAlive
+	t.Cleanup(func() { registerFinalizer, unregisterFinalizer, keepTokenAlive = oldReg, oldUnreg, oldKeep })
+	registerFinalizer, unregisterFinalizer, keepTokenAlive = js.Undefined(), js.Undefined(), js.Undefined()
 
 	var proxy js.Value
 	var id int64
@@ -292,4 +294,34 @@ func TestSessionWithoutFinalizationRegistry(t *testing.T) {
 	require.Contains(t, sessions, id)
 	require.NotPanics(t, func() { proxy.Call("dispose") })
 	assert.NotContains(t, sessions, id)
+}
+
+// TestBindMethods_TokenOnDisposeAndKeepAlive checks the token's two
+// holders: dispose is bound to it, for unregister, and every other
+// method is a keepTokenAlive key whose value is the token, so the token
+// lives as long as any method without riding along on each call.
+func TestBindMethods_TokenOnDisposeAndKeepAlive(t *testing.T) {
+	sharedMethods()
+	oldKeep := keepTokenAlive
+	t.Cleanup(func() { keepTokenAlive = oldKeep })
+	var keys, vals []js.Value
+	rec := js.FuncOf(func(_ js.Value, args []js.Value) any {
+		keys, vals = append(keys, args[0]), append(vals, args[1])
+		return nil
+	})
+	t.Cleanup(rec.Release)
+	keepTokenAlive = rec.Value
+
+	proxy := js.Global().Get("Object").New()
+	tok := js.Global().Get("Object").New()
+	names := sessionMethodNames()
+	bindMethods(proxy, names, sharedMethods(), -1, tok)
+
+	require.Len(t, keys, len(names)-1, "one keep-alive entry per method but dispose")
+	for _, v := range vals {
+		assert.True(t, v.Equal(tok), "each entry's value is the token")
+	}
+	for _, k := range keys {
+		assert.False(t, k.Equal(proxy.Get("dispose")), "dispose holds the token itself")
+	}
 }
