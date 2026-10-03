@@ -56,13 +56,17 @@ Fix 1, without a pool: `sharedExecutor` registers one Promise
 executor func (`runPromiseCall`) at load, from `sharedMethods`, and
 `newPromise` constructs every Promise with it. The per-call context
 slot is a Go-side stack, `promiseCalls`: `newPromise` pushes its call,
-constructs the Promise, and pops the call in a defer. A spec Promise
+constructs the Promise, and pops that same call (by identity, not
+whatever is on top) in a defer. A spec Promise
 runs its executor synchronously during construction, so the shared
 func runs the call on top of the stack. No func is registered per
 call, so no patched `Reflect.apply`, `Reflect.get`, or
 `_makeFuncWrapper` can strand a func-table entry. The stack slot is
 cleared on pop, so the stack's backing array does not keep a Session
 reachable. The size budgets are unaffected.
+
+The executor func is registered once, and a failed registration is not
+retried, since each retry would strand an entry.
 
 This replaced a first attempt (fix 2) that captured `Reflect.apply` at
 load and refused, returning `undefined`, when it had changed. Review
@@ -79,11 +83,14 @@ construction (a Node `async_hooks` init hook fires before the
 executor), it ran that call with the script's own `resolve`.
 
 So `newPromise` now hands the constructor the shared executor bound,
-through the `bindTo` captured at load, to the call's sequence number.
+through the `bindTo` captured at load, to the call's number.
 `runPromiseCall` runs only the call on top of the stack whose number
-matches. A bound function is plain JS and registers no Go func. When
-that bind fails, the call falls back to the unbound executor, so its
-Promise still settles.
+matches. The number is AES of a counter under the session-id key, not
+the counter itself. A script that once saw the unbound executor and a
+number, through a `Reflect.apply` patched for a while, cannot step to
+the next call's number. A bound function is plain JS and registers no
+Go func. When that bind fails, the call falls back to the unbound
+executor, so its Promise still settles.
 
 A call of an executor that a patched constructor kept runs nothing
 once its own call is no longer on top. A nested run from inside
@@ -116,6 +123,8 @@ released func would not.
       after `dispose()`
 - [x] An executor a script kept from one call runs
       nothing when called during another call
+- [x] The unbound executor run with the number one past
+      a call's number runs nothing during the next call
 - [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
 - [x] `go tool -modfile=tools/go.mod golangci-lint run`

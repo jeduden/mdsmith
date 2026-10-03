@@ -412,7 +412,9 @@ calls it later runs nothing: not after the call returned, and not
 during another call, nested or not. Only that call's own constructor,
 while it builds that call's `Promise`, can run it. A `Reflect.apply`
 patched after load still sees the unbound executor and every number,
-as it sees every session id.
+as it sees every session id. Each number is AES of a counter under the
+key session ids use, so a script that saw the unbound executor and
+some numbers cannot step from them to a later call's number.
 
 A `Reflect.get` or `Reflect.set` that throws while Go reads a
 callback's arguments or writes back its result still stops the Go

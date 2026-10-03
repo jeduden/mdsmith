@@ -449,12 +449,13 @@ func newMethodDesc(object js.Value) js.Value {
 // bindTo is Function.prototype.call.bind(Function.prototype.bind), as
 // captured by captureGlobals: bindTo(f, this, ...args) is f.bind(this,
 // ...args) with no property lookup at call time. registerSession binds
-// through it, so a bind or call that another script installs after the
-// engine loads never receives a raw shared func, which would accept any
-// session id. It does not cover Reflect.apply: wasm_exec.js looks that
-// up on every Go-to-JS call, so a Reflect.apply replaced at any time
-// sees each raw shared func and id here, and every session object the
-// engine resolves. Nor does it cover Reflect.get: wasm_exec.js reads
+// through it, and so does callExecutor for the shared Promise executor,
+// so a bind or call that another script installs after the engine loads
+// never receives a raw shared func, which would accept any session id
+// or call number. It does not cover Reflect.apply: wasm_exec.js looks
+// that up on every Go-to-JS call, so a Reflect.apply replaced at any
+// time sees each raw shared func, id, and call number here, and every
+// session object the engine resolves. Nor does it cover Reflect.get: wasm_exec.js reads
 // each incoming call's arguments through it, so a Reflect.get replaced
 // at any time sees the bound id of each session whose method is called.
 // A random id or token hides nothing from that script; it is a
@@ -913,17 +914,30 @@ const maxSessionID = 1 << 53
 // session object) can pass; args then comes back whole, and no
 // fraction is truncated onto a live id.
 func boundSession(args []js.Value) (id int64, sess *mdsmith.Session, rest []js.Value) {
-	if len(args) == 0 || jsType(args[0]) != js.TypeNumber {
+	if len(args) == 0 {
 		return 0, nil, args
 	}
-	f := args[0].Float()
-	// NaN fails f == Trunc(f); the maxSessionID bound rejects Infinity
-	// and any value whose int64 conversion is implementation-defined.
-	if f != math.Trunc(f) || math.Abs(f) > maxSessionID {
+	id, ok := jsInt(args[0])
+	if !ok {
 		return 0, nil, args
 	}
-	id = int64(f)
 	return id, sessions[id], args[1:]
+}
+
+// jsInt converts v to an int64 when it is a number that is an integer
+// of magnitude at most maxSessionID, the one check boundSession and
+// splitSeq share. NaN fails f == Trunc(f); the maxSessionID bound
+// rejects Infinity and any value whose int64 conversion is
+// implementation-defined.
+func jsInt(v js.Value) (int64, bool) {
+	if jsType(v) != js.TypeNumber {
+		return 0, false
+	}
+	f := v.Float()
+	if f != math.Trunc(f) || math.Abs(f) > maxSessionID {
+		return 0, false
+	}
+	return int64(f), true
 }
 
 // The async proxies reject bad arguments with these errors, built once

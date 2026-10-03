@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"sync"
 	"syscall/js"
 	"testing"
 
@@ -2134,9 +2135,64 @@ func TestNewPromise_OuterExecutorCannotRunNestedCall(t *testing.T) {
 	assert.Empty(t, promiseCalls, "no call is left pending")
 }
 
+// TestNewPromise_RawExecutorCannotStepToNextCall hands a script the raw
+// shared executor and the number of the call before, as a Reflect.apply
+// patched for one call sees both in callExecutor's bind. While the next
+// call's Promise is being built (as a Node async_hooks init hook could),
+// the script runs the raw executor with the number one past the one it
+// saw. Call numbers are keyed, not a counting sequence, so that runs
+// nothing: the call's body runs once, with its own constructor's
+// resolve. Not parallel: it swaps Promise and a global.
+func TestNewPromise_RawExecutorCannotStepToNextCall(t *testing.T) {
+	sharedMethods()
+	g := js.Global()
+	t.Cleanup(func() { g.Delete("__mdsmithStolen") })
+	var seen int64
+	newPromise(func(resolve, _ func(any)) {
+		seen = promiseCalls[len(promiseCalls)-1].seq
+		resolve(nil)
+	})
+	require.NotZero(t, seen, "the first call is bound to a number")
+
+	swapPromise(t, g.Get("Function").New("shared", "next", `return function (executor) {
+		var self = this;
+		shared(next, function (v) { globalThis.__mdsmithStolen = v; }, function () {});
+		executor(function (v) { self.value = v; }, function () {});
+	};`).Invoke(promiseExecutor, float64(seen+1)))
+	runs := 0
+	p := newPromise(func(resolve, _ func(any)) { runs++; resolve("result") })
+	assert.Equal(t, 1, runs, "the call's body runs once")
+	assert.True(t, g.Get("__mdsmithStolen").IsUndefined(), "the stepped number runs nothing")
+	require.Equal(t, js.TypeObject, p.Type(), "the call yields its Promise")
+	assert.Equal(t, "result", p.Get("value").String(), "its own constructor's resolve receives the result")
+}
+
+// TestNewPromiseSeq checks the call numbers newPromise binds: each is in
+// [1, maxSessionID], so splitSeq accepts it and a float64 holds it
+// exactly, none repeats, and they are not a counting sequence. The
+// block tag sits past every session-id round, so no number is drawn from
+// a block a session id's permutation encrypts. Not parallel: it advances
+// the shared counter.
+func TestNewPromiseSeq(t *testing.T) {
+	assert.GreaterOrEqual(t, promiseSeqTag, sessionIDRounds, "the tag is no session-id round")
+	seen := make(map[int64]bool, 4096)
+	prev := int64(0)
+	for range 4096 {
+		n := newPromiseSeq()
+		require.GreaterOrEqual(t, n, int64(1))
+		require.LessOrEqual(t, n, int64(maxSessionID))
+		require.False(t, seen[n], "number %d repeats", n)
+		assert.NotEqual(t, prev+1, n, "numbers count up")
+		got, _ := splitSeq([]js.Value{js.ValueOf(float64(n))})
+		require.Equal(t, n, got, "splitSeq accepts the number")
+		seen[n] = true
+		prev = n
+	}
+}
+
 // TestSplitSeq checks how runPromiseCall splits the bound call number
-// off the executor's arguments: a leading positive integer is the
-// number, any other leading number matches no call (-1), and a leading
+// off the executor's arguments: a leading integer in [1, maxSessionID]
+// is the number, any other leading number matches no call (-1), and a leading
 // non-number (an unbound run's resolve) is no number at all (0).
 func TestSplitSeq(t *testing.T) {
 	fn := js.Global().Get("Function").New()
@@ -2154,7 +2210,9 @@ func TestSplitSeq(t *testing.T) {
 		{"negative", []js.Value{js.ValueOf(-2), fn}, -1, 1},
 		{"fraction", []js.Value{js.ValueOf(1.5), fn}, -1, 1},
 		{"NaN", []js.Value{js.ValueOf(math.NaN()), fn}, -1, 1},
-		{"past 2^53", []js.Value{js.ValueOf(float64(1 << 53)), fn}, -1, 1},
+		{"2^53", []js.Value{js.ValueOf(float64(maxSessionID)), fn}, maxSessionID, 1},
+		{"past 2^53", []js.Value{js.ValueOf(float64(maxSessionID) + 2), fn}, -1, 1},
+		{"Infinity", []js.Value{js.ValueOf(math.Inf(1)), fn}, -1, 1},
 		{"BigInt", []js.Value{bigInt, fn}, 0, 2},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2251,4 +2309,85 @@ func TestNewPromise_ClearsPoppedSlot(t *testing.T) {
 	for i, c := range promiseCalls[:cap(promiseCalls)] {
 		assert.Nil(t, c, "slot %d is cleared", i)
 	}
+}
+
+// TestNewPromise_PopsOwnCall checks newPromise pops its own call even
+// when another call sits above it on promiseCalls by the time it
+// returns, as an interleaved newPromise would leave it: it removes its
+// call by identity rather than whatever is on top, so the other call's
+// entry survives for its own newPromise to pop. Not parallel: it reads
+// and writes promiseCalls.
+func TestNewPromise_PopsOwnCall(t *testing.T) {
+	sharedMethods()
+	require.Empty(t, promiseCalls)
+	other := &promiseCall{executor: func(_, _ func(any)) {}}
+	t.Cleanup(func() { promiseCalls = nil })
+	var own *promiseCall
+	newPromise(func(_, _ func(any)) {
+		own = promiseCalls[len(promiseCalls)-1]
+		promiseCalls = append(promiseCalls, other)
+	})
+	require.NotNil(t, own)
+	require.Len(t, promiseCalls, 1, "only the interleaved call is left")
+	assert.Same(t, other, promiseCalls[0], "the interleaved call survives")
+	require.GreaterOrEqual(t, cap(promiseCalls), 2)
+	assert.Nil(t, promiseCalls[:2][1], "the freed slot is cleared")
+}
+
+// TestJSInt checks jsInt, the one integer check boundSession and
+// splitSeq share: a number that is an integer with magnitude at most
+// maxSessionID converts exactly; a non-number, a fraction, NaN,
+// Infinity, or a magnitude past maxSessionID does not.
+func TestJSInt(t *testing.T) {
+	cases := []struct {
+		name string
+		v    js.Value
+		want int64
+		ok   bool
+	}{
+		{"zero", js.ValueOf(0), 0, true},
+		{"one", js.ValueOf(1), 1, true},
+		{"negative", js.ValueOf(-7), -7, true},
+		{"2^53", js.ValueOf(float64(maxSessionID)), maxSessionID, true},
+		{"-2^53", js.ValueOf(-float64(maxSessionID)), -maxSessionID, true},
+		{"past 2^53", js.ValueOf(float64(maxSessionID) + 2), 0, false},
+		{"fraction", js.ValueOf(1.5), 0, false},
+		{"NaN", js.ValueOf(math.NaN()), 0, false},
+		{"Infinity", js.ValueOf(math.Inf(1)), 0, false},
+		{"string", js.ValueOf("1"), 0, false},
+		{"undefined", js.Undefined(), 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			n, ok := jsInt(tc.v)
+			assert.Equal(t, tc.ok, ok)
+			assert.Equal(t, tc.want, n)
+		})
+	}
+}
+
+// TestSharedExecutor_FailedRegistrationNotRetried pins that a failed
+// registration of the shared executor is not retried on a later call.
+// js.FuncOf stores its handler before it builds the JS wrapper, so a
+// retry while the wrapper keeps failing would strand one func-table
+// entry per newPromise, the leak plan 2610031420 removes. Not parallel:
+// it swaps the funcOf seam and resets the registration.
+func TestSharedExecutor_FailedRegistrationNotRetried(t *testing.T) {
+	sharedMethods()
+	oldExec, oldOf := promiseExecutor, funcOf
+	t.Cleanup(func() {
+		promiseExecutor, funcOf = oldExec, oldOf
+		executorOnce = sync.Once{}
+		executorOnce.Do(func() {})
+	})
+	executorOnce = sync.Once{}
+	promiseExecutor = js.Undefined()
+	calls := 0
+	funcOf = func(func(js.Value, []js.Value) any) js.Func {
+		calls++
+		panic(js.Error{Value: jsError("wrapper failed")})
+	}
+	assert.Panics(t, func() { sharedExecutor() })
+	assert.NotPanics(t, func() { sharedExecutor() })
+	assert.Equal(t, 1, calls, "registration is attempted once")
 }

@@ -3,8 +3,8 @@
 package main
 
 import (
+	"crypto/aes"
 	"encoding/json"
-	"math"
 	"sync"
 	"syscall/js"
 
@@ -41,25 +41,24 @@ import (
 // same treatment. The executor each call hands the constructor is the
 // shared func bound to the call's number (callExecutor), so a script
 // that kept it runs nothing once that call is no longer on top: not
-// after newPromise returned, and not during another call. A constructor that passes
-// the executor too few arguments, or a reject that itself throws or is
-// no function, would end the program from inside the executor callback:
-// a panic that leaves a js.FuncOf callback unwinds into the Go frames
-// below the JS that called it. The callback swallows that failure, and
-// the Promise stays as the constructor left it, never settling. Any
-// other panic is re-raised (recoverJS).
+// after newPromise returned, and not during another call. A
+// constructor that passes the executor too few arguments, or a reject
+// that itself throws or is no function, would end the program from
+// inside the executor callback: a panic that leaves a js.FuncOf
+// callback unwinds into the Go frames below the JS that called it. The
+// callback swallows that failure, and the Promise stays as the
+// constructor left it, never settling. Any other panic is re-raised
+// (recoverJS).
 func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
 	shared := sharedExecutor()
-	promiseSeq++
-	c := &promiseCall{executor: executor, seq: promiseSeq}
+	c := &promiseCall{executor: executor, seq: newPromiseSeq()}
 	promiseCalls = append(promiseCalls, c)
-	// Pop c whatever happens, and clear its slot so the stack's backing
-	// array does not keep the executor, and the Session it closes over,
-	// reachable. A call the constructor never ran yields undefined.
+	// Pop c whatever happens, and clear the freed slot so the stack's
+	// backing array does not keep the executor, and the Session it
+	// closes over, reachable. A call the constructor never ran yields
+	// undefined.
 	defer func() {
-		n := len(promiseCalls) - 1
-		promiseCalls[n] = nil
-		promiseCalls = promiseCalls[:n]
+		popPromiseCall(c)
 		if !c.done {
 			p = js.Undefined()
 		}
@@ -101,10 +100,52 @@ type promiseCall struct {
 	done     bool
 }
 
-// promiseSeq numbers newPromise calls from 1, so each call's bound
-// executor names that call alone. A float64 holds it exactly until
-// 2^53 calls.
-var promiseSeq int64
+// promiseSeqTag is the block tag newPromiseSeq encrypts its counter
+// under. permuteSessionID's rounds use tags 0 to sessionIDRounds-1, so
+// no block a call number comes from is one a session id's permutation
+// encrypts, and a number a script sees tells it nothing of an id.
+const promiseSeqTag = 0xff
+
+// promiseSeqCounter is the next counter value newPromiseSeq encrypts,
+// and promiseSeqBuf its scratch block: package-level, so the encryption
+// through the cipher.Block interface allocates nothing per call.
+var (
+	promiseSeqCounter uint64
+	promiseSeqBuf     [aes.BlockSize]byte
+)
+
+// newPromiseSeq hands out the next call number: AES, under the per-load
+// key session ids are permuted with (sessionIDCipher), of the counter
+// tagged promiseSeqTag, cut to 53 bits and shifted to start at 1. Every
+// number is in [1, maxSessionID], so a float64 holds it exactly and
+// splitSeq accepts it. The key is drawn at load, so the numbers are not
+// a counting sequence: a script that saw the raw shared executor and a
+// call's number (a Reflect.apply patched for a while) cannot step from
+// it to a later call's number, as it cannot step to a later session id.
+// One AES block, not the session id's permutation: two calls share a
+// number only by a 53-bit collision.
+func newPromiseSeq() int64 {
+	x := roundSessionID(sessionIDCipher, &promiseSeqBuf, promiseSeqTag, promiseSeqCounter)
+	promiseSeqCounter++
+	return int64(x>>11) + 1
+}
+
+// popPromiseCall removes c from promiseCalls by identity, not whatever
+// is on top, so a call another newPromise pushed above c (were an
+// executor ever to yield to another goroutine mid-call) keeps its entry
+// for its own newPromise to pop. c is normally on top, so the search
+// ends at once. The freed last slot is cleared.
+func popPromiseCall(c *promiseCall) {
+	for i := len(promiseCalls) - 1; i >= 0; i-- {
+		if promiseCalls[i] == c {
+			n := len(promiseCalls) - 1
+			copy(promiseCalls[i:], promiseCalls[i+1:])
+			promiseCalls[n] = nil
+			promiseCalls = promiseCalls[:n]
+			return
+		}
+	}
+}
 
 // promiseCalls is the stack of pending newPromise calls, innermost last.
 // js/wasm runs every goroutine on one thread, and a call is pushed and
@@ -122,6 +163,11 @@ var (
 // sharedExecutor registers promiseExecutor on first use and returns it.
 // sharedMethods calls it at load, before the API is reachable, so the
 // one FuncOf runs before a page can have patched anything after load.
+// A failed registration is not retried: js.FuncOf stores its handler
+// before it builds the JS wrapper, so retrying while the wrapper keeps
+// failing would strand one func-table entry per newPromise (plan
+// 2610031420). The failure panics out of the first call, which at load
+// ends the program before the API is reachable.
 // newPromise calls it too rather than sharedMethods, whose method table
 // reaches newPromise, so a test that builds a Promise first still works.
 func sharedExecutor() js.Value {
@@ -173,17 +219,16 @@ func runPromiseCall(_ js.Value, pArgs []js.Value) any {
 // splitSeq splits the call sequence number callExecutor bound off the
 // executor's arguments. A first argument that is not a number (an
 // unbound run, whose first argument is resolve) yields 0 and leaves the
-// arguments whole. A number that is not a positive integer below 2^53
-// yields -1, which matches no call.
+// arguments whole. A number that is not an integer in [1, maxSessionID],
+// the range newPromiseSeq draws from, yields -1, which matches no call.
 func splitSeq(args []js.Value) (int64, []js.Value) {
 	if len(args) == 0 || jsType(args[0]) != js.TypeNumber {
 		return 0, args
 	}
-	f := args[0].Float()
-	if f < 1 || f >= 1<<53 || f != math.Trunc(f) {
-		return -1, args[1:]
+	if n, ok := jsInt(args[0]); ok && n >= 1 {
+		return n, args[1:]
 	}
-	return int64(f), args[1:]
+	return -1, args[1:]
 }
 
 // jsError constructs a JavaScript Error with the given message, the
