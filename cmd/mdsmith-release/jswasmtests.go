@@ -20,9 +20,9 @@ func runTestJSWasm(root string, args []string) int {
 			"-json through go_js_wasm_exec, and fail unless every one passes\n"+
 			"(a skipped test fails by name). <pkg> must match exactly one\n"+
 			"package. Needs node on PATH.\n\n"+
-			"With --all, run the whole package under Node, whatever its build\n"+
-			"tags, and fail on any go test failure or when no test passes\n"+
-			"(other skips are allowed).\n")
+			"With --all, run every test a js/wasm build compiles under Node,\n"+
+			"untagged ones included, and fail on any go test failure or when\n"+
+			"no test passes (a skip is allowed).\n")
 	}
 	if err := fs.Parse(args); err != nil {
 		if code := reportFlagParseErr(err, os.Stderr, "mdsmith-release: test-js-wasm"); code >= 0 {

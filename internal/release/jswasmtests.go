@@ -11,10 +11,10 @@
 // event. A skipped test therefore fails the step by name; a
 // commented-out one is not listed.
 //
-// With --all (RunJSWasmPackage) it instead runs the whole package under
-// Node, whatever its build tags, and fails on any go test failure or
-// when no test passes, so an untagged test that fails without a real
-// process or pipe fails CI.
+// With --all (RunJSWasmPackage) it instead runs every test a js/wasm
+// build compiles under Node, untagged ones included, and fails on any
+// go test failure or when no test passes, so an untagged test that
+// fails without a real process or pipe fails CI.
 package release
 
 import (
@@ -90,8 +90,9 @@ func (d jsWasmDeps) output(env []string, args ...string) ([]byte, error) {
 	return b.Bytes(), err
 }
 
-// RunJSWasmPackage runs every test in pkg under Node, whatever its
-// build tags, and fails on any go test failure or when no test passes.
+// RunJSWasmPackage runs every test of pkg that a js/wasm build compiles
+// under Node, untagged ones included, and fails on any go test failure
+// or when no test passes.
 // Unlike RunJSWasmTests it does not require each test to pass by name:
 // a skip is fine as long as some test passed.
 func RunJSWasmPackage(root, pkg string, out io.Writer) error {
@@ -110,11 +111,7 @@ func osJSWasmDeps(root string, out io.Writer) jsWasmDeps {
 }
 
 func runJSWasmPackageWith(d jsWasmDeps, pkg string) error {
-	goroot, err := d.goroot()
-	if err != nil {
-		return err
-	}
-	execFlag, err := jsWasmExecFlag(d.path, goroot)
+	execFlag, err := d.execFlag()
 	if err != nil {
 		return err
 	}
@@ -130,8 +127,10 @@ func runJSWasmPackageWith(d jsWasmDeps, pkg string) error {
 	return nil
 }
 
-// goroot returns `go env GOROOT`, erroring on empty output.
-func (d jsWasmDeps) goroot() (string, error) {
+// execFlag returns the go test -exec value for d.path and the
+// go_js_wasm_exec under `go env GOROOT`, erroring when go env fails or
+// prints nothing, or when the flag cannot be quoted.
+func (d jsWasmDeps) execFlag() (string, error) {
 	out, err := d.output(nil, "env", "GOROOT")
 	if err != nil {
 		return "", fmt.Errorf("go env GOROOT: %w", err)
@@ -140,12 +139,12 @@ func (d jsWasmDeps) goroot() (string, error) {
 	if goroot == "" {
 		return "", errors.New("go env GOROOT: empty output")
 	}
-	return goroot, nil
+	return jsWasmExecFlag(d.path, goroot)
 }
 
 // goTest runs `go test -json` on pkg under Node, streaming the console
-// log to d.out, and returns the names that reported a pass. A non-nil
-// names becomes the -run filter.
+// log to d.out, and returns the names that reported a pass. A
+// non-empty names becomes the -run filter; an empty one runs them all.
 //
 // env -i in execFlag: wasm_exec.js caps args plus environment at
 // ~8 KB. It wraps only the Node runtime, so the go command keeps the
@@ -154,7 +153,7 @@ func (d jsWasmDeps) goroot() (string, error) {
 // reports its own pass event instead of a glued `x--- PASS` line.
 func (d jsWasmDeps) goTest(pkg, execFlag string, names []string) ([]string, error) {
 	args := []string{"test", "-json", "-exec=" + execFlag}
-	if names != nil {
+	if len(names) > 0 {
 		args = append(args, "-run", "^("+strings.Join(names, "|")+")$")
 	}
 	w := &testJSONWriter{out: d.out}
@@ -167,7 +166,7 @@ func (d jsWasmDeps) goTest(pkg, execFlag string, names []string) ([]string, erro
 }
 
 func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
-	goroot, err := d.goroot()
+	execFlag, err := d.execFlag()
 	if err != nil {
 		return err
 	}
@@ -176,10 +175,6 @@ func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
 		return err
 	}
 	names, err := testsInFiles(d, files)
-	if err != nil {
-		return err
-	}
-	execFlag, err := jsWasmExecFlag(d.path, goroot)
 	if err != nil {
 		return err
 	}

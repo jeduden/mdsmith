@@ -265,6 +265,75 @@ func TestJSWasmDeps_Output(t *testing.T) {
 	assert.ErrorContains(t, err, "env boom")
 }
 
+func TestJSWasmDeps_ExecFlag(t *testing.T) {
+	t.Run("builds the flag from go env GOROOT", func(t *testing.T) {
+		f := &fakeGo{goroot: " /go \n"}
+		got, err := jsWasmDeps{run: f.run, path: "/bin"}.execFlag()
+		require.NoError(t, err)
+		assert.Equal(t, "env -i 'PATH=/bin' '/go/lib/wasm/go_js_wasm_exec'", got)
+		assert.Equal(t, [][]string{{"env", "GOROOT"}}, f.calls)
+		assert.Nil(t, f.envs[0], "go env runs with the native environment")
+	})
+
+	t.Run("go env failure", func(t *testing.T) {
+		f := &fakeGo{failOn: "env"}
+		_, err := jsWasmDeps{run: f.run, path: "/bin"}.execFlag()
+		assert.ErrorContains(t, err, "go env GOROOT: env boom")
+	})
+
+	t.Run("empty GOROOT", func(t *testing.T) {
+		f := &fakeGo{goroot: " "}
+		_, err := jsWasmDeps{run: f.run, path: "/bin"}.execFlag()
+		assert.ErrorContains(t, err, "go env GOROOT: empty output")
+	})
+
+	t.Run("unquotable path", func(t *testing.T) {
+		f := &fakeGo{goroot: "/go"}
+		_, err := jsWasmDeps{run: f.run, path: `'"`}.execFlag()
+		assert.ErrorContains(t, err, "cannot quote")
+	})
+}
+
+func TestJSWasmDeps_GoTest(t *testing.T) {
+	log := goTestJSON(t, slices.Concat(result("pass", "TestA"), result("skip", "TestB"))...)
+
+	t.Run("names become the -run filter", func(t *testing.T) {
+		f := &fakeGo{testLog: log}
+		var out bytes.Buffer
+		passed, err := jsWasmDeps{run: f.run, out: &out}.goTest("./p", "X", []string{"TestA", "TestB"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"TestA"}, passed)
+		assert.Equal(t, [][]string{{"test", "-json", "-exec=X", "-run", "^(TestA|TestB)$", "./p"}}, f.calls)
+		assert.Equal(t, [][]string{{"GOOS=js", "GOARCH=wasm"}}, f.envs)
+		assert.Contains(t, out.String(), "--- SKIP: TestB")
+	})
+
+	t.Run("no names runs the whole package", func(t *testing.T) {
+		for _, names := range [][]string{nil, {}} {
+			f := &fakeGo{testLog: log}
+			_, err := jsWasmDeps{run: f.run, out: &bytes.Buffer{}}.goTest("./p", "X", names)
+			require.NoError(t, err)
+			assert.Equal(t, [][]string{{"test", "-json", "-exec=X", "./p"}}, f.calls)
+		}
+	})
+
+	t.Run("go test failure keeps the log", func(t *testing.T) {
+		f := &fakeGo{testLog: log, testErr: errors.New("exit status 1")}
+		var out bytes.Buffer
+		passed, err := jsWasmDeps{run: f.run, out: &out}.goTest("./p", "X", nil)
+		assert.Nil(t, passed)
+		assert.ErrorContains(t, err, "go test ./p under js/wasm: exit status 1")
+		assert.Contains(t, out.String(), "--- PASS: TestA")
+	})
+
+	t.Run("a final line without a newline is flushed", func(t *testing.T) {
+		f := &fakeGo{testLog: strings.TrimSuffix(goTestJSON(t, result("pass", "TestZ")...), "\n")}
+		passed, err := jsWasmDeps{run: f.run, out: &bytes.Buffer{}}.goTest("./p", "X", nil)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"TestZ"}, passed)
+	})
+}
+
 func TestJSWasmExecFlag(t *testing.T) {
 	tests := []struct {
 		name    string
