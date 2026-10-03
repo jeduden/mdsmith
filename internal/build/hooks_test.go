@@ -102,22 +102,6 @@ func TestRunHooks_CancelledContext(t *testing.T) {
 	assert.Contains(t, w.String(), "sleeper: FAIL")
 }
 
-// --- runHook exit code ---
-
-func TestRunHook_ExitCodePreserved(t *testing.T) {
-	// Use a shell-free approach: write a small script that exits 42.
-	dir := t.TempDir()
-	script := filepath.Join(dir, "exit42")
-	// Write a Go-compiled shim... instead, rely on shell via `sh -c`... but
-	// MDS040 forbids shells. Use the `false` binary which exits 1, or write
-	// a proper helper binary. For simplicity use sh-less approach:
-	// On Linux, /usr/bin/false exits 1. Test the ExitCode path via false.
-	result := runHook(context.Background(), []string{"false"}, dir)
-	require.NotNil(t, result)
-	assert.Equal(t, 1, result.ExitCode)
-	_ = script // used for dir only
-}
-
 // --- output lines ---
 
 func TestRunAfterHooks_OutputLines_OnFail(t *testing.T) {
@@ -152,19 +136,6 @@ func TestRunAfterHooks_EmptyTokens_Skipped(t *testing.T) {
 	hooks := []HookEntry{{Tokens: nil, Name: "empty"}}
 	result := RunAfterHooks(context.Background(), hooks, t.TempDir(), silentDiscard{})
 	assert.Nil(t, result)
-}
-
-// TestRunHook_SignalKilled_NormalizesExitCode exercises the code < 0 branch:
-// a process killed by a signal yields ExitCode() == -1, which runHook normalizes to 1.
-// Only meaningful on Unix (Windows processes don't signal-kill the same way).
-func TestRunHook_SignalKilled_NormalizesExitCode(t *testing.T) {
-	if os.Getenv("GOOS") == "windows" {
-		t.Skip("signal kill not available on windows")
-	}
-	// `sh -c 'kill -9 $$'` kills the shell with SIGKILL, giving exit code -1.
-	result := runHook(context.Background(), []string{"sh", "-c", "kill -9 $$"}, t.TempDir())
-	require.NotNil(t, result)
-	assert.Equal(t, 1, result.ExitCode, "negative signal exit code must be normalized to 1")
 }
 
 // Ensure fmt import is used (compiler would catch this anyway, but making explicit).

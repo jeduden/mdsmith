@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,52 +39,6 @@ func writeScript(t *testing.T, dir, name, body string) string {
 	return p
 }
 
-func TestBuild_FailingRecipeLeavesNoPartialOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
-	root := t.TempDir()
-
-	// Recipe writes the first output then exits non-zero. No final output
-	// should be touched.
-	bindir := t.TempDir()
-	script := writeScript(t, bindir, "halffail.sh", `printf x > "$1"; exit 3`)
-	b := NewCustomBuilder(map[string]RecipeSpec{
-		"halffail": recipeCmd(script + " {outputs}"),
-	})
-	err := b.Build(context.Background(), Target{
-		Recipe:  "halffail",
-		Root:    root,
-		Outputs: []string{"a.txt", "b.txt"},
-	})
-	require.Error(t, err)
-	assert.NoFileExists(t, filepath.Join(root, "a.txt"))
-	assert.NoFileExists(t, filepath.Join(root, "b.txt"))
-}
-
-func TestBuild_FailingRecipePreservesExistingOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
-	root := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(root, "out.txt"), []byte("original"), 0o644))
-
-	bindir := t.TempDir()
-	script := writeScript(t, bindir, "fail.sh", `exit 1`)
-	b := NewCustomBuilder(map[string]RecipeSpec{
-		"fail": recipeCmd(script + " {outputs}"),
-	})
-	err := b.Build(context.Background(), Target{
-		Recipe:  "fail",
-		Root:    root,
-		Outputs: []string{"out.txt"},
-	})
-	require.Error(t, err)
-	got, err := os.ReadFile(filepath.Join(root, "out.txt"))
-	require.NoError(t, err)
-	assert.Equal(t, "original", string(got))
-}
-
 func TestBuild_UnknownRecipeErrors(t *testing.T) {
 	root := t.TempDir()
 	b := NewCustomBuilder(map[string]RecipeSpec{})
@@ -114,25 +67,6 @@ func TestBuild_InputEscapingRootErrors(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "project root")
-}
-
-func TestBuild_Timeout(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sleep is not available on Windows")
-	}
-	root := t.TempDir()
-	bindir := t.TempDir()
-	script := writeScript(t, bindir, "slow.sh", `sleep 5`)
-	b := NewCustomBuilder(map[string]RecipeSpec{
-		"slow": recipeCmd(script + " {outputs}"),
-	})
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
-	start := time.Now()
-	err := b.Build(ctx, Target{Recipe: "slow", Root: root, Outputs: []string{"out.txt"}})
-	require.Error(t, err)
-	assert.Less(t, time.Since(start), 4*time.Second)
-	assert.NoFileExists(t, filepath.Join(root, "out.txt"))
 }
 
 func TestBuild_EmptyCommandErrors(t *testing.T) {

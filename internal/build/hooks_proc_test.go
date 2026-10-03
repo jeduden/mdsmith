@@ -7,14 +7,15 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// hookEntry builds a HookEntry that calls `echo` (a real binary available
-// everywhere) so we can test success without a custom binary.
+// echoEntry builds a HookEntry that calls the `echo` binary so we can
+// test success without a custom binary.
 func echoEntry(name, msg string) HookEntry {
 	return HookEntry{
 		Tokens: []string{"echo", msg},
@@ -114,4 +115,26 @@ func TestRunAfterHooks_UnnamedHook_UsesFirstToken(t *testing.T) {
 	result := RunAfterHooks(context.Background(), []HookEntry{h}, t.TempDir(), &w)
 	assert.Nil(t, result)
 	assert.Contains(t, w.String(), "hook echo: running")
+}
+
+// TestRunHook_ExitCodePreserved runs the real `false` binary, so the
+// exit code comes from exec.ExitError. Under js/wasm the start would
+// fail and the default code 1 would pass this test for the wrong reason.
+func TestRunHook_ExitCodePreserved(t *testing.T) {
+	result := runHook(context.Background(), []string{"false"}, t.TempDir())
+	require.NotNil(t, result)
+	assert.Equal(t, 1, result.ExitCode)
+}
+
+// TestRunHook_SignalKilled_NormalizesExitCode exercises the code < 0 branch:
+// a process killed by a signal yields ExitCode() == -1, which runHook normalizes to 1.
+// Only meaningful on Unix (Windows processes don't signal-kill the same way).
+func TestRunHook_SignalKilled_NormalizesExitCode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("signal kill not available on windows")
+	}
+	// `sh -c 'kill -9 $$'` kills the shell with SIGKILL, giving exit code -1.
+	result := runHook(context.Background(), []string{"sh", "-c", "kill -9 $$"}, t.TempDir())
+	require.NotNil(t, result)
+	assert.Equal(t, 1, result.ExitCode, "negative signal exit code must be normalized to 1")
 }
