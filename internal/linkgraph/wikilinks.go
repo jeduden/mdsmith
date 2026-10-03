@@ -40,9 +40,14 @@ type WikiLink struct {
 // Group 2: target stem or filename (no anchor or alias)
 // Group 3: optional anchor (text after "#")
 // Group 4: optional alias (text after "|")
-var wikilinkRE = regexp.MustCompile(
-	`(!?)\[\[([^\[\]\n|#]+)(?:#([^\[\]\n|]+))?(?:\|([^\[\]\n]+))?\]\]`,
-)
+var wikilinkRE = regexp.MustCompile(wikilinkPattern)
+
+const wikilinkPattern = `(!?)\[\[([^\[\]\n|#]+)(?:#([^\[\]\n|]+))?(?:\|([^\[\]\n]+))?\]\]`
+
+// wikilinkAtRE is wikilinkRE anchored at the start of its input, with
+// the same groups. A caller reading the link at a known column matches
+// there alone rather than scanning the rest of the row.
+var wikilinkAtRE = regexp.MustCompile(`^` + wikilinkPattern)
 
 // ExtractWikiLinks scans f.Source for Obsidian-style wikilinks
 // (`[[Page]]`, `[[Page#anchor]]`, `[[Page|alias]]`, `![[file.png]]`).
@@ -457,8 +462,8 @@ func wikilinkTargetAt(row []byte, bracketStart int) (raw []byte, at int, ok bool
 	if bracketStart < 0 || bracketStart >= len(row) {
 		return nil, 0, false
 	}
-	m := wikilinkRE.FindSubmatchIndex(row[bracketStart:])
-	if m == nil || m[0] != 0 {
+	m := wikilinkAtRE.FindSubmatchIndex(row[bracketStart:])
+	if m == nil {
 		return nil, 0, false
 	}
 	at = bracketStart + m[4]

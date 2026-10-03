@@ -61,3 +61,13 @@ func TestWikilinkReaches(t *testing.T) {
 		assert.Equal(t, tc.want, WikilinkReaches(tc.spelling, tc.base), "%q -> %q", tc.spelling, tc.base)
 	}
 }
+
+// TestWikilinkAtRE_Anchored locks that the edge-column matcher only
+// matches a link starting at offset 0, so a stale column whose row
+// holds a link further on is refused without scanning to it.
+func TestWikilinkAtRE_Anchored(t *testing.T) {
+	assert.Nil(t, wikilinkAtRE.FindIndex([]byte("x [[a]]")))
+	assert.Equal(t, []int{0, 5}, wikilinkAtRE.FindIndex([]byte("[[a]] x")))
+	assert.Equal(t, []int{0, 6}, wikilinkAtRE.FindIndex([]byte("![[a]]")))
+	assert.Equal(t, wikilinkRE.NumSubexp(), wikilinkAtRE.NumSubexp())
+}
