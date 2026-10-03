@@ -1,6 +1,7 @@
 package slidevstructure
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -522,12 +523,43 @@ func TestCheckSlide(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "unknown Slidev layout")
 }
 
-// TestIsCodeFence_BacktickInfoString pins the CommonMark rule that a
+// TestCodeFenceOpenRun_BacktickInfoString pins the CommonMark rule that a
 // backtick fence's info string may not contain a backtick, so
-// "```a`b" is paragraph text and must not toggle the fence state.
-func TestIsCodeFence_BacktickInfoString(t *testing.T) {
-	assert.True(t, isCodeFence([]byte("```go")))
-	assert.True(t, isCodeFence([]byte("  ~~~a`b")), "tilde info may hold a backtick")
-	assert.False(t, isCodeFence([]byte("```a`b")))
-	assert.False(t, isCodeFence([]byte(" ````x`")))
+// "```a`b" is paragraph text and opens no fenced code block.
+func TestCodeFenceOpenRun_BacktickInfoString(t *testing.T) {
+	ch, n := codeFenceOpenRun([]byte("```go"))
+	assert.Equal(t, byte('`'), ch)
+	assert.Equal(t, 3, n)
+	ch, n = codeFenceOpenRun([]byte("  ~~~~a`b"))
+	assert.Equal(t, byte('~'), ch, "tilde info may hold a backtick")
+	assert.Equal(t, 4, n)
+	_, n = codeFenceOpenRun([]byte("```a`b"))
+	assert.Equal(t, 0, n)
+	_, n = codeFenceOpenRun([]byte(" ````x`"))
+	assert.Equal(t, 0, n)
+	_, n = codeFenceOpenRun([]byte("``x"))
+	assert.Equal(t, 0, n)
+}
+
+// TestCodeFence_ClosesOnlyOnMatchingFence pins that a fenced block
+// closes only on a run of its own character at least as long as the
+// opener with nothing after it. A fence-looking line of the other
+// character, a shorter run, or a run with an info string is content,
+// so a `---` after it is still literal code, not a slide separator.
+func TestCodeFence_ClosesOnlyOnMatchingFence(t *testing.T) {
+	for _, src := range []string{
+		"~~~md\n```\n---\n```\n~~~\n",
+		"````md\n```\n---\n````\n",
+		"```\n```js\n---\n```\n",
+		"```md\n~~~\n::left::\n```\n",
+	} {
+		lines := bytes.Split([]byte(src), []byte("\n"))
+		assert.False(t, hasSlidevMarkers(lines), src)
+	}
+
+	// The tilde block shows a nested backtick fence around a `---`;
+	// only the real separator after it splits the deck.
+	src := "# A\n\n~~~md\n```\n---\n```\n~~~\n\n---\n\n# B\n"
+	slides := parseSlides(bytes.Split([]byte(src), []byte("\n")))
+	assert.Len(t, slides, 2)
 }
