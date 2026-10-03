@@ -789,29 +789,6 @@ func TestRunJSWasmPackageWith(t *testing.T) {
 		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm"}, f.envs[2])
 	})
 
-	t.Run("a pattern matching several packages fails before go test", func(t *testing.T) {
-		// The no-pass check sums passes across the whole run, so one
-		// package with no pass would hide behind another's passes.
-		f := &fakeGo{goroot: "/go", jsList: "#pkg example.com/a\n#pkg example.com/b\n"}
-		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
-		require.EqualError(t, runJSWasmPackageWith(d, "./..."),
-			"test-js-wasm --all needs exactly one package; ./... matches 2")
-		assert.Len(t, f.calls, 2, "go test must not run")
-	})
-
-	t.Run("a pattern matching no package fails", func(t *testing.T) {
-		f := &fakeGo{goroot: "/go"}
-		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
-		require.EqualError(t, runJSWasmPackageWith(d, "./none/..."),
-			"test-js-wasm --all needs exactly one package; ./none/... matches 0")
-	})
-
-	t.Run("go list failure", func(t *testing.T) {
-		f := &fakeGo{goroot: "/go", failOn: "jslist"}
-		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
-		require.ErrorContains(t, runJSWasmPackageWith(d, "./p"), "go list (js/wasm) ./p: jslist boom")
-	})
-
 	t.Run("a skipped test does not fail", func(t *testing.T) {
 		log := goTestJSON(t, append(result("skip", "TestA"), result("pass", "TestB")...)...)
 		f := &fakeGo{goroot: "/go", jsList: onePkg, testLog: log}
@@ -841,7 +818,11 @@ func TestRunJSWasmPackageWith(t *testing.T) {
 		assert.Contains(t, err.Error(), "exit status 1")
 		assert.Contains(t, out.String(), "--- FAIL: TestA")
 	})
+}
 
+// TestRunJSWasmPackageWith_SetupErrors covers the --all failures that
+// come before go test: go env and the -exec flag.
+func TestRunJSWasmPackageWith_SetupErrors(t *testing.T) {
 	t.Run("go env failure", func(t *testing.T) {
 		f := &fakeGo{failOn: "env"}
 		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
@@ -858,6 +839,33 @@ func TestRunJSWasmPackageWith(t *testing.T) {
 		f := &fakeGo{goroot: "/go"}
 		d := jsWasmDeps{run: f.run, path: `a'"b`, out: &bytes.Buffer{}}
 		require.ErrorContains(t, runJSWasmPackageWith(d, "./p"), "cannot quote")
+	})
+}
+
+// TestRunJSWasmPackageWith_OnePackage covers the --all check that
+// <pkg> matches exactly one package before go test runs.
+func TestRunJSWasmPackageWith_OnePackage(t *testing.T) {
+	t.Run("a pattern matching several packages fails before go test", func(t *testing.T) {
+		// The no-pass check sums passes across the whole run, so one
+		// package with no pass would hide behind another's passes.
+		f := &fakeGo{goroot: "/go", jsList: "#pkg example.com/a\n#pkg example.com/b\n"}
+		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
+		require.EqualError(t, runJSWasmPackageWith(d, "./..."),
+			"test-js-wasm --all needs exactly one package; ./... matches 2")
+		assert.Len(t, f.calls, 2, "go test must not run")
+	})
+
+	t.Run("a pattern matching no package fails", func(t *testing.T) {
+		f := &fakeGo{goroot: "/go"}
+		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
+		require.EqualError(t, runJSWasmPackageWith(d, "./none/..."),
+			"test-js-wasm --all needs exactly one package; ./none/... matches 0")
+	})
+
+	t.Run("go list failure", func(t *testing.T) {
+		f := &fakeGo{goroot: "/go", failOn: "jslist"}
+		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
+		require.ErrorContains(t, runJSWasmPackageWith(d, "./p"), "go list (js/wasm) ./p: jslist boom")
 	})
 }
 
