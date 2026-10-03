@@ -166,6 +166,8 @@ func TestRecoverJS_EscapedCallbackRepanics(t *testing.T) {
 // callback while JS calls it. The exposeAPI func is released at the
 // end so the test leaves no handler in the func table.
 func TestRegisteredFuncsAreTracked(t *testing.T) {
+	// Warm-up registers the shared method funcs before recording starts.
+	sharedMethods()
 	var during int
 	f := funcOf(func(js.Value, []js.Value) any { during = activeCallbacks; return nil })
 	defer releaseFunc(f)

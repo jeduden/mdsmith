@@ -72,6 +72,24 @@ does no extra string conversion. A patched
 `Reflect.apply`, it is a limit documented in engine-api.md,
 per plan 2610021439.
 
+The `mdsmith` global gets the same own `then`. The Obsidian
+plugin's async engine load returns it, so the getter would
+reject that load. The plugin then clears its cached load and
+starts another Go runtime that never exits on each retry.
+The plugin's `SessionRuntime`, which its async
+`createRuntime` returns, gets its own `then` too, or its
+resolve would strand the session the same way.
+
+Review round 3 closed the same bug class in three more
+places. Each method is added with the captured
+`defineProperty`, not a Set, so an accessor or read-only
+value of that name on `Object.prototype` cannot take it.
+`Object.keys` and `isRecord`'s `toString` are captured at
+load like `Object`. Each load-time capture is guarded, so
+one that throws leaves its value undefined and makes every
+create reject, rather than stopping the engine from
+loading.
+
 ## Tasks
 
 1. Write a failing js/wasm test that defines a

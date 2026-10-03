@@ -269,7 +269,16 @@ property set to `undefined`. It is not in `Object.keys`, and it cannot
 be reassigned or deleted. It stops the Promise resolve in
 `createSession` from reading a `then` that a page defined on
 `Object.prototype`, which would reject the create and strand the
-session.
+session. The `mdsmith` global has the same `then`, so a host whose
+async engine load returns it, as the Obsidian plugin's does, never
+rejects that load and starts a second Go runtime. The Obsidian plugin's
+runtime object, which its async `createRuntime` returns, carries the
+same `then` for the same reason.
+
+The engine adds each method with `Object.defineProperty`, not by
+assignment. So an accessor or a read-only value of the same name on
+`Object.prototype` neither receives the method nor leaves the session
+without it. Each method stays writable, enumerable, and configurable.
 
 Each session also has a token object. `dispose` is bound to it, and a
 private `WeakMap` maps every other method to it, so the token lives
@@ -331,15 +340,23 @@ function. It adds the session's own `then` through an
 `Object.defineProperty` captured at load as well, with a frozen
 descriptor. It builds the session object from an `Object` captured
 at load. A later patch of `Object.defineProperty` or of the global
-`Object` neither skips that property nor sees the session object.
+`Object` neither skips that property nor sees the session object. The
+workspace check and its key listing use `Object.keys` and
+`Object.prototype.toString` captured at load too, so a later patch of
+either never sees the workspace. A capture that throws at load, such
+as one through an `Object.freeze` patched to throw, does not stop the
+engine from loading: every `createSession` then rejects, and no
+session is left registered.
 
 All of this is hardening, not a privilege boundary. A `bind` or
 `call` patched before the engine loads sees each raw shared function
-and the id of every session. An `Object.defineProperty` patched
-before load sees every session object. `wasm_exec.js` looks up
-`Reflect.apply` on every Go-to-JS call, so a patched `Reflect.apply` sees the same
-for each session created while the patch is in place, and every
-session object the engine resolves. It looks up `Reflect.construct`
+and the id of every session. An `Object` or `Object.defineProperty`
+patched before load sees every session object, and such an `Object`
+builds each session object and token, so it can hand back one whose
+`then` throws. `wasm_exec.js` looks up `Reflect.apply` on every
+Go-to-JS call, so a patched `Reflect.apply` sees the same for each
+session created while the patch is in place, and every session object
+the engine resolves. It looks up `Reflect.construct`
 on every object Go builds, so a patched `Reflect.construct` sees or
 replaces each session object created while the patch is in place.
 
