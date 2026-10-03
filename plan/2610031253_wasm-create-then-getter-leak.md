@@ -16,9 +16,10 @@ summary: >-
 
 ## Goal
 
-A create that rejects because a `then` lookup on the
-session object throws leaves `sessions` the same size
-as before the create.
+A throwing `then` getter on `Object.prototype` never
+strands a session. The create resolves with a session
+object, and once the caller disposes it `sessions` is
+the same size as before the create.
 
 ## Background
 
@@ -56,9 +57,20 @@ The descriptor has a null prototype. A page's
 `Object.prototype.get` then cannot make the call throw. Its
 `Object.prototype.enumerable` cannot list `then` in
 `Object.keys`. The engine captures `Object.defineProperty`
-and the descriptor once at load, beside `bind`. A
-replacement installed later never runs and never sees the
-session object.
+and the descriptor once at load, beside `bind`, and freezes
+the descriptor. A replacement installed later never runs and
+never sees the session object.
+
+A patched `Reflect.apply` sees the descriptor on every
+create, but cannot change it for the sessions created after
+it is removed. The session object and its token come from an
+`Object` captured at load too, so a later global `Object`
+cannot hand back a Proxy whose `then` trap throws. The JS
+string `"then"` is also converted once at load, so a create
+does no extra string conversion. A patched
+`Reflect.construct` still sees each session object; like
+`Reflect.apply`, it is a limit documented in engine-api.md,
+per plan 2610021439.
 
 ## Tasks
 
@@ -79,6 +91,7 @@ session object.
 
 - [x] A throwing `then` getter on `Object.prototype`
       leaves `sessions` the same size after a create
+      and its dispose
 - [x] No func stays registered after that create
 - [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`

@@ -1699,15 +1699,69 @@ func TestHideThen_IgnoresDefinePropertyReplacedAfterLoad(t *testing.T) {
 }
 
 // TestNewThenHider checks that newThenHider returns the defineProperty
-// of the object it is given and a descriptor with a null prototype whose
-// only own key is value, set to undefined.
+// of the object it is given, the JS string "then" (converted once, not
+// on every create), and a frozen descriptor with a null
+// prototype whose only own key is value, set to undefined. Frozen, a
+// script that sees it (a patched Reflect.apply, on any create) cannot
+// change the `then` of the sessions created after it.
 func TestNewThenHider(t *testing.T) {
 	object := js.Global().Get("Object")
-	define, desc := newThenHider(object)
+	define, key, desc := newThenHider(object)
 	assert.True(t, define.Equal(object.Get("defineProperty")), "define is Object.defineProperty")
+	assert.Equal(t, js.TypeString, key.Type(), "key is a JS string")
+	assert.Equal(t, "then", key.String(), "key is then")
 	assert.True(t, object.Call("getPrototypeOf", desc).IsNull(), "desc has a null prototype")
+	assert.True(t, object.Call("isFrozen", desc).Bool(), "desc is frozen")
 	keys := object.Call("getOwnPropertyNames", desc)
 	require.Equal(t, 1, keys.Length(), "desc has one own key")
 	assert.Equal(t, "value", keys.Index(0).String(), "desc's own key is value")
 	assert.True(t, desc.Get("value").IsUndefined(), "desc.value is undefined")
+}
+
+// TestRegisterSession_DefineThrowRegistersNoSession swaps in a
+// defineProperty that throws, as an Object.defineProperty patched before
+// load would be captured. createSession must reject without leaving the
+// Session in sessions, where no session object would ever reach
+// dispose(). Not parallel: it swaps thenHider.define.
+func TestRegisterSession_DefineThrowRegistersNoSession(t *testing.T) {
+	sharedMethods()
+	old := thenHider.define
+	t.Cleanup(func() { thenHider.define = old })
+	thenHider.define = js.Global().Get("Function").New("throw new TypeError('defineProperty')")
+	before := maps.Clone(sessions)
+	opts := js.ValueOf(map[string]any{})
+	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
+	require.True(t, rejected, "createSession rejects when defineProperty throws")
+	assert.True(t, v.InstanceOf(js.Global().Get("TypeError")), "rejects with the thrown TypeError")
+	assert.Equal(t, before, sessions, "no session is left registered")
+}
+
+// TestRegisterSession_IgnoresObjectReplacedAfterLoad replaces
+// globalThis.Object after the engine loaded with a constructor that
+// counts its calls. registerSession builds the session object and its
+// token from the Object captured at load, so the replacement never runs:
+// it neither sees either object nor hands back one (a Proxy whose `then`
+// trap throws) that would get past hideThen. Not parallel: it patches
+// globalThis.Object, only around the create.
+func TestRegisterSession_IgnoresObjectReplacedAfterLoad(t *testing.T) {
+	// Warm-up captures the load-time globals and isRecord's toString.
+	newTestProxy(t).Call("dispose")
+	g := js.Global()
+	orig := g.Get("Object")
+	opts := js.ValueOf(map[string]any{})
+	calls := 0
+	spy := js.FuncOf(func(js.Value, []js.Value) any {
+		calls++
+		return nil
+	})
+	defer spy.Release()
+	p := func() js.Value {
+		defer g.Set("Object", orig)
+		g.Set("Object", spy)
+		return jsValue(t, createSession(js.Undefined(), []js.Value{opts}))
+	}()
+	v, rejected := awaitPromise(t, p)
+	require.False(t, rejected, "the create resolves: %v", v)
+	v.Call("dispose")
+	assert.Zero(t, calls, "the replacement Object never runs")
 }

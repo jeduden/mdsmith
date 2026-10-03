@@ -328,19 +328,24 @@ reaches a later one.
 The engine also binds through a `bind` captured at load, so a later
 patch of `Function.prototype.bind` or `call` never sees a raw shared
 function. It adds the session's own `then` through an
-`Object.defineProperty` captured at load as well. A later patch of
-`Object.defineProperty` neither skips that property nor sees the
-session object.
+`Object.defineProperty` captured at load as well, with a frozen
+descriptor. It builds the session object from an `Object` captured
+at load. A later patch of `Object.defineProperty` or of the global
+`Object` neither skips that property nor sees the session object.
 
 All of this is hardening, not a privilege boundary. A `bind` or
 `call` patched before the engine loads sees each raw shared function
-and the id of every session. `wasm_exec.js` looks up `Reflect.apply`
-on every Go-to-JS call, so a patched `Reflect.apply` sees the same
+and the id of every session. An `Object.defineProperty` patched
+before load sees every session object. `wasm_exec.js` looks up
+`Reflect.apply` on every Go-to-JS call, so a patched `Reflect.apply` sees the same
 for each session created while the patch is in place, and every
-session object the engine resolves. Go also reads the arguments of
-each call into a method through `Reflect.get`, the bound id first.
-So a patched `Reflect.get` sees the id of each session whose method
-is called while the patch is in place.
+session object the engine resolves. It looks up `Reflect.construct`
+on every object Go builds, so a patched `Reflect.construct` sees or
+replaces each session object created while the patch is in place.
+
+Go also reads the arguments of each call into a method through
+`Reflect.get`, the bound id first. So a patched `Reflect.get` sees the
+id of each session whose method is called while the patch is in place.
 
 A random id or a token object crosses those calls too, so the engine
 does not try to hide it. The keyed id shields only a session that is

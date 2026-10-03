@@ -55,9 +55,11 @@ func main() {
 	// runs the same check/fix work as the CLI, so it gets the same GOGC
 	// default from the one source of truth. An explicit GOGC still wins.
 	gctune.ApplyBatch()
-	// Capture Function.prototype.bind before the API is reachable, so a
-	// later patch of bind or call never sees the unbound shared funcs.
-	// A later patch of Reflect.apply still does (see bindTo).
+	// Capture Function.prototype.bind, Object, and Object.defineProperty
+	// before the API is reachable, so a later patch of bind or call never
+	// sees the unbound shared funcs, and a later patch of Object or
+	// defineProperty never sees a session object. A later patch of
+	// Reflect.apply still does (see bindTo).
 	sharedMethods()
 	js.Global().Set("mdsmith", exposeAPI())
 	// Block forever so the registered callbacks stay alive; a WASM
@@ -271,17 +273,19 @@ var objectToString js.Value
 // (a stored `const d = session.dispose`, a frozen session object, a
 // read-only method) finds no session and takes the disposed path: it
 // never reaches a released func, so syscall/js logs nothing. See plan
-// 2610021237. The id is put in sessions last, after every method is
-// bound and the token registered: a bind or register that throws (one
-// patched before load) rejects createSession without leaving a Session
-// no session object can dispose. A resolve that throws after this
-// returns is handled by createSession, which releases the session by the
-// id and finalizer token this returns beside the proxy.
+// 2610021237. The id is put in sessions last, after `then` is hidden,
+// every method is bound, and the token registered: a defineProperty,
+// bind, or register that throws (one patched before load) rejects
+// createSession without leaving a Session no session object can
+// dispose. A resolve that throws after this returns is handled by
+// createSession, which releases the session by the id and finalizer
+// token this returns beside the proxy. The proxy and token come from
+// objectCtor, the Object captured at load.
 func registerSession(sess *mdsmith.Session) (proxy js.Value, id int64, token js.Value) {
 	shared := sharedMethods()
 	id = newSessionID()
-	proxy = js.Global().Get("Object").New()
-	token = js.Global().Get("Object").New()
+	proxy = objectCtor.New()
+	token = objectCtor.New()
 	hideThen(proxy)
 	bindMethods(proxy, sessionMethodNames(), shared, id, token)
 	if jsType(finalizer.register) == js.TypeFunction {
@@ -308,22 +312,34 @@ func registerSession(sess *mdsmith.Session) (proxy js.Value, id int64, token js.
 // installs after the engine loads neither turns this off nor receives
 // the session object. Plan 2610031253.
 func hideThen(proxy js.Value) {
-	thenHider.define.Invoke(proxy, "then", thenHider.desc)
+	thenHider.define.Invoke(proxy, thenHider.key, thenHider.desc)
 }
 
-// thenHider holds Object.defineProperty and the null-prototype
-// `{value: undefined}` descriptor hideThen passes it, both captured by
-// sharedMethods before the API is reachable. The descriptor is private
-// to the engine, so no script can change its fields.
-var thenHider struct{ define, desc js.Value }
+// thenHider holds Object.defineProperty, the JS string "then", and the
+// null-prototype `{value: undefined}` descriptor hideThen passes it, all
+// built by sharedMethods before the API is reachable. The key is
+// converted once, so a create makes no Go-to-JS string conversion. The descriptor is frozen:
+// every create passes it through Reflect.apply, so a patched
+// Reflect.apply sees it, and a frozen one keeps such a patch, once
+// removed, from changing the `then` of the sessions created after it.
+var thenHider struct{ define, key, desc js.Value }
 
-// newThenHider captures object's defineProperty and builds the
-// null-prototype `{value: undefined}` descriptor hideThen passes it.
-func newThenHider(object js.Value) (define, desc js.Value) {
+// newThenHider captures object's defineProperty, converts the key
+// "then" once, and builds the frozen, null-prototype
+// `{value: undefined}` descriptor hideThen passes it.
+func newThenHider(object js.Value) (define, key, desc js.Value) {
 	desc = object.Call("create", js.Null())
 	desc.Set("value", js.Undefined())
-	return object.Get("defineProperty"), desc
+	object.Call("freeze", desc)
+	return object.Get("defineProperty"), js.ValueOf("then"), desc
 }
+
+// objectCtor is the Object constructor sharedMethods captured at load.
+// registerSession builds each session object and its token from it, so
+// an Object another script installs on globalThis after the engine loads
+// neither sees either object nor hands back one (a Proxy whose `then`
+// trap throws) that would get past hideThen and strand the session.
+var objectCtor js.Value
 
 // bindMethods sets each named method on proxy to its shared func bound
 // to id, in names order rather than Go map order, so
@@ -604,17 +620,18 @@ var (
 	sharedFuncs map[string]js.Value
 )
 
-// sharedMethods captures bindTo and registers the shared method funcs on
-// first use. main calls it before exposing the API; registerSession
-// calls it too, for the tests, which never run main. The funcs are
-// never released, so every session reuses the same handler-table
-// entries. Each takes the session id as args[0]; dispose also takes
+// sharedMethods captures bindTo, objectCtor, and thenHider and registers
+// the shared method funcs on first use. main calls it before exposing
+// the API; registerSession calls it too, for the tests, which never run
+// main. The funcs are never released, so every session reuses the same
+// handler-table entries. Each takes the session id as args[0]; dispose also takes
 // its token as args[1].
 func sharedMethods() map[string]js.Value {
 	sharedOnce.Do(func() {
 		proto := js.Global().Get("Function").Get("prototype")
 		bindTo = proto.Get("call").Call("bind", proto.Get("bind"))
-		thenHider.define, thenHider.desc = newThenHider(js.Global().Get("Object"))
+		objectCtor = js.Global().Get("Object")
+		thenHider.define, thenHider.key, thenHider.desc = newThenHider(objectCtor)
 		sharedFuncs = make(map[string]js.Value, len(sharedMethodImpls)+1)
 		for name, impl := range sharedMethodImpls {
 			sharedFuncs[name] = funcOf(drainFirst(sharedFunc(impl))).Value
