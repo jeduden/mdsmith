@@ -251,8 +251,12 @@ export async function createRuntime(
   });
   // The engine yields undefined instead of a session when a patched
   // globalThis.Promise breaks its Promise construction, since Go cannot
-  // throw to its caller. Fail here, not on the first check().
+  // throw to its caller. Fail here, not on the first check(). Anything
+  // the engine did return is disposed first: nothing else holds it.
   if (!session || typeof session.check !== "function") {
+    if (session && typeof session.dispose === "function") {
+      session.dispose();
+    }
     throw new Error(
       "mdsmith: createSession returned no session (is globalThis.Promise patched?)",
     );
@@ -291,6 +295,13 @@ const HIDDEN_THEN: PropertyDescriptor = Object.freeze(
   Object.assign(Object.create(null) as PropertyDescriptor, { value: undefined }),
 );
 
+// defineProperty is Object.defineProperty as this module loads, as the
+// engine captures its own at load. A replacement another script installs
+// later neither receives a SessionRuntime, which holds the engine
+// session, nor throws from its constructor, which would reject
+// createRuntime and leave that session undisposed.
+const defineProperty = Object.defineProperty;
+
 // SessionRuntime adapts a WasmSession to the MdsmithRuntime facade. It
 // is a thin pass-through — the engine does the work — plus a disposed
 // guard so a call after dispose() throws a clear error rather than
@@ -305,7 +316,7 @@ class SessionRuntime implements MdsmithRuntime {
   private disposed = false;
 
   constructor(private readonly session: WasmSession) {
-    Object.defineProperty(this, "then", HIDDEN_THEN);
+    defineProperty(this, "then", HIDDEN_THEN);
   }
 
   private assertLive(): void {

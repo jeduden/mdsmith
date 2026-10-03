@@ -343,6 +343,29 @@ describe.skipIf(skip)("createRuntime", () => {
     expect(failure?.message).toContain("createSession returned no session");
   });
 
+  test("a createSession that yields an object without check disposes it", async () => {
+    // createRuntime rejects such an object, so nothing else holds it to
+    // dispose; it must release the engine session itself.
+    const warm = await makeRuntime({});
+    warm.dispose();
+    const factory = (globalThis as unknown as {
+      mdsmith: { createSession: unknown };
+    }).mdsmith;
+    const original = factory.createSession;
+    let disposed = 0;
+    factory.createSession = async () => ({ dispose: () => { disposed++; } });
+    let failure: Error | undefined;
+    try {
+      await makeRuntime({});
+    } catch (err) {
+      failure = err as Error;
+    } finally {
+      factory.createSession = original;
+    }
+    expect(failure?.message).toContain("createSession returned no session");
+    expect(disposed).toBe(1);
+  });
+
   test("a throwing Object.prototype.then getter does not reject createRuntime", async () => {
     // createRuntime is async, so its own resolve reads `then` on the
     // SessionRuntime it returns. A page-defined throwing getter there
@@ -369,6 +392,35 @@ describe.skipIf(skip)("createRuntime", () => {
     expect(failure).toBeUndefined();
     expect(Object.hasOwn(rt as object, "then")).toBe(true);
     expect(Object.keys(rt as object)).not.toContain("then");
+    rt?.dispose();
+  });
+
+  test("an Object.defineProperty replaced after load never sees the runtime", async () => {
+    // The runtime hides its `then` through the defineProperty captured
+    // when the module loads, as the engine does. A replacement another
+    // script installs later neither receives the runtime, which holds
+    // the engine session, nor makes createRuntime reject and leave that
+    // session undisposed.
+    const warm = await makeRuntime({}); // ensure the engine is loaded
+    warm.dispose();
+    const original = Object.defineProperty;
+    const seen: unknown[] = [];
+    Object.defineProperty = ((target: unknown) => {
+      seen.push(target);
+      throw new Error("defineProperty");
+    }) as typeof Object.defineProperty;
+    let rt: MdsmithRuntime | undefined;
+    let failure: unknown;
+    try {
+      rt = await makeRuntime({});
+    } catch (err) {
+      failure = err;
+    } finally {
+      Object.defineProperty = original;
+    }
+    expect(failure).toBeUndefined();
+    expect(seen).toEqual([]);
+    expect(Object.hasOwn(rt as object, "then")).toBe(true);
     rt?.dispose();
   });
 

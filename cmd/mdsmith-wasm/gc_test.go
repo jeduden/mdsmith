@@ -399,7 +399,7 @@ func TestBindMethods_TokenOnDisposeAndKeepAlive(t *testing.T) {
 	proxy := js.Global().Get("Object").New()
 	tok := js.Global().Get("Object").New()
 	names := sessionMethodNames()
-	bindMethods(proxy, names, sharedMethods(), -1, tok)
+	bindMethods(proxy, newMethodKeys(names), sharedMethods(), -1, tok)
 
 	require.Len(t, keys, len(names)-1, "one keep-alive entry per method but dispose")
 	for _, v := range vals {

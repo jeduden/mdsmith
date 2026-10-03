@@ -78,7 +78,9 @@ reject that load. The plugin then clears its cached load and
 starts another Go runtime that never exits on each retry.
 The plugin's `SessionRuntime`, which its async
 `createRuntime` returns, gets its own `then` too, or its
-resolve would strand the session the same way.
+resolve would strand the session the same way. It adds it
+through an `Object.defineProperty` captured at module load,
+so a later replacement cannot throw from the constructor.
 
 Review round 3 closed the same bug class in three more
 places. Each method is added with the captured
@@ -88,7 +90,16 @@ value of that name on `Object.prototype` cannot take it.
 load like `Object`. Each load-time capture is guarded, so
 one that throws leaves its value undefined and makes every
 create reject, rather than stopping the engine from
-loading.
+loading. The global's own `then` is added under the same
+kind of guard, so a failed then-hider leaves the global
+without it instead of stopping `main`.
+
+Review round 4 captured `Object.defineProperty` on its
+own rather than inside the then-hider. It converts each
+method name to a JS string once at load, not on every
+create. The plugin's `createRuntime` now disposes an
+object the engine returns without `check` before it
+rejects.
 
 ## Tasks
 

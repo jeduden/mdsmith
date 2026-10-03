@@ -273,7 +273,8 @@ session. The `mdsmith` global has the same `then`, so a host whose
 async engine load returns it, as the Obsidian plugin's does, never
 rejects that load and starts a second Go runtime. The Obsidian plugin's
 runtime object, which its async `createRuntime` returns, carries the
-same `then` for the same reason.
+same `then` for the same reason. The plugin adds it through an
+`Object.defineProperty` captured when its module loads.
 
 The engine adds each method with `Object.defineProperty`, not by
 assignment. So an accessor or a read-only value of the same name on

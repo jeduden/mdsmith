@@ -55,12 +55,12 @@ func main() {
 	// runs the same check/fix work as the CLI, so it gets the same GOGC
 	// default from the one source of truth. An explicit GOGC still wins.
 	gctune.ApplyBatch()
-	// Capture the JS globals the engine calls (captureGlobals) before the
-	// API is reachable, so a later patch of bind or call never sees the
-	// unbound shared funcs, and a later patch of Object, its keys,
-	// create, or defineProperty never sees a session object or
-	// workspace. A later patch of Reflect.apply still does (see bindTo).
-	sharedMethods()
+	// exposeAPI first captures the JS globals the engine calls
+	// (sharedMethods, captureGlobals), before the API is reachable, so a
+	// later patch of bind or call never sees the unbound shared funcs,
+	// and a later patch of Object, its keys, create, or defineProperty
+	// never sees a session object or workspace. A later patch of
+	// Reflect.apply still does (see bindTo).
 	js.Global().Set("mdsmith", exposeAPI())
 	// Block forever so the registered callbacks stay alive; a WASM
 	// main that returns tears down the Go runtime and the exported
@@ -79,7 +79,11 @@ var apiFuncs = map[string]func(js.Value, []js.Value) any{
 // session object (hideThen): a host whose async engine load returns it,
 // as the Obsidian plugin's does, resolves a Promise with it, and a
 // throwing Object.prototype.then would reject that load and make the
-// host start another Go runtime that never exits.
+// host start another Go runtime that never exits. A hideThen that fails
+// on the JS side (a then-hider whose capture failed, or a captured
+// defineProperty that throws) leaves the global without that `then`
+// rather than stopping main before it registers the global; every
+// create then rejects at its own hideThen (registerSession).
 func exposeAPI() js.Value {
 	sharedMethods()
 	api := map[string]any{"version": resolveVersion()}
@@ -87,7 +91,10 @@ func exposeAPI() js.Value {
 		api[name] = funcOf(drainFirst(fn))
 	}
 	v := js.ValueOf(api)
-	hideThen(v)
+	func() {
+		defer recoverJS(func() {})
+		hideThen(v)
+	}()
 	return v
 }
 
@@ -292,7 +299,7 @@ func registerSession(sess *mdsmith.Session) (proxy js.Value, id int64, token js.
 	proxy = objectCtor.New()
 	token = objectCtor.New()
 	hideThen(proxy)
-	bindMethods(proxy, sessionMethodNames(), shared, id, token)
+	bindMethods(proxy, sessionKeys, shared, id, token)
 	if jsType(finalizer.register) == js.TypeFunction {
 		finalizer.register.Invoke(token, id, token)
 	}
@@ -317,30 +324,44 @@ func registerSession(sess *mdsmith.Session) (proxy js.Value, id int64, token js.
 // installs after the engine loads neither turns this off nor receives
 // the session object. Plan 2610031253.
 func hideThen(obj js.Value) {
-	thenHider.define.Invoke(obj, thenHider.key, thenHider.desc)
+	defineProperty.Invoke(obj, thenHider.key, thenHider.desc)
 }
 
-// thenHiderValues holds Object.defineProperty, the JS string "then",
-// and the null-prototype `{value: undefined}` descriptor hideThen passes
-// it. The key is converted once, so a create makes no Go-to-JS string
+// defineProperty is Object.defineProperty as captureGlobals captured it
+// at load. hideThen and bindMethods add every own property of a session
+// object through it.
+var defineProperty js.Value
+
+// thenHiderValues holds the JS string "then" and the null-prototype
+// `{value: undefined}` descriptor hideThen passes defineProperty. The
+// key is converted once, so a create makes no Go-to-JS string
 // conversion. The descriptor is frozen: every create passes it through
 // Reflect.apply, so a patched Reflect.apply sees it, and a frozen one
 // keeps such a patch, once removed, from changing the `then` of the
 // sessions created after it.
-type thenHiderValues struct{ define, key, desc js.Value }
+type thenHiderValues struct{ key, desc js.Value }
 
 // thenHider is the one thenHiderValues, built by captureGlobals before
 // the API is reachable.
 var thenHider thenHiderValues
 
-// newThenHider captures object's defineProperty, converts the key
-// "then" once, and builds the frozen, null-prototype
-// `{value: undefined}` descriptor hideThen passes it.
+// newThenHider converts the key "then" once and builds, from object's
+// create and freeze, the frozen, null-prototype `{value: undefined}`
+// descriptor hideThen passes defineProperty.
 func newThenHider(object js.Value) thenHiderValues {
-	desc := object.Call("create", js.Null())
-	desc.Set("value", js.Undefined())
-	object.Call("freeze", desc)
-	return thenHiderValues{define: object.Get("defineProperty"), key: js.ValueOf("then"), desc: desc}
+	desc := frozenDesc(object, func(d js.Value) { d.Set("value", js.Undefined()) })
+	return thenHiderValues{key: js.ValueOf("then"), desc: desc}
+}
+
+// frozenDesc builds a property descriptor with object's create and
+// freeze: a null-prototype object, given its fields by set, then frozen.
+// The null prototype keeps a page's Object.prototype.get, .set, or
+// .enumerable out of the descriptor defineProperty reads.
+func frozenDesc(object js.Value, set func(d js.Value)) js.Value {
+	d := object.Call("create", js.Null())
+	set(d)
+	object.Call("freeze", d)
+	return d
 }
 
 // objectCtor is the Object constructor captureGlobals captured at load.
@@ -350,8 +371,8 @@ func newThenHider(object js.Value) thenHiderValues {
 // trap throws) that would get past hideThen and strand the session.
 var objectCtor js.Value
 
-// bindMethods sets each named method on proxy to its shared func bound
-// to id, in names order rather than Go map order, so
+// bindMethods sets each method in keys on proxy to its shared func
+// bound to id, in keys order rather than Go map order, so
 // Object.keys(session) is the same for every session. dispose is also
 // bound to token, which it unregisters; every other method is passed
 // with token to finalizer.keep instead, so the token outlives each of
@@ -359,9 +380,10 @@ var objectCtor js.Value
 // (the names list and sharedMethodImpls drifted) is left off rather
 // than passed to bind, which would throw on every createSession;
 // TestRegisterSession_KeysMatchSessionMethodNames reports the drift.
+// Each key's JS string was converted once, at load (sessionKeys).
 //
 // Each method is added with the defineProperty captured at load
-// (thenHider.define), not Set, for the reason hideThen uses it: Set
+// (defineProperty), not Set, for the reason hideThen uses it: Set
 // would run an accessor of the same name on Object.prototype, handing
 // it the bound method, or fail silently on an inherited read-only one,
 // and either way the session would lack the method (without dispose, it
@@ -369,15 +391,15 @@ var objectCtor js.Value
 // fresh object per call whose prototype is methodDesc, so it carries
 // writable, enumerable, and configurable true like a Set property, and
 // only its value changes from method to method.
-func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int64, token js.Value) {
+func bindMethods(proxy js.Value, keys []methodKey, shared map[string]js.Value, id int64, token js.Value) {
 	desc := objectCreate.Invoke(methodDesc)
-	for _, name := range names {
-		f, ok := shared[name]
+	for _, k := range keys {
+		f, ok := shared[k.name]
 		if !ok {
 			continue
 		}
 		var m js.Value
-		if name == "dispose" {
+		if k.name == "dispose" {
 			m = bindTo.Invoke(f, js.Undefined(), id, token)
 		} else {
 			m = bindTo.Invoke(f, js.Undefined(), id)
@@ -386,9 +408,29 @@ func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id 
 			}
 		}
 		desc.Set("value", m)
-		thenHider.define.Invoke(proxy, name, desc)
+		defineProperty.Invoke(proxy, k.key, desc)
 	}
 }
+
+// methodKey pairs a session method name with its JS string, converted
+// once by newMethodKeys rather than by every create.
+type methodKey struct {
+	name string
+	key  js.Value
+}
+
+// newMethodKeys returns names, in order, each paired with its JS string.
+func newMethodKeys(names []string) []methodKey {
+	keys := make([]methodKey, len(names))
+	for i, name := range names {
+		keys[i] = methodKey{name: name, key: js.ValueOf(name)}
+	}
+	return keys
+}
+
+// sessionKeys is newMethodKeys(sessionMethodNames()), built by
+// sharedMethods, in the order registerSession binds the methods.
+var sessionKeys []methodKey
 
 // methodDesc is the frozen, null-prototype `{writable: true, enumerable:
 // true, configurable: true}` that each bindMethods descriptor inherits
@@ -398,12 +440,11 @@ var methodDesc js.Value
 
 // newMethodDesc builds methodDesc from object's create and freeze.
 func newMethodDesc(object js.Value) js.Value {
-	d := object.Call("create", js.Null())
-	d.Set("writable", true)
-	d.Set("enumerable", true)
-	d.Set("configurable", true)
-	object.Call("freeze", d)
-	return d
+	return frozenDesc(object, func(d js.Value) {
+		d.Set("writable", true)
+		d.Set("enumerable", true)
+		d.Set("configurable", true)
+	})
 }
 
 // bindTo is Function.prototype.call.bind(Function.prototype.bind), as
@@ -671,7 +712,8 @@ func loadGlobals() {
 
 // captureGlobals captures, from the global object g, every JS value the
 // engine later calls instead of looking it up: bindTo, objectCtor,
-// objectKeys, objectCreate, recordTag, thenHider, and methodDesc. A
+// objectKeys, objectCreate, recordTag, defineProperty, thenHider, and
+// methodDesc. A
 // script that patches any of them after load neither sees what the
 // engine passes them nor changes what it does.
 //
@@ -691,6 +733,7 @@ func captureGlobals(g js.Value) {
 	objectCtor = tryJS(func() js.Value { return g.Get("Object") })
 	objectKeys = tryJS(func() js.Value { return objectCtor.Get("keys") })
 	objectCreate = tryJS(func() js.Value { return objectCtor.Get("create") })
+	defineProperty = tryJS(func() js.Value { return objectCtor.Get("defineProperty") })
 	recordTag = tryJS(func() js.Value {
 		call := g.Get("Function").Get("prototype").Get("call")
 		return bindTo.Invoke(call, objectCtor.Get("prototype").Get("toString"))
@@ -716,8 +759,8 @@ func tryJS[T any](f func() T) (v T) {
 var objectKeys, objectCreate, recordTag js.Value
 
 // sharedMethods runs loadGlobals and registers the shared method funcs
-// on first use. main calls it before exposing the API; exposeAPI and
-// registerSession call it too, for the tests, which never run main. The
+// on first use. exposeAPI calls it first, so main runs it before the
+// API is reachable; registerSession calls it too, for the tests. The
 // funcs are never released, so every session reuses the same
 // handler-table entries. Each takes the session id as args[0]; dispose
 // also takes its token as args[1].
@@ -729,6 +772,7 @@ func sharedMethods() map[string]js.Value {
 			sharedFuncs[name] = funcOf(drainFirst(sharedFunc(impl))).Value
 		}
 		sharedFuncs["dispose"] = funcOf(drainFirst(proxyDispose)).Value
+		sessionKeys = newMethodKeys(sessionMethodNames())
 		finalizer = bindFinalizer(js.Global().Get("FinalizationRegistry"))
 	})
 	return sharedFuncs
