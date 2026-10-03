@@ -25,8 +25,8 @@ session object raises no uncaught error in the host.
 
 Plan
 [2610021452](2610021452_wasm-collect-dropped-sessions.md)
-registers each session's token with a
-`FinalizationRegistry` whose callback is the Go func
+registered each session's token with a
+`FinalizationRegistry` whose callback was the Go func
 `finalizeSession` in
 [main.go](../cmd/mdsmith-wasm/main.go). A code review of
 PR #891 found that this callback runs outside any
@@ -57,10 +57,13 @@ blocks. Other options:
 Chosen: the native push queue. It needs no plan
 2610021800 and no loader change. A collected session
 is freed on the next engine call rather than at
-collection time. A host that stops calling the engine
-does not lose memory to this delay: Go's own collector
-runs only during engine calls, and until it runs, Go
-holds the token anyway.
+collection time. Go's own collector runs only during
+engine calls, and until it runs, Go holds the token
+anyway, so most of the delay is one Go already imposes.
+A session that JS collects after the last call, though,
+stays in `sessions` until the host calls the engine
+again; a Go func callback would have freed it at
+collection time.
 
 ## Tasks
 
@@ -74,8 +77,10 @@ holds the token anyway.
    leaves, after a V8 collection has queued the cleanup
    callbacks. It fails when no callback ran after the
    exit, so it cannot pass without exercising the path.
-2. [x] Pick the approach (unregister on exit, or a wrapper
-   from the loader), and record the choice in this plan.
+2. [x] Pick the approach (unregister on exit, a wrapper
+   from the loader, or a native push queue), and record
+   the choice in this plan. Chosen: the native push
+   queue (see Background).
 3. [x] Implement it so the test passes.
 4. [x] Document the behavior after exit in
    [engine-api.md](../docs/background/concepts/engine-api.md).
