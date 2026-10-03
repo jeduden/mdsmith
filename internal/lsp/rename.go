@@ -3,11 +3,11 @@ package lsp
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"slices"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/refactor"
 )
@@ -352,11 +352,12 @@ func (s *Server) buildWikilinkIndex() *linkgraph.WikilinkIndex {
 	return wikilinkIndexAt(root)
 }
 
-// wikilinkIndexAt walks root for the wikilink index. A caller that
+// wikilinkIndexAt walks root for the wikilink index, through the same
+// lint.OpenRootFS view the MDS027 resolver walks. A caller that
 // already spelled its move paths against a root passes that root, so a
 // config reload in between cannot key the index to another directory.
 func wikilinkIndexAt(root string) *linkgraph.WikilinkIndex {
-	return linkgraph.NewWikilinkIndex(os.DirFS(root))
+	return linkgraph.NewWikilinkIndex(lint.OpenRootFS(root))
 }
 
 func (w lspRenameWorkspace) Resolve(file string) (string, []byte, bool) {
