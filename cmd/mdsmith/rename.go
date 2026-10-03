@@ -82,43 +82,17 @@ type renameSummary struct {
 // under is its workspace-relative path — the same string the CLI
 // writes back to disk.
 type cliRenameWorkspace struct {
-	// idx builds the transient index on its first call and returns
-	// the same index after that. Only the engine's edge queries call
-	// it, so a label rename — and Resolve or applyPlan — reads no
-	// file beyond the ones it touches.
-	idx      func() *index.Index
+	// IndexEdges (from refactor.NewLazyIndexEdges) builds the
+	// transient index on its first edge query and reuses it after
+	// that. Only the engine's edge and Files queries call it, so a
+	// label rename — and Resolve or applyPlan — reads no file beyond
+	// the ones it touches. A workspace built without an index answers
+	// every edge query with nothing.
+	refactor.IndexEdges
 	relToAbs map[string]string
 	rootDir  string
 	maxBytes int64
 }
-
-// index returns the lazily built index, or nil for a workspace built
-// without one, whose nil-receiver edge queries then answer nothing.
-func (w cliRenameWorkspace) index() *index.Index {
-	if w.idx == nil {
-		return nil
-	}
-	return w.idx()
-}
-
-// Trivial index pass-through; no dedicated test by design (covered
-// by the heading-rename behavioral tests via the engine).
-func (w cliRenameWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
-	return w.index().IncomingEdges(file, slug)
-}
-
-// Trivial index pass-through; no dedicated test by design.
-func (w cliRenameWorkspace) IncomingPathEdges(file string) []index.Edge {
-	return w.index().IncomingPathEdges(file)
-}
-
-// Trivial index pass-through; no dedicated test by design.
-func (w cliRenameWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
-	return w.index().IncomingWikilinkEdges(stem)
-}
-
-// Trivial index pass-through; no dedicated test by design.
-func (w cliRenameWorkspace) Files() []string { return w.index().Files() }
 
 func (w cliRenameWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
@@ -258,14 +232,19 @@ func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 		relToAbs[rel] = srcPath
 		rels = append(rels, rel)
 	}
-	idx := sync.OnceValue(func() *index.Index {
+	edges := refactor.NewLazyIndexEdges(func() *index.Index {
 		idx := index.New(rootDir)
 		idx.BuildSerial(rels, func(rel string) ([]byte, error) {
 			return bytelimit.ReadFileLimited(relToAbs[rel], maxBytes)
 		})
 		return idx
 	})
-	return cliRenameWorkspace{idx: idx, relToAbs: relToAbs, rootDir: rootDir, maxBytes: maxBytes}, -1
+	return cliRenameWorkspace{
+		IndexEdges: edges,
+		relToAbs:   relToAbs,
+		rootDir:    rootDir,
+		maxBytes:   maxBytes,
+	}, -1
 }
 
 // computeRenamePlan runs the shared refactor.Rename dispatch — kind

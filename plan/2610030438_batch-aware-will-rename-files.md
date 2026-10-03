@@ -1,0 +1,108 @@
+---
+id: 2610030438
+title: Batch-aware planning for multi-file willRenameFiles
+status: "🔲"
+summary: >-
+  When one workspace/willRenameFiles request moves several Markdown
+  files that link to each other, plan every link rewrite against the
+  post-batch locations of both ends, so a link between two moved
+  files gets the one correct edit instead of being withheld.
+model: opus
+depends-on: []
+---
+# Batch-aware planning for multi-file willRenameFiles
+
+## Goal
+
+Some links join two files that move in the same
+`workspace/willRenameFiles` request. Give each such link its
+one correct rewrite. Do not just withhold it.
+
+## Background
+
+[`handleWillRenameFiles`](../internal/lsp/fileops.go) runs one
+`refactor.Move` per renamed file. Each runs against the same
+pre-batch index snapshot. Take `a.md` with `[b](b.md)`, renamed
+with `b.md` to `x/a.md` and `x/b.md`. The move of `a.md`
+rewrites the link to `../b.md`, and the move of `b.md` rewrites
+it to `x/b.md`. Both are wrong: the right text is `b.md`.
+
+Code review of PR #889 found this. That PR added a stopgap,
+`dropConflictingTextEdits`. It withholds any pair of edits whose
+ranges overlap, so the client gets a valid WorkspaceEdit. A
+second guard, `dropCrossMoveEdits`, withholds any path rewrite
+one move plans inside another moved file whose folder changes.
+It keeps a `[[stem]]` rewrite, which no folder change affects. A
+`window/logMessage` warning gives the withheld count.
+
+The withheld link stays stale whenever the batch changes the
+relative path between the two files, such as `b.md` moving to
+`x/c.md` or the two files landing in different folders. MDS027
+then reports it.
+
+## Tasks
+
+1. Add a batch entry point in
+   [`internal/refactor`](../internal/refactor/move.go), such as
+   `MoveAll(ws, []MovePair)`. It resolves each link target
+   against the batch rename map, so a link from one moved file
+   to another is spelled from the source's new folder to the
+   target's new path.
+2. Merge the per-file plans into one `Plan`. Each range gets
+   one edit, and the incoming-link and outbound-link passes no
+   longer both rewrite a link between two moved files.
+3. Switch `handleWillRenameFiles` to the batch entry point.
+   Keep `dropConflictingTextEdits` and `dropCrossMoveEdits`
+   only as guards, with tests proving they no longer fire for
+   these cases.
+4. Unit tests: two moved files linking each other in the same
+   new folder and in different new folders, wikilinks between
+   moved files, and a three-file cycle.
+5. Cover the case only one move rewrites. `docs/a.md` links
+   `../docs/b.md`, and one request moves it to `other/a.md` and
+   `docs/b.md` to `docs/sub/b.md`. The token still resolves from
+   `other/`, so the move of `a.md` emits no edit. The move of
+   `b.md` emits `sub/b.md`, spelled from `docs/`. The stopgap
+   withholds it, but the right text is `../docs/sub/b.md`.
+6. Keep a one-sided rewrite that is already right. `docs/a.md`
+   links `../b.md`, and one request moves it to `other/a.md`
+   and `b.md` to `b2.md`. The move of `b.md` emits `../b2.md`,
+   which also resolves from `other/`, yet the stopgap withholds
+   it.
+7. Plan a chain such as `b.md` to `z.md` plus `a.md` to `b.md`.
+   `refactor.Move` refuses `a.md` because `b.md` exists in the
+   pre-batch snapshot, so links to `a.md` stay stale and the
+   warning does not count them.
+8. Guard `[[stem]]` rewrites against a stem two moves share.
+   One request moves `x/a.md` to `x/c.md` and `y/b.md` to
+   `y/c.md`. Each move checks the new stem against the
+   pre-batch snapshot, finds no `c`, and rewrites its links to
+   `[[c]]`. The stopgap keeps both, so after the batch every
+   such link names two files.
+9. Rewrite `[[stem]]` links when two moves leave a shared stem.
+   One request moves `x/guide.md` to `x/manual.md` and
+   `y/guide.md` to `y/howto.md`. Each move counts two `guide`
+   files in the pre-batch snapshot and skips the rewrite, so
+   every `[[guide]]` link dangles. No edit is withheld, so no
+   warning names them.
+10. Warn only about a link that no longer resolves. Moving
+    `docs/a.md` and `docs/b.md` into `docs/sub/` withholds both
+    rewrites of each link between them, and the kept text is
+    right. The warning still says "withheld 4 link rewrite(s)"
+    for those two links: it counts edits, not links.
+11. Count a rewrite that assumes an unplanned move stayed put.
+    One request moves `docs/a.md` to `other/a.md` and
+    `docs/b.md` onto an existing `x/b.md`. The move of `a.md`
+    spells its `b.md` link as `../docs/b.md`, a path the batch
+    empties. The edit is kept and the warning stays silent.
+
+## Acceptance Criteria
+
+- [ ] Moving `a.md` and `b.md` into `x/` in one request leaves
+      `[b](b.md)` unchanged and returns no edit for that range.
+- [ ] Moving `a.md` to `x/a.md` and `b.md` to `y/b.md` in one
+      request rewrites the link to `../y/b.md`.
+- [ ] No reply holds two edits with overlapping ranges in one
+      file.
+- [ ] All tests pass: `go test ./...`
+- [ ] `go tool golangci-lint run` reports no issues

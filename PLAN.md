@@ -1,9 +1,7 @@
 # Plans
 
 <?catalog
-glob:
-  - "plan/*.md"
-  - "!plan/proto.md"
+glob: ["plan/*.md", "!plan/proto.md"]
 sort: numeric:id
 header: |
 
@@ -272,7 +270,7 @@ footer: |
 | 2608301919 | ✅     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
 | 2609032052 | 🔲     | opus   | [Resolve config from `pyproject.toml` under `[tool.mdsmith]`](plan/2609032052_pyproject-config-source.md)                                               |
 | 2609061915 | ✅     | sonnet | [Add unit tests for the untested rename/move helpers](plan/2609061915_arch-fix-touched-set-unit-tests-0906.md)                                          |
-| 2609131911 | 🔲     | sonnet | [Share the refactor Workspace adapter between CLI and Session](plan/2609131911_arch-fix-refactor-workspace-duplication.md)                              |
+| 2609131911 | ✅     | sonnet | [Share the refactor Workspace adapter between CLI, Session, and LSP](plan/2609131911_arch-fix-refactor-workspace-duplication.md)                        |
 | 2609131913 | ✅     | sonnet | [Add unit tests for untested move.go helper functions](plan/2609131913_arch-fix-move-helper-unit-tests.md)                                              |
 | 2609201914 | ✅     | sonnet | [Add dedicated unit tests for AdvancePastLine and the WASM bridge helpers](plan/2609201914_arch-fix-missing-unit-tests-0920.md)                         |
 | 2609271912 | ✅     | sonnet | [Share rename-mode detection between the CLI and the engine](plan/2609271912_arch-fix-shared-rename-mode-detection.md)                                  |
@@ -297,4 +295,5 @@ footer: |
 | 2610022104 | 🔲     | sonnet | [Count wikilink stem siblings against the resolver's index on move](plan/2610022104_move-stem-count-resolver-index.md)                                  |
 | 2610030243 | 🔲     | sonnet | [Vet the internal/build spawn tests for plan9](plan/2610030243_plan9-vet-unix-windows-build-tests.md)                                                   |
 | 2610030244 | 🔲     | sonnet | [Run internal/build under js/wasm once in CI](plan/2610030244_dedupe-build-js-wasm-ci-run.md)                                                           |
+| 2610030438 | 🔲     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
 <?/catalog?>

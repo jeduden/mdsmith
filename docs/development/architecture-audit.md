@@ -131,8 +131,9 @@ None.
   CLI rejects), `internal/lsp`'s `isAbsPath`, and the drive-letter checks
   in `internal/schema`, `internal/rules/build`, and `internal/lsp`.
 - `cliRenameWorkspace` and `sessionRefactorWorkspace` share
-  four matching `Workspace` pass-throughs (`Resolve`
-  differs by design) — [plan/2609131911][2609131911].
+  four matching `Workspace` pass-throughs (`Resolve` differs by
+  design) — [plan/2609131911][2609131911]. Resolved: they and
+  `lspRenameWorkspace` embed `refactor.IndexEdges`.
 - `internal/refactor/move.go`'s `recomputeToken`, `encodePathToken`,
   `pathEdit`, `countFilesWithStem` lack tests by name ([tests.md][tests])
   — [plan/2609131913][2609131913]. Resolved: the first three became the
