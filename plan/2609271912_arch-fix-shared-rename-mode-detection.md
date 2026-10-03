@@ -74,15 +74,40 @@ this duplication:
 6. [x] `go test ./...` passes.
 7. [x] `go tool -modfile=tools/go.mod golangci-lint run` reports
    no issues.
+8. [x] Review round 1 deviation: the hosts still each mapped
+   kind → planner and handled empty results, and they had
+   already drifted. On a same-name heading or a missing
+   explicit label, `Session.Rename` returned an empty plan
+   with a nil error, while the CLI exited 1. Move the whole
+   dispatch into `refactor.Rename(ws, fileKey, source, kind,
+   oldName, newName)`. It returns typed outcomes:
+   `ErrAmbiguousRename`, `ErrNoRenameTarget`,
+   `ErrNothingToRename`, `MissingSymbolError`, and
+   `InvalidRenameKindError`. Each host keeps only its own
+   message and exit-code mapping (`renameExitCode`,
+   `renameError`).
+9. [x] Make the kind a typed `refactor.RenameKind`
+   (`KindHeading`, `KindLabel`). Validate both hosts'
+   explicit selectors through `refactor.ParseRenameKind`.
+   The detection result becomes `(RenameKind, line, error)`
+   in place of the `(kind, ambiguous, found)` triple, so no
+   impossible combination can be expressed. Detection now
+   lives in the unexported `detectRenameKind`.
+10. [x] Reuse the heading line detection already found, so an
+    auto-detected heading rename parses the file once. Make
+    `HasLinkRef` unexported (`hasLinkRef`), since it has no
+    callers outside `internal/refactor`.
 
 ## Acceptance Criteria
 
 - [x] The `isHeading`/`isLabel` detection switch exists in
       exactly one place: `internal/refactor`.
-- [x] `cmd/mdsmith rename` and `pkg/mdsmith`'s `Session.Rename`
-      (and its WASM binding) produce the same user-visible
-      messages and exit codes/errors as before the change —
-      only the internal detection call changes.
+- [x] `cmd/mdsmith rename` produces the same user-visible
+      messages and exit codes as before the change.
+      `pkg/mdsmith`'s `Session.Rename` (and its WASM binding)
+      keeps its error text, but now errors where the CLI
+      exits 1 instead of returning an empty plan: a
+      same-name heading rename and a missing explicit label.
 - [x] `go test ./...` is green.
 - [x] `mdsmith check .` is green.
 

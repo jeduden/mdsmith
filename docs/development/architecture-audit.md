@@ -79,8 +79,8 @@ None.
   [engine-api.md][engine-api] documents the two as mirroring one-to-one, so a
   future refinement to the ambiguous/no-match messaging is likely to drift
   between them — [plan/2609271912][2609271912]. Resolved: both hosts call
-  `refactor.DetectRenameKind` and keep only their own message and exit-code
-  wrapping.
+  `refactor.Rename` (shared detection and dispatch) and keep only their own
+  message and exit-code wrapping.
 - `internal/index/build.go`'s `frontMatterSymbols`,
   `frontMatterScalar`, and `frontMatterStringList` are no
   longer called by any production path; `frontMatterAll`
