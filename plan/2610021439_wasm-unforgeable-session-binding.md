@@ -20,7 +20,12 @@ summary: >-
 
 A script in the same JS global scope that holds a raw shared
 session func cannot reach a session whose object it was
-never given.
+never given by guessing its id. A script that patched
+`bind` or `call` before load, or `Reflect.apply` at any
+time, still sees the id of each session bound while its
+patch is in place. That limit is documented in
+[engine-api.md](../docs/background/concepts/engine-api.md),
+not closed.
 
 ## Background
 
@@ -62,8 +67,9 @@ for the stale-dispose fix.
    session, no size cost beyond `math/rand/v2`). `Reflect`
    is not captured; the limit is documented in engine-api.md.
 2. [x] Write a failing js/wasm test that calls a raw shared
-   func with every id from 0 to `nextSessionID` and
-   reaches a live session.
+   func with every id from -1 to 4096, and with every id
+   within 4096 of its own session's id, and reaches
+   another live session.
 3. [x] Implement the chosen approach and make the test pass.
 4. [x] Update the engine-api page if the binding contract
    changes.

@@ -282,15 +282,25 @@ method made read-only with
 `Object.defineProperty(session, "check", { writable: false })`. None
 of them logs "call to released function".
 
-The id is drawn at random from 2^53 values and redrawn on a
-collision, so a script that reaches a raw shared function cannot find
-a session by trying 0, 1, 2, and so on. The engine also binds through
-a `bind` captured at load, so a later patch of `Function.prototype.bind`
-or `call` never sees one. This is hardening, not a privilege boundary.
-`wasm_exec.js` looks up `Reflect.apply` on every Go-to-JS call, so a
-patched `Reflect.apply` still sees each raw shared function, its id,
-and every session object the engine resolves. A random id or a token
-object crosses that call too, so the engine does not try to hide it.
+The id is drawn at random from 2^53 values (2^31 − 1 in the TinyGo
+build). A draw that a live session holds is redrawn. So a script that
+reaches a raw shared function cannot find a session by trying 0, 1,
+2, and so on. A disposed session's id is not retired, so a new
+session can draw it again, at odds of one in 2^53. A method kept from
+the disposed session would then reach the new one.
+
+The engine also binds through a `bind` captured at load, so a later
+patch of `Function.prototype.bind` or `call` never sees one. This is
+hardening, not a privilege boundary. A `bind` or `call` patched before
+the engine loads sees each raw shared function and the id of every
+session. `wasm_exec.js` looks up `Reflect.apply` on every Go-to-JS
+call, so a patched `Reflect.apply` sees the same for each session
+created after the patch, and every session object the engine
+resolves.
+
+A random id or a token object crosses those calls too, so the engine
+does not try to hide it. The random id only shields the sessions
+created before such a patch.
 
 An argument of the wrong type, a `BigInt` included, makes an async
 method reject and `invalidate()` do nothing. So does an options object
