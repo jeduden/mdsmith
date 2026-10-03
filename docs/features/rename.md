@@ -61,8 +61,11 @@ mdsmith move docs/api.md reference/api.md
 mdsmith move guide.md reference/guide.md --dry-run
 ```
 
-When one explorer action moves two files that link to each
-other, the editor leaves that link as is and MDS027 reports it.
+When one explorer action moves several files, a link between
+two of them is left as is when the batch changes a file's
+folder. The server logs a warning that names how many rewrites
+it left out. MDS027 reports any such link that no longer
+resolves.
 
 ## Which command?
 

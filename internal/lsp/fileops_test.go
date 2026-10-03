@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -272,6 +273,7 @@ func TestWillRenameFilesBatchDropsAgreeingConflicts(t *testing.T) {
 	h, _, rootURI := rootedHarness(t, map[string]string{
 		"docs/a.md": "# Alpha\n\n[b](../b.md)\n",
 		"b.md":      "# Beta\n",
+		"c.md":      "# Gamma\n\n[a](docs/a.md)\n",
 	})
 	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
 		Files: []fileRename{
@@ -283,6 +285,89 @@ func TestWillRenameFilesBatchDropsAgreeingConflicts(t *testing.T) {
 	var edit workspaceEdit
 	require.NoError(t, json.Unmarshal(raw, &edit))
 	assert.NotContains(t, edit.Changes, rootURI+"/docs/a.md")
+	// The reply is not empty: c.md's unconflicted link still follows
+	// docs/a.md to the root.
+	require.Len(t, edit.Changes[rootURI+"/c.md"], 1)
+	assert.Equal(t, "a.md", edit.Changes[rootURI+"/c.md"][0].NewText)
+}
+
+// TestWillRenameFilesBatchWithholdsOneSidedCrossEdit locks that an
+// edit one move plans inside another file the batch moves to a new
+// directory is withheld even when nothing overlaps it. Moving
+// docs/a.md to other/a.md leaves its `../docs/b.md` alone (the token
+// still resolves from other/), while moving docs/b.md to
+// docs/sub/b.md spells the link `sub/b.md` from docs/ — wrong once a.md
+// sits in other/, where the right text is `../docs/sub/b.md`. A link
+// in a file the batch leaves in place is still rewritten.
+func TestWillRenameFilesBatchWithholdsOneSidedCrossEdit(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\n[b](../docs/b.md)\n",
+		"docs/b.md": "# Beta\n",
+		"c.md":      "# Gamma\n\n[b](docs/b.md)\n",
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/other/a.md"},
+			{OldURI: rootURI + "/docs/b.md", NewURI: rootURI + "/docs/sub/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	assert.NotContains(t, edit.Changes, rootURI+"/docs/a.md")
+	require.Len(t, edit.Changes[rootURI+"/c.md"], 1)
+	assert.Equal(t, "docs/sub/b.md", edit.Changes[rootURI+"/c.md"][0].NewText)
+}
+
+// TestWillRenameFilesBatchKeepsCrossEditInSameDirectoryRename locks
+// that a file renamed within its directory still receives another
+// move's rewrite: the edit is spelled from that directory, which the
+// rename does not change, so it stays correct.
+func TestWillRenameFilesBatchKeepsCrossEditInSameDirectoryRename(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\n[b](b.md)\n",
+		"docs/b.md": "# Beta\n",
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/docs/a2.md"},
+			{OldURI: rootURI + "/docs/b.md", NewURI: rootURI + "/docs/sub/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	require.Len(t, edit.Changes[rootURI+"/docs/a.md"], 1)
+	assert.Equal(t, "sub/b.md", edit.Changes[rootURI+"/docs/a.md"][0].NewText)
+}
+
+// TestWillRenameFilesBatchLogsWithheldEdits locks that withholding a
+// rewrite is not silent: the server sends a window/logMessage warning
+// naming how many link rewrites it left out.
+func TestWillRenameFilesBatchLogsWithheldEdits(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\n[b](../b.md)\n",
+		"b.md":      "# Beta\n",
+	})
+	_, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/a.md"},
+			{OldURI: rootURI + "/b.md", NewURI: rootURI + "/docs/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	for {
+		var p logMessageParams
+		require.NoError(t, json.Unmarshal(h.awaitNotification("window/logMessage", 5*time.Second), &p))
+		if strings.Contains(p.Message, "withheld") {
+			assert.Equal(t, messageTypeWarning, p.Type)
+			assert.Contains(t, p.Message, "2 link rewrite")
+			return
+		}
+	}
 }
 
 // TestWillRenameFilesRepeatedPairPlannedOnce locks that a rename pair

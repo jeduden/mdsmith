@@ -276,6 +276,8 @@ mdsmith move guide.md reference/guide.md --dry-run
 - [`mdsmith lsp`](lsp.md) — the editor surface; an explorer
   rename fires `workspace/willRenameFiles`, which runs the same
   move engine. A rename of several files at once plans
-  each move alone, so a link between two of the moved files
-  gets two overlapping edits. The server drops both, and
-  MDS027 reports the link after the move.
+  each move alone. The server drops a link rewrite between
+  two moved files when both moves rewrite it, or when it
+  lands in a moved file whose folder changes. It logs a
+  warning with the count. MDS027 reports the link if it no
+  longer resolves after the move.

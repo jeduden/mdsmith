@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/jeduden/mdsmith/internal/refactor"
 )
 
 func edAt(line, from, to int, text string) textEdit {
@@ -68,12 +70,44 @@ func TestDropConflictingTextEdits(t *testing.T) {
 	})
 }
 
+// Inserts follow refactor.ApplyEdits and the LSP spec: one may touch a
+// replacement's start or end, but two at one point, or one strictly
+// inside a replacement, conflict.
+func TestDropConflictingTextEdits_Inserts(t *testing.T) {
+	t.Parallel()
+	t.Run("insert at a replacement's start is kept", func(t *testing.T) {
+		t.Parallel()
+		in := []textEdit{edAt(1, 3, 3, "i"), edAt(1, 3, 6, "r")}
+		assert.ElementsMatch(t, in, dropConflictingTextEdits(in))
+	})
+	t.Run("insert at a replacement's end is kept", func(t *testing.T) {
+		t.Parallel()
+		in := []textEdit{edAt(1, 0, 3, "r"), edAt(1, 3, 3, "i")}
+		assert.ElementsMatch(t, in, dropConflictingTextEdits(in))
+	})
+	t.Run("two inserts at one point drop both", func(t *testing.T) {
+		t.Parallel()
+		got := dropConflictingTextEdits([]textEdit{
+			edAt(1, 3, 3, "i"), edAt(1, 3, 6, "r"), edAt(1, 3, 3, "j"),
+		})
+		assert.Equal(t, []textEdit{edAt(1, 3, 6, "r")}, got)
+	})
+	t.Run("insert inside a replacement drops both", func(t *testing.T) {
+		t.Parallel()
+		got := dropConflictingTextEdits([]textEdit{edAt(1, 0, 6, "r"), edAt(1, 3, 3, "i")})
+		assert.Empty(t, got)
+	})
+}
+
 // rangesOverlap is the pairwise oracle for dropConflictingTextEdits:
-// edits over a and b touch the same text when their spans intersect or
-// both start at the same position. Ranges that merely touch
-// end-to-start do not overlap.
+// edits over a and b touch the same text when their spans intersect
+// (an insert strictly inside a replacement included) or both are
+// inserts at one position, whose relative order no single move fixes.
+// Ranges that merely touch end-to-start do not overlap, and neither
+// does an insert at a replacement's start or end — refactor.ApplyEdits
+// and the LSP spec both accept those.
 func rangesOverlap(a, b Range) bool {
-	if a.Start == b.Start {
+	if a.Start == b.Start && a.Start == a.End && b.Start == b.End {
 		return true
 	}
 	return posLess(a.Start, b.End) && posLess(b.Start, a.End)
@@ -145,6 +179,9 @@ func TestRangesOverlap(t *testing.T) {
 	assert.False(t, rangesOverlap(edAt(1, 0, 3, "").Range, edAt(1, 3, 6, "").Range))
 	assert.False(t, rangesOverlap(edAt(1, 0, 3, "").Range, edAt(2, 0, 3, "").Range))
 	assert.True(t, rangesOverlap(edAt(1, 2, 2, "").Range, edAt(1, 2, 2, "").Range))
+	assert.True(t, rangesOverlap(edAt(1, 2, 5, "").Range, edAt(1, 2, 4, "").Range))
+	assert.False(t, rangesOverlap(edAt(1, 2, 2, "").Range, edAt(1, 2, 5, "").Range))
+	assert.True(t, rangesOverlap(edAt(1, 0, 5, "").Range, edAt(1, 2, 2, "").Range))
 }
 
 func TestPosLess(t *testing.T) {
@@ -153,4 +190,68 @@ func TestPosLess(t *testing.T) {
 	assert.True(t, posLess(Position{Line: 1, Character: 2}, Position{Line: 1, Character: 3}))
 	assert.False(t, posLess(Position{Line: 1, Character: 3}, Position{Line: 1, Character: 3}))
 	assert.False(t, posLess(Position{Line: 2, Character: 0}, Position{Line: 1, Character: 9}))
+}
+
+func TestDropCrossMoveEdits(t *testing.T) {
+	t.Parallel()
+	ref := func(line int, text string) refactor.Edit {
+		return refactor.Edit{
+			Range: refactor.Range{
+				Start: refactor.Position{Line: line, Character: 0},
+				End:   refactor.Position{Line: line, Character: 4},
+			},
+			NewText: text,
+		}
+	}
+	t.Run("edit inside a file moved to another directory is dropped", func(t *testing.T) {
+		t.Parallel()
+		moves := []plannedMove{
+			{key: "a", changesDir: true, edits: map[string][]refactor.Edit{"a": {ref(1, "own")}}},
+			{key: "b", changesDir: true, edits: map[string][]refactor.Edit{"a": {ref(3, "x")}, "c": {ref(1, "y")}}},
+		}
+		merged := map[string][]textEdit{
+			"a": {edAt(1, 0, 4, "own"), edAt(3, 0, 4, "x")},
+			"c": {edAt(1, 0, 4, "y")},
+		}
+		dropCrossMoveEdits(merged, moves)
+		assert.Equal(t, map[string][]textEdit{
+			"a": {edAt(1, 0, 4, "own")},
+			"c": {edAt(1, 0, 4, "y")},
+		}, merged)
+	})
+	t.Run("a key left empty is deleted", func(t *testing.T) {
+		t.Parallel()
+		moves := []plannedMove{
+			{key: "a", changesDir: true},
+			{key: "b", edits: map[string][]refactor.Edit{"a": {ref(3, "x")}}},
+		}
+		merged := map[string][]textEdit{"a": {edAt(3, 0, 4, "x")}}
+		dropCrossMoveEdits(merged, moves)
+		assert.Empty(t, merged)
+	})
+	t.Run("same-directory rename keeps foreign edits", func(t *testing.T) {
+		t.Parallel()
+		moves := []plannedMove{
+			{key: "a", changesDir: false},
+			{key: "b", changesDir: true, edits: map[string][]refactor.Edit{"a": {ref(3, "x")}}},
+		}
+		merged := map[string][]textEdit{"a": {edAt(3, 0, 4, "x")}}
+		dropCrossMoveEdits(merged, moves)
+		assert.Equal(t, map[string][]textEdit{"a": {edAt(3, 0, 4, "x")}}, merged)
+	})
+}
+
+func TestCompareTextEditsTopDown(t *testing.T) {
+	t.Parallel()
+	assert.Negative(t, compareTextEditsTopDown(edAt(1, 0, 2, ""), edAt(1, 1, 2, "")))
+	assert.Positive(t, compareTextEditsTopDown(edAt(2, 0, 2, ""), edAt(1, 1, 2, "")))
+	assert.Negative(t, compareTextEditsTopDown(edAt(1, 3, 3, ""), edAt(1, 3, 5, "")))
+	assert.Positive(t, compareTextEditsTopDown(edAt(1, 3, 5, ""), edAt(1, 3, 3, "")))
+	assert.Zero(t, compareTextEditsTopDown(edAt(1, 3, 5, ""), edAt(1, 3, 6, "")))
+}
+
+func TestIsInsert(t *testing.T) {
+	t.Parallel()
+	assert.True(t, isInsert(edAt(1, 3, 3, "x")))
+	assert.False(t, isInsert(edAt(1, 3, 4, "")))
 }

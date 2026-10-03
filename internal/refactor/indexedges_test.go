@@ -41,7 +41,8 @@ func emptyIndexEdges() map[string]IndexEdges {
 	return map[string]IndexEdges{
 		"nil getter":  {},
 		"nil index":   NewIndexEdges(nil),
-		"nil from fn": {Get: func() *index.Index { return nil }},
+		"nil from fn": {get: func() *index.Index { return nil }},
+		"nil build":   NewLazyIndexEdges(nil),
 	}
 }
 
@@ -101,7 +102,7 @@ func TestIndexEdges_Index(t *testing.T) {
 	t.Run("calls the getter on every query", func(t *testing.T) {
 		idx := sampleIndex(t)
 		calls := 0
-		e := IndexEdges{Get: func() *index.Index { calls++; return idx }}
+		e := IndexEdges{get: func() *index.Index { calls++; return idx }}
 		assert.Same(t, idx, e.index())
 		assert.Same(t, idx, e.index())
 		assert.Equal(t, 2, calls, "IndexEdges caches nothing itself")
@@ -111,7 +112,7 @@ func TestIndexEdges_Index(t *testing.T) {
 func TestNewIndexEdges(t *testing.T) {
 	idx := sampleIndex(t)
 	e := NewIndexEdges(idx)
-	assert.Same(t, idx, e.Get())
+	assert.Same(t, idx, e.get())
 }
 
 func TestNewLazyIndexEdges(t *testing.T) {
@@ -134,6 +135,14 @@ func TestNewLazyIndexEdges_NilBuildRunsOnce(t *testing.T) {
 	assert.Empty(t, e.Files())
 	assert.Empty(t, e.IncomingPathEdges("a.md"))
 	assert.Equal(t, 1, builds)
+}
+
+// A nil build gives the zero IndexEdges rather than a getter that
+// panics on the first query, as sync.OnceValue(nil) would.
+func TestNewLazyIndexEdges_NilBuild(t *testing.T) {
+	e := NewLazyIndexEdges(nil)
+	assert.Nil(t, e.index())
+	assert.Empty(t, e.Files())
 }
 
 // A label rename never queries edges, so a lazily indexed workspace is

@@ -29,8 +29,12 @@ it to `x/b.md`. Both are wrong: the right text is `b.md`.
 
 Code review of PR #889 found this. That PR added a stopgap,
 `dropConflictingTextEdits`. It withholds any pair of edits whose
-ranges overlap, so the client gets a valid WorkspaceEdit. The
-withheld link stays stale whenever the batch changes the
+ranges overlap, so the client gets a valid WorkspaceEdit. A
+second guard, `dropCrossMoveEdits`, withholds any edit one move
+plans inside another moved file whose folder changes. A
+`window/logMessage` warning gives the withheld count.
+
+The withheld link stays stale whenever the batch changes the
 relative path between the two files, such as `b.md` moving to
 `x/c.md` or the two files landing in different folders. MDS027
 then reports it.
@@ -47,11 +51,18 @@ then reports it.
    one edit, and the incoming-link and outbound-link passes no
    longer both rewrite a link between two moved files.
 3. Switch `handleWillRenameFiles` to the batch entry point.
-   Keep `dropConflictingTextEdits` only as a guard, with a
-   test proving it no longer fires for this case.
+   Keep `dropConflictingTextEdits` and `dropCrossMoveEdits`
+   only as guards, with tests proving they no longer fire for
+   these cases.
 4. Unit tests: two moved files linking each other in the same
    new folder and in different new folders, wikilinks between
    moved files, and a three-file cycle.
+5. Cover the case only one move rewrites. `docs/a.md` links
+   `../docs/b.md`, and one request moves it to `other/a.md` and
+   `docs/b.md` to `docs/sub/b.md`. The token still resolves from
+   `other/`, so the move of `a.md` emits no edit. The move of
+   `b.md` emits `sub/b.md`, spelled from `docs/`. The stopgap
+   withholds it, but the right text is `../docs/sub/b.md`.
 
 ## Acceptance Criteria
 

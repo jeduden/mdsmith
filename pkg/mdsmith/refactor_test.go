@@ -334,6 +334,28 @@ func TestSession_BuildRefactorWorkspace(t *testing.T) {
 	assert.Empty(t, plain.IncomingAnchorEdges("sub/b.md", "b"))
 }
 
+// indexRefactorWorkspace indexes every Markdown file in the session's
+// workspace, skipping other extensions, and reads the overlay buffer in
+// place of the overlay file's saved bytes.
+func TestSession_IndexRefactorWorkspace(t *testing.T) {
+	s := newRefactorSession(t, map[string][]byte{
+		"a.md":      []byte("# A\n"),
+		"sub/b.md":  []byte("# B\n"),
+		"notes.txt": []byte("[b](sub/b.md#b)\n"),
+	})
+	t.Run("indexes only Markdown files", func(t *testing.T) {
+		idx := s.indexRefactorWorkspace("", nil)
+		assert.ElementsMatch(t, []string{"a.md", "sub/b.md"}, idx.Files())
+		assert.Empty(t, idx.IncomingEdges("sub/b.md", "b"))
+	})
+	t.Run("overlay replaces the saved bytes", func(t *testing.T) {
+		idx := s.indexRefactorWorkspace("./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
+		edges := idx.IncomingEdges("sub/b.md", "b")
+		require.Len(t, edges, 1)
+		assert.Equal(t, "a.md", edges[0].SourceFile)
+	})
+}
+
 // countingWorkspace counts ReadFile calls so a test can tell whether
 // Session.Rename indexed the workspace.
 type countingWorkspace struct {

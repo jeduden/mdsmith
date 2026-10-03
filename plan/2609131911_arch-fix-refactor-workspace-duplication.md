@@ -74,7 +74,7 @@ The 2026-09-13 audit (see [the audit log][audit-log]) found:
    match and `Resolve` stays the only divergent one.
 2. Add `IndexEdges` in `internal/refactor`, next to the
    `Workspace` interface it helps implement. It wraps an index
-   getter (`Get func() *index.Index`) and provides
+   getter (an unexported `func() *index.Index`) and provides
    `IncomingAnchorEdges`, `IncomingPathEdges`,
    `IncomingWikilinkEdges`, and `Files`. A getter keeps the
    CLI's lazy build; a nil getter or nil index answers nothing,
