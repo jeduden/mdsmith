@@ -259,15 +259,23 @@ no-op without reading the message. Other errors leave `code` unset.
 
 No session registers a function of its own. The method functions
 are shared by all sessions and registered once. Each method on a
-session object is a `bind` of one of them with a session id, so the
-binding is collected once that method is unreachable. A method taken
-off the object, such as `const { check } = session`, keeps its binding
-after the object is gone. The Go session is not collected: it stays
-live until `dispose()`, so call `dispose()` before you drop a session.
+session object is a `bind` of one of them with a session id and a
+token object, so the binding is collected once that method is
+unreachable. A method taken off the object, such as
+`const { check } = session`, keeps its binding after the object is
+gone.
 
-`dispose()` drops the id, so the disposed session's caches and
-workspace can be freed, and a create/dispose loop holds a fixed number
-of registered functions. Each method keeps its shape afterwards:
+A `FinalizationRegistry` holds the token. Once the object and
+every method taken off it are collected, the registry disposes the
+session's id, so a host that drops a session without `dispose()` still
+frees the Go session. That is a fallback: JS decides when to collect,
+so call `dispose()` when you are done with a session to free its
+caches and workspace at once.
+
+`dispose()` drops the id and cancels the registry entry, so the
+disposed session's caches and workspace can be freed, and a
+create/dispose loop holds a fixed number of registered functions and
+registry entries. Each method keeps its shape afterwards:
 `check`, `fix`, `kinds`, `rename`, and `move` return a `Promise` that
 rejects with `Error("session disposed")`.
 `capabilities()` returns `[]`, and `invalidate()` and a second

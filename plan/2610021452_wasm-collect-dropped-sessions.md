@@ -1,7 +1,7 @@
 ---
 id: 2610021452
 title: Free wasm sessions dropped without dispose
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   The wasm engine keeps each Go Session in a
@@ -73,15 +73,15 @@ red/green.
 
 ## Acceptance Criteria
 
-- [ ] A session dropped without `dispose()` leaves
+- [x] A session dropped without `dispose()` leaves
       `sessions` once its object is collected
-- [ ] A method taken off a session object keeps working
+- [x] A method taken off a session object keeps working
       after the object alone is collected
-- [ ] An explicit `dispose()` followed by collection
+- [x] An explicit `dispose()` followed by collection
       disposes the Session only once
-- [ ] A create/dispose loop still holds a fixed number
+- [x] A create/dispose loop still holds a fixed number
       of registered funcs and registry entries
-- [ ] All tests pass: `go test ./...` and
+- [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
-- [ ] `go tool golangci-lint run` reports no issues,
+- [x] `go tool golangci-lint run` reports no issues,
       on the host and with `GOOS=js GOARCH=wasm`
