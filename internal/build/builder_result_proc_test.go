@@ -1,4 +1,4 @@
-//go:build unix || windows
+//go:build unix || windows || plan9
 
 package build
 
@@ -6,7 +6,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -16,9 +15,7 @@ import (
 )
 
 func TestBuildWithResult_CapturesArgvCwdAndLog(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	bindir := t.TempDir()
 	script := writeScript(t, bindir, "emit.sh",
@@ -49,9 +46,7 @@ func TestBuildWithResult_CapturesArgvCwdAndLog(t *testing.T) {
 }
 
 func TestBuildWithResult_FailingRecipeReportsExitCode(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	bindir := t.TempDir()
 	script := writeScript(t, bindir, "boom.sh", `echo boom 1>&2; exit 7`)
@@ -72,9 +67,7 @@ func TestBuildWithResult_FailingRecipeReportsExitCode(t *testing.T) {
 }
 
 func TestBuildWithResult_LiveSinkForwardsLines(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	bindir := t.TempDir()
 	script := writeScript(t, bindir, "stream.sh",
@@ -96,9 +89,7 @@ func TestBuildWithResult_LiveSinkForwardsLines(t *testing.T) {
 }
 
 func TestBuildWithResult_TimeoutFlagSet(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	bindir := t.TempDir()
 	script := writeScript(t, bindir, "hang.sh", `echo starting; sleep 30`)
