@@ -82,8 +82,13 @@ Both are `tax`: neither sits on a public surface by itself
    a `Tracker`, each with its own table-driven test.
    `internal/lint`, `listscan`, `include`,
    `required-structure`, `slide-structure`,
-   `fenced-code-language`, and the release website
-   rewriter call it. Their local copies are gone.
+   `fenced-code-language`, `unclosed-code-block`,
+   `fencepos`, and the release website rewriter call it;
+   their open/close copies are gone. Left on purpose:
+   `fencepos.CharAt` and `fenced-code-style` read the
+   character of a fence the parser already opened, and
+   `lint.SourceMayHaveCodeBlock` is a coarse byte
+   prefilter. None decides fence-ness.
 7. [x] Two follow-up gaps, each fixed red/green against
    the AST. `include` no longer reads an HTML or PI
    line as setext text, nor shifts headings inside an
@@ -99,7 +104,19 @@ Both are `tax`: neither sits on a public surface by itself
    classifier keeps a one-byte info string on a final
    line that ends in `\r`. `mdhtml` reads `</ span a>`
    as type 7, as the fork does.
-9. [x] `go build ./...` and `go test ./...` pass.
+9. [x] Review fixes, each red/green. `fencepos` finds an
+   opening line by node position and closes via
+   `mdfence`, so an empty fence after a list reports on
+   its own line. `mdfence` measures indent in columns
+   (tabs to the next multiple of four) with
+   container-aware `OpenIn`/`CloseIn`, the one policy
+   every scanner uses. `include` shifts ATX headings
+   indented up to three spaces without a regex. One
+   `lint` helper finds the final line without a newline.
+   Fixtures for MDS010, MDS011, MDS020 (via a new
+   `front-matter:` fixture key), MDS021, and MDS073 pin
+   each change.
+10. [x] `go build ./...` and `go test ./...` pass.
 
 ## Acceptance Criteria
 
