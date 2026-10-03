@@ -294,6 +294,14 @@ func TestJSWasmDeps_ExecFlag(t *testing.T) {
 	})
 }
 
+func TestRequireOnePackage(t *testing.T) {
+	require.NoError(t, requireOnePackage("m", "./p", []string{"example.com/p"}))
+	assert.EqualError(t, requireOnePackage("m", "./...", []string{"a", "b"}),
+		"m needs exactly one package; ./... matches 2")
+	assert.EqualError(t, requireOnePackage("m", "./none", nil),
+		"m needs exactly one package; ./none matches 0")
+}
+
 func TestJSWasmDeps_GoTest(t *testing.T) {
 	log := goTestJSON(t, slices.Concat(result("pass", "TestA"), result("skip", "TestB"))...)
 
@@ -308,9 +316,9 @@ func TestJSWasmDeps_GoTest(t *testing.T) {
 		assert.Contains(t, out.String(), "--- SKIP: TestB")
 	})
 
-	t.Run("goTestAll runs the whole package", func(t *testing.T) {
+	t.Run("no extra args runs the whole package", func(t *testing.T) {
 		f := &fakeGo{testLog: log}
-		_, err := jsWasmDeps{run: f.run, out: &bytes.Buffer{}}.goTestAll("./p", "X")
+		_, err := jsWasmDeps{run: f.run, out: &bytes.Buffer{}}.goTest("./p", "X")
 		require.NoError(t, err)
 		assert.Equal(t, [][]string{{"test", "-json", "-exec=X", "./p"}}, f.calls)
 	})
@@ -329,7 +337,7 @@ func TestJSWasmDeps_GoTest(t *testing.T) {
 	t.Run("go test failure keeps the log", func(t *testing.T) {
 		f := &fakeGo{testLog: log, testErr: errors.New("exit status 1")}
 		var out bytes.Buffer
-		passed, err := jsWasmDeps{run: f.run, out: &out}.goTestAll("./p", "X")
+		passed, err := jsWasmDeps{run: f.run, out: &out}.goTest("./p", "X")
 		assert.Nil(t, passed)
 		assert.ErrorContains(t, err, "go test ./p under js/wasm: exit status 1")
 		assert.Contains(t, out.String(), "--- PASS: TestA")
@@ -337,7 +345,7 @@ func TestJSWasmDeps_GoTest(t *testing.T) {
 
 	t.Run("a final line without a newline is flushed", func(t *testing.T) {
 		f := &fakeGo{testLog: strings.TrimSuffix(goTestJSON(t, result("pass", "TestZ")...), "\n")}
-		passed, err := jsWasmDeps{run: f.run, out: &bytes.Buffer{}}.goTestAll("./p", "X")
+		passed, err := jsWasmDeps{run: f.run, out: &bytes.Buffer{}}.goTest("./p", "X")
 		require.NoError(t, err)
 		assert.Equal(t, []string{"TestZ"}, passed)
 	})

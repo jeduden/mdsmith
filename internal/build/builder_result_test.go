@@ -26,5 +26,7 @@ func TestBuildWithResult_LogSetupError(t *testing.T) {
 		Outputs: []string{"out.txt"},
 	}, Options{ActionID: "sha256-x", LogRoot: root})
 
-	require.Error(t, res.Err)
+	// The recipe would fail too (no process under js/wasm, no output
+	// natively), so pin the error to the log setup.
+	require.ErrorContains(t, res.Err, "creating build-logs dir")
 }

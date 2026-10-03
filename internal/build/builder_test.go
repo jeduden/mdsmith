@@ -137,6 +137,9 @@ func TestBuild_OutputEscapingRootErrors(t *testing.T) {
 		Outputs: []string{"../escape.txt"},
 	})
 	require.Error(t, err)
+	// The recipe would fail too (no process under js/wasm, no output
+	// natively), so pin the error to the root check.
+	assert.Contains(t, err.Error(), "resolves outside the project root")
 }
 
 func TestBuild_InputGlobMalformed(t *testing.T) {
@@ -152,6 +155,7 @@ func TestBuild_InputGlobMalformed(t *testing.T) {
 		Outputs: []string{"out.txt"},
 	})
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), `inputs glob "["`)
 }
 
 func TestBuild_InputGlobMatchEscapesRoot(t *testing.T) {

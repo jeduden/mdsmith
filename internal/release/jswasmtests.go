@@ -123,7 +123,7 @@ func runJSWasmPackageWith(d jsWasmDeps, pkg string) error {
 	if err := onePackageOf(d, pkg); err != nil {
 		return err
 	}
-	passed, err := d.goTestAll(pkg, execFlag)
+	passed, err := d.goTest(pkg, execFlag)
 	if err != nil {
 		return err
 	}
@@ -160,15 +160,16 @@ func onePackageOf(d jsWasmDeps, pkg string) error {
 		return fmt.Errorf("go list (js/wasm) %s: %w", pkg, err)
 	}
 	pkgs, _ := splitListOutput(out)
-	if len(pkgs) != 1 {
-		return fmt.Errorf("test-js-wasm --all needs exactly one package; %s matches %d", pkg, len(pkgs))
-	}
-	return nil
+	return requireOnePackage("test-js-wasm --all", pkg, pkgs)
 }
 
-// goTestAll runs every test of pkg under Node; see goTest.
-func (d jsWasmDeps) goTestAll(pkg, execFlag string) ([]string, error) {
-	return d.goTest(pkg, execFlag)
+// requireOnePackage errors unless pkgs, the import paths pkg matched,
+// holds exactly one. mode names the command in the error.
+func requireOnePackage(mode, pkg string, pkgs []string) error {
+	if len(pkgs) != 1 {
+		return fmt.Errorf("%s needs exactly one package; %s matches %d", mode, pkg, len(pkgs))
+	}
+	return nil
 }
 
 // goTestNamed runs exactly the tests in names under Node; see goTest.
@@ -232,8 +233,8 @@ func jsOnlyFilesOf(d jsWasmDeps, pkg string) ([]string, error) {
 		return nil, fmt.Errorf("go list (js/wasm) %s: %w", pkg, err)
 	}
 	pkgs, jsFiles := splitListOutput(jsOut)
-	if len(pkgs) != 1 {
-		return nil, fmt.Errorf("test-js-wasm needs exactly one package; %s matches %d", pkg, len(pkgs))
+	if err := requireOnePackage("test-js-wasm", pkg, pkgs); err != nil {
+		return nil, err
 	}
 	// -e: a package whose non-test files are all js/wasm-only has no
 	// native build, and plain `go list` exits 1 on it. Every one of its

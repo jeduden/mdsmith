@@ -77,7 +77,9 @@ func TestRunHooks_NameFallsBackToFirstToken(t *testing.T) {
 	var w bytes.Buffer
 	hook := HookEntry{Tokens: []string{"echo", "hello"}} // no Name set
 	RunHooks(context.Background(), []HookEntry{hook}, t.TempDir(), &w)
-	assert.Contains(t, w.String(), "echo")
+	// The full "running" line, not a bare "echo": under js/wasm the
+	// FAIL line's exec error names "echo" even when the fallback is lost.
+	assert.Contains(t, w.String(), "hook echo: running")
 }
 
 // --- RunAfterHooks ---
@@ -116,6 +118,10 @@ func TestRunHooks_CancelledContext(t *testing.T) {
 	result := RunHooks(ctx, []HookEntry{hook}, t.TempDir(), &w)
 	require.NotNil(t, result)
 	assert.Contains(t, w.String(), "sleeper: FAIL")
+	// Any start failure also yields a FAIL line, so check the
+	// cancellation branch tagged the error.
+	require.Error(t, result.Err)
+	assert.Contains(t, result.Err.Error(), "(timed out)")
 }
 
 // --- output lines ---
