@@ -394,17 +394,36 @@ it was passed, and the create rejects with that error. A `Promise`
 that throws after it ran the executor disposes every session the
 create registered, so none stays registered.
 
-A patched `Reflect.apply` that throws while the engine builds a
-callback's JS wrapper leaks that callback. `syscall/js` stores it in
-the Go runtime's func table first, then drops its id on the panic.
-Plan 2610031420 tracks that leak.
+`createSession` and each async method register no callback of their
+own. `syscall/js` stores a callback in the Go runtime's func table,
+then builds its JS wrapper through `Reflect.apply`. A patched
+`Reflect.apply`, `Reflect.get`, or `_makeFuncWrapper` that throws there
+would strand the table entry, and nothing could free it. So the engine
+registers one Promise executor at load and builds every Promise with
+it. Each call waits on a Go-side stack until the `Promise` constructor
+runs the shared executor, and leaves the stack before it returns. Such
+a patch therefore strands nothing, and a `Reflect.apply` that only
+delegates leaves every method working.
+
+Each call hands the constructor the shared executor bound to that
+call's number, through the `bind` captured at load. A bound function
+registers no callback. A script that keeps one call's executor and
+calls it later runs nothing: not after the call returned, and not
+during another call, nested or not. Only that call's own constructor,
+while it builds that call's `Promise`, can run it. A `Reflect.apply`
+patched after load still sees the unbound executor and every number,
+as it sees every session id. Each number is AES of a counter under the
+key session ids use, so a script that saw the unbound executor and
+some numbers cannot step from them to a later call's number.
+
+If that `bind` throws, as it does when its capture failed at load, the
+call hands the constructor the unbound executor instead, so its
+`Promise` still settles. A script that keeps the unbound executor can
+then run any later call whose `bind` failed too.
 
 A `Reflect.get` or `Reflect.set` that throws while Go reads a
 callback's arguments or writes back its result still stops the Go
 runtime, as a throwing getter does: `wasm_exec.js` does not catch it.
-A `console.error` that throws when a released callback is called ends
-the program. The JS that made the call is then still on the
-WebAssembly stack, and Go cannot safely resume below it.
 TinyGo has no `recover()` on WebAssembly, so there the exception still
 ends the program.
 

@@ -7,10 +7,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"maps"
+	"math"
 	"reflect"
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"sync"
 	"syscall/js"
 	"testing"
 
@@ -629,55 +631,31 @@ func TestDisposedUndefined(t *testing.T) {
 }
 
 // TestRegisterSession_DisposeLeavesNoFuncs tracks the funcs a session's
-// lifecycle (Promise executors, plus the shared method funcs on first
-// use) registers and releases through the funcOf and releaseFunc seams.
-// After a warm-up cycle, N more create/dispose cycles must leave the
-// live set the same size, so a restart loop does not grow syscall/js's
-// handler table, and must leave the sessions registry the same size, so
-// no disposed Session (workspace included) stays reachable from Go.
-// Each func is tracked by its JS wrapper rather than a bare counter, so
-// releasing the wrong func (or one twice) cannot cancel out a leak.
-// Not parallel: it swaps package seams.
+// lifecycle (the shared method and Promise executor funcs on first use)
+// registers through the funcOf seam; the engine releases none
+// (TestEngineReleasesNoFunc). After a warm-up cycle, N more
+// create/dispose cycles must register no func, so a restart loop does
+// not grow syscall/js's handler table, and must leave the sessions
+// registry the same size, so no disposed Session (workspace included)
+// stays reachable from Go. Not parallel: it swaps the funcOf seam.
 func TestRegisterSession_DisposeLeavesNoFuncs(t *testing.T) {
-	oldOf, oldRelease := funcOf, releaseFunc
-	t.Cleanup(func() { funcOf, releaseFunc = oldOf, oldRelease })
-	var live []js.Value
-	// strays counts releases of a func not in live. It is asserted after
-	// the cycles, not reported with t.Errorf in releaseFunc: test output
-	// waits on the JS event loop, which a running callback blocks.
-	strays := 0
-	funcOf = func(fn func(js.Value, []js.Value) any) js.Func {
-		f := oldOf(fn)
-		live = append(live, f.Value)
-		return f
-	}
-	releaseFunc = func(f js.Func) {
-		oldRelease(f)
-		for i, v := range live {
-			if v.Equal(f.Value) {
-				live = append(live[:i], live[i+1:]...)
-				return
-			}
-		}
-		strays++
-	}
-
 	cycle := func() {
 		proxy := newTestProxy(t)
 		awaitPromise(t, proxy.Call("check", "a.md", "# A\n"))
 		proxy.Call("dispose")
 		// A late call takes the disposed path, whose Promise
-		// executor must be released too.
+		// call must not stay pending either.
 		awaitPromise(t, proxy.Call("check", "a.md", "# A\n"))
 	}
 	cycle() // warm-up: registers the shared method funcs if no earlier test did
-	base, baseSessions := len(live), len(sessions)
+	made := recordFuncs(t)
+	baseSessions := len(sessions)
 	for i := 0; i < 5; i++ {
 		cycle()
 	}
-	assert.Len(t, live, base, "live funcs after 5 more create/dispose cycles")
+	assert.Empty(t, *made, "funcs registered by 5 more create/dispose cycles")
 	assert.Len(t, sessions, baseSessions, "registered sessions after 5 more create/dispose cycles")
-	assert.Zero(t, strays, "releases of a func that was not live (released twice, or registered outside funcOf)")
+	assert.Empty(t, promiseCalls, "no Promise call is left pending")
 }
 
 // TestBoundSession checks how a shared func splits its bound session id
@@ -994,12 +972,11 @@ func isSharedFunc(v js.Value) bool {
 
 // TestRegisterSession_StaleReferencesNeverReachReleasedFuncs checks
 // that no call after dispose() reaches a released func (which
-// syscall/js logs as "call to released function"). The release seam
-// shows dispose releases nothing, so no reference a session object
+// syscall/js logs as "call to released function"). The engine releases
+// no func (TestEngineReleasesNoFunc), so no reference a session object
 // handed out can point at a released func; a stored dispose or method
 // reference, a frozen session object, and a read-only method then all
 // take the same disposed path as the writable object.
-// Not parallel: it swaps the releaseFunc seam.
 func TestRegisterSession_StaleReferencesNeverReachReleasedFuncs(t *testing.T) {
 	object := js.Global().Get("Object")
 	for _, tt := range []struct {
@@ -1013,15 +990,12 @@ func TestRegisterSession_StaleReferencesNeverReachReleasedFuncs(t *testing.T) {
 		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			released := recordReleases(t)
 			proxy := newTestProxy(t)
 			tt.setup(proxy)
 			d := proxy.Get("dispose")
 			check := proxy.Get("check")
-			*released = nil // drop releases made while creating the session
 
 			d.Invoke()
-			assert.Empty(t, *released, "dispose releases no func")
 			assert.True(t, d.Invoke().IsUndefined(), "second call through a stored dispose")
 			assert.True(t, proxy.Call("dispose").IsUndefined(), "dispose through the object")
 			assertDisposedShapes(t, proxy)
@@ -1034,22 +1008,6 @@ func TestRegisterSession_StaleReferencesNeverReachReleasedFuncs(t *testing.T) {
 			assert.Equal(t, "session disposed", v.Get("message").String())
 		})
 	}
-}
-
-// recordReleases swaps the releaseFunc seam for one that appends each
-// released func's JS wrapper to the returned slice before releasing
-// it, and restores the seam when t ends. A caller must not run in
-// parallel.
-func recordReleases(t *testing.T) *[]js.Value {
-	t.Helper()
-	oldRelease := releaseFunc
-	t.Cleanup(func() { releaseFunc = oldRelease })
-	released := new([]js.Value)
-	releaseFunc = func(f js.Func) {
-		*released = append(*released, f.Value)
-		oldRelease(f)
-	}
-	return released
 }
 
 // A same-name rename rejects with code "nothing-to-rename", so a JS
@@ -1285,7 +1243,6 @@ func TestReleaseSession(t *testing.T) {
 // exists to dispose it. Not parallel: it swaps globalThis.Promise.
 func TestCreateSession_ResolveThrowRegistersNoSession(t *testing.T) {
 	sharedMethods()
-	released := recordReleases(t)
 	made := recordFuncs(t)
 	unregistered := recordUnregister(t)
 	swapPromise(t, js.Global().Get("Function").New(`executor`,
@@ -1298,9 +1255,8 @@ func TestCreateSession_ResolveThrowRegistersNoSession(t *testing.T) {
 	rej := p.Get("rejection")
 	require.True(t, rej.InstanceOf(js.Global().Get("TypeError")), "create rejects with the thrown TypeError")
 	assert.Equal(t, before, sessions, "no session is left registered")
-	require.Len(t, *made, 1, "the executor func was registered")
-	require.Len(t, *released, 1, "and released once")
-	assert.True(t, (*released)[0].Equal((*made)[0].Value), "the executor func is the one released")
+	assert.Empty(t, *made, "no func is registered per call")
+	assert.Empty(t, promiseCalls, "no call is left pending")
 	require.Len(t, *unregistered, 1, "the session's finalizer entry is cancelled")
 	assert.Equal(t, js.TypeObject, (*unregistered)[0].Type(), "with its token")
 }
@@ -1334,7 +1290,7 @@ func TestCreateSession_ReentrantResolveThrowFreesItsOwnSession(t *testing.T) {
 
 // TestCreateSession_CtorThrowAfterReentrantExecutorFreesEverySession
 // replaces Promise with a constructor whose resolve runs the executor
-// again (the handler is released only after its outer run returns), so
+// again (the call stays pending until its outer run returns), so
 // two sessions are registered, and then throws. Neither session object
 // reaches the caller, so both must be freed, not only the last one.
 // Not parallel: it swaps globalThis.Promise.
@@ -1428,32 +1384,26 @@ func TestReleaseSessionKeepingPanic(t *testing.T) {
 	assert.NotContains(t, sessions, id, "the session is disposed despite the throw")
 }
 
-// TestPromiseHandlerRelease checks release frees the handler func once
-// however often it is called. Not parallel: it swaps releaseFunc.
-func TestPromiseHandlerRelease(t *testing.T) {
-	released := recordReleases(t)
-	h := &promiseHandler{f: funcOf(func(js.Value, []js.Value) any { return nil })}
-	h.release()
-	h.release()
-	assert.Len(t, *released, 1, "released once")
-	assert.True(t, h.released)
-}
-
-// TestNewPromise_ReentrantExecutorReleasesHandlerOnce replaces Promise
-// with a constructor whose resolve runs the executor a second time from
-// inside the first run. Both runs end, but the handler func is one
-// func and must be released exactly once. Not parallel: it swaps
-// Promise and the releaseFunc seam.
-func TestNewPromise_ReentrantExecutorReleasesHandlerOnce(t *testing.T) {
+// TestNewPromise_ReentrantExecutorRunsNested replaces Promise with a
+// constructor whose resolve runs the executor a second time from inside
+// the first run. The nested run executes the body too (the call is still
+// pending while its outer run is on the stack), and both runs leave no
+// call pending and register no func. Not parallel: it swaps Promise and
+// the funcOf seam.
+func TestNewPromise_ReentrantExecutorRunsNested(t *testing.T) {
+	sharedMethods()
 	swapPromise(t, js.Global().Get("Function").New(`executor`,
 		`var calls = 0;
 		executor(function () {
 			if (calls++ > 0) return;
 			executor(function () {}, function () {});
 		}, function () {});`))
-	released := recordReleases(t)
-	newPromise(func(resolve, _ func(any)) { resolve(1) })
-	assert.Len(t, *released, 1, "the handler is released once")
+	made := recordFuncs(t)
+	runs := 0
+	newPromise(func(resolve, _ func(any)) { runs++; resolve(1) })
+	assert.Equal(t, 2, runs, "the outer and the nested run both execute")
+	assert.Empty(t, promiseCalls, "no call is left pending")
+	assert.Empty(t, *made, "no func is registered")
 }
 
 // TestCreateSession_CtorThrowAfterExecutorRegistersNoSession replaces
@@ -1476,17 +1426,16 @@ func TestCreateSession_CtorThrowAfterExecutorRegistersNoSession(t *testing.T) {
 	assert.Equal(t, js.TypeObject, (*unregistered)[0].Type(), "with its token")
 }
 
-// TestPromiseCtorThrow_KeepsProgramAndReleasesFunc replaces Promise with
+// TestPromiseCtorThrow_KeepsProgramAndRegistersNoFunc replaces Promise with
 // a constructor that fails: one that throws before it calls the
 // executor, one that runs the executor and then throws, a Promise
 // that is no function at all (syscall/js raises that as a
 // *js.ValueError, not a js.Error), and one that returns without ever
 // running the executor, which a spec Promise runs during construction.
 // An async method returns undefined
-// instead of ending the program, and the executor's func is released
-// exactly once. Not parallel: it swaps Promise and the funcOf and
-// releaseFunc seams.
-func TestPromiseCtorThrow_KeepsProgramAndReleasesFunc(t *testing.T) {
+// instead of ending the program, registers no func, and leaves no call
+// pending. Not parallel: it swaps Promise and the funcOf seam.
+func TestPromiseCtorThrow_KeepsProgramAndRegistersNoFunc(t *testing.T) {
 	fn := js.Global().Get("Function")
 	for _, tt := range []struct {
 		name string
@@ -1501,15 +1450,13 @@ func TestPromiseCtorThrow_KeepsProgramAndReleasesFunc(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			proxy := newTestProxy(t)
 			defer proxy.Call("dispose")
-			released := recordReleases(t)
 			made := recordFuncs(t)
 			swapPromise(t, tt.ctor)
 
 			v := proxy.Call("check", "a.md", "# A\n")
 			assert.True(t, v.IsUndefined(), "a failed Promise construction yields undefined")
-			require.Len(t, *made, 1, "the executor func was registered")
-			require.Len(t, *released, 1, "and released once")
-			assert.True(t, (*released)[0].Equal((*made)[0].Value), "the executor func is the one released")
+			assert.Empty(t, *made, "no func is registered per call")
+			assert.Empty(t, promiseCalls, "no call is left pending")
 		})
 	}
 }
@@ -1519,8 +1466,8 @@ func TestPromiseCtorThrow_KeepsProgramAndReleasesFunc(t *testing.T) {
 // and a reject that both throw. The executor callback must not let
 // either failure out: a panic that leaves a js.FuncOf callback unwinds
 // into the Go frames below the JS that called it. createSession returns,
-// no session stays registered, and the executor func is released. Not
-// parallel: it swaps Promise and the funcOf and releaseFunc seams.
+// no session stays registered, no func is registered, and no call is
+// left pending. Not parallel: it swaps Promise and the funcOf seam.
 func TestNewPromise_BadExecutorArgs(t *testing.T) {
 	sharedMethods()
 	fn := js.Global().Get("Function")
@@ -1534,7 +1481,6 @@ func TestNewPromise_BadExecutorArgs(t *testing.T) {
 				function () { throw new TypeError("reject"); });`)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			released := recordReleases(t)
 			made := recordFuncs(t)
 			swapPromise(t, tt.ctor)
 			before := maps.Clone(sessions)
@@ -1542,8 +1488,8 @@ func TestNewPromise_BadExecutorArgs(t *testing.T) {
 			v := jsValue(t, createSession(js.Undefined(), []js.Value{opts}))
 			assert.Equal(t, js.TypeObject, v.Type(), "createSession returns what the constructor built")
 			assert.Equal(t, before, sessions, "no session is left registered")
-			require.Len(t, *made, 1, "the executor func was registered")
-			assert.Len(t, *released, 1, "and released once")
+			assert.Empty(t, *made, "no func is registered per call")
+			assert.Empty(t, promiseCalls, "no call is left pending")
 		})
 	}
 }
@@ -1615,14 +1561,13 @@ func TestSyncMethodJSException_ReturnsUndefined(t *testing.T) {
 // `then` on the session object and rejects the create with the thrown
 // error without throwing to Go, so the session must never reach that
 // lookup: the create resolves, and once the caller disposes the session
-// sessions is as it was and every func the create registered is
-// released. Not parallel: it swaps package seams and patches
+// sessions is as it was, and the create registered no func
+// and left no call pending. Not parallel: it swaps package seams and patches
 // Object.prototype.
 func TestCreateSession_ThrowingThenGetterFreesSession(t *testing.T) {
 	// Warm-up registers the shared method funcs before recording starts.
 	newTestProxy(t).Call("dispose")
 	made := recordFuncs(t)
-	released := recordReleases(t)
 	before := maps.Clone(sessions)
 
 	object := js.Global().Get("Object")
@@ -1639,10 +1584,8 @@ func TestCreateSession_ThrowingThenGetterFreesSession(t *testing.T) {
 	assert.True(t, object.Call("hasOwn", v, "then").Bool(), "session object carries its own then")
 	v.Call("dispose")
 	assert.Equal(t, before, sessions, "sessions after the create and dispose")
-	require.NotEmpty(t, *made, "the create registered its executor func")
-	for _, f := range *made {
-		assert.True(t, slices.ContainsFunc(*released, f.Equal), "every func the create registered is released")
-	}
+	assert.Empty(t, *made, "the create registered no func")
+	assert.Empty(t, promiseCalls, "no call is left pending")
 }
 
 // TestExposeAPI_HidesThen defines a throwing `then` getter on
@@ -1962,7 +1905,10 @@ type loadCaptures struct {
 }
 
 func saveCaptures() loadCaptures {
-	return loadCaptures{bindTo, objectCtor, objectKeys, objectCreate, recordTag, defineProperty, methodDesc, thenHider}
+	return loadCaptures{
+		bindTo, objectCtor, objectKeys, objectCreate, recordTag,
+		defineProperty, methodDesc, thenHider,
+	}
 }
 
 func (c loadCaptures) restore() {
@@ -1997,4 +1943,506 @@ func TestFrozenDesc(t *testing.T) {
 	require.Equal(t, 1, keys.Length())
 	assert.Equal(t, "writable", keys.Index(0).String())
 	assert.True(t, d.Get("writable").Bool())
+}
+
+// patchApplyThrowOnWrapper replaces Reflect.apply with one that throws
+// when called for syscall/js's _makeFuncWrapper (the call js.FuncOf
+// makes after it stores the handler in its private func table) and
+// otherwise delegates. It returns a JS object whose n property counts
+// those throws, and restores Reflect.apply when t ends. A caller must
+// not run in parallel.
+func patchApplyThrowOnWrapper(t *testing.T) (state js.Value, restore func()) {
+	t.Helper()
+	reflectObj := js.Global().Get("Reflect")
+	orig := reflectObj.Get("apply")
+	state = js.Global().Get("Object").New()
+	state.Set("n", 0)
+	patched := js.Global().Get("Function").New("orig", "state", `return function (target, thisArg, args) {
+		if (thisArg && thisArg._makeFuncWrapper === target) {
+			state.n++;
+			throw new TypeError("makeFuncWrapper");
+		}
+		return orig(target, thisArg, args);
+	}`).Invoke(orig, state)
+	restore = func() { reflectObj.Set("apply", orig) }
+	t.Cleanup(restore)
+	reflectObj.Set("apply", patched)
+	return state, restore
+}
+
+// TestNewPromise_WrapperThrowRegistersNoFunc patches Reflect.apply to
+// throw on js.FuncOf's _makeFuncWrapper call. FuncOf stores the handler
+// in its func table before that call and drops the id when it panics, so
+// a func registered per call could never be released. newPromise must
+// register none: it constructs every Promise with the one executor func
+// sharedMethods registered at load. An async method and createSession
+// therefore still work under the patch, never reach _makeFuncWrapper,
+// and leave no call pending. Not parallel: it swaps Reflect.apply and
+// the funcOf seam.
+func TestNewPromise_WrapperThrowRegistersNoFunc(t *testing.T) {
+	proxy, id := newTestProxyWithID(t)
+	defer disposeSession(id)
+	made := recordFuncs(t)
+
+	state, restore := patchApplyThrowOnWrapper(t)
+	method := proxy.Call("check", "a.md", "# A\n")
+	create := jsValue(t, createSession(js.Undefined(), []js.Value{js.ValueOf(map[string]any{})}))
+	restore()
+
+	assert.Empty(t, *made, "no func is registered per call")
+	assert.Zero(t, state.Get("n").Int(), "_makeFuncWrapper is never called")
+	assert.Empty(t, promiseCalls, "no call is left pending")
+	_, rejected := awaitPromise(t, method)
+	assert.False(t, rejected, "the async method resolves under the patch")
+	s, rejected := awaitPromise(t, create)
+	require.False(t, rejected, "createSession resolves under the patch")
+	s.Call("dispose")
+	proxy.Call("dispose")
+	assert.NotContains(t, sessions, id, "dispose frees the session")
+}
+
+// TestNewPromise_DelegatingApplyKeepsWorking replaces Reflect.apply with
+// a wrapper that only delegates, as a dev tool or instrumentation shim
+// might after the engine loads. Async methods keep resolving: the engine
+// does not refuse a replaced Reflect.apply. Not parallel: it swaps
+// Reflect.apply.
+func TestNewPromise_DelegatingApplyKeepsWorking(t *testing.T) {
+	proxy, id := newTestProxyWithID(t)
+	defer disposeSession(id)
+	reflectObj := js.Global().Get("Reflect")
+	orig := reflectObj.Get("apply")
+	t.Cleanup(func() { reflectObj.Set("apply", orig) })
+	reflectObj.Set("apply", js.Global().Get("Function").New("orig",
+		"return function (f, t, a) { return orig(f, t, a); }").Invoke(orig))
+
+	v, rejected := awaitPromise(t, proxy.Call("check", "a.md", "# A\n"))
+	assert.False(t, rejected, "check resolves under a delegating Reflect.apply")
+	assert.Equal(t, js.TypeObject, v.Type(), "with its diagnostics array")
+}
+
+// TestNewPromise_ConstructThrowLeavesNothingPending replaces
+// Reflect.construct, which wasm_exec.js calls for every Go New, with one
+// that throws, so the Promise construction fails before the executor
+// runs. newPromise yields undefined, never runs the executor, registers
+// no func, and leaves no call pending. Not parallel: it swaps
+// Reflect.construct and the funcOf seam.
+func TestNewPromise_ConstructThrowLeavesNothingPending(t *testing.T) {
+	sharedMethods()
+	made := recordFuncs(t)
+	reflectObj := js.Global().Get("Reflect")
+	orig := reflectObj.Get("construct")
+	t.Cleanup(func() { reflectObj.Set("construct", orig) })
+	throwing := js.Global().Get("Function").New(`throw new TypeError("construct");`)
+	ran := false
+
+	reflectObj.Set("construct", throwing)
+	p := newPromise(func(_, _ func(any)) { ran = true })
+	reflectObj.Set("construct", orig)
+
+	assert.True(t, p.IsUndefined(), "a failed construction yields undefined")
+	assert.False(t, ran, "the executor never ran")
+	assert.Empty(t, *made, "no func is registered")
+	assert.Empty(t, promiseCalls, "no call is left pending")
+}
+
+// TestNewPromise_LateExecutorCallIsIgnored replaces Promise with a
+// constructor that stashes the executor without running it, then calls
+// the stashed executor after newPromise returned. The call must not run
+// the executor body: the call it belonged to is no longer pending, and
+// running it would act on a session or result nobody receives. Not
+// parallel: it swaps Promise and a global.
+func TestNewPromise_LateExecutorCallIsIgnored(t *testing.T) {
+	sharedMethods()
+	g := js.Global()
+	t.Cleanup(func() { g.Delete("__mdsmithStash") })
+	swapPromise(t, g.Get("Function").New(`executor`, `globalThis.__mdsmithStash = executor;`))
+	runs := 0
+	p := newPromise(func(resolve, _ func(any)) { runs++; resolve(1) })
+	assert.True(t, p.IsUndefined(), "a constructor that never ran the executor yields undefined")
+	require.Empty(t, promiseCalls, "the call is no longer pending")
+
+	noop := g.Get("Function").New()
+	g.Get("__mdsmithStash").Invoke(noop, noop)
+	assert.Zero(t, runs, "a late call of the stashed executor runs nothing")
+}
+
+// TestNewPromise_KeptExecutorCannotRunAnotherCall keeps the executor
+// one call's Promise constructor received, then calls it with a
+// script's own resolve while a later call's Promise is being built, as
+// a Node async_hooks init hook or a Promise patched only for a moment
+// could. The kept executor belongs to the first call, so it must run
+// nothing: the later call's body runs once, with the resolve its own
+// constructor passed, and the script's resolve never receives the
+// result. Not parallel: it swaps Promise and a global.
+func TestNewPromise_KeptExecutorCannotRunAnotherCall(t *testing.T) {
+	sharedMethods()
+	g := js.Global()
+	t.Cleanup(func() {
+		g.Delete("__mdsmithStash")
+		g.Delete("__mdsmithStolen")
+	})
+	fn := g.Get("Function")
+	swapPromise(t, fn.New(`executor`, `globalThis.__mdsmithStash = executor;`))
+	newPromise(func(_, _ func(any)) {})
+	require.Empty(t, promiseCalls, "the first call is no longer pending")
+
+	swapPromise(t, fn.New(`executor`,
+		`var self = this;
+		globalThis.__mdsmithStash(function (v) { globalThis.__mdsmithStolen = v; }, function () {});
+		executor(function (v) { self.value = v; }, function () {});`))
+	runs := 0
+	p := newPromise(func(resolve, _ func(any)) { runs++; resolve("result") })
+	assert.Equal(t, 1, runs, "the later call's body runs once")
+	assert.True(t, g.Get("__mdsmithStolen").IsUndefined(), "the kept executor's resolve never receives the result")
+	require.Equal(t, js.TypeObject, p.Type(), "the later call yields its Promise")
+	assert.Equal(t, "result", p.Get("value").String(), "its own constructor's resolve receives the result")
+	assert.Empty(t, promiseCalls, "no call is left pending")
+}
+
+// TestNewPromise_OuterExecutorCannotRunNestedCall keeps the outer
+// call's executor and calls it, with a script's own resolve, while a
+// call nested in the outer body is being built. The outer call is still
+// pending but is not the call on top, so the kept executor runs
+// nothing: the nested body runs once and its result reaches its own
+// constructor's resolve. Not parallel: it swaps Promise and a global.
+func TestNewPromise_OuterExecutorCannotRunNestedCall(t *testing.T) {
+	sharedMethods()
+	g := js.Global()
+	t.Cleanup(func() {
+		g.Delete("__mdsmithStash")
+		g.Delete("__mdsmithStolen")
+	})
+	swapPromise(t, g.Get("Function").New(`executor`,
+		`var self = this;
+		if (globalThis.__mdsmithStash === undefined) {
+			globalThis.__mdsmithStash = executor;
+		} else {
+			globalThis.__mdsmithStash(function (v) { globalThis.__mdsmithStolen = v; }, function () {});
+		}
+		executor(function (v) { self.value = v; }, function () {});`))
+	outerRuns, nestedRuns := 0, 0
+	var nested js.Value
+	newPromise(func(resolve, _ func(any)) {
+		outerRuns++
+		nested = newPromise(func(resolve, _ func(any)) { nestedRuns++; resolve("nested") })
+		resolve("outer")
+	})
+	assert.Equal(t, 1, outerRuns, "the outer body runs once")
+	assert.Equal(t, 1, nestedRuns, "the nested body runs once")
+	assert.True(t, g.Get("__mdsmithStolen").IsUndefined(), "the kept outer executor's resolve receives nothing")
+	require.Equal(t, js.TypeObject, nested.Type(), "the nested call yields its Promise")
+	assert.Equal(t, "nested", nested.Get("value").String(), "its own constructor's resolve receives the result")
+	assert.Empty(t, promiseCalls, "no call is left pending")
+}
+
+// TestNewPromise_RawExecutorCannotStepToNextCall hands a script the raw
+// shared executor and the number of the call before, as a Reflect.apply
+// patched for one call sees both in callExecutor's bind. While the next
+// call's Promise is being built (as a Node async_hooks init hook could),
+// the script runs the raw executor with the number one past the one it
+// saw. Call numbers are keyed, not a counting sequence, so that runs
+// nothing: the call's body runs once, with its own constructor's
+// resolve. Not parallel: it swaps Promise and a global.
+func TestNewPromise_RawExecutorCannotStepToNextCall(t *testing.T) {
+	sharedMethods()
+	g := js.Global()
+	t.Cleanup(func() { g.Delete("__mdsmithStolen") })
+	var seen int64
+	newPromise(func(resolve, _ func(any)) {
+		seen = promiseCalls[len(promiseCalls)-1].seq
+		resolve(nil)
+	})
+	require.NotZero(t, seen, "the first call is bound to a number")
+
+	swapPromise(t, g.Get("Function").New("shared", "next", `return function (executor) {
+		var self = this;
+		shared(next, function (v) { globalThis.__mdsmithStolen = v; }, function () {});
+		executor(function (v) { self.value = v; }, function () {});
+	};`).Invoke(promiseExecutor, float64(seen+1)))
+	runs := 0
+	p := newPromise(func(resolve, _ func(any)) { runs++; resolve("result") })
+	assert.Equal(t, 1, runs, "the call's body runs once")
+	assert.True(t, g.Get("__mdsmithStolen").IsUndefined(), "the stepped number runs nothing")
+	require.Equal(t, js.TypeObject, p.Type(), "the call yields its Promise")
+	assert.Equal(t, "result", p.Get("value").String(), "its own constructor's resolve receives the result")
+}
+
+// TestNewPromiseSeq checks the call numbers newPromise binds: each is in
+// [1, maxSessionID], so splitSeq accepts it and a float64 holds it
+// exactly, none repeats, and they are not a counting sequence. The
+// block tag sits past every session-id round, so no number is drawn from
+// a block a session id's permutation encrypts. Not parallel: it advances
+// the shared counter.
+func TestNewPromiseSeq(t *testing.T) {
+	assert.GreaterOrEqual(t, promiseSeqTag, sessionIDRounds, "the tag is no session-id round")
+	seen := make(map[int64]bool, 4096)
+	prev := int64(0)
+	for range 4096 {
+		n := newPromiseSeq()
+		require.GreaterOrEqual(t, n, int64(1))
+		require.LessOrEqual(t, n, int64(maxSessionID))
+		require.False(t, seen[n], "number %d repeats", n)
+		assert.NotEqual(t, prev+1, n, "numbers count up")
+		got, _ := splitSeq([]js.Value{js.ValueOf(float64(n))})
+		require.Equal(t, n, got, "splitSeq accepts the number")
+		seen[n] = true
+		prev = n
+	}
+}
+
+// TestSplitSeq checks how runPromiseCall splits the bound call number
+// off the executor's arguments: a leading integer in [1, maxSessionID]
+// is the number, any other leading number matches no call (-1), and a leading
+// non-number (an unbound run's resolve) is no number at all (0).
+func TestSplitSeq(t *testing.T) {
+	fn := js.Global().Get("Function").New()
+	bigInt := js.Global().Get("BigInt").Invoke(1)
+	for _, tt := range []struct {
+		name string
+		args []js.Value
+		seq  int64
+		rest int
+	}{
+		{"no arguments", nil, 0, 0},
+		{"unbound run", []js.Value{fn, fn}, 0, 2},
+		{"bound run", []js.Value{js.ValueOf(3), fn, fn}, 3, 2},
+		{"zero", []js.Value{js.ValueOf(0), fn}, -1, 1},
+		{"negative", []js.Value{js.ValueOf(-2), fn}, -1, 1},
+		{"fraction", []js.Value{js.ValueOf(1.5), fn}, -1, 1},
+		{"NaN", []js.Value{js.ValueOf(math.NaN()), fn}, -1, 1},
+		{"2^53", []js.Value{js.ValueOf(float64(maxSessionID)), fn}, maxSessionID, 1},
+		{"past 2^53", []js.Value{js.ValueOf(float64(maxSessionID) + 2), fn}, -1, 1},
+		{"Infinity", []js.Value{js.ValueOf(math.Inf(1)), fn}, -1, 1},
+		{"BigInt", []js.Value{bigInt, fn}, 0, 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			seq, rest := splitSeq(tt.args)
+			assert.Equal(t, tt.seq, seq)
+			assert.Len(t, rest, tt.rest)
+		})
+	}
+}
+
+// TestCallExecutor checks callExecutor binds the shared executor to
+// the call's number, and, when bindTo was never captured, hands out
+// the shared func unbound and marks the call unbound, so newPromise
+// still settles its Promise (a create still rejects rather than
+// returning undefined). A bindTo that throws gets the same fallback.
+// Not parallel: it swaps bindTo.
+func TestCallExecutor(t *testing.T) {
+	sharedMethods() // captures bindTo, which callExecutor binds through
+	shared := sharedExecutor()
+	bound, seq := callExecutor(shared, 5)
+	assert.Equal(t, js.TypeFunction, bound.Type(), "a bound function")
+	assert.False(t, bound.Equal(shared), "not the shared func itself")
+	assert.Equal(t, int64(5), seq, "the call keeps its number")
+
+	old := bindTo
+	t.Cleanup(func() { bindTo = old })
+	bindTo = js.Undefined()
+	exec, seq := callExecutor(shared, 6)
+	assert.True(t, exec.Equal(shared), "the shared func, unbound")
+	assert.Zero(t, seq, "the call is marked unbound")
+	runs := 0
+	p := newPromise(func(resolve, _ func(any)) { runs++; resolve(1) })
+	bindTo = old
+	assert.Equal(t, 1, runs, "an unbound call still runs")
+	_, rejected := awaitPromise(t, p)
+	assert.False(t, rejected, "and its Promise settles")
+
+	bindTo = js.Global().Get("Function").New("throw new TypeError('bind')")
+	exec, seq = callExecutor(shared, 7)
+	assert.True(t, exec.Equal(shared), "a throwing bind also yields the shared func")
+	assert.Zero(t, seq, "and marks the call unbound")
+	bindTo = old
+}
+
+// TestNewPromise_BindRunsBeforeCallIsPending replaces bindTo with one
+// that, like a Reflect.apply patched after load, sees the raw shared
+// executor and the call's number and runs the executor with them before
+// the bind returns. The call is not yet pending then, so that run
+// executes nothing: the body runs once, from its own constructor, and
+// the script's resolve receives nothing. Not parallel: it swaps bindTo
+// and a global.
+func TestNewPromise_BindRunsBeforeCallIsPending(t *testing.T) {
+	sharedMethods()
+	g := js.Global()
+	t.Cleanup(func() { g.Delete("__mdsmithStolen") })
+	old := bindTo
+	t.Cleanup(func() { bindTo = old })
+	bindTo = g.Get("Function").New("bind", `return function (f, self, seq) {
+		f(seq, function (v) { globalThis.__mdsmithStolen = v; }, function () {});
+		return bind(f, self, seq);
+	};`).Invoke(old)
+
+	runs := 0
+	p := newPromise(func(resolve, _ func(any)) { runs++; resolve("result") })
+	bindTo = old
+	// Checked before awaiting: a body the bind's run took over would
+	// leave p pending forever.
+	require.True(t, g.Get("__mdsmithStolen").IsUndefined(), "the run during the bind receives nothing")
+	assert.Equal(t, 1, runs, "the body runs once")
+	v, rejected := awaitPromise(t, p)
+	require.False(t, rejected, "the call's own Promise resolves")
+	assert.Equal(t, "result", v.String(), "with the body's result")
+	assert.Empty(t, promiseCalls, "no call is left pending")
+}
+
+// TestPopPromiseCall checks popPromiseCall removes the given call by
+// identity wherever it sits on promiseCalls, keeps the calls above and
+// below it in order, clears the freed last slot, and leaves the stack
+// as it was for a call that is not on it. Not parallel: it writes
+// promiseCalls.
+func TestPopPromiseCall(t *testing.T) {
+	old := promiseCalls
+	t.Cleanup(func() { promiseCalls = old })
+	a, b, c := &promiseCall{}, &promiseCall{}, &promiseCall{}
+	promiseCalls = []*promiseCall{a, b, c}
+
+	popPromiseCall(b)
+	require.Equal(t, []*promiseCall{a, c}, promiseCalls, "b is removed, a and c keep their order")
+	assert.Nil(t, promiseCalls[:3][2], "the freed last slot is cleared")
+
+	popPromiseCall(&promiseCall{})
+	assert.Equal(t, []*promiseCall{a, c}, promiseCalls, "a call not on the stack leaves it as it was")
+
+	popPromiseCall(c)
+	popPromiseCall(a)
+	assert.Empty(t, promiseCalls, "every call is popped")
+	assert.Nil(t, promiseCalls[:1][0], "and its slot cleared")
+}
+
+// TestNewPromise_SecondSequentialRunIsIgnored replaces Promise with a
+// constructor that runs the executor twice in a row. Only the first run
+// executes the body; once it has returned, the call is finished, as a
+// spec Promise runs its executor once. Not parallel: it swaps Promise.
+func TestNewPromise_SecondSequentialRunIsIgnored(t *testing.T) {
+	sharedMethods()
+	swapPromise(t, js.Global().Get("Function").New(`executor`,
+		`var f = function () {}; executor(f, f); executor(f, f);`))
+	runs := 0
+	newPromise(func(_, _ func(any)) { runs++ })
+	assert.Equal(t, 1, runs, "the body runs once")
+	assert.Empty(t, promiseCalls, "no call is left pending")
+}
+
+// TestRunPromiseCall_NothingPending calls the shared executor func
+// directly while no newPromise call is pending, as a script that kept it
+// could. It returns undefined and runs nothing.
+func TestRunPromiseCall_NothingPending(t *testing.T) {
+	sharedMethods()
+	require.Empty(t, promiseCalls)
+	noop := js.Global().Get("Function").New()
+	assert.True(t, promiseExecutor.Invoke(noop, noop).IsUndefined())
+	assert.True(t, promiseExecutor.Invoke().IsUndefined())
+}
+
+// TestSharedExecutor checks sharedExecutor returns the one executor
+// func, a JS function, on every call and registers it only once. Not
+// parallel: it swaps the funcOf seam.
+func TestSharedExecutor(t *testing.T) {
+	first := sharedExecutor()
+	made := recordFuncs(t)
+	assert.Equal(t, js.TypeFunction, first.Type(), "the executor is a JS function")
+	assert.True(t, sharedExecutor().Equal(first), "a later call returns the same func")
+	assert.True(t, promiseExecutor.Equal(first), "the one promiseExecutor")
+	assert.Empty(t, *made, "a later call registers no func")
+}
+
+// TestNewPromise_ClearsPoppedSlot checks newPromise clears its call's
+// slot in promiseCalls' backing array as it pops the call, so the array
+// does not keep the Go executor, and the Session it closes over,
+// reachable after the call returns. A nested call fills a second slot.
+// Not parallel: it reads promiseCalls.
+func TestNewPromise_ClearsPoppedSlot(t *testing.T) {
+	sharedMethods()
+	newPromise(func(_, _ func(any)) {
+		newPromise(func(_, _ func(any)) {})
+	})
+	require.Empty(t, promiseCalls, "no call is left pending")
+	require.GreaterOrEqual(t, cap(promiseCalls), 2, "the nested call grew the stack")
+	for i, c := range promiseCalls[:cap(promiseCalls)] {
+		assert.Nil(t, c, "slot %d is cleared", i)
+	}
+}
+
+// TestNewPromise_PopsOwnCall checks newPromise pops its own call even
+// when another call sits above it on promiseCalls by the time it
+// returns, as an interleaved newPromise would leave it: it removes its
+// call by identity rather than whatever is on top, so the other call's
+// entry survives for its own newPromise to pop. Not parallel: it reads
+// and writes promiseCalls.
+func TestNewPromise_PopsOwnCall(t *testing.T) {
+	sharedMethods()
+	require.Empty(t, promiseCalls)
+	other := &promiseCall{executor: func(_, _ func(any)) {}}
+	t.Cleanup(func() { promiseCalls = nil })
+	var own *promiseCall
+	newPromise(func(_, _ func(any)) {
+		own = promiseCalls[len(promiseCalls)-1]
+		promiseCalls = append(promiseCalls, other)
+	})
+	require.NotNil(t, own)
+	require.Len(t, promiseCalls, 1, "only the interleaved call is left")
+	assert.Same(t, other, promiseCalls[0], "the interleaved call survives")
+	require.GreaterOrEqual(t, cap(promiseCalls), 2)
+	assert.Nil(t, promiseCalls[:2][1], "the freed slot is cleared")
+}
+
+// TestJSInt checks jsInt, the one integer check boundSession and
+// splitSeq share: a number that is an integer with magnitude at most
+// maxSessionID converts exactly; a non-number, a fraction, NaN,
+// Infinity, or a magnitude past maxSessionID does not.
+func TestJSInt(t *testing.T) {
+	cases := []struct {
+		name string
+		v    js.Value
+		want int64
+		ok   bool
+	}{
+		{"zero", js.ValueOf(0), 0, true},
+		{"one", js.ValueOf(1), 1, true},
+		{"negative", js.ValueOf(-7), -7, true},
+		{"2^53", js.ValueOf(float64(maxSessionID)), maxSessionID, true},
+		{"-2^53", js.ValueOf(-float64(maxSessionID)), -maxSessionID, true},
+		{"past 2^53", js.ValueOf(float64(maxSessionID) + 2), 0, false},
+		{"fraction", js.ValueOf(1.5), 0, false},
+		{"NaN", js.ValueOf(math.NaN()), 0, false},
+		{"Infinity", js.ValueOf(math.Inf(1)), 0, false},
+		{"string", js.ValueOf("1"), 0, false},
+		{"undefined", js.Undefined(), 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			n, ok := jsInt(tc.v)
+			assert.Equal(t, tc.ok, ok)
+			assert.Equal(t, tc.want, n)
+		})
+	}
+}
+
+// TestSharedExecutor_FailedRegistrationNotRetried pins that a failed
+// registration of the shared executor is not retried on a later call.
+// js.FuncOf stores its handler before it builds the JS wrapper, so a
+// retry while the wrapper keeps failing would strand one func-table
+// entry per newPromise, the leak plan 2610031420 removes. Not parallel:
+// it swaps the funcOf seam and resets the registration.
+func TestSharedExecutor_FailedRegistrationNotRetried(t *testing.T) {
+	sharedMethods()
+	oldExec, oldOf := promiseExecutor, funcOf
+	t.Cleanup(func() {
+		promiseExecutor, funcOf = oldExec, oldOf
+		executorOnce = sync.Once{}
+		executorOnce.Do(func() {})
+	})
+	executorOnce = sync.Once{}
+	promiseExecutor = js.Undefined()
+	calls := 0
+	funcOf = func(func(js.Value, []js.Value) any) js.Func {
+		calls++
+		panic(js.Error{Value: jsError("wrapper failed")})
+	}
+	assert.Panics(t, func() { sharedExecutor() })
+	assert.NotPanics(t, func() { sharedExecutor() })
+	assert.Equal(t, 1, calls, "registration is attempted once")
 }

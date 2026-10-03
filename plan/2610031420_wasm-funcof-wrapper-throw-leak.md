@@ -1,7 +1,7 @@
 ---
 id: 2610031420
 title: Free the func when js.FuncOf's wrapper call throws
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   `syscall/js.FuncOf` stores the handler in its private
@@ -50,29 +50,86 @@ Possible fixes:
 - Propose a fix upstream that makes `FuncOf` release
   the id when the wrapper call panics.
 
+## Decision
+
+Fix 1, without a pool: `sharedExecutor` registers one Promise
+executor func (`runPromiseCall`) at load, from `sharedMethods`, and
+`newPromise` constructs every Promise with it. The per-call context
+slot is a Go-side stack, `promiseCalls`: `newPromise` pushes its call,
+constructs the Promise, and pops that same call (by identity, not
+whatever is on top) in a defer. A spec Promise
+runs its executor synchronously during construction, so the shared
+func runs the call on top of the stack. No func is registered per
+call, so no patched `Reflect.apply`, `Reflect.get`, or
+`_makeFuncWrapper` can strand a func-table entry. The stack slot is
+cleared on pop, so the stack's backing array does not keep a Session
+reachable. The size budgets are unaffected.
+
+The executor func is registered once, and a failed registration is not
+retried, since each retry would strand an entry.
+
+This replaced a first attempt (fix 2) that captured `Reflect.apply` at
+load and refused, returning `undefined`, when it had changed. Review
+round 1 found that design wanting. Reading `apply` with `Get` could end
+the program, since that read runs outside a `try`. A throwing
+`_makeFuncWrapper`, a one-shot `Reflect.get`, or a patch in place at
+load still leaked. And a benign delegating `Reflect.apply` silently
+turned off every async method. The shared executor needs no global
+identity check, so all of these go away.
+
+Review round 2 found a hole in the one shared executor. A script that
+kept it could run another call. Called during a later call's
+construction (a Node `async_hooks` init hook fires before the
+executor), it ran that call with the script's own `resolve`.
+
+So `newPromise` now hands the constructor the shared executor bound,
+through the `bindTo` captured at load, to the call's number.
+`runPromiseCall` runs only the call on top of the stack whose number
+matches. The number is AES of a counter under the session-id key, not
+the counter itself. A script that once saw the unbound executor and a
+number, through a `Reflect.apply` patched for a while, cannot step to
+the next call's number. A bound function is plain JS and registers no
+Go func. When that bind fails, the call falls back to the unbound
+executor, so its Promise still settles.
+
+A call of an executor that a patched constructor kept runs nothing
+once its own call is no longer on top. A nested run from inside
+`resolve` still runs, as it did when each call had its own func. A
+second run after the outermost one returned runs nothing, as a
+released func would not.
+
+`newPromise` binds before it pushes the call. A run that the bind's JS
+starts therefore finds no call to run.
+
 ## Tasks
 
-1. Write a failing js/wasm test that patches
+1. [x] Write a failing js/wasm test that patches
    `Reflect.apply` to throw on `_makeFuncWrapper`,
-   calls an async session method, and asserts the
-   func-table size (counted through the `funcOf` seam)
-   is unchanged.
-2. Pick one of the fixes above and record why in this
+   calls an async session method, and asserts no func
+   is registered through the `funcOf` seam and the
+   wrapper is never called. (Red: the per-call
+   `FuncOf` panicked out of the test, then, under
+   the Reflect.apply check, returned `undefined`.)
+2. [x] Pick one of the fixes above and record why in this
    plan.
-3. Make the test pass. The engine-api.md size budgets
+3. [x] Make the test pass. The engine-api.md size budgets
    must still hold.
-4. Update
+4. [x] Update
    [engine-api.md](../docs/background/concepts/engine-api.md)
    with the hostile-global behavior that results.
 
 ## Acceptance Criteria
 
-- [ ] A throwing `_makeFuncWrapper` call leaves no func
+- [x] A throwing `_makeFuncWrapper` call leaves no func
       registered after the call
-- [ ] The session the call ran against is collectable
+- [x] The session the call ran against is collectable
       after `dispose()`
-- [ ] All tests pass: `go test ./...` and
+- [x] An executor a script kept from one call runs
+      nothing when called during another call
+- [x] The unbound executor run with the number one past
+      a call's number runs nothing during the next call
+- [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues, natively and with
       `GOOS=js GOARCH=wasm`

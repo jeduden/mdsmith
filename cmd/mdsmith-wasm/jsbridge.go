@@ -3,7 +3,9 @@
 package main
 
 import (
+	"crypto/aes"
 	"encoding/json"
+	"sync"
 	"syscall/js"
 
 	"github.com/jeduden/mdsmith/pkg/mdsmith"
@@ -13,9 +15,19 @@ import (
 // receives resolve and reject callbacks; any Go method returning
 // (T, error) maps to a Promise<T> that rejects with new Error(msg).
 //
-// The js.Func backing the executor is released inside the executor so
-// it is freed once Promise construction calls it (Promise executors run
-// synchronously during construction).
+// It registers no func per call. Every Promise is constructed with the
+// one executor func sharedMethods registers at load (sharedExecutor),
+// and the call's Go executor waits on promiseCalls, a Go-side stack, for
+// the constructor to run it: a spec Promise runs its executor
+// synchronously during construction, so the shared func runs the call
+// on top of the stack whose number its bound executor carries.
+// newPromise pops its call before it returns, so nothing outlives the
+// call. js.FuncOf stores a handler in syscall/js's
+// private func table before it builds the handler's JS wrapper through
+// Reflect.apply, and a patched one that throws there would strand the
+// entry, with its closure over the Session, for good; building no
+// wrapper per call leaves nothing to strand, whatever Reflect.apply,
+// Reflect.get, or _makeFuncWrapper a page installs. Plan 2610031420.
 //
 // A JS exception the executor raises (a js.Error panic) rejects the
 // Promise with that exception, and a *js.ValueError rejects it with an
@@ -23,72 +35,203 @@ import (
 //
 // A patched Promise can fail around the executor too. A constructor
 // that throws, or a Promise that is no constructor, would end the
-// program, and a handler it never ran would stay registered: newPromise
-// releases that handler and returns undefined instead, since Go cannot
-// throw to its caller. A constructor that returns without running the
+// program: newPromise returns undefined instead, since Go cannot throw
+// to its caller. A constructor that returns without running the
 // executor, which a spec Promise runs during construction, gets the
-// same treatment: its handler would otherwise stay registered for good,
-// and a later call to the released handler only logs an error. A
+// same treatment. The executor each call hands the constructor is the
+// shared func bound to the call's number (callExecutor), so a script
+// that kept it runs nothing once that call is no longer on top: not
+// after newPromise returned, and not during another call. A
 // constructor that passes the executor too few arguments, or a reject
 // that itself throws or is no function, would end the program from
-// inside the handler callback: a panic that leaves a js.FuncOf callback
-// unwinds into the Go frames below the JS that called it. The handler
-// swallows that failure, and the Promise stays as the constructor left
-// it, never settling. Any other panic is re-raised (recoverJS).
+// inside the executor callback: a panic that leaves a js.FuncOf
+// callback unwinds into the Go frames below the JS that called it. The
+// callback swallows that failure, and the Promise stays as the
+// constructor left it, never settling. Any other panic is re-raised
+// (recoverJS).
 func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
-	// One heap object for the handler and its flags: the escaping
-	// callback captures it.
-	st := new(promiseHandler)
-	st.f = funcOf(func(_ js.Value, pArgs []js.Value) any {
-		st.ran = true
-		// Free this handler once the executor body returns; the executor
-		// runs to completion synchronously within Promise construction
-		// for our synchronous engine calls. A patched constructor can run
-		// it again from inside resolve; release is once-only, so the
-		// nested run's return does not release the func a second time.
-		defer st.release()
-		defer recoverJS(func() {})
-		var resolveFn, rejectFn js.Value // undefined unless passed
-		if len(pArgs) > 0 {
-			resolveFn = pArgs[0]
-		}
-		if len(pArgs) > 1 {
-			rejectFn = pArgs[1]
-		}
-		resolve := func(v any) { resolveFn.Invoke(v) }
-		reject := func(v any) { rejectFn.Invoke(v) }
-		defer rejectOnJSError(reject)
-		executor(resolve, reject)
-		return js.Undefined()
-	})
-	// A handler the constructor never ran is released here, whether the
-	// constructor threw or returned; one it ran released itself.
+	// Bind before pushing the call, so nothing the bind's JS reaches (a
+	// patched Reflect.apply sees the raw executor and the number) can run
+	// the call before its constructor does.
+	exec, seq := callExecutor(sharedExecutor(), newPromiseSeq())
+	c := &promiseCall{executor: executor, seq: seq}
+	promiseCalls = append(promiseCalls, c)
+	// Pop c whatever happens, and clear the freed slot so the stack's
+	// backing array does not keep the executor, and the Session it
+	// closes over, reachable. A call the constructor never ran yields
+	// undefined.
 	defer func() {
-		if !st.ran {
-			st.release()
+		popPromiseCall(c)
+		if !c.done {
 			p = js.Undefined()
 		}
 	}()
 	defer recoverJS(func() { p = js.Undefined() })
-	return js.Global().Get("Promise").New(st.f)
+	return js.Global().Get("Promise").New(exec)
 }
 
-// promiseHandler is newPromise's executor func, whether the Promise
-// constructor ran it, and whether the func is released.
-type promiseHandler struct {
-	f        js.Func
-	ran      bool
-	released bool
-}
-
-// release frees the handler func the first time it is called and does
-// nothing after that.
-func (h *promiseHandler) release() {
-	if h.released {
-		return
+// callExecutor returns the executor newPromise hands the Promise
+// constructor for a call numbered seq, and the number the call is bound
+// to: the shared func bound, through the bindTo captured at load, to
+// seq, so a script that kept it can run that call and no later one
+// (runPromiseCall checks the number). bind builds a JS bound function
+// and registers no Go func. When the bind fails (bindTo's capture failed
+// because Function.prototype.bind or call was patched to throw before
+// load, or a Reflect.apply patched after load throws on the call) it
+// returns the shared func unbound and 0, which marks the call unbound:
+// an unbound run alone can execute it, so the Promise still settles (a
+// create still rejects). A script able to make that bind throw already
+// sees every call through Reflect.apply.
+func callExecutor(shared js.Value, seq int64) (js.Value, int64) {
+	bound := tryJS(func() js.Value {
+		return bindTo.Invoke(shared, js.Undefined(), float64(seq))
+	})
+	if jsType(bound) != js.TypeFunction {
+		return shared, 0
 	}
-	h.released = true
-	releaseFunc(h.f)
+	return bound, seq
+}
+
+// promiseCall is one pending newPromise call: its Go executor, how many
+// of its runs are on the stack, and whether its outermost run has
+// returned. Every run is synchronous, so once the construction returns
+// done also tells whether the Promise constructor ran the call at all.
+type promiseCall struct {
+	executor func(resolve, reject func(any))
+	seq      int64 // the number its executor is bound to; 0 when unbound
+	depth    int
+	done     bool
+}
+
+// promiseSeqTag is the block tag newPromiseSeq encrypts its counter
+// under. permuteSessionID's rounds use tags 0 to sessionIDRounds-1, so
+// no block a call number comes from is one a session id's permutation
+// encrypts, and a number a script sees tells it nothing of an id.
+const promiseSeqTag = 0xff
+
+// promiseSeqCounter is the next counter value newPromiseSeq encrypts,
+// and promiseSeqBuf its scratch block: package-level, so the encryption
+// through the cipher.Block interface allocates nothing per call.
+var (
+	promiseSeqCounter uint64
+	promiseSeqBuf     [aes.BlockSize]byte
+)
+
+// newPromiseSeq hands out the next call number: AES, under the per-load
+// key session ids are permuted with (sessionIDCipher), of the counter
+// tagged promiseSeqTag, cut to 53 bits and shifted to start at 1. Every
+// number is in [1, maxSessionID], so a float64 holds it exactly and
+// splitSeq accepts it. The key is drawn at load, so the numbers are not
+// a counting sequence: a script that saw the raw shared executor and a
+// call's number (a Reflect.apply patched for a while) cannot step from
+// it to a later call's number, as it cannot step to a later session id.
+// One AES block, not the session id's permutation: two calls share a
+// number only by a 53-bit collision.
+func newPromiseSeq() int64 {
+	x := roundSessionID(sessionIDCipher, &promiseSeqBuf, promiseSeqTag, promiseSeqCounter)
+	promiseSeqCounter++
+	return int64(x>>11) + 1
+}
+
+// popPromiseCall removes c from promiseCalls by identity, not whatever
+// is on top, so a call another newPromise pushed above c (were an
+// executor ever to yield to another goroutine mid-call) keeps its entry
+// for its own newPromise to pop. c is normally on top, so the search
+// ends at once. The freed last slot is cleared.
+func popPromiseCall(c *promiseCall) {
+	for i := len(promiseCalls) - 1; i >= 0; i-- {
+		if promiseCalls[i] == c {
+			n := len(promiseCalls) - 1
+			copy(promiseCalls[i:], promiseCalls[i+1:])
+			promiseCalls[n] = nil
+			promiseCalls = promiseCalls[:n]
+			return
+		}
+	}
+}
+
+// promiseCalls is the stack of pending newPromise calls, innermost last.
+// js/wasm runs every goroutine on one thread, and a call is pushed and
+// popped within one newPromise frame, so it needs no lock.
+var promiseCalls []*promiseCall
+
+// promiseExecutor is the one Promise executor func, runPromiseCall
+// registered through the funcOf seam by sharedExecutor. It is never
+// released.
+var (
+	promiseExecutor js.Value
+	executorOnce    sync.Once
+)
+
+// sharedExecutor registers promiseExecutor on first use and returns it.
+// sharedMethods calls it at load, before the API is reachable, so the
+// one FuncOf runs before a page can have patched anything after load.
+// A failed registration is not retried: js.FuncOf stores its handler
+// before it builds the JS wrapper, so retrying while the wrapper keeps
+// failing would strand one func-table entry per newPromise (plan
+// 2610031420). The failure panics out of the first call, which at load
+// ends the program before the API is reachable.
+// newPromise calls it too rather than sharedMethods, whose method table
+// reaches newPromise, so a test that builds a Promise first still works.
+func sharedExecutor() js.Value {
+	executorOnce.Do(func() { promiseExecutor = funcOf(runPromiseCall).Value })
+	return promiseExecutor
+}
+
+// runPromiseCall is the shared Promise executor. It runs the Go executor
+// of the newPromise call on top of promiseCalls with the resolve and
+// reject the constructor passed, after the call number callExecutor
+// bound (splitSeq). With no call pending, or a number that is not the
+// top call's (a script that kept another call's executor), it runs
+// nothing. A constructor can run the executor again from inside
+// resolve; that nested run executes the body too, as it did when each
+// call had its own func. Once the outermost run has returned the call is
+// done, and a further run (a constructor that runs the executor twice in
+// a row) executes nothing, as a released func would not.
+func runPromiseCall(_ js.Value, pArgs []js.Value) any {
+	if len(promiseCalls) == 0 {
+		return js.Undefined()
+	}
+	seq, pArgs := splitSeq(pArgs)
+	c := promiseCalls[len(promiseCalls)-1]
+	if c.done || seq != c.seq {
+		return js.Undefined()
+	}
+	c.depth++
+	defer func() {
+		c.depth--
+		if c.depth == 0 {
+			c.done = true
+		}
+	}()
+	defer recoverJS(func() {})
+	var resolveFn, rejectFn js.Value // undefined unless passed
+	if len(pArgs) > 0 {
+		resolveFn = pArgs[0]
+	}
+	if len(pArgs) > 1 {
+		rejectFn = pArgs[1]
+	}
+	resolve := func(v any) { resolveFn.Invoke(v) }
+	reject := func(v any) { rejectFn.Invoke(v) }
+	defer rejectOnJSError(reject)
+	c.executor(resolve, reject)
+	return js.Undefined()
+}
+
+// splitSeq splits the call sequence number callExecutor bound off the
+// executor's arguments. A first argument that is not a number (an
+// unbound run, whose first argument is resolve) yields 0 and leaves the
+// arguments whole. A number that is not an integer in [1, maxSessionID],
+// the range newPromiseSeq draws from, yields -1, which matches no call.
+func splitSeq(args []js.Value) (int64, []js.Value) {
+	if len(args) == 0 || jsType(args[0]) != js.TypeNumber {
+		return 0, args
+	}
+	if n, ok := jsInt(args[0]); ok && n >= 1 {
+		return n, args[1:]
+	}
+	return -1, args[1:]
 }
 
 // jsError constructs a JavaScript Error with the given message, the
@@ -123,7 +266,7 @@ func toJS(v any) js.Value {
 	return js.Global().Get("JSON").Call("parse", string(data))
 }
 
-// rejectOnJSError, which newPromise defers around every executor, turns
+// rejectOnJSError, which runPromiseCall defers around every executor, turns
 // a JS-side failure (the panics recoverJS recovers) into a rejection: a
 // JS exception that a syscall/js Call, Invoke, or New raised as a
 // js.Error panic rejects with that exception, and a *js.ValueError (a
@@ -131,8 +274,9 @@ func toJS(v any) js.Value {
 // an Error carrying its message. Inspecting a caller's object can throw
 // (a revoked Proxy, a Proxy trap that throws), and an unrecovered panic
 // in a js.FuncOf callback ends the Go program and every session with it.
-// newPromise's executor callback swallows a failure this does not turn
-// into a rejection, which would leave the Promise pending forever.
+// runPromiseCall, the shared executor callback, swallows a failure this
+// does not turn into a rejection, which would leave the Promise pending
+// forever.
 // wasm_exec.js caught the exception before Go panicked, so the runtime
 // is intact. Any other panic is re-raised unchanged, and so is a
 // JS-side failure that unwound out of a JS-to-Go callback, as in

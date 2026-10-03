@@ -170,7 +170,7 @@ func TestRegisteredFuncsAreTracked(t *testing.T) {
 	sharedMethods()
 	var during int
 	f := funcOf(func(js.Value, []js.Value) any { during = activeCallbacks; return nil })
-	defer releaseFunc(f)
+	defer f.Release()
 	f.Invoke()
 	assert.Equal(t, 1, during, "a funcOf func is tracked")
 
@@ -184,7 +184,7 @@ func TestRegisteredFuncsAreTracked(t *testing.T) {
 	exposeAPI().Call("probe")
 	assert.Len(t, *made, 1, "exposeAPI registers through the funcOf seam")
 	for _, f := range *made {
-		releaseFunc(f)
+		f.Release()
 	}
 	assert.Equal(t, 1, during, "an exposeAPI func is tracked")
 }
