@@ -731,3 +731,57 @@ func TestWikilinkIndex_PathsNilReceiver(t *testing.T) {
 	assert.Empty(t, idx.StemPaths("a"))
 	assert.Empty(t, idx.NamePaths("a.md"))
 }
+
+func TestWikilinkBaseSpan(t *testing.T) {
+	t.Run("not a wikilink returns false", func(t *testing.T) {
+		_, _, ok := WikilinkBaseSpan([]byte("[x](y)"), 0)
+		assert.False(t, ok)
+	})
+	t.Run("out-of-range bracket start returns false", func(t *testing.T) {
+		_, _, ok := WikilinkBaseSpan([]byte("[["), 0)
+		assert.False(t, ok)
+		_, _, ok = WikilinkBaseSpan([]byte("[[a]]"), -1)
+		assert.False(t, ok)
+		_, _, ok = WikilinkBaseSpan([]byte("[[a]]"), 9)
+		assert.False(t, ok)
+	})
+	t.Run("a link that starts later is not read", func(t *testing.T) {
+		_, _, ok := WikilinkBaseSpan([]byte("x [[a]]"), 0)
+		assert.False(t, ok)
+	})
+	t.Run("empty target returns false", func(t *testing.T) {
+		_, _, ok := WikilinkBaseSpan([]byte("[[#frag]]"), 0)
+		assert.False(t, ok)
+	})
+	t.Run("offsets are relative to the row", func(t *testing.T) {
+		row := []byte("see ![[folder/Page#f|alias]] now")
+		s, e, ok := WikilinkBaseSpan(row, 5)
+		require.True(t, ok)
+		assert.Equal(t, "Page", string(row[s:e]))
+	})
+	// The resolver turns `\` into `/` and reads path.Base of the
+	// trimmed target, so the span is the last segment the same way.
+	for row, want := range map[string]string{
+		`[[docs\Page]]`:        "Page",
+		`[[Page\|alias]]`:      "Page",
+		"[[docs/Page/ ]]":      "Page",
+		`[[docs\Page\#f|a]]`:   "Page",
+		"[[ Page ]]":           "Page",
+		"[[x/Page.md#f]]":      "Page.md",
+		`[[a\b/c\Page.md|al]]`: "Page.md",
+		"[[x/ guide]]":         " guide",
+		"[[api /]]":            "api ",
+	} {
+		t.Run(row, func(t *testing.T) {
+			s, e, ok := WikilinkBaseSpan([]byte(row), 0)
+			require.True(t, ok)
+			assert.Equal(t, want, row[s:e])
+		})
+	}
+	for _, row := range []string{`[[/\ ]]`, "[[/abs]]", "[[../up]]", "[[C:\\x]]"} {
+		t.Run("unresolvable "+row, func(t *testing.T) {
+			_, _, ok := WikilinkBaseSpan([]byte(row), 0)
+			assert.False(t, ok)
+		})
+	}
+}

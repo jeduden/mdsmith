@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"unicode"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
@@ -853,7 +852,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 			continue
 		}
 		row := lines[e.SourceLine-1]
-		start, end, ok := wikilinkStemBytes(row, e.SourceCol-1)
+		start, end, ok := linkgraph.WikilinkBaseSpan(row, e.SourceCol-1)
 		if !ok {
 			continue
 		}
@@ -871,45 +870,6 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 			NewText: text,
 		})
 	}
-}
-
-// wikilinkStemBytes returns the byte range of the basename-stem token
-// inside a `[[target#anchor|alias]]` link starting at bracketStart.
-// The range is the segment the resolver reads: it trims the target,
-// turns `\` into `/`, and takes path.Base, so trailing whitespace and
-// separators are dropped and the segment starts after the last `/` or
-// `\`. Any folder prefix, anchor, and alias are preserved, and so is
-// the `\` that escapes a `|` inside a table cell (`[[api\|alias]]`).
-func wikilinkStemBytes(row []byte, bracketStart int) (int, int, bool) {
-	i := bracketStart
-	if i < 0 || i+1 >= len(row) || row[i] != '[' || row[i+1] != '[' {
-		return 0, 0, false
-	}
-	start := i + 2
-	end := start
-	for end < len(row) {
-		c := row[end]
-		if c == '#' || c == '|' || c == ']' {
-			break
-		}
-		end++
-	}
-	tgt := row[start:end]
-	lo := start + len(tgt) - len(bytes.TrimLeftFunc(tgt, unicode.IsSpace))
-	end = start + len(bytes.TrimRightFunc(tgt, unicode.IsSpace))
-	for end > lo && (row[end-1] == '/' || row[end-1] == '\\') {
-		end--
-	}
-	stemStart := lo
-	for j := lo; j < end; j++ {
-		if row[j] == '/' || row[j] == '\\' {
-			stemStart = j + 1
-		}
-	}
-	if stemStart >= end {
-		return 0, 0, false
-	}
-	return stemStart, end, true
 }
 
 // wikilinkKeyHolders counts the files the resolver reaches by oldStem
