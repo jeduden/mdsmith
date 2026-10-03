@@ -1614,48 +1614,100 @@ func TestSyncMethodJSException_ReturnsUndefined(t *testing.T) {
 // `then` getter on Object.prototype. A native Promise resolve reads
 // `then` on the session object and rejects the create with the thrown
 // error without throwing to Go, so the session must never reach that
-// lookup: sessions stays the size it was and no func is left live.
-// Not parallel: it swaps package seams and patches Object.prototype.
+// lookup: the create resolves, and once the caller disposes the session
+// sessions is as it was and every func the create registered is
+// released. Not parallel: it swaps package seams and patches
+// Object.prototype.
 func TestCreateSession_ThrowingThenGetterFreesSession(t *testing.T) {
-	oldOf, oldRelease := funcOf, releaseFunc
-	t.Cleanup(func() { funcOf, releaseFunc = oldOf, oldRelease })
-	var live []js.Value
-	funcOf = func(fn func(js.Value, []js.Value) any) js.Func {
-		f := oldOf(fn)
-		live = append(live, f.Value)
-		return f
-	}
-	releaseFunc = func(f js.Func) {
-		oldRelease(f)
-		for i, v := range live {
-			if v.Equal(f.Value) {
-				live = append(live[:i], live[i+1:]...)
-				return
-			}
-		}
-	}
-	// Warm-up registers the shared method funcs so they are not counted.
+	// Warm-up registers the shared method funcs before recording starts.
 	newTestProxy(t).Call("dispose")
-	baseFuncs, baseSessions := len(live), len(sessions)
+	made := recordFuncs(t)
+	released := recordReleases(t)
+	before := maps.Clone(sessions)
 
-	objectProto := js.Global().Get("Object").Get("prototype")
+	object := js.Global().Get("Object")
+	objectProto := object.Get("prototype")
 	getter := js.Global().Get("Function").New("throw new Error('then getter')")
-	desc := js.Global().Get("Object").New()
+	desc := object.New()
 	desc.Set("get", getter)
 	desc.Set("configurable", true)
-	js.Global().Get("Object").Call("defineProperty", objectProto, "then", desc)
-	defer js.Global().Get("Reflect").Call("deleteProperty", objectProto, "then")
+	object.Call("defineProperty", objectProto, "then", desc)
+	defer objectProto.Delete("then")
 
 	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{js.ValueOf(map[string]any{})})))
-	if rejected {
-		// A rejected create must have freed its session already.
-		assert.Equal(t, "then getter", v.Get("message").String())
-	} else {
-		// The session never reaches the getter, so the create resolves
-		// and the caller owns a session it can dispose.
-		assert.True(t, v.Get("then").IsUndefined(), "session object carries its own then")
-		v.Call("dispose")
+	require.False(t, rejected, "the session never reaches the getter, so the create resolves: %v", v)
+	assert.True(t, object.Call("hasOwn", v, "then").Bool(), "session object carries its own then")
+	v.Call("dispose")
+	assert.Equal(t, before, sessions, "sessions after the create and dispose")
+	require.NotEmpty(t, *made, "the create registered its executor func")
+	for _, f := range *made {
+		assert.True(t, slices.ContainsFunc(*released, f.Equal), "every func the create registered is released")
 	}
-	assert.Len(t, sessions, baseSessions, "sessions after the create")
-	assert.Len(t, live, baseFuncs, "live funcs after the create")
+}
+
+// TestHideThen checks that hideThen gives an object an own `then` of
+// undefined that is non-enumerable, non-writable, and non-configurable,
+// even while a page has put descriptor fields on Object.prototype: a
+// callable `get`, which a descriptor with the usual prototype inherits
+// and defineProperty rejects beside `value`, and `enumerable: true`,
+// which would put `then` in Object.keys. Not parallel: it patches
+// Object.prototype, only around the hideThen call.
+func TestHideThen(t *testing.T) {
+	sharedMethods()
+	object := js.Global().Get("Object")
+	objectProto := object.Get("prototype")
+	o := object.New()
+	require.NotPanics(t, func() {
+		defer objectProto.Delete("get")
+		defer objectProto.Delete("enumerable")
+		objectProto.Set("get", js.Global().Get("Function").New())
+		objectProto.Set("enumerable", true)
+		hideThen(o)
+	}, "a polluted Object.prototype does not make defineProperty throw")
+	d := object.Call("getOwnPropertyDescriptor", o, "then")
+	require.Equal(t, js.TypeObject, d.Type(), "then is an own property")
+	assert.True(t, d.Get("value").IsUndefined(), "then is undefined")
+	assert.False(t, d.Get("enumerable").Bool(), "then is not enumerable")
+	assert.False(t, d.Get("writable").Bool(), "then is read-only")
+	assert.False(t, d.Get("configurable").Bool(), "then is not configurable")
+	assert.Zero(t, object.Call("keys", o).Length(), "then is not in Object.keys")
+}
+
+// TestHideThen_IgnoresDefinePropertyReplacedAfterLoad checks that
+// hideThen uses the Object.defineProperty captured when the engine
+// loads: a script that replaces it afterwards with a no-op neither turns
+// the fix off nor receives the session object. Not parallel: it patches
+// Object.defineProperty, only around the hideThen call.
+func TestHideThen_IgnoresDefinePropertyReplacedAfterLoad(t *testing.T) {
+	sharedMethods()
+	object := js.Global().Get("Object")
+	orig := object.Get("defineProperty")
+	o := object.New()
+	var seen []js.Value
+	spy := js.FuncOf(func(_ js.Value, args []js.Value) any {
+		seen = append(seen, args...)
+		return nil
+	})
+	defer spy.Release()
+	func() {
+		defer object.Set("defineProperty", orig)
+		object.Set("defineProperty", spy)
+		hideThen(o)
+	}()
+	assert.Empty(t, seen, "the replacement defineProperty is never called")
+	assert.True(t, object.Call("hasOwn", o, "then").Bool(), "then is still an own property")
+}
+
+// TestNewThenHider checks that newThenHider returns the defineProperty
+// of the object it is given and a descriptor with a null prototype whose
+// only own key is value, set to undefined.
+func TestNewThenHider(t *testing.T) {
+	object := js.Global().Get("Object")
+	define, desc := newThenHider(object)
+	assert.True(t, define.Equal(object.Get("defineProperty")), "define is Object.defineProperty")
+	assert.True(t, object.Call("getPrototypeOf", desc).IsNull(), "desc has a null prototype")
+	keys := object.Call("getOwnPropertyNames", desc)
+	require.Equal(t, 1, keys.Length(), "desc has one own key")
+	assert.Equal(t, "value", keys.Index(0).String(), "desc's own key is value")
+	assert.True(t, desc.Get("value").IsUndefined(), "desc.value is undefined")
 }

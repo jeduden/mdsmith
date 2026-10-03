@@ -291,17 +291,38 @@ func registerSession(sess *mdsmith.Session) (proxy js.Value, id int64, token js.
 	return proxy, id, token
 }
 
-// hideThen gives proxy its own non-enumerable `then: undefined`. A
-// native Promise resolve reads `then` on the value it resolves with, and
-// a page-defined `then` on Object.prototype (a throwing getter) would
-// reject the create without throwing to Go, leaving the session
-// registered with no object to dispose it. An own property ends the
-// lookup before the prototype chain. defineProperty, not Set, keeps it
-// out of Object.keys and for-in. Plan 2610031253.
+// hideThen gives proxy its own `then: undefined`, non-enumerable and
+// read-only. A native Promise resolve reads `then` on the value it
+// resolves with, and a page-defined `then` on Object.prototype (a
+// throwing getter) would reject the create without throwing to Go,
+// leaving the session registered with no object to dispose it. An own
+// property ends the lookup before the prototype chain. defineProperty,
+// not Set, keeps it out of Object.keys and for-in, and adds it even
+// where Set would run an inherited `then` setter or fail on an inherited
+// getter. The descriptor has a null prototype: defineProperty reads its
+// get, set, value, writable, enumerable, and configurable fields through
+// the prototype chain, so a page's Object.prototype.get would make every
+// create throw, and its Object.prototype.enumerable would put `then` in
+// Object.keys. defineProperty and the descriptor are captured once by
+// sharedMethods, like bindTo, so a defineProperty another script
+// installs after the engine loads neither turns this off nor receives
+// the session object. Plan 2610031253.
 func hideThen(proxy js.Value) {
-	desc := js.Global().Get("Object").New()
+	thenHider.define.Invoke(proxy, "then", thenHider.desc)
+}
+
+// thenHider holds Object.defineProperty and the null-prototype
+// `{value: undefined}` descriptor hideThen passes it, both captured by
+// sharedMethods before the API is reachable. The descriptor is private
+// to the engine, so no script can change its fields.
+var thenHider struct{ define, desc js.Value }
+
+// newThenHider captures object's defineProperty and builds the
+// null-prototype `{value: undefined}` descriptor hideThen passes it.
+func newThenHider(object js.Value) (define, desc js.Value) {
+	desc = object.Call("create", js.Null())
 	desc.Set("value", js.Undefined())
-	js.Global().Get("Object").Call("defineProperty", proxy, "then", desc)
+	return object.Get("defineProperty"), desc
 }
 
 // bindMethods sets each named method on proxy to its shared func bound
@@ -593,6 +614,7 @@ func sharedMethods() map[string]js.Value {
 	sharedOnce.Do(func() {
 		proto := js.Global().Get("Function").Get("prototype")
 		bindTo = proto.Get("call").Call("bind", proto.Get("bind"))
+		thenHider.define, thenHider.desc = newThenHider(js.Global().Get("Object"))
 		sharedFuncs = make(map[string]js.Value, len(sharedMethodImpls)+1)
 		for name, impl := range sharedMethodImpls {
 			sharedFuncs[name] = funcOf(drainFirst(sharedFunc(impl))).Value
