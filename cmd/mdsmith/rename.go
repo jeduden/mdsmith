@@ -238,7 +238,12 @@ func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 		})
 		return idx
 	})
-	return cliRenameWorkspace{IndexEdges: refactor.IndexEdges{Get: idx}, relToAbs: relToAbs, rootDir: rootDir, maxBytes: maxBytes}, -1
+	return cliRenameWorkspace{
+		IndexEdges: refactor.IndexEdges{Get: idx},
+		relToAbs:   relToAbs,
+		rootDir:    rootDir,
+		maxBytes:   maxBytes,
+	}, -1
 }
 
 // computeRenamePlan runs the shared refactor.Rename dispatch — kind
