@@ -1305,6 +1305,57 @@ func TestCreateSession_ResolveThrowRegistersNoSession(t *testing.T) {
 	assert.Equal(t, js.TypeObject, (*unregistered)[0].Type(), "with its token")
 }
 
+// TestCreateSession_ReentrantResolveThrowFreesItsOwnSession replaces
+// Promise with a constructor whose resolve, on its first call, runs the
+// executor again, which registers and resolves a second session, and
+// then throws. The first run's guard must free the first session, the
+// one whose resolve threw, and leave the second one live. Not parallel:
+// it swaps globalThis.Promise.
+func TestCreateSession_ReentrantResolveThrowFreesItsOwnSession(t *testing.T) {
+	sharedMethods()
+	swapPromise(t, js.Global().Get("Function").New(`executor`,
+		`var self = this, calls = 0;
+		executor(function () {
+			if (calls++ > 0) return;
+			executor(function (inner) { self.inner = inner; }, function () {});
+			throw new TypeError("outer resolve");
+		}, function (e) { self.rejection = e; });`))
+	before := maps.Clone(sessions)
+	opts := js.ValueOf(map[string]any{})
+	p := jsValue(t, createSession(js.Undefined(), []js.Value{opts}))
+	require.True(t, p.Get("rejection").InstanceOf(js.Global().Get("TypeError")),
+		"create rejects with the outer resolve's error")
+	inner := p.Get("inner")
+	require.Equal(t, js.TypeObject, inner.Type(), "the nested run resolved a session")
+	defer inner.Call("dispose")
+	assert.Positive(t, inner.Call("capabilities").Length(), "the nested run's session stays live")
+	assert.Len(t, sessions, len(before)+1, "only the nested run's session stays registered")
+}
+
+// TestCreateSession_CtorThrowAfterReentrantExecutorFreesEverySession
+// replaces Promise with a constructor whose resolve runs the executor
+// again (the handler is released only after its outer run returns), so
+// two sessions are registered, and then throws. Neither session object
+// reaches the caller, so both must be freed, not only the last one.
+// Not parallel: it swaps globalThis.Promise.
+func TestCreateSession_CtorThrowAfterReentrantExecutorFreesEverySession(t *testing.T) {
+	sharedMethods()
+	unregistered := recordUnregister(t)
+	swapPromise(t, js.Global().Get("Function").New(`executor`,
+		`var calls = 0;
+		executor(function () {
+			if (calls++ > 0) return;
+			executor(function () {}, function () {});
+		}, function () {});
+		throw new TypeError("after");`))
+	before := maps.Clone(sessions)
+	opts := js.ValueOf(map[string]any{})
+	v := jsValue(t, createSession(js.Undefined(), []js.Value{opts}))
+	assert.True(t, v.IsUndefined(), "a failed Promise construction yields undefined")
+	assert.Equal(t, before, sessions, "neither session is left registered")
+	assert.Len(t, *unregistered, 2, "both sessions' finalizer entries are cancelled")
+}
+
 // TestCreateSession_CtorThrowAfterExecutorRegistersNoSession replaces
 // Promise with a constructor that runs the executor, so the session is
 // registered and resolve returns, and then throws. createSession returns

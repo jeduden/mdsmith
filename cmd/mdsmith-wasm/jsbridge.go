@@ -129,20 +129,16 @@ func toJS(v any) js.Value {
 // recoverJS. TinyGo does not implement recover() on WebAssembly, so in
 // a TinyGo build the exception still ends the program.
 func rejectOnJSError(reject func(any)) {
-	switch r := recover().(type) {
-	case nil:
+	r := recover()
+	if r == nil {
+		return
+	}
+	repanicUnlessJS(r)
+	switch e := r.(type) {
 	case js.Error:
-		if escapedCallback() {
-			panic(r)
-		}
-		reject(r.Value)
+		reject(e.Value)
 	case *js.ValueError:
-		if escapedCallback() {
-			panic(r)
-		}
-		reject(jsError(r.Error()))
-	default:
-		panic(r)
+		reject(jsError(e.Error()))
 	}
 }
 

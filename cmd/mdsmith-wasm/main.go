@@ -126,10 +126,13 @@ func resolveVersion() string {
 // returning factory keeps the JS API ergonomic. exposeAPI registers it
 // through drainFirst.
 func createSession(_ js.Value, args []js.Value) any {
-	// The session the executor registered: ids start at 1, and token is
-	// undefined until then.
-	var id int64
-	var token js.Value
+	// Every session the executor registered. A patched Promise can run
+	// the executor more than once, so this is a list, not one id.
+	type registered struct {
+		id    int64
+		token js.Value
+	}
+	var created []registered
 	p := newPromise(func(resolve, reject func(any)) {
 		if len(args) < 1 || !isRecord(args[0]) {
 			reject(jsError("createSession requires an options object"))
@@ -165,27 +168,31 @@ func createSession(_ js.Value, args []js.Value) any {
 			reject(jsError(err.Error()))
 			return
 		}
-		var proxy js.Value
-		proxy, id, token = registerSession(sess)
+		proxy, sid, tok := registerSession(sess)
+		created = append(created, registered{sid, tok})
 		// A resolve that throws (a patched Promise) rejects the create
 		// through newPromise's guard; the proxy never reaches the caller,
-		// so free the session it registered before that guard runs.
+		// so free the session it registered before that guard runs. It
+		// frees this run's own session: a patched resolve can run the
+		// executor again and register another one.
 		resolved := false
 		defer func() {
 			if !resolved {
-				releaseSession(id, token)
+				releaseSession(sid, tok)
 			}
 		}()
 		resolve(proxy)
 		resolved = true
 	})
 	// A Promise constructor that ran the executor and then threw makes
-	// newPromise return undefined: the session object reached only the
-	// constructor's resolve, never the caller, so free the session too.
-	// id 0 is never handed out, so a create that registered nothing
-	// disposes nothing.
+	// newPromise return undefined: the session objects reached only the
+	// constructor's resolve, never the caller, so free every session it
+	// registered. releaseSession is idempotent, so one the executor's own
+	// defer already freed is freed again harmlessly.
 	if p.IsUndefined() {
-		releaseSession(id, token)
+		for _, c := range created {
+			releaseSession(c.id, c.token)
+		}
 	}
 	return p
 }
@@ -628,15 +635,9 @@ func bindFinalizer(ctor js.Value) (f sessionFinalizer) {
 // a JS-to-Go callback (escapedCallback): Go cannot resume below a
 // callback whose JS caller is still on the wasm stack.
 func recoverJS(onJS func()) {
-	switch r := recover(); r.(type) {
-	case nil:
-	case js.Error, *js.ValueError:
-		if escapedCallback() {
-			panic(r)
-		}
+	if r := recover(); r != nil {
+		repanicUnlessJS(r)
 		onJS()
-	default:
-		panic(r)
 	}
 }
 

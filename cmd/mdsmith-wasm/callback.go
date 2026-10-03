@@ -65,3 +65,20 @@ func handleEventFrames() int {
 func escapedCallback() bool {
 	return handleEventFrames() > activeCallbacks
 }
+
+// repanicUnlessJS re-raises r, a value a deferred func recovered,
+// unless it is a JS-side failure Go may resume after: a js.Error (a JS
+// exception from Call, Invoke, or New) or a *js.ValueError (a Value
+// method on the wrong type, such as Get on undefined) that did not
+// unwind out of a JS-to-Go callback (escapedCallback). recoverJS and
+// rejectOnJSError both classify through it, so the two guards always
+// recover the same panics.
+func repanicUnlessJS(r any) {
+	switch r.(type) {
+	case js.Error, *js.ValueError:
+		if !escapedCallback() {
+			return
+		}
+	}
+	panic(r)
+}
