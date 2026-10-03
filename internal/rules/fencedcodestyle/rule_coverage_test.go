@@ -43,9 +43,8 @@ func TestFix_EmptyTildeBlockAfterParagraph(t *testing.T) {
 // Real goldmark output never produces a FencedCodeBlock without a
 // matching `` ``` `` or `~~~` marker in the source, but Check and Fix
 // keep defensive guards anyway. The tests below append synthetic
-// FencedCodeBlocks to an otherwise-empty document so the walker
-// reaches the guards and exercises both `openStart >= len(src)` and
-// `fenceChar == 0` paths.
+// FencedCodeBlocks without a parser position, so fencepos.OpenRun
+// reads no fence run and the walker reaches the `fenceChar == 0` guard.
 
 func newFileWithSyntheticFCB(t *testing.T, src []byte, fcb *ast.FencedCodeBlock) *lint.File {
 	t.Helper()
@@ -56,11 +55,9 @@ func newFileWithSyntheticFCB(t *testing.T, src []byte, fcb *ast.FencedCodeBlock)
 }
 
 func TestCheck_SyntheticFCB_OpenStartPastSource(t *testing.T) {
-	// Source has no fence. The synthetic FCB has no Info, no Lines, and
-	// no previous sibling (the document is empty), so OpenLineRange
-	// scans from position 0 and returns the (len(src), len(src))
-	// sentinel. Check must hit the `openStart >= len(src)` guard and
-	// skip the block silently.
+	// Source has no fence and the synthetic FCB has no position, so
+	// OpenLineRange returns the (len(src), len(src)) sentinel and
+	// OpenRun reads no run. Check skips the block silently.
 	fcb := ast.NewFencedCodeBlock(nil)
 	f := newFileWithSyntheticFCB(t, []byte(""), fcb)
 	r := &Rule{Style: "backtick"}
@@ -68,9 +65,8 @@ func TestCheck_SyntheticFCB_OpenStartPastSource(t *testing.T) {
 }
 
 func TestCheck_SyntheticFCB_NonFenceFirstChar(t *testing.T) {
-	// Info points at non-fence content, so OpenLineRange returns a
-	// valid range but CharAt(src, openStart) reads a non-fence byte
-	// and returns 0. Check must hit the `fenceChar == 0` guard.
+	// A hand-built node has no parser position, so fencepos.OpenRun
+	// reads no fence run. Check must hit the `fenceChar == 0` guard.
 	src := []byte("hello\n")
 	info := ast.NewText()
 	info.Segment = text.NewSegment(0, 5)

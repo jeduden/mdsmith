@@ -9,40 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// --- CharAt coverage ---
-
-func TestCharAt_Backtick(t *testing.T) {
-	src := []byte("```go\n")
-	assert.Equal(t, byte('`'), CharAt(src, 0))
-}
-
-func TestCharAt_Tilde(t *testing.T) {
-	src := []byte("~~~go\n")
-	assert.Equal(t, byte('~'), CharAt(src, 0))
-}
-
-func TestCharAt_LeadingSpaces(t *testing.T) {
-	src := []byte("   ```go\n")
-	assert.Equal(t, byte('`'), CharAt(src, 0))
-}
-
-func TestCharAt_NotFenceChar(t *testing.T) {
-	src := []byte("not a fence\n")
-	assert.Equal(t, byte(0), CharAt(src, 0))
-}
-
-func TestCharAt_PastEnd(t *testing.T) {
-	src := []byte("   ")
-	assert.Equal(t, byte(0), CharAt(src, 0))
-}
-
-func TestCharAt_EmptySource(t *testing.T) {
-	src := []byte("")
-	assert.Equal(t, byte(0), CharAt(src, 0))
-}
-
-// --- OpenLine coverage ---
-
 func TestOpenLine(t *testing.T) {
 	src := []byte("# Title\n\n```go\ncode\n```\n")
 	f, err := lint.NewFile("test.md", src)
@@ -229,67 +195,6 @@ func TestRanges_TildeFence(t *testing.T) {
 	})
 }
 
-// --- lastByteOfNodeStop coverage ---
-
-func TestLastByteOfNodeStop_Paragraph(t *testing.T) {
-	src := []byte("paragraph text\n\n```\ncode\n```\n")
-	f, err := lint.NewFile("test.md", src)
-	require.NoError(t, err)
-
-	// Find the paragraph node
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		if _, ok := n.(*ast.Paragraph); ok {
-			stop := lastByteOfNodeStop(f.Source, n)
-			assert.Greater(t, stop, 0, "paragraph should have non-zero stop")
-			return ast.WalkStop, nil
-		}
-		return ast.WalkContinue, nil
-	})
-}
-
-func TestLastByteOfNodeStop_NoLines(t *testing.T) {
-	// A node with no Lines() should return 0
-	heading := ast.NewHeading(1)
-	result := lastByteOfNodeStop([]byte("# test\n"), heading)
-	assert.Equal(t, 0, result)
-}
-
-// --- OpenLineRange: synthetic block with no fence in source ---
-
-func TestOpenLineRange_NoFenceFound_ReturnsEndSentinel(t *testing.T) {
-	// Synthetic FencedCodeBlock with Info=nil, no Lines, and no parent
-	// (so PreviousSibling is nil and searchStart starts at 0). The src
-	// contains no fence characters anywhere, so the scan loop exhausts
-	// the source and returns the (len(src), len(src)) sentinel.
-	//
-	// Two src shapes exercise the two loop-exit branches: trailing
-	// newline lets the for-condition fail naturally; no trailing
-	// newline forces the `lineEnd >= len(src)` break.
-	for _, src := range [][]byte{
-		[]byte("paragraph line one\nparagraph line two\n"),
-		[]byte("paragraph with no trailing newline"),
-	} {
-		fcb := ast.NewFencedCodeBlock(nil)
-		start, end := OpenLineRange(src, fcb)
-		assert.Equal(t, len(src), start, "expected sentinel start at len(src)")
-		assert.Equal(t, len(src), end, "expected sentinel end at len(src)")
-	}
-}
-
-// --- OpenLineRange: synthetic block, scan terminates on empty source ---
-
-func TestOpenLineRange_EmptySource(t *testing.T) {
-	// pos == len(src) means the loop body never runs. The function
-	// falls through to the sentinel return.
-	fcb := ast.NewFencedCodeBlock(nil)
-	start, end := OpenLineRange(nil, fcb)
-	assert.Equal(t, 0, start)
-	assert.Equal(t, 0, end)
-}
-
 func TestOpenLineRange_EmptyBlockWithPreviousSibling(t *testing.T) {
 	// Empty tilde code block after a paragraph: PreviousSibling() is non-nil.
 	src := []byte("paragraph\n\n~~~\n~~~\n")
@@ -338,28 +243,27 @@ func TestOpenLineRange_InfoWithTrailingSpace(t *testing.T) {
 	})
 }
 
-// TestOpenLineRange_SkipsBacktickInfoParagraph checks the scan
-// fallback for a hand-built node with no parser position: a "```a`b"
-// line is paragraph text (CommonMark forbids a backtick in a backtick
-// fence's info string), so the scan must skip it.
-func TestOpenLineRange_SkipsBacktickInfoParagraph(t *testing.T) {
-	src := []byte("```a`b\n```\n")
+// TestOpenLineRange_NoPositionReturnsEndSentinel checks a node the
+// parser did not build: with no position inside src there is no
+// opening line to report, so OpenLineRange returns the
+// (len(src), len(src)) sentinel callers skip — even when src holds a
+// fence or Info points into it.
+func TestOpenLineRange_NoPositionReturnsEndSentinel(t *testing.T) {
+	src := []byte("text\n~~~go\n~~~\n")
 	fcb := ast.NewFencedCodeBlock(nil)
 	require.Equal(t, -1, fcb.Pos(), "a hand-built node has no position")
 	start, end := OpenLineRange(src, fcb)
-	assert.Equal(t, 7, start)
-	assert.Equal(t, 10, end)
-}
+	assert.Equal(t, len(src), start)
+	assert.Equal(t, len(src), end)
 
-// TestOpenLineRange_PosPastEndFallsBackToScan checks that a position
-// outside src is ignored in favour of the scan.
-func TestOpenLineRange_PosPastEndFallsBackToScan(t *testing.T) {
-	src := []byte("text\n~~~\n")
-	fcb := ast.NewFencedCodeBlock(nil)
 	fcb.SetPos(len(src))
-	start, end := OpenLineRange(src, fcb)
-	assert.Equal(t, 5, start)
-	assert.Equal(t, 8, end)
+	start, end = OpenLineRange(src, fcb)
+	assert.Equal(t, len(src), start, "a position past src is ignored")
+	assert.Equal(t, len(src), end)
+
+	start, end = OpenLineRange(nil, ast.NewFencedCodeBlock(nil))
+	assert.Equal(t, 0, start)
+	assert.Equal(t, 0, end)
 }
 
 func TestLineAround(t *testing.T) {
@@ -373,15 +277,6 @@ func TestLineAround(t *testing.T) {
 	start, end = lineAround(src, 7)
 	assert.Equal(t, 7, start)
 	assert.Equal(t, 8, end)
-}
-
-func TestIsFenceOpenLine(t *testing.T) {
-	assert.True(t, isFenceOpenLine([]byte("```")))
-	assert.True(t, isFenceOpenLine([]byte("````go")))
-	assert.True(t, isFenceOpenLine([]byte("~~~a`b")), "tilde info may hold a backtick")
-	assert.False(t, isFenceOpenLine([]byte("```a`b")))
-	assert.False(t, isFenceOpenLine([]byte("``x")))
-	assert.False(t, isFenceOpenLine([]byte("text")))
 }
 
 // emptyFenceOpenLines returns the 1-based opener line of every empty,

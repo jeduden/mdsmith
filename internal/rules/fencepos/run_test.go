@@ -50,18 +50,17 @@ func TestOpenRun(t *testing.T) {
 	}
 }
 
-// TestOpenRun_HandBuilt falls back to the opening line when the node
-// carries no parser position.
-func TestOpenRun_HandBuilt(t *testing.T) {
-	src := []byte("  ~~~go\nx\n~~~\n")
-	fcb := ast.NewFencedCodeBlock(nil)
-	start, n, ch := OpenRun(src, fcb)
-	assert.Equal(t, 2, start)
-	assert.Equal(t, 3, n)
-	assert.Equal(t, byte('~'), ch)
-
-	start, n, ch = OpenRun([]byte("text\n"), ast.NewFencedCodeBlock(nil))
+// TestOpenRun_NoRun returns no run for a node without a position and
+// for a positioned line that does not open with a fence character.
+func TestOpenRun_NoRun(t *testing.T) {
+	start, n, ch := OpenRun([]byte("  ~~~go\nx\n~~~\n"), ast.NewFencedCodeBlock(nil))
+	assert.Equal(t, 0, n)
+	assert.Equal(t, byte(0), ch)
 	assert.Equal(t, 0, start)
+
+	fcb := ast.NewFencedCodeBlock(nil)
+	fcb.SetPos(0)
+	_, n, ch = OpenRun([]byte("text\n"), fcb)
 	assert.Equal(t, 0, n)
 	assert.Equal(t, byte(0), ch)
 }

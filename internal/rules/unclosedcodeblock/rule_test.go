@@ -202,8 +202,8 @@ func TestHasClosingFence_OpenStartPastSource(t *testing.T) {
 }
 
 func TestHasClosingFence_NonFenceFirstChar(t *testing.T) {
-	// Info points at a non-fence line so OpenLineRange returns a valid
-	// range but CharAt reads a non-fence byte and returns 0.
+	// A hand-built node has no parser position, so fencepos.OpenRun
+	// reads no fence run and the block is never flagged.
 	src := []byte("hello\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
@@ -218,9 +218,9 @@ func TestHasClosingFence_NonFenceFirstChar(t *testing.T) {
 func TestHasClosingFence_ClosingLineEmpty(t *testing.T) {
 	// Synthetic fcb whose content's last segment stops at a newline.
 	// CloseLineRange then returns (closeStart, closeStart) — a
-	// zero-width line in the middle of the source. hasClosingFence
-	// must hit the `closeStart == closeEnd` guard and report the
-	// block as unclosed.
+	// zero-width line in the middle of the source. fencepos.CloseRun
+	// finds no fence run on it, so hasClosingFence reports the block
+	// as unclosed.
 	//
 	// Source layout (byte offsets in parens):
 	//   ```\n      (0..3)
@@ -233,6 +233,7 @@ func TestHasClosingFence_ClosingLineEmpty(t *testing.T) {
 	require.NoError(t, err)
 
 	fcb := ast.NewFencedCodeBlock(nil)
+	fcb.SetPos(0) // the opener line, as the parser would record it
 	segs := text.NewSegments()
 	segs.Append(text.NewSegment(4, 10)) // covers "hello\n"
 	fcb.SetLines(segs)
@@ -242,7 +243,7 @@ func TestHasClosingFence_ClosingLineEmpty(t *testing.T) {
 	diags := r.Check(f)
 	// Two diagnostics: one from the real `` ``` `` fcb that goldmark
 	// also parses (and is genuinely unclosed) and one from the
-	// synthetic fcb that exercises the `closeStart == closeEnd` guard.
+	// synthetic fcb whose candidate closer line is empty.
 	require.NotEmpty(t, diags)
 	for _, d := range diags {
 		assert.Equal(t, "unclosed fenced code block", d.Message)
