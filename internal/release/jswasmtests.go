@@ -419,6 +419,9 @@ type testJSONWriter struct {
 // unmasked returns passed without the names that also skipped. go test
 // reports a TestX of the internal and of the external test package
 // under the same name, so one's pass must not hide the other's skip.
+// The stream cannot tell the two apart, so a shared test's skip also
+// drops a same-named js/wasm-only test's pass: the gate errs toward
+// failing.
 func (w *testJSONWriter) unmasked() []string {
 	var out []string
 	for _, n := range w.passed {

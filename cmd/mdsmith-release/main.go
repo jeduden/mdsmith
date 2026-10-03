@@ -84,7 +84,8 @@ Commands:
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
   merge-coverage -o <out> <p>...  Merge coverage profiles by summing hit counts.
   test-summary                    Tally unit/integration/e2e tests from a go test -json stream on stdin.
-  test-js-wasm [--all] <pkg>      Run <pkg>'s js/wasm-only tests under Node; fail unless all pass.
+  test-js-wasm [--all [--require-js-only]] <pkg>
+                                  Run <pkg>'s js/wasm-only tests under Node; fail unless all pass.
                                   --all runs every test and fails on any failure, no pass,
                                   or a js/wasm-only test that skips; --require-js-only
                                   also fails when <pkg> has no js/wasm-only test.
