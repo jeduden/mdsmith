@@ -850,7 +850,7 @@ func TestBigIntArgs(t *testing.T) {
 func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
 	proxy := js.Global().Get("Object").New()
 	require.NotPanics(t, func() {
-		bindMethods(proxy, []string{"check", "missing"}, sharedMethods(), -1, js.Undefined())
+		bindMethods(proxy, newMethodKeys([]string{"check", "missing"}), sharedMethods(), -1, js.Undefined())
 	})
 	assert.Equal(t, js.TypeFunction, proxy.Get("check").Type())
 	assert.False(t, proxy.Call("hasOwnProperty", "missing").Bool())
@@ -1608,4 +1608,393 @@ func TestSyncMethodJSException_ReturnsUndefined(t *testing.T) {
 			disposed: disposedUndefined,
 		}))(js.Undefined(), []js.Value{js.ValueOf(id)})
 	}, "a Go panic is re-raised")
+}
+
+// TestCreateSession_ThrowingThenGetterFreesSession defines a throwing
+// `then` getter on Object.prototype. A native Promise resolve reads
+// `then` on the session object and rejects the create with the thrown
+// error without throwing to Go, so the session must never reach that
+// lookup: the create resolves, and once the caller disposes the session
+// sessions is as it was and every func the create registered is
+// released. Not parallel: it swaps package seams and patches
+// Object.prototype.
+func TestCreateSession_ThrowingThenGetterFreesSession(t *testing.T) {
+	// Warm-up registers the shared method funcs before recording starts.
+	newTestProxy(t).Call("dispose")
+	made := recordFuncs(t)
+	released := recordReleases(t)
+	before := maps.Clone(sessions)
+
+	object := js.Global().Get("Object")
+	objectProto := object.Get("prototype")
+	getter := js.Global().Get("Function").New("throw new Error('then getter')")
+	desc := object.New()
+	desc.Set("get", getter)
+	desc.Set("configurable", true)
+	object.Call("defineProperty", objectProto, "then", desc)
+	defer objectProto.Delete("then")
+
+	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{js.ValueOf(map[string]any{})})))
+	require.False(t, rejected, "the session never reaches the getter, so the create resolves: %v", v)
+	assert.True(t, object.Call("hasOwn", v, "then").Bool(), "session object carries its own then")
+	v.Call("dispose")
+	assert.Equal(t, before, sessions, "sessions after the create and dispose")
+	require.NotEmpty(t, *made, "the create registered its executor func")
+	for _, f := range *made {
+		assert.True(t, slices.ContainsFunc(*released, f.Equal), "every func the create registered is released")
+	}
+}
+
+// TestExposeAPI_HidesThen defines a throwing `then` getter on
+// Object.prototype and resolves a Promise with the mdsmith global, as a
+// host's async engine load does when it returns the factory. The global
+// carries its own non-enumerable `then`, so the resolve never reaches
+// the getter, and Object.keys still lists only the API. Not parallel: it
+// swaps apiFuncs and patches Object.prototype.
+func TestExposeAPI_HidesThen(t *testing.T) {
+	sharedMethods()
+	old := apiFuncs
+	t.Cleanup(func() { apiFuncs = old })
+	apiFuncs = map[string]func(js.Value, []js.Value) any{}
+	api := exposeAPI()
+	object := js.Global().Get("Object")
+	keys := object.Call("keys", api)
+	require.Equal(t, 1, keys.Length(), "Object.keys lists only version")
+	assert.Equal(t, "version", keys.Index(0).String())
+
+	objectProto := object.Get("prototype")
+	desc := object.New()
+	desc.Set("get", js.Global().Get("Function").New("throw new Error('then getter')"))
+	desc.Set("configurable", true)
+	object.Call("defineProperty", objectProto, "then", desc)
+	defer objectProto.Delete("then")
+
+	v, rejected := awaitPromise(t, js.Global().Get("Promise").Call("resolve", api))
+	require.False(t, rejected, "resolving with the API object never reads the getter: %v", v)
+	assert.True(t, v.Equal(api), "the Promise resolves to the API object")
+}
+
+// TestExposeAPI_SurvivesFailedThenHider builds the mdsmith global with a
+// then-hider whose load-time capture failed (captureGlobals left it
+// zero) and with a captured defineProperty that throws, as one patched
+// before load would be. main registers the global from exposeAPI, so a
+// throw there would stop the engine from loading at all; the global
+// comes back without its own `then` instead, and every create rejects at
+// its own hideThen. Not parallel: it swaps apiFuncs, thenHider, and
+// defineProperty.
+func TestExposeAPI_SurvivesFailedThenHider(t *testing.T) {
+	sharedMethods()
+	saved := saveCaptures()
+	oldFuncs := apiFuncs
+	t.Cleanup(func() { apiFuncs = oldFuncs; saved.restore() })
+	apiFuncs = map[string]func(js.Value, []js.Value) any{}
+	throwing := js.Global().Get("Function").New("throw new TypeError('defineProperty')")
+	for name, c := range map[string]struct {
+		h      thenHiderValues
+		define js.Value
+	}{
+		"capture failed": {define: saved.defineProperty},
+		"define throws":  {h: saved.thenHider, define: throwing},
+	} {
+		t.Run(name, func(t *testing.T) {
+			thenHider, defineProperty = c.h, c.define
+			var api js.Value
+			require.NotPanics(t, func() { api = exposeAPI() }, "a failed then-hider does not stop the load")
+			assert.Equal(t, resolveVersion(), api.Get("version").String(), "the global is still built")
+		})
+	}
+}
+
+// TestHideThen checks that hideThen gives an object an own `then` of
+// undefined that is non-enumerable, non-writable, and non-configurable,
+// even while a page has put descriptor fields on Object.prototype: a
+// callable `get`, which a descriptor with the usual prototype inherits
+// and defineProperty rejects beside `value`, and `enumerable: true`,
+// which would put `then` in Object.keys. Not parallel: it patches
+// Object.prototype, only around the hideThen call.
+func TestHideThen(t *testing.T) {
+	sharedMethods()
+	object := js.Global().Get("Object")
+	objectProto := object.Get("prototype")
+	o := object.New()
+	require.NotPanics(t, func() {
+		defer objectProto.Delete("get")
+		defer objectProto.Delete("enumerable")
+		objectProto.Set("get", js.Global().Get("Function").New())
+		objectProto.Set("enumerable", true)
+		hideThen(o)
+	}, "a polluted Object.prototype does not make defineProperty throw")
+	d := object.Call("getOwnPropertyDescriptor", o, "then")
+	require.Equal(t, js.TypeObject, d.Type(), "then is an own property")
+	assert.True(t, d.Get("value").IsUndefined(), "then is undefined")
+	assert.False(t, d.Get("enumerable").Bool(), "then is not enumerable")
+	assert.False(t, d.Get("writable").Bool(), "then is read-only")
+	assert.False(t, d.Get("configurable").Bool(), "then is not configurable")
+	assert.Zero(t, object.Call("keys", o).Length(), "then is not in Object.keys")
+}
+
+// TestHideThen_IgnoresDefinePropertyReplacedAfterLoad checks that
+// hideThen uses the Object.defineProperty captured when the engine
+// loads: a script that replaces it afterwards with a no-op neither turns
+// the fix off nor receives the session object. Not parallel: it patches
+// Object.defineProperty, only around the hideThen call.
+func TestHideThen_IgnoresDefinePropertyReplacedAfterLoad(t *testing.T) {
+	sharedMethods()
+	object := js.Global().Get("Object")
+	orig := object.Get("defineProperty")
+	o := object.New()
+	var seen []js.Value
+	spy := js.FuncOf(func(_ js.Value, args []js.Value) any {
+		seen = append(seen, args...)
+		return nil
+	})
+	defer spy.Release()
+	func() {
+		defer object.Set("defineProperty", orig)
+		object.Set("defineProperty", spy)
+		hideThen(o)
+	}()
+	assert.Empty(t, seen, "the replacement defineProperty is never called")
+	assert.True(t, object.Call("hasOwn", o, "then").Bool(), "then is still an own property")
+}
+
+// TestNewThenHider checks that newThenHider returns the JS string
+// "then" (converted once, not on every create) and a frozen descriptor
+// with a null prototype whose only own key is value, set to undefined.
+// Frozen, a script that sees it (a patched Reflect.apply, on any create)
+// cannot change the `then` of the sessions created after it.
+func TestNewThenHider(t *testing.T) {
+	object := js.Global().Get("Object")
+	h := newThenHider(object)
+	assert.Equal(t, js.TypeString, h.key.Type(), "key is a JS string")
+	assert.Equal(t, "then", h.key.String(), "key is then")
+	desc := h.desc
+	assert.True(t, object.Call("getPrototypeOf", desc).IsNull(), "desc has a null prototype")
+	assert.True(t, object.Call("isFrozen", desc).Bool(), "desc is frozen")
+	keys := object.Call("getOwnPropertyNames", desc)
+	require.Equal(t, 1, keys.Length(), "desc has one own key")
+	assert.Equal(t, "value", keys.Index(0).String(), "desc's own key is value")
+	assert.True(t, desc.Get("value").IsUndefined(), "desc.value is undefined")
+}
+
+// TestRegisterSession_DefineThrowRegistersNoSession swaps in a
+// defineProperty that throws, as an Object.defineProperty patched before
+// load would be captured. createSession must reject without leaving the
+// Session in sessions, where no session object would ever reach
+// dispose(). Not parallel: it swaps defineProperty.
+func TestRegisterSession_DefineThrowRegistersNoSession(t *testing.T) {
+	sharedMethods()
+	old := defineProperty
+	t.Cleanup(func() { defineProperty = old })
+	defineProperty = js.Global().Get("Function").New("throw new TypeError('defineProperty')")
+	before := maps.Clone(sessions)
+	opts := js.ValueOf(map[string]any{})
+	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
+	require.True(t, rejected, "createSession rejects when defineProperty throws")
+	assert.True(t, v.InstanceOf(js.Global().Get("TypeError")), "rejects with the thrown TypeError")
+	assert.Equal(t, before, sessions, "no session is left registered")
+}
+
+// TestRegisterSession_IgnoresObjectReplacedAfterLoad replaces
+// globalThis.Object after the engine loaded with a constructor that
+// counts its calls. registerSession builds the session object and its
+// token from the Object captured at load, so the replacement never runs:
+// it neither sees either object nor hands back one (a Proxy whose `then`
+// trap throws) that would get past hideThen. Not parallel: it patches
+// globalThis.Object, only around the create.
+func TestRegisterSession_IgnoresObjectReplacedAfterLoad(t *testing.T) {
+	// Warm-up captures the load-time globals and isRecord's toString.
+	newTestProxy(t).Call("dispose")
+	g := js.Global()
+	orig := g.Get("Object")
+	opts := js.ValueOf(map[string]any{})
+	calls := 0
+	spy := js.FuncOf(func(js.Value, []js.Value) any {
+		calls++
+		return nil
+	})
+	defer spy.Release()
+	p := func() js.Value {
+		defer g.Set("Object", orig)
+		g.Set("Object", spy)
+		return jsValue(t, createSession(js.Undefined(), []js.Value{opts}))
+	}()
+	v, rejected := awaitPromise(t, p)
+	require.False(t, rejected, "the create resolves: %v", v)
+	v.Call("dispose")
+	assert.Zero(t, calls, "the replacement Object never runs")
+}
+
+// TestRegisterSession_MethodsIgnoreInheritedAccessors puts an accessor
+// named dispose and a read-only value named check on Object.prototype.
+// A plain Set would run the setter (handing it the session's bound
+// dispose) or fail silently on the read-only one, leaving the session
+// without either method. bindMethods defines each method as an own
+// property instead, so the session keeps every method, the setter never
+// runs, and Object.keys still lists them in sessionMethodNames order.
+// Not parallel: it patches Object.prototype.
+func TestRegisterSession_MethodsIgnoreInheritedAccessors(t *testing.T) {
+	newTestProxy(t).Call("dispose")
+	object := js.Global().Get("Object")
+	objectProto := object.Get("prototype")
+	calls := 0
+	setter := js.FuncOf(func(js.Value, []js.Value) any {
+		calls++
+		return nil
+	})
+	defer setter.Release()
+	acc := object.New()
+	acc.Set("set", setter)
+	acc.Set("configurable", true)
+	object.Call("defineProperty", objectProto, "dispose", acc)
+	defer objectProto.Delete("dispose")
+	ro := object.New()
+	ro.Set("value", 1)
+	ro.Set("configurable", true)
+	object.Call("defineProperty", objectProto, "check", ro)
+	defer objectProto.Delete("check")
+
+	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{js.ValueOf(map[string]any{})})))
+	require.False(t, rejected, "the create resolves: %v", v)
+	assert.Zero(t, calls, "the inherited dispose setter never runs")
+	for _, name := range []string{"dispose", "check"} {
+		require.True(t, object.Call("hasOwn", v, name).Bool(), "%s is an own property", name)
+		assert.Equal(t, js.TypeFunction, v.Get(name).Type(), "%s is the bound method", name)
+	}
+	d := object.Call("getOwnPropertyDescriptor", v, "check")
+	assert.True(t, d.Get("writable").Bool(), "a method stays writable")
+	assert.True(t, d.Get("enumerable").Bool(), "a method stays enumerable")
+	assert.True(t, d.Get("configurable").Bool(), "a method stays configurable")
+	keys := object.Call("keys", v)
+	names := sessionMethodNames()
+	require.Equal(t, len(names), keys.Length())
+	for i, name := range names {
+		assert.Equal(t, name, keys.Index(i).String(), "Object.keys order")
+	}
+	before := len(sessions)
+	v.Call("dispose")
+	assert.Equal(t, before-1, len(sessions), "dispose frees the session")
+}
+
+// TestWorkspaceFromJS_IgnoresObjectPatchedAfterLoad replaces
+// Object.keys and Object.prototype.toString, then globalThis.Object
+// itself, after the engine loaded. workspaceFromJS and isRecord use the
+// functions captured at load, so neither replacement runs or sees the
+// workspace, and the workspace still converts. Not parallel: it patches
+// globalThis.Object.
+func TestWorkspaceFromJS_IgnoresObjectPatchedAfterLoad(t *testing.T) {
+	sharedMethods()
+	g := js.Global()
+	object := g.Get("Object")
+	objectProto := object.Get("prototype")
+	origKeys, origToString := object.Get("keys"), objectProto.Get("toString")
+	calls := 0
+	spy := js.FuncOf(func(js.Value, []js.Value) any {
+		calls++
+		return nil
+	})
+	defer spy.Release()
+	ws := js.ValueOf(map[string]any{"a.md": "# A\n"})
+	want := map[string][]byte{"a.md": []byte("# A\n")}
+
+	got := func() map[string][]byte {
+		defer object.Set("keys", origKeys)
+		defer objectProto.Set("toString", origToString)
+		object.Set("keys", spy)
+		objectProto.Set("toString", spy)
+		return workspaceFromJS(ws)
+	}()
+	assert.Equal(t, want, got, "Object.keys and toString patched")
+
+	got = func() map[string][]byte {
+		defer g.Set("Object", object)
+		g.Set("Object", spy)
+		return workspaceFromJS(ws)
+	}()
+	assert.Equal(t, want, got, "globalThis.Object replaced")
+	assert.Zero(t, calls, "no replacement runs")
+}
+
+// TestCaptureGlobals_SurvivesThrowingCaptures runs captureGlobals
+// against globals patched before load to throw: an Object.freeze that
+// throws (newThenHider) and a Function.prototype.call whose bind throws
+// (bindTo, and isRecord's tag function bound through it). A throw at
+// load would stop the engine from registering globalThis.mdsmith, so
+// each failed capture is left undefined instead, and the create that
+// needs it rejects without registering a session. Not parallel: it
+// swaps the load-time captures.
+func TestCaptureGlobals_SurvivesThrowingCaptures(t *testing.T) {
+	sharedMethods()
+	saved := saveCaptures()
+	t.Cleanup(saved.restore)
+	fake := js.Global().Get("Function").New(`
+		const o = {
+			create: Object.create, defineProperty: Object.defineProperty,
+			keys: Object.keys, prototype: Object.prototype,
+			freeze() { throw new TypeError('freeze'); },
+		};
+		const throwingBind = { bind() { throw new TypeError('bind'); } };
+		return {
+			Object: o,
+			Function: { prototype: { call: throwingBind, bind: Function.prototype.bind } },
+		};`).Invoke()
+	require.NotPanics(t, func() { captureGlobals(fake) }, "a throwing capture does not stop the load")
+	assert.True(t, thenHider.desc.IsUndefined(), "the then-hider capture failed")
+	assert.True(t, defineProperty.Equal(js.Global().Get("Object").Get("defineProperty")),
+		"defineProperty is captured on its own, apart from the then-hider")
+	assert.True(t, bindTo.IsUndefined(), "the bind capture failed")
+	assert.True(t, recordTag.IsUndefined(), "the tag capture failed")
+	assert.True(t, objectKeys.Equal(js.Global().Get("Object").Get("keys")), "Object.keys is still captured")
+
+	before := maps.Clone(sessions)
+	opts := js.ValueOf(map[string]any{})
+	_, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
+	assert.True(t, rejected, "a create that needs a failed capture rejects")
+	assert.Equal(t, before, sessions, "no session is left registered")
+}
+
+// loadCaptures is a copy of every value captureGlobals sets, so a test
+// that reruns it can put the load-time captures back.
+type loadCaptures struct {
+	bindTo, objectCtor, objectKeys, objectCreate, recordTag js.Value
+	defineProperty, methodDesc                              js.Value
+	thenHider                                               thenHiderValues
+}
+
+func saveCaptures() loadCaptures {
+	return loadCaptures{bindTo, objectCtor, objectKeys, objectCreate, recordTag, defineProperty, methodDesc, thenHider}
+}
+
+func (c loadCaptures) restore() {
+	bindTo, objectCtor, objectKeys, objectCreate, recordTag =
+		c.bindTo, c.objectCtor, c.objectKeys, c.objectCreate, c.recordTag
+	defineProperty, methodDesc, thenHider = c.defineProperty, c.methodDesc, c.thenHider
+}
+
+// TestNewMethodKeys checks that newMethodKeys pairs each name, in order,
+// with its JS string, so bindMethods passes a key converted once at load
+// rather than converting every method name on every create.
+func TestNewMethodKeys(t *testing.T) {
+	names := sessionMethodNames()
+	keys := newMethodKeys(names)
+	require.Len(t, keys, len(names))
+	for i, name := range names {
+		assert.Equal(t, name, keys[i].name, "name order")
+		assert.Equal(t, js.TypeString, keys[i].key.Type(), "%s key is a JS string", name)
+		assert.Equal(t, name, keys[i].key.String(), "%s key text", name)
+	}
+}
+
+// TestFrozenDesc checks that frozenDesc returns a frozen object with a
+// null prototype whose own keys are exactly the ones its set func adds,
+// the shape both newThenHider and newMethodDesc build their descriptors in.
+func TestFrozenDesc(t *testing.T) {
+	object := js.Global().Get("Object")
+	d := frozenDesc(object, func(d js.Value) { d.Set("writable", true) })
+	assert.True(t, object.Call("getPrototypeOf", d).IsNull(), "null prototype")
+	assert.True(t, object.Call("isFrozen", d).Bool(), "frozen")
+	keys := object.Call("getOwnPropertyNames", d)
+	require.Equal(t, 1, keys.Length())
+	assert.Equal(t, "writable", keys.Index(0).String())
+	assert.True(t, d.Get("writable").Bool())
 }

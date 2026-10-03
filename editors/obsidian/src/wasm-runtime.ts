@@ -251,8 +251,12 @@ export async function createRuntime(
   });
   // The engine yields undefined instead of a session when a patched
   // globalThis.Promise breaks its Promise construction, since Go cannot
-  // throw to its caller. Fail here, not on the first check().
+  // throw to its caller. Fail here, not on the first check(). Anything
+  // the engine did return is disposed first: nothing else holds it.
   if (!session || typeof session.check !== "function") {
+    if (session && typeof session.dispose === "function") {
+      session.dispose();
+    }
     throw new Error(
       "mdsmith: createSession returned no session (is globalThis.Promise patched?)",
     );
@@ -283,14 +287,37 @@ async function settle<T>(method: string, result: Promise<T> | undefined): Promis
   return await result;
 }
 
+// HIDDEN_THEN is the descriptor SessionRuntime defines its own `then`
+// with: `{value: undefined}` on a null prototype, so a page's
+// Object.prototype.get or .enumerable cannot reach defineProperty, and
+// frozen so nothing can change it between instances.
+const HIDDEN_THEN: PropertyDescriptor = Object.freeze(
+  Object.assign(Object.create(null) as PropertyDescriptor, { value: undefined }),
+);
+
+// defineProperty is Object.defineProperty as this module loads, as the
+// engine captures its own at load. A replacement another script installs
+// later neither receives a SessionRuntime, which holds the engine
+// session, nor throws from its constructor, which would reject
+// createRuntime and leave that session undisposed.
+const defineProperty = Object.defineProperty;
+
 // SessionRuntime adapts a WasmSession to the MdsmithRuntime facade. It
 // is a thin pass-through — the engine does the work — plus a disposed
 // guard so a call after dispose() throws a clear error rather than
 // reaching into a torn-down session.
+//
+// Each instance carries its own non-enumerable, read-only
+// `then: undefined`, as the engine's session object does. createRuntime
+// is async, so its resolve reads `then` on the instance it returns; a
+// page-defined throwing Object.prototype.then getter would otherwise
+// reject the call and strand the session the engine created.
 class SessionRuntime implements MdsmithRuntime {
   private disposed = false;
 
-  constructor(private readonly session: WasmSession) {}
+  constructor(private readonly session: WasmSession) {
+    defineProperty(this, "then", HIDDEN_THEN);
+  }
 
   private assertLive(): void {
     if (this.disposed) {

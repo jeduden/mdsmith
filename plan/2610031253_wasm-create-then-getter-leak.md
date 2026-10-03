@@ -1,7 +1,7 @@
 ---
 id: 2610031253
 title: Free the session when a then getter rejects the create
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   `createSession` resolves its Promise with the session
@@ -16,9 +16,10 @@ summary: >-
 
 ## Goal
 
-A create that rejects because a `then` lookup on the
-session object throws leaves `sessions` the same size
-as before the create.
+A throwing `then` getter on `Object.prototype` never
+strands a session. The create resolves with a session
+object, and once the caller disposes it `sessions` is
+the same size as before the create.
 
 ## Background
 
@@ -41,6 +42,65 @@ it rejects. The first changes the object's shape that
 [engine-api.md](../docs/background/concepts/engine-api.md)
 documents. The second costs a func per create.
 
+## Decision
+
+Chose the own `then: undefined` property. Go watching the
+Promise would register a func per create and still leave the
+session registered until the rejection handler runs. The
+property closes the path at the source, costs no func, and is
+non-enumerable, so `Object.keys(session)` and
+`TestRegisterSession_KeysMatchSessionMethodNames` are
+unchanged. The create now resolves instead of rejecting, and
+the caller owns a session it can dispose.
+
+The descriptor has a null prototype. A page's
+`Object.prototype.get` then cannot make the call throw. Its
+`Object.prototype.enumerable` cannot list `then` in
+`Object.keys`. The engine captures `Object.defineProperty`
+and the descriptor once at load, beside `bind`, and freezes
+the descriptor. A replacement installed later never runs and
+never sees the session object.
+
+A patched `Reflect.apply` sees the descriptor on every
+create, but cannot change it for the sessions created after
+it is removed. The session object and its token come from an
+`Object` captured at load too, so a later global `Object`
+cannot hand back a Proxy whose `then` trap throws. The JS
+string `"then"` is also converted once at load, so a create
+does no extra string conversion. A patched
+`Reflect.construct` still sees each session object; like
+`Reflect.apply`, it is a limit documented in engine-api.md,
+per plan 2610021439.
+
+The `mdsmith` global gets the same own `then`. The Obsidian
+plugin's async engine load returns it, so the getter would
+reject that load. The plugin then clears its cached load and
+starts another Go runtime that never exits on each retry.
+The plugin's `SessionRuntime`, which its async
+`createRuntime` returns, gets its own `then` too, or its
+resolve would strand the session the same way. It adds it
+through an `Object.defineProperty` captured at module load,
+so a later replacement cannot throw from the constructor.
+
+Review round 3 closed the same bug class in three more
+places. Each method is added with the captured
+`defineProperty`, not a Set, so an accessor or read-only
+value of that name on `Object.prototype` cannot take it.
+`Object.keys` and `isRecord`'s `toString` are captured at
+load like `Object`. Each load-time capture is guarded, so
+one that throws leaves its value undefined and makes every
+create reject, rather than stopping the engine from
+loading. The global's own `then` is added under the same
+kind of guard, so a failed then-hider leaves the global
+without it instead of stopping `main`.
+
+Review round 4 captured `Object.defineProperty` on its
+own rather than inside the then-hider. It converts each
+method name to a JS string once at load, not on every
+create. The plugin's `createRuntime` now disposes an
+object the engine returns without `check` before it
+rejects.
+
 ## Tasks
 
 1. Write a failing js/wasm test that defines a
@@ -58,11 +118,12 @@ documents. The second costs a func per create.
 
 ## Acceptance Criteria
 
-- [ ] A throwing `then` getter on `Object.prototype`
+- [x] A throwing `then` getter on `Object.prototype`
       leaves `sessions` the same size after a create
-- [ ] No func stays registered after that create
-- [ ] All tests pass: `go test ./...` and
+      and its dispose
+- [x] No func stays registered after that create
+- [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues, natively and with
       `GOOS=js GOARCH=wasm`
