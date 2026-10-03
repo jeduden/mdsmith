@@ -24,6 +24,18 @@ test.describe("release notes", () => {
     ).toBeVisible();
   });
 
+  test("top-nav version badge opens that version's release notes", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const badge = page.locator(".topnav-version");
+    const version = (await badge.textContent())?.trim() ?? "";
+    expect(version).toMatch(/^v\d/);
+    await expect(badge).toHaveAttribute("href", `/releases/#${version}`);
+    await badge.click();
+    await expect(page).toHaveURL(new RegExp(`/releases/#${version.replace(/\./g, "\\.")}$`));
+  });
+
   test("footer keeps a direct link to GitHub Releases", async ({ page }) => {
     await page.goto("/");
     await expect(

@@ -150,7 +150,9 @@ last stable release, and that release already lists
 them. Versions are compared, not dates, so a later
 backport of an older line hides no candidate.
 Each entry links to its GitHub release for the
-downloads.
+downloads. The top-nav version badge links to
+`/releases/#v<version>`, the entry of the version the
+site is stamped with, and the page opens that card.
 
 - **Page** — `content/releases.md` holds the title,
   summary, and intro. Hugo picks

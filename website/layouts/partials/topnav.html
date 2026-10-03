@@ -26,7 +26,13 @@
     </nav>
     <div class="topnav-right">
       {{ partial "search.html" . }}
-      <a class="topnav-version" href="{{ "/guides/install/" | relURL }}" title="Install mdsmith">v{{ .Site.Params.version }}</a>
+      {{- /* The version badge opens this version's entry on the
+             release notes page: each entry's id is its tag
+             (v0.55.1), and the page's script opens the card the
+             fragment points into. A build stamped with a version
+             that has no entry (the 0.0.0-dev sentinel) lands at the
+             top of the page. */}}
+      <a class="topnav-version" href="{{ "releases/" | relURL }}#v{{ .Site.Params.version }}" title="Release notes for v{{ .Site.Params.version }}">v{{ .Site.Params.version }}</a>
       <a class="topnav-gh" href="https://github.com/{{ .Site.Params.githubRepo }}" rel="noopener" aria-label="mdsmith on GitHub">
         {{ partial "github-mark.html" (dict "size" 15) }}
         GitHub

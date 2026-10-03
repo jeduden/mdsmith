@@ -74,7 +74,9 @@ the next doc edit.
    script opens the card a `#tag` link points into. Without the
    data file the page says the notes are not bundled and links
    to GitHub.
-5. Point the footer's "Releases" link at `/releases/`.
+5. Point the footer's "Releases" link at `/releases/`, and the
+   top-nav version badge at `/releases/#v<version>`, the entry
+   of the version the site is stamped with.
 6. Run `sync-releases` in both `pages.yml` jobs, and dispatch
    `pages.yml` on `main` from `release-candidate.yml` after a
    candidate publishes, so each candidate reaches the site.
@@ -96,6 +98,8 @@ the next doc edit.
 - [x] The page renders a fallback with a GitHub link when the
       data file is absent (local builds, e2e)
 - [x] The footer "Releases" link goes to `/releases/`
+- [x] The top-nav version badge opens its version's entry on
+      `/releases/`
 - [x] `release-candidate.yml` dispatches `pages.yml` on `main`
       after the candidate's publish step
 - [x] All tests pass: `go test ./...`
