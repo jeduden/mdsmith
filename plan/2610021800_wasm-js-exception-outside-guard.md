@@ -1,7 +1,7 @@
 ---
 id: 2610021800
 title: Contain wasm JS exceptions outside the executor guard
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   `rejectOnJSError` covers only the Promise executor
