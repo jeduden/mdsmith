@@ -1817,10 +1817,11 @@ func TestValidate_Content_ConcurrentSafety(t *testing.T) {
 }
 
 // TestValidate_Content_NoLineZeroDiagnostics regresses the
-// position-inference contract: blockLine may return 0 for a
-// position-less empty fenced block, but topLevelBlocks back-fills
-// that to a sibling-derived line. No content diagnostic should
-// anchor at a non-existent line.
+// position contract for an empty, info-less fenced block: it has no
+// Info or content to infer a line from, but blockLine reads the
+// parser-recorded opener position (and topLevelBlocks back-fills any
+// block it cannot place). No content diagnostic should anchor at a
+// non-existent line.
 func TestValidate_Content_NoLineZeroDiagnostics(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{map[string]any{
@@ -1848,9 +1849,9 @@ func TestValidate_Content_NoLineZeroDiagnostics(t *testing.T) {
 // info string and no content lines must still participate in
 // section-body filtering. The prior clamp-to-1 implementation
 // dropped it from blocksInRange, leading to spurious missing-
-// required-content diagnostics. Position-inference in
-// topLevelBlocks anchors the block inside its section so the
-// `kind: code-block` entry can claim it.
+// required-content diagnostics. blockLine anchors the block at its
+// opener inside the section so the `kind: code-block` entry can
+// claim it.
 func TestValidate_Content_EmptyFencedBlockClaimsSlot(t *testing.T) {
 	raw := map[string]any{
 		"sections": []any{map[string]any{

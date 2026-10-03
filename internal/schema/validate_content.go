@@ -130,10 +130,10 @@ func parseWithTableExt(source []byte) ast.Node {
 // are intentionally included: they bound section ranges but the walker
 // filters them out per scope.
 //
-// blockLine reports 0 for the corner case where goldmark exposes no
-// position (an empty fenced block with no info string and no content
-// lines). A second pass back-fills those entries from neighbouring
-// siblings — `next - 1` when the following block has a known line,
+// blockLine reports 0 for a block with no readable position — a
+// container with no line-bearing descendant, or a fenced block built
+// by hand rather than parsed. A second pass back-fills those entries
+// from neighbouring siblings — `next - 1` when the following block has a known line,
 // else `prev + 1`, else 1 — so blocksInRange's [startLine, endLine)
 // filter still places the block inside its enclosing section and
 // diagnostic anchors never land at line 0.
@@ -192,14 +192,13 @@ type contentBlock struct {
 // blockLine returns the 1-based source line of the first visible
 // token of a block-level AST node. Fenced code blocks route through
 // lint.FindFencedOpenLine so the result anchors at the opening
-// fence — info string when present, first-content-line-minus-one
-// otherwise — matching the line numbers the rest of the engine
-// reports for the same nodes. Other block kinds fall back to the
+// fence the parser recorded as the node position, matching the line
+// numbers the rest of the engine reports for the same nodes. Other block kinds fall back to the
 // first Lines() segment, then to a descendant scan for empty
 // containers.
 //
-// Returns 0 when goldmark exposes no position for n (the truly-
-// empty fenced block with no info string and no content). Callers
+// Returns 0 when no position can be read for n (see topLevelBlocks).
+// Callers
 // that anchor diagnostics or filter by section line range must
 // route through topLevelBlocks, which back-fills these unknown
 // positions from sibling blocks so the missing-position case never

@@ -47,11 +47,12 @@ func TestLayer0_UnclosedFenceMarksPhantomClose(t *testing.T) {
 	assert.Equal(t, []int{1, 2, 3}, keysOf(l0.CodeBlockLines))
 }
 
-func TestLayer0_EmptyUnclosedFenceMarksNothing(t *testing.T) {
-	// An info-less, content-less fence has no source position in goldmark,
-	// so the projection emits no code lines.
+func TestLayer0_EmptyUnclosedFenceMarksOpenAndPhantomClose(t *testing.T) {
+	// An info-less, content-less fence still has a parser position, so
+	// the projection marks its opener and the phantom closing line, the
+	// same as an empty fence with an info string.
 	l0 := scan("```\n")
-	assert.Empty(t, l0.CodeBlockLines)
+	assert.Equal(t, []int{1, 2}, keysOf(l0.CodeBlockLines))
 }
 
 func TestLayer0_IndentedCodeAfterBlankIsCode(t *testing.T) {

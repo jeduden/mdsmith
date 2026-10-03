@@ -148,17 +148,28 @@ func TestCollectCodeBlockLines_NoCodeBlocks(t *testing.T) {
 }
 
 func TestCollectCodeBlockLines_EmptyFencedCodeBlock(t *testing.T) {
-	// An empty fenced code block with no info string: goldmark does not
-	// expose the opening fence position, so findFencedOpenLine returns 0.
-	// The close fence heuristic also falls through. This is a known
-	// limitation that does not affect practical use (the fence lines are
-	// short and won't trigger line-length checks).
+	// An empty fenced code block with no info string: the parser records
+	// the opener's offset as the node position, so both fence lines are
+	// code like any other fence's.
 	src := []byte("```\n```\n")
 	f, err := NewFile("test.md", src)
 	require.NoError(t, err)
 	lines := CollectCodeBlockLines(f)
-	// With no info string and no content, the map will be empty.
-	assert.Empty(t, lines, "expected empty map for empty fenced code block without info string")
+	for _, ln := range []int{1, 2} {
+		assert.True(t, inSet(lines, ln), "expected line %d to be in code block lines", ln)
+	}
+}
+
+// TestCollectCodeBlockLines_EmptyFenceAfterFence pins the empty,
+// info-less block right after another fenced block: its fence lines
+// (4 and 5) are code, as fencepos.OpenLine reports for the same block.
+func TestCollectCodeBlockLines_EmptyFenceAfterFence(t *testing.T) {
+	f, err := NewFile("test.md", []byte("```go\nx\n```\n```\n```\n"))
+	require.NoError(t, err)
+	lines := CollectCodeBlockLines(f)
+	for _, ln := range []int{1, 2, 3, 4, 5} {
+		assert.True(t, inSet(lines, ln), "expected line %d to be in code block lines", ln)
+	}
 }
 
 func TestCollectCodeBlockLines_EmptyFencedCodeBlockWithInfo(t *testing.T) {
@@ -255,40 +266,36 @@ func TestCollectCodeBlockLinesInto_NilNode(t *testing.T) {
 	assert.Empty(t, lines)
 }
 
-// TestFindFencedOpenLine_FirstContentOnLineOne pins the
-// firstContentLine == 1 fallback branch: when goldmark reports the
-// first content line is line 1 (no preceding info string), the
-// returned open-line stays at 1 rather than going to 0. Exercised
-// via a fenced block whose info string is absent and whose first
-// content line collides with line 1.
-func TestFindFencedOpenLine_FirstContentOnLineOne(t *testing.T) {
-	// Note: goldmark requires the opening fence on its own line.
-	// A document where line 1 is the fence + line 2 the content
-	// makes firstContentLine == 2; we use a synthetic by parsing
-	// `` ``` `` on line 1 with no content (Lines().Len() == 0) — but
-	// FindFencedOpenLine then returns 0 via the empty-content
-	// fallback, not the firstContentLine == 1 branch. The intended
-	// hit point is the (rare) reader configuration where the first
-	// segment reports Start at offset 0; we keep the assertion at
-	// "returns ≥ 0" so the test pins the branch reachability
-	// without coupling to a specific goldmark internal that may
-	// shift across versions.
-	src := []byte("```\n```\n")
-	f, err := NewFile("test.md", src)
+// TestFindFencedOpenLine_Positions pins the opener line read from the
+// node position: an empty, info-less block (no Info, no content to
+// infer from), one after another fenced block, one inside a list item
+// and a block quote, and a hand-built node with no position (0).
+func TestFindFencedOpenLine_Positions(t *testing.T) {
+	cases := []struct {
+		src  string
+		want []int
+	}{
+		{"```\n```\n", []int{1}},
+		{"```go\nx\n```\n```\n```\n", []int{1, 4}},
+		{"# T\n\n- ```\n  x\n  ```\n", []int{3}},
+		{"# T\n\n> ~~~\n> ~~~\n", []int{3}},
+	}
+	for _, tc := range cases {
+		f, err := NewFile("test.md", []byte(tc.src))
+		require.NoError(t, err)
+		var got []int
+		_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if fcb, ok := n.(*ast.FencedCodeBlock); ok && entering {
+				got = append(got, FindFencedOpenLine(f, fcb))
+			}
+			return ast.WalkContinue, nil
+		})
+		assert.Equal(t, tc.want, got, tc.src)
+	}
+
+	f, err := NewFile("test.md", []byte("```\n```\n"))
 	require.NoError(t, err)
-	// Walk to the first FencedCodeBlock.
-	var fcb *ast.FencedCodeBlock
-	for c := f.AST.FirstChild(); c != nil; c = c.NextSibling() {
-		if cb, ok := c.(*ast.FencedCodeBlock); ok {
-			fcb = cb
-			break
-		}
-	}
-	if fcb == nil {
-		t.Skip("goldmark did not parse a fenced code block from `` ``` \\n ``` ``")
-	}
-	open := FindFencedOpenLine(f, fcb)
-	assert.GreaterOrEqual(t, open, 0)
+	assert.Equal(t, 0, FindFencedOpenLine(f, ast.NewFencedCodeBlock(nil)))
 }
 
 // TestCollectCodeBlockLines_NilASTUsesLayer0 pins the parse-skipped path:

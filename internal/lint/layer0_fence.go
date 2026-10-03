@@ -11,11 +11,6 @@ type fenceInfo struct {
 	indent int
 	length int
 	char   byte
-	// hasInfo records whether the opening fence carries a non-empty info
-	// string after the fence run. goldmark exposes no source position for
-	// an info-less, content-less fence, so the projection emits no lines
-	// for it — hasInfo drives that quirk.
-	hasInfo bool
 }
 
 // openingFence parses line as a fenced-code opening fence, returning its
@@ -47,10 +42,9 @@ func openingFence(line []byte) (fenceInfo, bool) {
 		return fenceInfo{}, false
 	}
 	return fenceInfo{
-		char:    ch,
-		indent:  indent,
-		length:  length,
-		hasInfo: len(bytes.TrimSpace(rest)) > 0,
+		char:   ch,
+		indent: indent,
+		length: length,
 	}, true
 }
 
@@ -118,26 +112,21 @@ func (s *scanner) tryFence() bool {
 		lastContent = s.i + 1
 		s.i++
 	}
-	// goldmark exposes no source position for an info-less, content-less
-	// fence, so addFencedCodeBlockLines emits nothing for it. Mirror that:
-	// skip marking entirely when the fence has neither info nor content.
-	if fi.hasInfo || lastContent > 0 {
-		s.markCode(openLine)
-		for ln := openLine + 2; ln <= lastContent; ln++ {
-			s.markCode(ln - 1)
-		}
-		// Mirror addFencedCodeBlockLines: the closing fence is the line
-		// after the last content line (or after the opening fence when
-		// there were no content lines). For a closed fence that is the
-		// matched line; for an unclosed fence it is a phantom line, marked
-		// only when within bounds.
-		closeLine := lastContent + 1
-		if lastContent == 0 {
-			closeLine = openLine + 2 // 0-based open +1 to 1-based, +1 next
-		}
-		if closeLine <= len(s.lines) {
-			s.markCode(closeLine - 1)
-		}
+	s.markCode(openLine)
+	for ln := openLine + 2; ln <= lastContent; ln++ {
+		s.markCode(ln - 1)
+	}
+	// Mirror addFencedCodeBlockLines: the closing fence is the line
+	// after the last content line (or after the opening fence when
+	// there were no content lines). For a closed fence that is the
+	// matched line; for an unclosed fence it is a phantom line, marked
+	// only when within bounds.
+	closeLine := lastContent + 1
+	if lastContent == 0 {
+		closeLine = openLine + 2 // 0-based open +1 to 1-based, +1 next
+	}
+	if closeLine <= len(s.lines) {
+		s.markCode(closeLine - 1)
 	}
 	if closed {
 		s.i++ // advance past the matched closing fence line

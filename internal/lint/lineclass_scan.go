@@ -90,18 +90,17 @@ func lcIsSetextUnderline(rest []byte) bool {
 }
 
 // detectFenceOpen reports whether rest opens a fenced code block, and if
-// so returns the fence character, its length, and whether a non-empty
-// info string follows. For backtick fences the info string may not
+// so returns the fence character and its length. For backtick fences the info string may not
 // contain a backtick (the CommonMark rule that lets inline code spans
 // coexist with fences); tilde fences allow any info string.
-func detectFenceOpen(rest []byte) (ch byte, length int, hasInfo, ok bool) {
+func detectFenceOpen(rest []byte) (ch byte, length int, ok bool) {
 	i := leadingSpaces(rest)
 	if i > 3 || i >= len(rest) {
-		return 0, 0, false, false
+		return 0, 0, false
 	}
 	c := rest[i]
 	if c != '`' && c != '~' {
-		return 0, 0, false, false
+		return 0, 0, false
 	}
 	n := 0
 	for i < len(rest) && rest[i] == c {
@@ -109,13 +108,13 @@ func detectFenceOpen(rest []byte) (ch byte, length int, hasInfo, ok bool) {
 		n++
 	}
 	if n < 3 {
-		return 0, 0, false, false
+		return 0, 0, false
 	}
 	info := rest[i:]
 	if c == '`' && bytes.IndexByte(info, '`') >= 0 {
-		return 0, 0, false, false
+		return 0, 0, false
 	}
-	return c, n, len(bytes.TrimSpace(info)) > 0, true
+	return c, n, true
 }
 
 // isFenceClose reports whether rest closes a fence of the given character

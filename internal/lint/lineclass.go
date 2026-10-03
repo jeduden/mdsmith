@@ -149,7 +149,6 @@ type lc0Pass struct {
 	inFence       bool
 	fenceChar     byte
 	fenceLen      int
-	fenceHadInfo  bool
 	fenceOpenLine int // 1-based
 
 	inHTML   bool     // inside an HTML block
@@ -516,14 +515,13 @@ func (c lc0Container) consume(line []byte, pos int) (int, bool) {
 // tryOpenFence opens a fenced code block when rest is an opening fence.
 // It records the open line so finishFence can mark the block as a unit.
 func (p *lc0Pass) tryOpenFence(ln int, rest []byte) bool {
-	ch, n, hadInfo, ok := detectFenceOpen(rest)
+	ch, n, ok := detectFenceOpen(rest)
 	if !ok {
 		return false
 	}
 	p.inFence = true
 	p.fenceChar = ch
 	p.fenceLen = n
-	p.fenceHadInfo = hadInfo
 	p.fenceOpenLine = ln
 	p.openBlockDepth = len(p.stack)
 	p.out.classes[ln-1] = LineFenceOpen
@@ -531,9 +529,9 @@ func (p *lc0Pass) tryOpenFence(ln int, rest []byte) bool {
 }
 
 // finishFence marks the just-closed (or EOF-terminated) fenced block's
-// line set, mirroring lint.addFencedCodeBlockLines byte-for-byte —
-// including goldmark's quirk that an empty fence with no info string
-// contributes no lines. closeLine is the 1-based close-fence line, or 0
+// line set, mirroring lint.addFencedCodeBlockLines byte-for-byte: the
+// opening fence, every content line, and the closing fence (an empty
+// fence included — the parser records every opener's position). closeLine is the 1-based close-fence line, or 0
 // when the fence runs to EOF unclosed.
 func (p *lc0Pass) finishFence(closeLine int) {
 	o := p.fenceOpenLine
@@ -544,14 +542,10 @@ func (p *lc0Pass) finishFence(closeLine int) {
 	case len(p.lines) > 0 && len(p.lines[len(p.lines)-1]) == 0:
 		// Unclosed fence: the trailing empty element bytes.Split yields
 		// for the file's final newline is not a line in goldmark's model,
-		// so it is not a content line. Excluding it reproduces goldmark's
-		// empty-unclosed-fence quirk (no info, no content -> no lines).
+		// so it is not a content line.
 		contentTo = len(p.lines) - 1
 	}
 	hasContent := contentTo >= o+1
-	if !hasContent && !p.fenceHadInfo {
-		return // goldmark exposes no source position for this empty fence
-	}
 	p.markCode(o)
 	for k := o + 1; k <= contentTo; k++ {
 		p.markCode(k)
