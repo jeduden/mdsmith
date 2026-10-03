@@ -84,9 +84,9 @@ type renameSummary struct {
 type cliRenameWorkspace struct {
 	// IndexEdges (from refactor.NewLazyIndexEdges) builds the
 	// transient index on its first edge query and reuses it after
-	// that. Only the engine's edge queries call it, so a label
-	// rename — and Resolve or applyPlan — reads no file beyond the
-	// ones it touches. A workspace built without an index answers
+	// that. Only the engine's edge and Files queries call it, so a
+	// label rename — and Resolve or applyPlan — reads no file beyond
+	// the ones it touches. A workspace built without an index answers
 	// every edge query with nothing.
 	refactor.IndexEdges
 	relToAbs map[string]string

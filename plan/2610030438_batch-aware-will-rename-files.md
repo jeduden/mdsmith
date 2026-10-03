@@ -30,8 +30,10 @@ it to `x/b.md`. Both are wrong: the right text is `b.md`.
 Code review of PR #889 found this. That PR added a stopgap,
 `dropConflictingTextEdits`. It withholds any pair of edits whose
 ranges overlap, so the client gets a valid WorkspaceEdit. The
-withheld link stays stale whenever the two files land in
-different folders, and MDS027 then reports it.
+withheld link stays stale whenever the batch changes the
+relative path between the two files, such as `b.md` moving to
+`x/c.md` or the two files landing in different folders. MDS027
+then reports it.
 
 ## Tasks
 

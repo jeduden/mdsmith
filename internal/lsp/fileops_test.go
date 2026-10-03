@@ -260,3 +260,47 @@ func TestWillRenameFilesBatchDropsConflictingEdits(t *testing.T) {
 	require.Contains(t, edit.Changes, rootURI+"/c.md")
 	assert.Equal(t, "x/a.md", edit.Changes[rootURI+"/c.md"][0].NewText)
 }
+
+// TestWillRenameFilesBatchDropsAgreeingConflicts locks that two moves
+// whose rewrites of one link happen to agree are still withheld. Moving
+// docs/a.md to a.md spells its `../b.md` as `b.md`, and so does moving
+// b.md to docs/b.md — but each assumes the other file stayed put, so
+// `b.md` names a file that no longer exists; the right text is
+// `docs/b.md`.
+func TestWillRenameFilesBatchDropsAgreeingConflicts(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\n[b](../b.md)\n",
+		"b.md":      "# Beta\n",
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/a.md"},
+			{OldURI: rootURI + "/b.md", NewURI: rootURI + "/docs/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	assert.NotContains(t, edit.Changes, rootURI+"/docs/a.md")
+}
+
+// TestWillRenameFilesRepeatedPairPlannedOnce locks that a rename pair
+// listed twice is planned once, so its edits do not collide with their
+// own copies and get withheld.
+func TestWillRenameFilesRepeatedPairPlannedOnce(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"a.md": "# Alpha\n",
+		"c.md": "# Gamma\n\n[a](a.md)\n",
+	})
+	pair := fileRename{OldURI: rootURI + "/a.md", NewURI: rootURI + "/x/a.md"}
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{pair, pair},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	require.Len(t, edit.Changes[rootURI+"/c.md"], 1)
+	assert.Equal(t, "x/a.md", edit.Changes[rootURI+"/c.md"][0].NewText)
+}
