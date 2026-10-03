@@ -5,6 +5,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -357,4 +358,37 @@ func TestLineLen(t *testing.T) {
 	assert.Equal(t, 2, lineLen([]byte("ab")))
 	assert.Equal(t, 0, lineLen([]byte("\n")))
 	assert.Equal(t, 0, lineLen(nil))
+}
+
+// TestOpenLineRange_SyntheticBlockWithInfo pins the hand-built path for
+// a block with no position but an info segment: the opening line is
+// the line holding the info string.
+func TestOpenLineRange_SyntheticBlockWithInfo(t *testing.T) {
+	src := []byte("text\n```go\nx\n```\n")
+	info := ast.NewText()
+	info.Segment = text.NewSegment(8, 10)
+	start, end := OpenLineRange(src, ast.NewFencedCodeBlock(info))
+	assert.Equal(t, "```go", string(src[start:end]))
+}
+
+// TestOpenLineRange_SyntheticBlockWithLines pins the hand-built path for
+// a block with no position or info but content lines: the opening line
+// ends just before the first content line, and a first content line at
+// offset 0 (no newline before it) is its own line.
+func TestOpenLineRange_SyntheticBlockWithLines(t *testing.T) {
+	src := []byte("~~~\nbody\n~~~\n")
+	fcb := ast.NewFencedCodeBlock(nil)
+	segs := text.NewSegments()
+	segs.Append(text.NewSegment(4, 9))
+	fcb.SetLines(segs)
+	start, end := OpenLineRange(src, fcb)
+	assert.Equal(t, "~~~", string(src[start:end]))
+
+	fcb = ast.NewFencedCodeBlock(nil)
+	segs = text.NewSegments()
+	segs.Append(text.NewSegment(0, 5))
+	fcb.SetLines(segs)
+	start, end = OpenLineRange([]byte("body\n"), fcb)
+	assert.Equal(t, 0, start)
+	assert.Equal(t, 4, end)
 }
