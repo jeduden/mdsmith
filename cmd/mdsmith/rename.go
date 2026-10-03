@@ -12,6 +12,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/internal/refactor"
@@ -92,6 +93,16 @@ type cliRenameWorkspace struct {
 	relToAbs map[string]string
 	rootDir  string
 	maxBytes int64
+}
+
+// WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
+// resolution reads, over the whole workspace root on disk rather than
+// the discovered file list, so a gitignored file still counts.
+func (w cliRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	if w.rootDir == "" {
+		return nil
+	}
+	return linkgraph.NewWikilinkIndex(os.DirFS(w.rootDir))
 }
 
 func (w cliRenameWorkspace) Resolve(file string) (string, []byte, bool) {

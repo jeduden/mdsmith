@@ -43,6 +43,12 @@ type Workspace interface {
 	// basename stem matches stem (compared case-insensitively). A file
 	// move whose basename stem changes rewrites these.
 	IncomingWikilinkEdges(stem string) []index.Edge
+	// WikilinkIndex returns the index `[[stem]]` resolution reads: every
+	// file under the workspace root except `.git` and `node_modules`,
+	// whether or not Files lists it. A file move counts same-stem and
+	// same-name files against it, so it must cover the same file set
+	// the resolver does. A nil index counts no files.
+	WikilinkIndex() *linkgraph.WikilinkIndex
 	// Files lists every workspace-relative file path the workspace
 	// knows about.
 	Files() []string

@@ -3,8 +3,10 @@ package refactor
 import (
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
@@ -26,6 +28,13 @@ func (s stubWorkspace) IncomingAnchorEdges(string, string) []index.Edge { return
 func (s stubWorkspace) IncomingPathEdges(string) []index.Edge           { return s.pathEdges }
 func (s stubWorkspace) IncomingWikilinkEdges(string) []index.Edge       { return s.wikilinkEdges }
 func (s stubWorkspace) Files() []string                                 { return s.files }
+func (s stubWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	fsys := fstest.MapFS{}
+	for _, f := range s.files {
+		fsys[index.NormalizePath(f)] = &fstest.MapFile{}
+	}
+	return linkgraph.NewWikilinkIndex(fsys)
+}
 func (s stubWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
 	if s.unresolvable[rel] {
@@ -54,6 +63,16 @@ func TestRelFrom_ErrorFallsBackToTarget(t *testing.T) {
 	assert.Equal(t, "b", relFrom("../a", "b"))
 }
 
+// holderIndex builds the wikilink index over files, as the resolver
+// would index a workspace holding exactly them.
+func holderIndex(files ...string) *linkgraph.WikilinkIndex {
+	fsys := fstest.MapFS{}
+	for _, f := range files {
+		fsys[f] = &fstest.MapFile{}
+	}
+	return linkgraph.NewWikilinkIndex(fsys)
+}
+
 func TestWikilinkKeyHolders_OldStem(t *testing.T) {
 	files := []string{"a.md", "docs/API.md", "api/api.md", "img/api.png", "notes/b.mdx", "notes/c.markdown"}
 	licenseFiles := []string{"notes/LICENSE", "docs/license.md"}
@@ -73,11 +92,12 @@ func TestWikilinkKeyHolders_OldStem(t *testing.T) {
 		"stem is not a prefix match":     {files, "ap", 0},
 	} {
 		t.Run(name, func(t *testing.T) {
-			// src is listed as the first file so it adds no extra holder.
-			files := append([]string{"src.txt"}, tc.files...)
-			oldN, _ := wikilinkKeyHolders(files, "src.txt", tc.stem, "zzz", true)
-			assert.Equal(t, tc.want, oldN)
-			_, newN := wikilinkKeyHolders(files, "src.txt", "zzz", tc.stem, true)
+			idx := holderIndex(tc.files...)
+			// src.txt is no Markdown file, so the index never holds it
+			// under a stem and it adds exactly one oldStem holder.
+			oldN, _ := wikilinkKeyHolders(idx, "src.txt", tc.stem, "zzz", true)
+			assert.Equal(t, tc.want+1, oldN)
+			_, newN := wikilinkKeyHolders(idx, "src.txt", "zzz", tc.stem, true)
 			assert.Equal(t, tc.want, newN, "a Markdown destination counts stems the same way")
 		})
 	}
@@ -97,21 +117,20 @@ func TestWikilinkKeyHolders_NewName(t *testing.T) {
 		"no prefix match":              {files, "api", 0},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, newN := wikilinkKeyHolders(tc.files, "", "zzz", tc.base, false)
+			_, newN := wikilinkKeyHolders(holderIndex(tc.files...), "", "zzz", tc.base, false)
 			assert.Equal(t, tc.want, newN)
 		})
 	}
 }
 
-func TestWikilinkKeyHolders_UnlistedSourceCounts(t *testing.T) {
+func TestWikilinkKeyHolders_UnindexedSourceCounts(t *testing.T) {
 	files := []string{"docs/guide.md"}
-	oldN, _ := wikilinkKeyHolders(files, "a/guide.md", "guide", "manual", true)
-	assert.Equal(t, 2, oldN, "an unlisted source holds its own stem")
-	oldN, _ = wikilinkKeyHolders(append(files, "a/guide.md"), "a/guide.md", "guide", "manual", true)
-	assert.Equal(t, 2, oldN, "a listed source is not counted twice")
-	r := &destResolver{ws: stubWorkspace{files: []string{"./a/guide.md"}}, src: "a/guide.md"}
-	oldN, _ = wikilinkKeyHolders(r.paths(), "a/guide.md", "guide", "manual", true)
-	assert.Equal(t, 1, oldN, "a source listed with a ./ prefix is still listed")
+	oldN, _ := wikilinkKeyHolders(holderIndex(files...), "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 2, oldN, "a source the index lacks holds its own stem")
+	oldN, _ = wikilinkKeyHolders(holderIndex("docs/guide.md", "a/guide.md"), "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 2, oldN, "an indexed source is not counted twice")
+	oldN, _ = wikilinkKeyHolders(nil, "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 1, oldN, "a nil index holds only the source")
 }
 
 func TestDstWikilinkSpelling_NonMarkdownKeepsBase(t *testing.T) {

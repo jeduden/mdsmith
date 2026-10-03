@@ -114,11 +114,14 @@ cross-directory move, check them by hand.
 - **Ambiguous wikilinks.** When another Markdown file shares the
   old or the new basename stem, no `[[stem]]` is rewritten,
   because the rewrite could point it at the wrong file. For a new
-  name with another extension, such as `guide.mdx`, a listed file
-  that already has that name blocks the rewrite. Only files the
-  `files:` patterns match are checked, so a same-named image or
-  other unlisted file does not block it. Check such a move with
-  `--dry-run`.
+  name with another extension, such as `guide.mdx`, any file with
+  that name blocks the rewrite, since `[[guide.mdx]]` reads it by
+  exact name. The check reads the files a wikilink resolves
+  against: every file under the workspace root except `.git` and
+  `node_modules`, whatever the `files:` patterns or `.gitignore`
+  say. A gitignored `archive/guide.md` or an unlisted `logo.png`
+  therefore blocks the rewrite, and a `node_modules` README does
+  not. Check such a move with `--dry-run`.
 - **Wikilinks to a name they cannot reach.** A move to a name
   with no extension, such as `COPYING`, leaves every `[[stem]]`
   as written, because a bare `[[name]]` finds only Markdown

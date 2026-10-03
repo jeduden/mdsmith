@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -838,7 +839,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	if !dstIsMarkdown {
 		newKey = linkgraph.FileNameKey(path.Base(dst))
 	}
-	oldHolders, newHolders := wikilinkKeyHolders(r.paths(), src, oldStem, newKey, dstIsMarkdown)
+	oldHolders, newHolders := wikilinkKeyHolders(ws.WikilinkIndex(), src, oldStem, newKey, dstIsMarkdown)
 	if oldHolders > 1 || newHolders > 0 {
 		return
 	}
@@ -911,37 +912,23 @@ func wikilinkStemBytes(row []byte, bracketStart int) (int, int, bool) {
 	return stemStart, end, true
 }
 
-// wikilinkKeyHolders counts, in one pass over files, the Markdown
-// files addressed by oldStem and the files holding newKey. newKey is a
-// stem when newIsStem (a Markdown destination) and otherwise a
-// lowercased exact basename, since a typed wikilink such as
+// wikilinkKeyHolders counts the files the resolver reaches by oldStem
+// and by newKey, reading idx, the index `[[stem]]` resolution reads.
+// newKey is a stem when newIsStem (a Markdown destination) and
+// otherwise a lowercased exact basename, since a typed wikilink such as
 // `[[guide.mdx]]` resolves by file name. src always counts as an
-// oldStem holder, listed or not, because Resolve reads it from disk.
-// files must already be normalized (destResolver.paths), so a listed
-// `./src` compares equal to src and is not counted a second time.
-func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem bool) (oldN, newN int) {
-	srcListed := false
-	for _, f := range files {
-		if f == src {
-			srcListed = true
-		}
-		base := path.Base(f)
-		stem, isMD := linkgraph.FileStemKey(base)
-		if isMD && stem == oldStem {
-			oldN++
-		}
-		if newIsStem {
-			if isMD && stem == newKey {
-				newN++
-			}
-		} else if linkgraph.FileNameKey(base) == newKey {
-			newN++
-		}
-	}
-	if !srcListed {
+// oldStem holder: the resolver reads it from disk, and an index built
+// before the file existed, or over a host buffer, may not hold it.
+func wikilinkKeyHolders(idx *linkgraph.WikilinkIndex, src, oldStem, newKey string, newIsStem bool) (oldN, newN int) {
+	old := idx.StemPaths(oldStem)
+	oldN = len(old)
+	if !slices.Contains(old, src) {
 		oldN++
 	}
-	return oldN, newN
+	if newIsStem {
+		return oldN, len(idx.StemPaths(newKey))
+	}
+	return oldN, len(idx.NamePaths(newKey))
 }
 
 // dstWikilinkSpelling returns the token a rewritten wikilink names dst
