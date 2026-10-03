@@ -715,3 +715,16 @@ func TestBuildWorkspace_IndexesOnFirstUse(t *testing.T) {
 	assert.Len(t, ws.IncomingAnchorEdges("a.md", "setup"), 2, "built once, then reused")
 	assert.ElementsMatch(t, []string{"a.md", "b.md"}, ws.Files())
 }
+
+// TestCliRenameWorkspace_EdgePassThroughs pins that the path and
+// wikilink edge queries answer from the same lazily built index as the
+// anchor query.
+func TestCliRenameWorkspace_EdgePassThroughs(t *testing.T) {
+	dir := renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"),
+		[]byte("See [go](a.md) and [[a]].\n"), 0o644))
+	assert.Len(t, ws.IncomingPathEdges("a.md"), 1)
+	assert.Len(t, ws.IncomingWikilinkEdges("a"), 1)
+}
