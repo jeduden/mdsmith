@@ -150,7 +150,8 @@ type sessionRefactorWorkspace struct {
 }
 
 // WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
-// resolution reads, over the session workspace's whole file tree.
+// resolution reads, over the session workspace's whole file tree. Each
+// call walks that tree again; the move planner calls it once per plan.
 func (w *sessionRefactorWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return linkgraph.NewWikilinkIndex(w.fsys())
 }

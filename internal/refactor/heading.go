@@ -48,7 +48,10 @@ type Workspace interface {
 	// whether or not Files lists it. A file move counts same-stem and
 	// same-name files against it, so it must cover the same file set
 	// the resolver does. A nil index (no readable root) makes the move
-	// count the Files list instead.
+	// count the Files list instead. An implementation may walk the
+	// whole root on every call (the CLI and Session ones do; the LSP
+	// one memoizes), so a planner calls it at most once per plan and
+	// only once it has a `[[stem]]` edge to guard.
 	WikilinkIndex() *linkgraph.WikilinkIndex
 	// Files lists every workspace-relative file path the workspace
 	// knows about.
