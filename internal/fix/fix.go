@@ -384,11 +384,6 @@ func (f *Fixer) fixFile(path string) (
 		return nil, nil, "", false, []error{fmt.Errorf("reading %q: %w", path, err)}
 	}
 
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, nil, "", false, []error{fmt.Errorf("stat %q: %w", path, err)}
-	}
-
 	lf, dirFS, fmKinds, fmFields, prepErr := f.prepareFile(path, source)
 	if prepErr != nil {
 		return nil, nil, "", false, []error{prepErr}
@@ -414,6 +409,11 @@ func (f *Fixer) fixFile(path string) (
 	bytesChanged := !bytes.Equal(lf.Source, current)
 	var modified string
 	if bytesChanged && !f.DryRun {
+		// Stat only when a write needs the mode; unchanged files skip it.
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, nil, "", false, []error{fmt.Errorf("stat %q: %w", path, err)}
+		}
 		out := lf.FullSource(current)
 		writeFn := f.WriteFile
 		if writeFn == nil {
