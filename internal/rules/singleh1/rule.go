@@ -1,6 +1,7 @@
 package singleh1
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -39,6 +40,11 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	h1s := collectH1s(f)
+	// A lone H1 only draws a diagnostic when it conflicts with the
+	// front-matter title, so skip the line lookups otherwise.
+	if len(h1s) == 0 || (len(h1s) == 1 && !r.hasFMTitle(f)) {
+		return nil
+	}
 	h1Lines := make([]int, len(h1s))
 	for i, h := range h1s {
 		h1Lines[i] = astutil.HeadingLine(h, f)
@@ -114,7 +120,7 @@ func (r *Rule) verdict(f *lint.File, h1Lines []int) []lint.Diagnostic {
 		return nil
 	}
 	// Decode the front matter only when an H1 exists to conflict with it.
-	hasFMTitle := r.FrontMatterTitle != "" && r.frontMatterHasTitle(f)
+	hasFMTitle := r.hasFMTitle(f)
 	if !hasFMTitle && len(h1Lines) == 1 {
 		return nil
 	}
@@ -263,6 +269,12 @@ func (r *Rule) newDiag(f *lint.File, line int, msg string) lint.Diagnostic {
 // frontMatterHasTitle reports whether the configured front-matter field is
 // present and non-empty. It reads from f.FrontMatter when available, and
 // falls back to extracting front matter directly from f.Source.
+// hasFMTitle reports whether a title field is configured and f's front
+// matter sets it to a non-empty string.
+func (r *Rule) hasFMTitle(f *lint.File) bool {
+	return r.FrontMatterTitle != "" && r.frontMatterHasTitle(f)
+}
+
 func (r *Rule) frontMatterHasTitle(f *lint.File) bool {
 	fmBytes := f.FrontMatter
 	if len(fmBytes) == 0 {
@@ -271,6 +283,10 @@ func (r *Rule) frontMatterHasTitle(f *lint.File) bool {
 		fmBytes, _ = lint.StripFrontMatter(f.Source)
 	}
 	if len(fmBytes) == 0 {
+		return false
+	}
+	// Cheap pre-check: a title key must appear in the front matter text.
+	if !bytes.Contains(fmBytes, []byte(r.FrontMatterTitle)) {
 		return false
 	}
 	yamlBytes := lint.FrontMatterYAML(fmBytes)

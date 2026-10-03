@@ -109,23 +109,9 @@ func Parse(lines [][]byte) (lists []List, items []Item) {
 // list closes, which can place them after a later sibling's items; a
 // stable sort by line restores document order for the flat slice.
 func sortByLine(items []Item) []Item {
-	// Real documents are nearly sorted (few inversions), where insertion
-	// sort beats the general sort; large inputs fall back to O(n log n).
-	if len(items) > insertionSortMax {
-		slices.SortStableFunc(items, func(a, b Item) int { return cmp.Compare(a.Line, b.Line) })
-		return items
-	}
-	for i := 1; i < len(items); i++ {
-		for j := i; j > 0 && items[j-1].Line > items[j].Line; j-- {
-			items[j-1], items[j] = items[j], items[j-1]
-		}
-	}
+	slices.SortStableFunc(items, func(a, b Item) int { return cmp.Compare(a.Line, b.Line) })
 	return items
 }
-
-// insertionSortMax is the item count above which sortByLine switches from
-// insertion sort to slices.SortStableFunc.
-const insertionSortMax = 256
 
 // frame is one open list item on the parse stack.
 type frame struct {
