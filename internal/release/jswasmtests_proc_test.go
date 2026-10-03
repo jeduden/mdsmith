@@ -73,7 +73,8 @@ func TestListJSOnlyFilesHostIndependent(t *testing.T) {
 }
 
 // TestRunJSWasmPackage drives the production wiring against a
-// package that does not exist: go test fails before Node is needed.
+// package that does not exist: the js/wasm go list fails, before go
+// test or Node runs.
 func TestRunJSWasmPackage(t *testing.T) {
 	root, err := filepath.Abs("../..")
 	require.NoError(t, err)

@@ -5,8 +5,9 @@
 // A native `go test` never compiles a file that only a js/wasm build
 // selects, so those tests need their own run. The runner finds them by
 // diffing the test files `go list` reports under GOOS=js GOARCH=wasm
-// against a linux/amd64 `go list`, both with cgo off, parses each file with go/parser to list
-// its TestXxx(*testing.T) functions, runs exactly those under Node with
+// against a linux/amd64 `go list`, both with cgo off, parses each file
+// with go/parser to list its TestXxx(*testing.T) functions, runs
+// exactly those under Node with
 // `go test -json`, and fails unless every one of them reports a "pass"
 // event. A skipped test therefore fails the step by name; a
 // commented-out one is not listed.
@@ -138,7 +139,9 @@ func runJSWasmPackageWith(d jsWasmDeps, pkg string, requireJSOnly bool) error {
 	// The js/wasm-only tests must pass by name, as in the default mode;
 	// a skip of a test the native build shares stays fine. Unlike the
 	// default mode, a package may have no such files or tests. A
-	// missing package fails at go list, before go test.
+	// missing package fails at go list, before go test. pkg must match
+	// one package: the no-pass check sums passes across the whole run,
+	// so one package with no pass would hide behind another's passes.
 	files, err := listJSOnlyFiles(d, "test-js-wasm --all", pkg)
 	if err != nil {
 		return err
@@ -405,9 +408,10 @@ func takesTestingT(fn *ast.FuncDecl, pkgName string) bool {
 // testJSONWriter decodes a `go test -json` stream as it is written.
 // Each complete line's Output (the `go test -v` text) goes to out at
 // once, and the top-level tests that report a "pass" event collect in
-// passed, and those that report "skip" in skipped, in stream order. A line that is not a JSON event, such as a
-// `go: downloading` notice, passes through to out unchanged; a
-// mangled `{`-led event is dropped (see echoNonEvent).
+// passed, and those that report "skip" in skipped, in stream order. A
+// line that is not a JSON event, such as a `go: downloading` notice,
+// passes through to out unchanged; a mangled `{`-led event is dropped
+// (see echoNonEvent).
 type testJSONWriter struct {
 	out     io.Writer
 	partial []byte // bytes after the last newline, awaiting the rest
