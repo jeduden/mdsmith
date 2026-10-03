@@ -1532,7 +1532,8 @@ var (
 // backticks or tildes. A backtick run must not be followed by another
 // backtick: CommonMark forbids backticks in a backtick fence's info
 // string, so "```a`b" is paragraph text. n is 0 when the line opens no
-// fence. (The same open/close contract as include.rewriteSkippingCode.)
+// fence. (include.rewriteSkippingCode applies the same run and
+// info-string rules but accepts any amount of indentation.)
 func fenceOpenRun(raw, lineB []byte) (byte, int) {
 	if len(lineB) == 0 || (lineB[0] != '`' && lineB[0] != '~') {
 		return 0, 0
