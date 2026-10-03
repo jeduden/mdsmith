@@ -7,7 +7,7 @@ summary: >-
   `rejectOnJSError` covers only the Promise executor
   body. A JS exception thrown by `Promise.New` in
   `newPromise`, by a synchronous session method, or
-  after `newSessionProxy` registers a session still
+  after `registerSession` registers a session still
   panics. The panic ends the Go program or leaves a
   session in `sessions` that no proxy can dispose.
   Decide what each path does on a JS exception, and
@@ -37,13 +37,14 @@ on every Go-to-JS call. Plan
 covers what such a script can reach. This plan covers
 what its exceptions break.
 
-- `newSessionProxy` stores the session in `sessions`
+- `registerSession` (then named `newSessionProxy`)
+  stores the session in `sessions`
   before the create Promise's resolve runs. If resolve
   throws, `rejectOnJSError` rejects the create, but the
   session stays registered with no proxy to dispose it.
   Plan 2610021439 already moved the store after
   `bindMethods`, and
-  `TestNewSessionProxy_BindThrowRegistersNoSession`
+  `TestRegisterSession_BindThrowRegistersNoSession`
   covers a `bindTo` that throws.
 - `newPromise` calls `Promise.New(handler)` outside the
   guard. A throwing `Promise` constructor panics inside
@@ -75,7 +76,11 @@ what its exceptions break.
 ## Acceptance Criteria
 
 - [x] A JS exception during create leaves `sessions`
-      the same size as before the create
+      the same size as before the create (a throwing
+      `then` getter rejects without throwing to Go;
+      plan
+      [2610031253](2610031253_wasm-create-then-getter-leak.md)
+      covers that path)
 - [x] A throwing `Promise` constructor or a throwing
       sync-path call does not end the Go program
 - [x] No func stays registered after either failure
@@ -84,3 +89,19 @@ what its exceptions break.
 - [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues, natively and with
       `GOOS=js GOARCH=wasm`
+
+## Review Round 1
+
+Code review of PR #894 found five more ways a JS
+failure could end the program. A `Promise` that is no
+constructor raised a `*js.ValueError` that only
+`recoverJS` catches. A `Promise` passed the executor
+too few arguments, or a `reject` that threw. A
+`finalizer.unregister` call in `dispose()` threw. A
+disposed-value fallback failed the same way as the
+call it replaced. Each now has a red/green test.
+
+`drainFirst` recovers any JS failure as a last
+resort, so every entry point is covered, not only the
+guarded call sites. `dispose()` drops the session
+before it calls `unregister`.

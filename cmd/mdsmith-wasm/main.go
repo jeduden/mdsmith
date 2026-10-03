@@ -266,7 +266,7 @@ func registerSession(sess *mdsmith.Session) (js.Value, int64) {
 // them while a call carries only the id. A name with no shared func
 // (the names list and sharedMethodImpls drifted) is left off rather
 // than passed to bind, which would throw on every createSession;
-// TestNewSessionProxy_KeysMatchSessionMethodNames reports the drift.
+// TestRegisterSession_KeysMatchSessionMethodNames reports the drift.
 func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int64, token js.Value) {
 	for _, name := range names {
 		f, ok := shared[name]
@@ -637,7 +637,10 @@ func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 // disposed value instead, so one failed call ends only that call. The
 // disposed value can fail the same way (a patched Reflect.construct
 // fails every array); drainFirst then returns undefined. Any other
-// panic is re-raised. TinyGo does not implement recover() on
+// panic is re-raised. An async method never takes this fallback: its
+// call is newPromise, which recovers its own JS failures and returns
+// undefined, so a live session never sees a "session disposed"
+// rejection. TinyGo does not implement recover() on
 // WebAssembly, so there the exception still ends the program.
 func callOrDisposed(impl methodImpl, sess *mdsmith.Session, args []js.Value) (v js.Value) {
 	defer recoverJS(func() { v = impl.disposed() })

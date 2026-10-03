@@ -334,12 +334,12 @@ func newTestProxyWithID(t *testing.T) (js.Value, int64) {
 	return v, 0
 }
 
-// TestNewSessionProxy_KeysMatchSessionMethodNames ties the proxy's real
+// TestRegisterSession_KeysMatchSessionMethodNames ties the proxy's real
 // keys to sessionMethodNames, the list the native parity test checks
 // against the Go Session, so a key added to or dropped from
 // registerSession alone cannot drift past that test. The order must
 // match too, so Object.keys(session) is the same for every session.
-func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
+func TestRegisterSession_KeysMatchSessionMethodNames(t *testing.T) {
 	proxy := newTestProxy(t)
 	defer proxy.Call("dispose")
 	keys := js.Global().Get("Object").Call("keys", proxy)
@@ -388,11 +388,11 @@ func TestAsyncMethodNames_MatchTable(t *testing.T) {
 	}
 }
 
-// TestNewSessionProxy_DisposeKeepsMethodShapes checks that after
+// TestRegisterSession_DisposeKeepsMethodShapes checks that after
 // dispose() every method keeps its return shape: async methods reject
 // with "session disposed", capabilities() is empty, invalidate() does
 // nothing, and a second dispose() is a no-op.
-func TestNewSessionProxy_DisposeKeepsMethodShapes(t *testing.T) {
+func TestRegisterSession_DisposeKeepsMethodShapes(t *testing.T) {
 	proxy := newTestProxy(t)
 	require.Equal(t, js.TypeObject, proxy.Call("check", "a.md", "# A\n").Type(),
 		"a live check returns a Promise")
@@ -435,7 +435,7 @@ func assertDisposedShapes(t *testing.T, proxy js.Value) {
 	assert.True(t, proxy.Call("dispose").IsUndefined(), "second dispose")
 }
 
-// TestNewSessionProxy_DisposedShapeMatchesLive checks, for every method
+// TestRegisterSession_DisposedShapeMatchesLive checks, for every method
 // in sharedMethodImpls, that a disposed session returns a result of the
 // same shape (Promise, array, or other JS type) as the live method. A
 // synchronous method that falls back to the rejecting-Promise result
@@ -444,7 +444,7 @@ func assertDisposedShapes(t *testing.T, proxy js.Value) {
 // in methodSampleArgs, so a new method cannot skip the check. A method
 // left off the session object fails cleanly instead of panicking the
 // test binary.
-func TestNewSessionProxy_DisposedShapeMatchesLive(t *testing.T) {
+func TestRegisterSession_DisposedShapeMatchesLive(t *testing.T) {
 	for name := range sharedMethodImpls {
 		args, ok := methodSampleArgs[name]
 		require.True(t, ok, "%s needs sample args in methodSampleArgs", name)
@@ -628,7 +628,7 @@ func TestDisposedUndefined(t *testing.T) {
 	assert.True(t, disposedUndefined().IsUndefined())
 }
 
-// TestNewSessionProxy_DisposeLeavesNoFuncs tracks the funcs a session's
+// TestRegisterSession_DisposeLeavesNoFuncs tracks the funcs a session's
 // lifecycle (Promise executors, plus the shared method funcs on first
 // use) registers and releases through the funcOf and releaseFunc seams.
 // After a warm-up cycle, N more create/dispose cycles must leave the
@@ -638,7 +638,7 @@ func TestDisposedUndefined(t *testing.T) {
 // Each func is tracked by its JS wrapper rather than a bare counter, so
 // releasing the wrong func (or one twice) cannot cancel out a leak.
 // Not parallel: it swaps package seams.
-func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
+func TestRegisterSession_DisposeLeavesNoFuncs(t *testing.T) {
 	oldOf, oldRelease := funcOf, releaseFunc
 	t.Cleanup(func() { funcOf, releaseFunc = oldOf, oldRelease })
 	var live []js.Value
@@ -826,7 +826,7 @@ func TestBigIntArgs(t *testing.T) {
 // TestBindMethods_SkipsNameWithoutSharedFunc checks that a name in the
 // method list with no shared func (the two lists drifted) is left off
 // the session object rather than throwing in bind on every
-// createSession. TestNewSessionProxy_KeysMatchSessionMethodNames then
+// createSession. TestRegisterSession_KeysMatchSessionMethodNames then
 // reports the drift.
 func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
 	proxy := js.Global().Get("Object").New()
@@ -837,12 +837,12 @@ func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
 	assert.False(t, proxy.Call("hasOwnProperty", "missing").Bool())
 }
 
-// TestNewSessionProxy_BindThrowRegistersNoSession swaps in a bind that
+// TestRegisterSession_BindThrowRegistersNoSession swaps in a bind that
 // throws, as a Function.prototype.bind patched before load would be
 // captured. createSession must reject without leaving the Session in
 // sessions, where no session object would ever reach dispose().
 // Not parallel: it swaps bindTo.
-func TestNewSessionProxy_BindThrowRegistersNoSession(t *testing.T) {
+func TestRegisterSession_BindThrowRegistersNoSession(t *testing.T) {
 	sharedMethods()
 	old := bindTo
 	t.Cleanup(func() { bindTo = old })
@@ -919,13 +919,13 @@ func TestSharedMethods_NoSessionID(t *testing.T) {
 	assert.Len(t, sessions, before, "dispose without an id drops no session")
 }
 
-// TestNewSessionProxy_IgnoresLaterBindPatch checks that a
+// TestRegisterSession_IgnoresLaterBindPatch checks that a
 // Function.prototype.bind or .call replaced after the engine loaded (by
 // another plugin sharing the realm) never receives an unbound shared
 // func: the proxy binds through the pair captured at load. The patch is
 // undone by a defer, so a failed require in newTestProxy cannot leave
 // it in place for later tests.
-func TestNewSessionProxy_IgnoresLaterBindPatch(t *testing.T) {
+func TestRegisterSession_IgnoresLaterBindPatch(t *testing.T) {
 	warm := newTestProxy(t) // captures bind and registers the shared funcs
 	warm.Call("dispose")
 
@@ -973,7 +973,7 @@ func isSharedFunc(v js.Value) bool {
 	return false
 }
 
-// TestNewSessionProxy_StaleReferencesNeverReachReleasedFuncs checks
+// TestRegisterSession_StaleReferencesNeverReachReleasedFuncs checks
 // that no call after dispose() reaches a released func (which
 // syscall/js logs as "call to released function"). The release seam
 // shows dispose releases nothing, so no reference a session object
@@ -981,7 +981,7 @@ func isSharedFunc(v js.Value) bool {
 // reference, a frozen session object, and a read-only method then all
 // take the same disposed path as the writable object.
 // Not parallel: it swaps the releaseFunc seam.
-func TestNewSessionProxy_StaleReferencesNeverReachReleasedFuncs(t *testing.T) {
+func TestRegisterSession_StaleReferencesNeverReachReleasedFuncs(t *testing.T) {
 	object := js.Global().Get("Object")
 	for _, tt := range []struct {
 		name  string

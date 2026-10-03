@@ -3,10 +3,7 @@
 <?catalog
 glob: ["plan/*.md", "!plan/proto.md"]
 sort: numeric:id
-header: |
-
-  | ID  | Status | Model | Title |
-  |-----|--------|-------|-------|
+header: "\n| ID  | Status | Model | Title |\n|-----|--------|-------|-------|\n"
 row: "| {id} | {status} | {model} | [{title}]({filename}) |"
 footer: ""
 ?>
@@ -297,4 +294,5 @@ footer: ""
 | 2610030244 | ✅     | sonnet | [Run internal/build under js/wasm once in CI](plan/2610030244_dedupe-build-js-wasm-ci-run.md)                                                           |
 | 2610030438 | 🔲     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
 | 2610030846 | ✅     | sonnet | [Silence wasm session finalizers after the Go program exits](plan/2610030846_wasm-finalizer-after-exit.md)                                              |
+| 2610031253 | 🔲     | sonnet | [Free the session when a then getter rejects the create](plan/2610031253_wasm-create-then-getter-leak.md)                                               |
 <?/catalog?>
