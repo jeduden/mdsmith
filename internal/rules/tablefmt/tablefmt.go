@@ -561,21 +561,20 @@ func splitRowBytes(row []byte) []string {
 	// capacity. []byte("|") is a stack-allocated needle; escape analysis
 	// confirms bytes.Count does not retain it.
 	cells := make([]string, 0, bytes.Count(row, []byte("|"))+1)
-	var current strings.Builder
+	// Cells are verbatim sub-slices of row (an escaped \| stays as-is), so
+	// slice instead of copying byte by byte through a Builder.
+	start := 0
 	for i := 0; i < len(row); i++ {
 		if row[i] == '\\' && i+1 < len(row) && row[i+1] == '|' {
-			current.WriteString(`\|`)
 			i++
 			continue
 		}
 		if row[i] == '|' {
-			cells = append(cells, strings.TrimSpace(current.String()))
-			current.Reset()
-			continue
+			cells = append(cells, string(bytes.TrimSpace(row[start:i])))
+			start = i + 1
 		}
-		current.WriteByte(row[i])
 	}
-	cells = append(cells, strings.TrimSpace(current.String()))
+	cells = append(cells, string(bytes.TrimSpace(row[start:])))
 
 	return cells
 }
