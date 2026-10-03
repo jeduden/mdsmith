@@ -112,6 +112,34 @@ func TestRunMove_BasenameChangeRewritesWikilink(t *testing.T) {
 	assert.Contains(t, string(c), "[[service]]")
 }
 
+// TestRunMove_GitignoredStemSiblingKeepsWikilink locks that the CLI's
+// move guard counts a gitignored same-stem file, which discovery skips
+// but `[[a]]` can still resolve to, so the link is left as written.
+func TestRunMove_GitignoredStemSiblingKeepsWikilink(t *testing.T) {
+	dir := renameWorkspace(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("archive/\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "archive"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "archive", "a.md"), []byte("# Old\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "c.md"), []byte("See [[a]] here.\n"), 0o644))
+	assert.Equal(t, 0, runMove([]string{"a.md", "service.md"}))
+	c, _ := os.ReadFile(filepath.Join(dir, "c.md"))
+	assert.Equal(t, "See [[a]] here.\n", string(c))
+}
+
+// TestCLIRenameWorkspace_WikilinkIndex locks that the CLI's wikilink
+// index walks the whole root, gitignored files included, and that a
+// workspace with no root builds none.
+func TestCLIRenameWorkspace_WikilinkIndex(t *testing.T) {
+	dir := renameWorkspace(t)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("archive/\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "archive"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "archive", "a.md"), []byte("# Old\n"), 0o644))
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	assert.Equal(t, []string{"a.md", "archive/a.md"}, ws.WikilinkIndex().StemPaths("a"))
+	assert.Nil(t, cliRenameWorkspace{}.WikilinkIndex())
+}
+
 func TestApplyPlan_SkipsEmptyEditEntries(t *testing.T) {
 	renameWorkspace(t)
 	ws, code := buildWorkspace(renameOptions{})
