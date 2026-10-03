@@ -58,12 +58,25 @@ errors only then.
    file in [internal/build](../internal/build): the
    `_proc_test.go` files and `recipe_output_pipe_test.go`.
    Leave `exec_plan9_proc_test.go`, which is tagged
-   `plan9`, as it is.
+   `plan9`, as it is. Skip each `sh` or recipe test
+   through `skipWithoutPOSIXTools`. The `echo`/`touch`
+   hook tests and the `recipeOutput` pipe tests need no
+   `sh`, so they run on plan9 unskipped.
+4. Guard the tag in CI:
+   [proctags_test.go](../internal/build/proctags_test.go)
+   fails when an `internal/build` test file builds on
+   unix and windows but not on js or plan9. It also
+   fails when a test in such a file calls
+   `writeScript`, `recipeCmd`, or passes an `sh` argv
+   without a plan9 skip.
 
 ## Acceptance Criteria
 
 - [x] A plan9 compile error in a `_proc_test.go` file
       fails a CI step.
+- [x] Retagging a spawn test file `unix || windows`, or
+      dropping an `sh` test's plan9 skip, fails
+      `TestProcTestFilesCoverPlan9`.
 - [x] Native and js/wasm runs of `internal/build` still
       pass.
 - [x] All tests pass: `go test ./...`
