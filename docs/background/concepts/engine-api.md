@@ -282,14 +282,12 @@ method made read-only with
 `Object.defineProperty(session, "check", { writable: false })`. None
 of them logs "call to released function".
 
-The id is drawn at random from 2^53 values (2^31 − 1 in the TinyGo
-build). A draw that a live session holds is redrawn. So a script that
-reaches a raw shared function cannot find a session by trying 0, 1,
-2, and so on. The TinyGo range is small enough to sweep in full,
-though, so only the standard Go build holds against that. A disposed
-session's id is not retired, so a new session can draw it again, at
-odds of one in 2^53 (one in 2^31 − 1 under TinyGo). A method kept
-from the disposed session would then reach the new one.
+The id is drawn at random from 2^53 values in both the standard Go
+and the TinyGo build. A draw that a live session holds is redrawn. So
+a script that reaches a raw shared function cannot find a session by
+trying 0, 1, 2, and so on. A disposed session's id is not retired, so
+a new session can draw it again, at odds of one in 2^53. A method
+kept from the disposed session would then reach the new one.
 
 The engine also binds through a `bind` captured at load, so a later
 patch of `Function.prototype.bind` or `call` never sees a raw shared

@@ -201,7 +201,7 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 // list and sharedMethodImpls drifted) is left off rather than passed to
 // bind, which would throw on every createSession;
 // TestNewSessionProxy_KeysMatchSessionMethodNames reports the drift.
-func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int) {
+func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int64) {
 	for _, name := range names {
 		if f, ok := shared[name]; ok {
 			proxy.Set(name, bindTo.Invoke(f, js.Undefined(), id))
@@ -224,20 +224,20 @@ var bindTo js.Value
 // sessions maps a live session's id to its Session. js/wasm runs every
 // goroutine on one thread with no preemption, and nothing between a
 // read and a write here blocks, so it needs no lock.
-var sessions = map[int]*mdsmith.Session{}
+var sessions = map[int64]*mdsmith.Session{}
 
 // newSessionID draws an id no live session holds, uniformly from
 // [1, maxSessionID], so a script that holds a raw shared func cannot
-// reach a session by counting up from 0. The range is 2^53 under
-// standard Go and math.MaxInt under TinyGo; a collision with a live id
-// redraws. A disposed session's id is not retired (a retired set would
+// reach a session by counting up from 0. The id is an int64, not an
+// int, so the range is 2^53 under TinyGo too, whose int is 32 bits on
+// wasm. A collision with a live id redraws. A disposed session's id is not retired (a retired set would
 // grow with every create/dispose), so it can be drawn again, at odds of
 // one in maxSessionID per draw; a stale method of the disposed session
 // would then reach the new one. The ids are not cryptographic: under
 // standard Go, math/rand/v2's global source is seeded from the OS,
 // which on js/wasm is crypto.getRandomValues; TinyGo routes it through
 // its own runtime generator instead. Plan 2610021439.
-func newSessionID() int {
+func newSessionID() int64 {
 	for {
 		id := 1 + drawSessionID(maxSessionID)
 		if _, taken := sessions[id]; !taken {
@@ -248,7 +248,7 @@ func newSessionID() int {
 
 // drawSessionID is rand.IntN behind a seam so a test can force the
 // collision with a live id that newSessionID redraws on.
-var drawSessionID = rand.IntN
+var drawSessionID = rand.Int64N
 
 // methodImpl pairs a forwarding session method's implementation with
 // the result it returns once its session is disposed. Build one with
@@ -395,12 +395,12 @@ func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 	}
 }
 
-// maxSessionID bounds a bound id before its int conversion: 2^53 under
-// standard Go, whose int is 64 bits, and math.MaxInt under TinyGo,
-// whose int is 32 bits on wasm. Either way int(f) is in range. It is
-// also the top of the range newSessionID draws from, so every id it
-// hands out passes boundSession's check.
-const maxSessionID = min(1<<53, math.MaxInt)
+// maxSessionID bounds a bound id before its int64 conversion, so
+// int64(f) is in range and exact: 2^53 is the largest float64 below
+// which every integer is exact. It is also the top of the range
+// newSessionID draws from, so every id it hands out passes
+// boundSession's check.
+const maxSessionID = 1 << 53
 
 // boundSession splits the session id a shared func is bound to off
 // args and looks up its live Session. sess is nil once that session is
@@ -409,17 +409,17 @@ const maxSessionID = min(1<<53, math.MaxInt)
 // direct call to a shared func (never one through a session object)
 // can pass; args then comes back whole, and no fraction is truncated
 // onto a live id.
-func boundSession(args []js.Value) (id int, sess *mdsmith.Session, rest []js.Value) {
+func boundSession(args []js.Value) (id int64, sess *mdsmith.Session, rest []js.Value) {
 	if len(args) == 0 || jsType(args[0]) != js.TypeNumber {
 		return 0, nil, args
 	}
 	f := args[0].Float()
 	// NaN fails f == Trunc(f); the maxSessionID bound rejects Infinity
-	// and any value whose int conversion is implementation-defined.
+	// and any value whose int64 conversion is implementation-defined.
 	if f != math.Trunc(f) || math.Abs(f) > maxSessionID {
 		return 0, nil, args
 	}
-	id = int(f)
+	id = int64(f)
 	return id, sessions[id], args[1:]
 }
 

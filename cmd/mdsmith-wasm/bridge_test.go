@@ -5,6 +5,7 @@ package main
 import (
 	"errors"
 	"maps"
+	"reflect"
 	"runtime"
 	"runtime/debug"
 	"slices"
@@ -316,7 +317,7 @@ func newTestProxy(t *testing.T) js.Value {
 
 // newTestProxyWithID is newTestProxy plus the id the new session was
 // registered under, found as the one key sessions gained.
-func newTestProxyWithID(t *testing.T) (js.Value, int) {
+func newTestProxyWithID(t *testing.T) (js.Value, int64) {
 	t.Helper()
 	before := maps.Clone(sessions)
 	opts := js.ValueOf(map[string]any{})
@@ -690,11 +691,11 @@ func TestBoundSession(t *testing.T) {
 	src := js.ValueOf("a.md")
 	// Random ids can exceed 2^52, where float64 has no .5, so the
 	// fraction targets a small id registered by hand.
-	const smallID = 7
+	const smallID int64 = 7
 	require.NotContains(t, sessions, smallID, "precondition: id 7 is free")
 	sessions[smallID] = sessions[liveID]
 	defer delete(sessions, smallID)
-	frac := js.ValueOf(smallID + 0.5)
+	frac := js.ValueOf(float64(smallID) + 0.5)
 	nan := js.Global().Get("NaN")
 	inf := js.Global().Get("Infinity")
 	huge := js.ValueOf(0x1p64)
@@ -702,7 +703,7 @@ func TestBoundSession(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     []js.Value
-		wantID   int
+		wantID   int64
 		wantLive bool
 		wantRest []js.Value
 	}{
@@ -1051,7 +1052,7 @@ func TestSharedFunc_GuessedIDsReachNoSession(t *testing.T) {
 	// Positive control: the raw func does reach a session by its id, so
 	// an empty result below means a miss, not a broken call path.
 	require.Positive(t, raw.Invoke(ownID).Length(), "raw func reaches its own session by id")
-	guess := func(id int) {
+	guess := func(id int64) {
 		// ownID is the one id this script holds; past maxSessionID a
 		// float64 can round back onto it.
 		if id == ownID || id > maxSessionID {
@@ -1060,10 +1061,10 @@ func TestSharedFunc_GuessedIDsReachNoSession(t *testing.T) {
 		got := raw.Invoke(id)
 		assert.Equal(t, 0, got.Length(), "guessed id %d reached a live session", id)
 	}
-	for id := -1; id <= 4096; id++ {
+	for id := int64(-1); id <= 4096; id++ {
 		guess(id)
 	}
-	for d := 1; d <= 4096; d++ {
+	for d := int64(1); d <= 4096; d++ {
 		guess(ownID - d)
 		guess(ownID + d)
 	}
@@ -1079,16 +1080,26 @@ func TestSharedFunc_GuessedIDsReachNoSession(t *testing.T) {
 func TestNewSessionID_RedrawsLiveID(t *testing.T) {
 	oldDraw := drawSessionID
 	t.Cleanup(func() { drawSessionID = oldDraw })
-	const liveID = 7
+	const liveID int64 = 7
 	require.NotContains(t, sessions, liveID, "precondition: id 7 is free")
 	sessions[liveID] = nil
 	defer delete(sessions, liveID)
-	draws := []int{liveID - 1, liveID - 1, 41}
-	var gotN []int
-	drawSessionID = func(n int) int {
+	draws := []int64{liveID - 1, liveID - 1, 41}
+	var gotN []int64
+	drawSessionID = func(n int64) int64 {
 		gotN = append(gotN, n)
 		return draws[min(len(gotN), len(draws))-1]
 	}
-	assert.Equal(t, 42, newSessionID())
-	assert.Equal(t, []int{maxSessionID, maxSessionID, maxSessionID}, gotN)
+	assert.Equal(t, int64(42), newSessionID())
+	assert.Equal(t, []int64{maxSessionID, maxSessionID, maxSessionID}, gotN)
+}
+
+// TestSessionID_Int64On32BitInt pins the session id to int64, so the
+// TinyGo build, whose int is 32 bits on wasm, draws from the same 2^53
+// range as standard Go rather than a 2^31 − 1 one a script can sweep.
+// Plan 2610021439.
+func TestSessionID_Int64On32BitInt(t *testing.T) {
+	assert.Equal(t, reflect.Int64, reflect.TypeOf(newSessionID()).Kind())
+	assert.Equal(t, reflect.Int64, reflect.TypeOf(sessions).Key().Kind())
+	assert.Equal(t, int64(1)<<53, int64(maxSessionID))
 }
