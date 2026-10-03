@@ -327,3 +327,13 @@ func TestFenceOpenMarker(t *testing.T) {
 	assert.Equal(t, "", fenceOpenMarker("``x"))
 	assert.Equal(t, "", fenceOpenMarker("text"))
 }
+
+// TestAdjustHeadings_CRLFClosingFence checks that a CRLF closer ends
+// the fence: the "\n" split leaves "```\r", and a heading after the
+// block must still shift.
+func TestAdjustHeadings_CRLFClosingFence(t *testing.T) {
+	content := "# A\r\n\r\n```\r\ncode\r\n```\r\n\r\n## B\r\n"
+	assert.Equal(t, "## A\r\n\r\n```\r\ncode\r\n```\r\n\r\n### B\r\n",
+		adjustHeadingsByOffset(content, 1))
+	assert.True(t, isClosingFence("```\r", "```"))
+}

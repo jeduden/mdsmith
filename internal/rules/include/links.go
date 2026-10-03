@@ -71,7 +71,7 @@ func rewriteSkippingCode(content string, rewriteFn func(string) string) string {
 
 		if inFence {
 			b.WriteString(line)
-			stripped := strings.TrimRight(trimmed, " \t\n")
+			stripped := strings.TrimRight(trimmed, " \t\r\n")
 			if len(stripped) >= fenceLen && allSameChar(stripped, fenceChar) {
 				inFence = false
 			}

@@ -248,3 +248,10 @@ func TestRewriteSkippingCode_BacktickInfoStringIsNotFence(t *testing.T) {
 	got := rewriteSkippingCode("```a`b\nx\n", strings.ToUpper)
 	assert.Equal(t, "```A`B\nX\n", got)
 }
+
+// TestRewriteSkippingCode_CRLFClosingFence checks that a CRLF closer
+// ends the fence, so lines after the block are rewritten.
+func TestRewriteSkippingCode_CRLFClosingFence(t *testing.T) {
+	got := rewriteSkippingCode("```\r\ncode\r\n```\r\nx\r\n", strings.ToUpper)
+	assert.Equal(t, "```\r\ncode\r\n```\r\nX\r\n", got)
+}

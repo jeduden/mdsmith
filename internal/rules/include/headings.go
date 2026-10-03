@@ -14,27 +14,15 @@ var setextH1Re = regexp.MustCompile(`^=+\s*$`)
 // setextH2Re matches a setext h2 underline: one or more '-' characters.
 var setextH2Re = regexp.MustCompile(`^-+\s*$`)
 
-// codeFenceRe matches the opening of a fenced code block after leading
-// whitespace has been stripped. Unlike the CommonMark spec (which
-// limits indent to 3 spaces), we strip all leading whitespace so that
-// fenced blocks inside list items are also detected and skipped. A
-// backtick run must not be followed by another backtick on the line:
-// CommonMark forbids backticks in a backtick fence's info string, so
-// "```a`b" is paragraph text, not a fence.
-var codeFenceRe = regexp.MustCompile("^(?:(`{3,})[^`]*$|(~{3,}))")
-
 // fenceOpenMarker returns the fence marker run when line opens a
-// fenced code block (after stripping leading whitespace), or "" when
-// it does not.
+// fenced code block, or "" when it does not. Unlike the CommonMark
+// spec (which limits indent to 3 spaces), all leading whitespace is
+// stripped so that fenced blocks inside list items are also detected
+// and skipped. The opener rule is countFenceRun's, shared with
+// rewriteSkippingCode: "```a`b" is paragraph text, not a fence.
 func fenceOpenMarker(line string) string {
-	m := codeFenceRe.FindStringSubmatch(strings.TrimLeft(line, " \t"))
-	if m == nil {
-		return ""
-	}
-	if m[1] != "" {
-		return m[1]
-	}
-	return m[2]
+	trimmed := strings.TrimLeft(line, " \t")
+	return trimmed[:countFenceRun(trimmed)]
 }
 
 // adjustHeadings shifts all heading levels in content so that the minimum
@@ -209,9 +197,11 @@ func applyShift(lines []string, shift int) []string {
 
 // isClosingFence checks if a line closes a code fence opened with the given marker.
 // Leading whitespace is stripped (any amount) to handle fences inside list items.
+// Trailing whitespace, including the "\r" a CRLF file leaves after the
+// "\n" split, is stripped too.
 func isClosingFence(line, marker string) bool {
 	trimmed := strings.TrimLeft(line, " \t")
-	trimmed = strings.TrimRight(trimmed, " \t")
+	trimmed = strings.TrimRight(trimmed, " \t\r")
 	if len(trimmed) < len(marker) {
 		return false
 	}
@@ -231,7 +221,7 @@ func isResultPrevLineFence(result []string) bool {
 	if len(result) == 0 {
 		return false
 	}
-	return codeFenceRe.MatchString(strings.TrimLeft(result[len(result)-1], " \t"))
+	return fenceOpenMarker(result[len(result)-1]) != ""
 }
 
 // clampLevel ensures a heading level is between 1 and 6.
