@@ -296,4 +296,5 @@ footer: |
 | 2610030243 | 🔲     | sonnet | [Vet the internal/build spawn tests for plan9](plan/2610030243_plan9-vet-unix-windows-build-tests.md)                                                   |
 | 2610030244 | ✅     | sonnet | [Run internal/build under js/wasm once in CI](plan/2610030244_dedupe-build-js-wasm-ci-run.md)                                                           |
 | 2610030438 | 🔲     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
+| 2610031104 | 🔲     | haiku  | [Build-tag the release tooling's process tests](plan/2610031104_tag-release-process-tests.md)                                                           |
 <?/catalog?>
