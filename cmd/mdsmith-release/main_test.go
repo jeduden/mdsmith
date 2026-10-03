@@ -957,14 +957,6 @@ func TestRunSelectAuditSarifs(t *testing.T) {
 	assert.Equal(t, `["2026-06-12-full-repo-audit"]`+"\n", out)
 }
 
-// captureStderr runs fn with os.Stderr redirected to a pipe and returns
-// everything written to it, including by child processes that inherit
-// os.Stderr.
-func captureStderr(t *testing.T, fn func()) string {
-	t.Helper()
-	return captureFile(t, &os.Stderr, fn)
-}
-
 // captureFile runs fn with *target (os.Stdout or os.Stderr) redirected
 // to a pipe and returns everything written to it. The pipe is drained
 // concurrently so a chatty fn cannot block on a full pipe buffer, and
@@ -991,15 +983,4 @@ func captureFile(t *testing.T, target **os.File, fn func()) string {
 		fn()
 	}()
 	return <-done
-}
-
-// TestRunTestJSWasmRequireJSOnlyNeedsAll rejects --require-js-only
-// without --all as a usage error instead of silently ignoring it.
-func TestRunTestJSWasmRequireJSOnlyNeedsAll(t *testing.T) {
-	var code int
-	stderr := captureStderr(t, func() {
-		code = run([]string{"test-js-wasm", "--require-js-only", "."})
-	})
-	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "mdsmith-release: test-js-wasm: --require-js-only needs --all")
 }

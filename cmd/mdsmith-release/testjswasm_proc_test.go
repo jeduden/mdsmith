@@ -2,14 +2,35 @@
 
 package main
 
-// These tests run the real go toolchain, which a js/wasm test binary
-// cannot spawn.
+// These tests capture stderr through an os.Pipe, and all but the
+// usage-error one run the real go toolchain; a js/wasm test binary can
+// do neither.
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+// captureStderr runs fn with os.Stderr redirected to a pipe and returns
+// everything written to it, including by child processes that inherit
+// os.Stderr.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	return captureFile(t, &os.Stderr, fn)
+}
+
+// TestRunTestJSWasmRequireJSOnlyNeedsAll rejects --require-js-only
+// without --all as a usage error instead of silently ignoring it.
+func TestRunTestJSWasmRequireJSOnlyNeedsAll(t *testing.T) {
+	var code int
+	stderr := captureStderr(t, func() {
+		code = run([]string{"test-js-wasm", "--require-js-only", "."})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "mdsmith-release: test-js-wasm: --require-js-only needs --all")
+}
 
 // TestRunTestJSWasm dispatches through `run test-js-wasm` on this
 // package, which has no js/wasm-only test files. The runner must fail
