@@ -2,7 +2,7 @@
 id: 2609131911
 title: >-
   Share the refactor Workspace adapter between CLI and Session
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   cmd/mdsmith/rename.go's cliRenameWorkspace,
@@ -97,17 +97,17 @@ The 2026-09-13 audit (see [the audit log][audit-log]) found:
 
 ## Acceptance Criteria
 
-- [ ] `IncomingAnchorEdges`, `IncomingPathEdges`,
+- [x] `IncomingAnchorEdges`, `IncomingPathEdges`,
       `IncomingWikilinkEdges`, and `Files` are implemented
       once and shared by `cliRenameWorkspace`,
       `sessionRefactorWorkspace`, and `lspRenameWorkspace`.
-- [ ] `Resolve` stays a distinct method on each type; neither
+- [x] `Resolve` stays a distinct method on each type; neither
       is asked to read the other's source.
-- [ ] No behavior change: `mdsmith rename` and
+- [x] No behavior change: `mdsmith rename` and
       `Session.Rename`/`Session.Move` produce identical results
       before and after.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [go]: ../docs/development/architecture/go.md
