@@ -1011,5 +1011,5 @@ func TestRunTestJSWasmAll(t *testing.T) {
 	var code int
 	stderr := captureStderr(t, func() { code = run([]string{"test-js-wasm", "--all", "./internal/does-not-exist"}) })
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr, "under js/wasm")
+	assert.Contains(t, stderr, "mdsmith-release: go test ./internal/does-not-exist under js/wasm")
 }

@@ -14,7 +14,8 @@
 // With --all (RunJSWasmPackage) it instead runs every test a js/wasm
 // build compiles under Node, untagged ones included, and fails on any
 // go test failure or when no test passes, so an untagged test that
-// fails without a real process or pipe fails CI.
+// fails without a real process or pipe fails CI. Both modes need <pkg>
+// to match exactly one package.
 package release
 
 import (
@@ -39,10 +40,14 @@ var jsWasmEnv = []string{"GOOS=js", "GOARCH=wasm"}
 // package matched, ahead of that package's test files.
 const pkgLinePrefix = "#pkg "
 
+// pkgLineTemplate makes `go list` print one pkgLinePrefix line with
+// the import path of each package matched.
+const pkgLineTemplate = pkgLinePrefix + `{{.ImportPath}}{{"\n"}}`
+
 // testFilesTemplate makes `go list` print, per package, a
 // pkgLinePrefix line with its import path, then one absolute path per
 // test file, internal (TestGoFiles) and external (XTestGoFiles) alike.
-const testFilesTemplate = pkgLinePrefix + `{{.ImportPath}}{{"\n"}}` +
+const testFilesTemplate = pkgLineTemplate +
 	`{{range .TestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}` +
 	`{{range .XTestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}`
 
@@ -92,7 +97,7 @@ func (d jsWasmDeps) output(env []string, args ...string) ([]byte, error) {
 
 // RunJSWasmPackage runs every test of pkg that a js/wasm build compiles
 // under Node, untagged ones included, and fails on any go test failure
-// or when no test passes.
+// or when no test passes. pkg must match exactly one package.
 // Unlike RunJSWasmTests it does not require each test to pass by name:
 // a skip is fine as long as some test passed.
 func RunJSWasmPackage(root, pkg string, out io.Writer) error {
@@ -115,7 +120,10 @@ func runJSWasmPackageWith(d jsWasmDeps, pkg string) error {
 	if err != nil {
 		return err
 	}
-	passed, err := d.goTest(pkg, execFlag, nil)
+	if err := onePackageOf(d, pkg); err != nil {
+		return err
+	}
+	passed, err := d.goTestAll(pkg, execFlag)
 	if err != nil {
 		return err
 	}
@@ -142,20 +150,48 @@ func (d jsWasmDeps) execFlag() (string, error) {
 	return jsWasmExecFlag(d.path, goroot)
 }
 
-// goTest runs `go test -json` on pkg under Node, streaming the console
-// log to d.out, and returns the names that reported a pass. A
-// non-empty names becomes the -run filter; an empty one runs them all.
+// onePackageOf errors unless pkg matches exactly one package under
+// js/wasm. The --all no-pass check sums passes across the whole run,
+// so across packages one with no pass would hide behind another's.
+// -e: a missing package still lists once, so go test reports why.
+func onePackageOf(d jsWasmDeps, pkg string) error {
+	out, err := d.output(jsWasmEnv, "list", "-e", "-f", pkgLineTemplate, pkg)
+	if err != nil {
+		return fmt.Errorf("go list (js/wasm) %s: %w", pkg, err)
+	}
+	pkgs, _ := splitListOutput(out)
+	if len(pkgs) != 1 {
+		return fmt.Errorf("test-js-wasm --all needs exactly one package; %s matches %d", pkg, len(pkgs))
+	}
+	return nil
+}
+
+// goTestAll runs every test of pkg under Node; see goTest.
+func (d jsWasmDeps) goTestAll(pkg, execFlag string) ([]string, error) {
+	return d.goTest(pkg, execFlag)
+}
+
+// goTestNamed runs exactly the tests in names under Node; see goTest.
+// It errors on an empty names rather than run the whole package, which
+// would let checkAllPassed pass on an empty want list.
+func (d jsWasmDeps) goTestNamed(pkg, execFlag string, names []string) ([]string, error) {
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no test names to run in %s under js/wasm", pkg)
+	}
+	return d.goTest(pkg, execFlag, "-run", "^("+strings.Join(names, "|")+")$")
+}
+
+// goTest runs `go test -json` with extra args on pkg under Node,
+// streaming the console log to d.out, and returns the names that
+// reported a pass.
 //
 // env -i in execFlag: wasm_exec.js caps args plus environment at
 // ~8 KB. It wraps only the Node runtime, so the go command keeps the
 // full Go and proxy environment. -json, not -v: test2json frames each
 // result, so a test whose output lacks a trailing newline still
 // reports its own pass event instead of a glued `x--- PASS` line.
-func (d jsWasmDeps) goTest(pkg, execFlag string, names []string) ([]string, error) {
-	args := []string{"test", "-json", "-exec=" + execFlag}
-	if len(names) > 0 {
-		args = append(args, "-run", "^("+strings.Join(names, "|")+")$")
-	}
+func (d jsWasmDeps) goTest(pkg, execFlag string, extra ...string) ([]string, error) {
+	args := append([]string{"test", "-json", "-exec=" + execFlag}, extra...)
 	w := &testJSONWriter{out: d.out}
 	runErr := d.run(w, jsWasmEnv, append(args, pkg)...)
 	w.Flush()
@@ -178,7 +214,7 @@ func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
 	if err != nil {
 		return err
 	}
-	passed, err := d.goTest(pkg, execFlag, names)
+	passed, err := d.goTestNamed(pkg, execFlag, names)
 	if err != nil {
 		return err
 	}
