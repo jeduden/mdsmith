@@ -72,11 +72,15 @@ errors only then.
    names the new tag and the two plan9 skip helpers.
 4. Guard the tag in CI:
    [proctags_test.go](../internal/build/proctags_test.go)
-   fails when an `internal/build` test file builds on
-   unix and windows but not on js or plan9. It also
-   fails when a test in such a file calls
-   `writeScript`, `recipeCmd`, or passes an `sh` argv
-   without a plan9 skip.
+   fails when a test file in `internal/build`,
+   `internal/release`, or `cmd/mdsmith-release` builds
+   on unix and windows but not on js or plan9. It matches
+   tags with `go/build`, so release tags and file-name
+   suffixes count. A spawn file that also builds on
+   wasip1 or on a future port fails too. It also fails
+   when a test in such a file calls `writeScript`,
+   `recipeCmd`, or passes an `sh` argv, directly or
+   through a helper, before a top-level plan9 skip.
 
 ## Acceptance Criteria
 

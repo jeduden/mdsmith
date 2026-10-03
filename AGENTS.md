@@ -357,9 +357,11 @@ neither. In `internal/build`, a test that calls
 argv, must first call `skipWithoutPOSIXTools`. It
 skips on plan9 and on Windows. Call `skipOnPlan9`
 only in a test with its own Windows branch.
-`TestProcTestFilesCoverPlan9` fails when an
-`internal/build` spawn test file drops the `plan9`
-tag, or when one of its tests calls neither helper.
+`TestProcTestFilesCoverPlan9` fails when a spawn
+test file in `internal/build`, `internal/release`, or
+`cmd/mdsmith-release` drops the `plan9` tag. It also
+fails when a test, directly or through a helper,
+reaches `sh` before its top-level skip call.
 
 ### Config Merge Semantics
 
