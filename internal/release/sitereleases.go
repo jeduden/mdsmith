@@ -77,7 +77,25 @@ func BuildSiteReleases(rels []GitHubRelease) SiteReleases {
 	}
 	sortNewestFirst(out.Stable)
 	sortNewestFirst(out.Candidates)
+	if len(out.Stable) > 0 {
+		out.Candidates = candidatesAfter(out.Candidates, out.Stable[0].Published)
+	}
 	return out
+}
+
+// candidatesAfter keeps the candidates published after cut, the
+// latest stable release. Each candidate's notes span every change
+// since the previous stable release, and one is cut per merge, so
+// keeping the candidates a stable release has already shipped would
+// grow the page by a whole changelog per merge, forever.
+func candidatesAfter(rs []SiteRelease, cut time.Time) []SiteRelease {
+	kept := rs[:0]
+	for _, r := range rs {
+		if r.Published.After(cut) {
+			kept = append(kept, r)
+		}
+	}
+	return kept
 }
 
 func sortNewestFirst(rs []SiteRelease) {
@@ -96,10 +114,12 @@ func sortNewestFirst(rs []SiteRelease) {
 // heading also gets an explicit "{#<idPrefix>-<slug>}" attribute:
 // every release's notes render separately and share headings such
 // as "What's Changed", so automatic IDs would repeat across the
-// page. A heading that already ends in an attribute block ("{#id}",
-// "{.class}", "{key=value}") keeps it. Lines inside fenced code
-// blocks, lines indented four or more spaces, and "#123"-style text
-// are left alone.
+// page. A heading's own "{#id}" is scoped the same way, so no id in
+// a body can collide with another release or with the page's own
+// ids. ATX headings inside block quotes and list items ("> ## A",
+// "- ## A") are rewritten too. Lines inside fenced code blocks,
+// lines indented four or more spaces, and "#123"-style text are
+// left alone.
 func rewriteHeadings(body string, shift int, idPrefix string) string {
 	w := headingRewriter{
 		lines:     strings.Split(body, "\n"),
@@ -181,6 +201,7 @@ func (w *headingRewriter) block(i int, indent, trimmed string) {
 		return
 	}
 	if opensNonParagraphBlock(trimmed) {
+		w.containedATX(i, indent, trimmed)
 		w.paraStart, w.canStart = -1, false
 		return
 	}
@@ -188,6 +209,67 @@ func (w *headingRewriter) block(i int, indent, trimmed string) {
 		w.paraStart = i
 	}
 	w.canStart = false
+}
+
+// containedATX rewrites an ATX heading that sits behind block-quote
+// or list-item markers ("> ## A", "1. # A") on line i, keeping the
+// markers. Other lines are left alone.
+func (w *headingRewriter) containedATX(i int, indent, trimmed string) {
+	p := containerPrefix(trimmed)
+	rest := trimmed[p:]
+	inner := strings.TrimLeft(rest, " ")
+	pad := len(rest) - len(inner)
+	if p == 0 || pad > 3 {
+		return
+	}
+	if level := atxLevel(inner); level > 0 {
+		w.lines[i] = indent + trimmed[:p+pad] + w.ids.atx(w.hashes(level), inner[level:])
+	}
+}
+
+// containerPrefix returns the length of the block-quote markers
+// (">" plus one optional space or tab) and list-item markers ("-",
+// "*", "+", or up to nine digits and "." or ")", each followed by a
+// space or tab) that open s.
+func containerPrefix(s string) int {
+	p := 0
+	for p < len(s) {
+		if s[p] == '>' {
+			p++
+			if p < len(s) && (s[p] == ' ' || s[p] == '\t') {
+				p++
+			}
+			continue
+		}
+		n := listMarkerLen(s[p:])
+		if n == 0 {
+			break
+		}
+		p += n
+	}
+	return p
+}
+
+// listMarkerLen returns the length of the list-item marker and the
+// one space or tab after it that open s, or 0.
+func listMarkerLen(s string) int {
+	n := 0
+	switch {
+	case s != "" && (s[0] == '-' || s[0] == '*' || s[0] == '+'):
+		n = 1
+	default:
+		for n < len(s) && n < 10 && s[n] >= '0' && s[n] <= '9' {
+			n++
+		}
+		if n == 0 || n > 9 || n >= len(s) || (s[n] != '.' && s[n] != ')') {
+			return 0
+		}
+		n++
+	}
+	if n < len(s) && (s[n] == ' ' || s[n] == '\t') {
+		return n + 1
+	}
+	return 0
 }
 
 // hashes returns the ATX marker for a heading of level after the
@@ -205,12 +287,8 @@ func rewriteSetext(lines []string, start, underline int, hashes string, ids *hea
 	for _, l := range lines[start:underline] {
 		parts = append(parts, strings.TrimSpace(l))
 	}
-	text := strings.Join(parts, " ")
-	heading := hashes + " " + text
-	if id := ids.next(text); id != "" {
-		heading += " {#" + id + "}"
-	}
-	lines[start] = heading
+	text, _ := ids.scoped(strings.Join(parts, " "))
+	lines[start] = hashes + " " + text
 	for j := start + 1; j <= underline; j++ {
 		lines[j] = ""
 	}
@@ -224,30 +302,73 @@ type headingIDs struct {
 }
 
 // atx renders an ATX heading from its new hashes and rest, the
-// original line after its opening hashes. The scoped id is appended
-// when next yields one; otherwise rest is kept verbatim.
+// original line after its opening hashes. When scoped gives the
+// heading an id, the text is rebuilt around it; otherwise rest is
+// kept verbatim.
 func (h *headingIDs) atx(hashes, rest string) string {
-	text := atxHeadingText(rest)
-	id := h.next(text)
-	if id == "" {
+	text, ok := h.scoped(atxHeadingText(rest))
+	if !ok {
 		return hashes + rest
 	}
-	return hashes + " " + text + " {#" + id + "}"
+	return hashes + " " + text
 }
 
-// next returns the scoped id for a heading with the given text, or
-// "" when there is no prefix, the text has no slug, or the heading
-// carries its own attribute block. A repeated id gets the first
-// "-<n>" suffix no earlier heading has taken.
-func (h *headingIDs) next(text string) string {
-	if h.prefix == "" || hasAttributeBlock(text) {
-		return ""
+// scoped returns heading text carrying a tag-scoped id, and whether
+// it assigned one. Plain text gains "{#<prefix>-<slug>}". A trailing
+// attribute block keeps its classes and key-value pairs: its own
+// "#id" becomes "#<prefix>-<id slug>" (the text's slug when the id
+// has none), and a block with no id gains the text's scoped id
+// first. With no prefix, or nothing to slug, text comes back as is.
+func (h *headingIDs) scoped(text string) (string, bool) {
+	if h.prefix == "" {
+		return text, false
 	}
-	slug := headingSlug(text)
+	if !hasAttributeBlock(text) {
+		id := h.next(text)
+		if id == "" {
+			return text, false
+		}
+		return text + " {#" + id + "}", true
+	}
+	i := strings.LastIndexByte(text, '{')
+	label := strings.TrimSpace(text[:i])
+	attrs := strings.Fields(text[i+1 : len(text)-1])
+	idAt := -1
+	slug := headingSlug(label)
+	for k, a := range attrs {
+		if strings.HasPrefix(a, "#") {
+			idAt = k
+			if own := headingSlug(a[1:]); own != "" {
+				slug = own
+			}
+			break
+		}
+	}
 	if slug == "" {
+		return text, false
+	}
+	id := "#" + h.claim(h.prefix+"-"+slug)
+	if idAt >= 0 {
+		attrs[idAt] = id
+	} else {
+		attrs = append([]string{id}, attrs...)
+	}
+	return label + " {" + strings.Join(attrs, " ") + "}", true
+}
+
+// next returns the scoped id for plain heading text, or "" when
+// there is no prefix or the text has no slug.
+func (h *headingIDs) next(text string) string {
+	slug := headingSlug(text)
+	if h.prefix == "" || slug == "" {
 		return ""
 	}
-	base := h.prefix + "-" + slug
+	return h.claim(h.prefix + "-" + slug)
+}
+
+// claim records and returns base, or base with the first "-<n>"
+// suffix no earlier heading in this body has taken.
+func (h *headingIDs) claim(base string) string {
 	id := base
 	for n := 1; h.seen[id]; n++ {
 		id = fmt.Sprintf("%s-%d", base, n)

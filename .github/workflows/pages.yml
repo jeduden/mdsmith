@@ -150,7 +150,12 @@ jobs:
         # GitHub releases API so the render below exercises the
         # /releases/ page with the real release list, and the link
         # probes cover its links. contents: read is enough to list
-        # published releases.
+        # published releases. continue-on-error keeps a GitHub API
+        # outage or rate limit from failing unrelated docs and
+        # website PRs: sync-releases writes nothing on failure, so
+        # the render falls back to the page's no-data note. The
+        # deploy job's fetch below stays a hard failure.
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: go run ./cmd/mdsmith-release sync-releases

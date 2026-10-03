@@ -141,10 +141,14 @@ release-channel docs, gated against drift in CI:
 
 ## Release notes page
 
-`/releases/` lists the notes of every published GitHub
-release. Stable releases come first, newest open. The
-release candidates follow below, each collapsed. Each
-entry links to its GitHub release for the downloads.
+`/releases/` lists the notes of every published stable
+release, newest open. Below them come the release
+candidates published since the latest stable release,
+each collapsed. Older candidates are left out: each
+candidate's notes repeat every change since the last
+stable release, and that release already lists them.
+Each entry links to its GitHub release for the
+downloads.
 
 - **Page** — `content/releases.md` holds the title,
   summary, and intro. Hugo picks
@@ -156,7 +160,8 @@ entry links to its GitHub release for the downloads.
   skipped, and GitHub's `prerelease` flag decides
   stable versus candidate. Each body's headings are
   demoted two levels and get tag-scoped ids, so
-  "What's Changed" never repeats an id on the page.
+  "What's Changed" never repeats an id on the page and
+  no id in a body can collide with the page's own.
 - **Without data** — a local or e2e build has no data
   file. The page then shows a "not bundled" note and
   the GitHub Releases link.

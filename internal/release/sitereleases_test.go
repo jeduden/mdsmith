@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,13 +65,25 @@ func TestRewriteHeadingsAddsScopedIDs(t *testing.T) {
 		{"prefixed slug", "## What's Changed", "#### What's Changed {#v1-whats-changed}"},
 		{"closing hashes dropped", "## New Contributors ##", "#### New Contributors {#v1-new-contributors}"},
 		{"repeat gets a counter", "## A\n## A", "#### A {#v1-a}\n#### A {#v1-a-1}"},
-		{"explicit attribute kept", "## A {#own}", "#### A {#own}"},
+		{"explicit id is scoped", "## A {#own}", "#### A {#v1-own}"},
+		{"explicit page id cannot collide", "## S {#stable}", "#### S {#v1-stable}"},
 		{"no slug, no id", "## !!!", "#### !!!"},
 		{"empty heading", "##", "####"},
 		{"counter skips a taken id", "## A\n## A\n## A 1", "#### A {#v1-a}\n#### A {#v1-a-1}\n#### A 1 {#v1-a-1-1}"},
 		{"brace text is not an attribute", "## Fix {x}", "#### Fix {x} {#v1-fix-x}"},
-		{"class attribute kept", "## A {.c}", "#### A {.c}"},
-		{"key-value attribute kept", "## A {k=v}", "#### A {k=v}"},
+		{"class attribute gains a scoped id", "## A {.c}", "#### A {#v1-a .c}"},
+		{"key-value attribute gains a scoped id", "## A {k=v}", "#### A {#v1-a k=v}"},
+		{"explicit id joins the uniqueness set", "## A {#a}\n## A", "#### A {#v1-a}\n#### A {#v1-a-1}"},
+		{"unmatched brace is heading text", "## Support for {", "#### Support for { {#v1-support-for}"},
+		{"empty braces are heading text", "## Support for {}", "#### Support for {} {#v1-support-for}"},
+		{"heading in a block quote", "> ## Quote", "> #### Quote {#v1-quote}"},
+		{"heading in a nested block quote", "> > # Deep", "> > ### Deep {#v1-deep}"},
+		{"heading in a bullet item", "- ## Item", "- #### Item {#v1-item}"},
+		{"heading in an ordered item", "1. # One", "1. ### One {#v1-one}"},
+		{"heading in a quoted list item", "> * ## Both", "> * #### Both {#v1-both}"},
+		{"thematic break is not a heading", "* * *", "* * *"},
+		{"quoted text is not a heading", "> #1 fixed", "> #1 fixed"},
+		{"setext with its own id", "Notes {#n}\n---", "#### Notes {#v1-n}\n"},
 		{"setext heading gets an id", "Notes\n---", "#### Notes {#v1-notes}\n"},
 	}
 	for _, tc := range cases {
@@ -130,6 +143,37 @@ func TestBuildSiteReleases(t *testing.T) {
 	require.Len(t, got.Candidates, 2, "draft dropped")
 	assert.Equal(t, "v0.56.0-rc.2", got.Candidates[0].Tag, "newest candidate first")
 	assert.Equal(t, "v0.56.0-rc.1", got.Candidates[1].Name, "empty name falls back to the tag")
+}
+
+func TestBuildSiteReleasesKeepsOnlyCandidatesAfterLatestStable(t *testing.T) {
+	got := BuildSiteReleases([]GitHubRelease{
+		{TagName: "v0.55.0-rc.1", Prerelease: true, PublishedAt: mustTime(t, "2026-08-01T00:00:00Z")},
+		{TagName: "v0.55.0", PublishedAt: mustTime(t, "2026-08-02T00:00:00Z")},
+		{TagName: "v0.56.0-rc.1", Prerelease: true, PublishedAt: mustTime(t, "2026-08-03T00:00:00Z")},
+	})
+	require.Len(t, got.Candidates, 1, "a candidate the latest stable release already shipped is dropped")
+	assert.Equal(t, "v0.56.0-rc.1", got.Candidates[0].Tag)
+}
+
+func TestBuildSiteReleasesKeepsAllCandidatesWithoutStable(t *testing.T) {
+	got := BuildSiteReleases([]GitHubRelease{
+		{TagName: "v0.1.0-rc.1", Prerelease: true, PublishedAt: mustTime(t, "2026-01-01T00:00:00Z")},
+		{TagName: "v0.1.0-rc.2", Prerelease: true, PublishedAt: mustTime(t, "2026-01-02T00:00:00Z")},
+	})
+	assert.Len(t, got.Candidates, 2)
+}
+
+func TestCandidatesAfter(t *testing.T) {
+	cut := mustTime(t, "2026-01-02T00:00:00Z")
+	rs := []SiteRelease{
+		{Tag: "new", Published: mustTime(t, "2026-01-03T00:00:00Z")},
+		{Tag: "same", Published: cut},
+		{Tag: "old", Published: mustTime(t, "2026-01-01T00:00:00Z")},
+	}
+	got := candidatesAfter(rs, cut)
+	require.Len(t, got, 1)
+	assert.Equal(t, "new", got[0].Tag)
+	assert.Empty(t, candidatesAfter(nil, cut))
 }
 
 func TestBuildSiteReleasesTieBreaksOnTag(t *testing.T) {
@@ -315,10 +359,65 @@ func TestHeadingIDsNext(t *testing.T) {
 	assert.Equal(t, "v1-a", ids.next("A"))
 	assert.Equal(t, "v1-a-2", ids.next("A"))
 	assert.Empty(t, ids.next("!!!"))
-	assert.Empty(t, ids.next("A {#own}"))
 
 	none := headingIDs{seen: map[string]bool{}}
 	assert.Empty(t, none.next("A"))
+}
+
+func TestHeadingIDsClaim(t *testing.T) {
+	ids := headingIDs{prefix: "v1", seen: map[string]bool{}}
+	assert.Equal(t, "v1-a", ids.claim("v1-a"))
+	assert.Equal(t, "v1-a-1", ids.claim("v1-a"))
+	assert.Equal(t, "v1-a-2", ids.claim("v1-a"))
+}
+
+func TestHeadingIDsScoped(t *testing.T) {
+	ids := headingIDs{prefix: "v1", seen: map[string]bool{}}
+	cases := []struct {
+		in, want string
+		ok       bool
+	}{
+		{"A", "A {#v1-a}", true},
+		{"B {#own}", "B {#v1-own}", true},
+		{"C {.c k=v}", "C {#v1-c .c k=v}", true},
+		{"D {#!!}", "D {#v1-d}", true},
+		{"!!! {.c}", "!!! {.c}", false},
+		{"!!!", "!!!", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			got, ok := ids.scoped(tc.in)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.ok, ok)
+		})
+	}
+	none := headingIDs{seen: map[string]bool{}}
+	got, ok := none.scoped("A {#own}")
+	assert.Equal(t, "A {#own}", got)
+	assert.False(t, ok)
+}
+
+func TestContainerPrefix(t *testing.T) {
+	cases := map[string]int{
+		"> ## Q":        2,
+		">## Q":         1,
+		"> > # Q":       4,
+		"- ## I":        2,
+		"+\t# I":        2,
+		"1. # O":        3,
+		"12) # O":       4,
+		"> * ## B":      4,
+		"* * *":         4,
+		"-x":            0,
+		"1.x":           0,
+		"1234567890. x": 0,
+		"plain":         0,
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			assert.Equal(t, want, containerPrefix(in))
+		})
+	}
 }
 
 func TestHeadingIDsATX(t *testing.T) {
@@ -432,6 +531,29 @@ func TestATXHeadingText(t *testing.T) {
 	for in, want := range cases {
 		t.Run(in, func(t *testing.T) {
 			assert.Equal(t, want, atxHeadingText(in))
+		})
+	}
+}
+
+func TestHeadingRewriterContainedATX(t *testing.T) {
+	cases := []struct {
+		name, in, want string
+	}{
+		{"quoted heading", "> # A", "> ### A {#v1-a}"},
+		{"indented after marker", " - # A", " - ### A {#v1-a}"},
+		{"no container marker", "| # A |", "| # A |"},
+		{"four spaces after marker is code", ">     # A", ">     # A"},
+		{"quoted text", "> text", "> text"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := headingRewriter{
+				lines: []string{tc.in}, shift: 2,
+				ids: headingIDs{prefix: "v1", seen: map[string]bool{}},
+			}
+			trimmed := strings.TrimLeft(tc.in, " ")
+			w.containedATX(0, tc.in[:len(tc.in)-len(trimmed)], trimmed)
+			assert.Equal(t, tc.want, w.lines[0])
 		})
 	}
 }

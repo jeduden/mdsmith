@@ -47,7 +47,12 @@ the next doc edit.
    `## What's Changed` sits under the release's own heading.
    Each body heading also gets an id scoped by the tag
    (`{#v0-55-1-whats-changed}`), since every release renders
-   its own "What's Changed".
+   its own "What's Changed". A heading's own `{#id}` is scoped
+   too, and headings inside block quotes and list items are
+   rewritten. Candidates published before the latest stable
+   release are dropped: their cumulative notes are already in
+   that release, and keeping them would grow the page by one
+   changelog per merge.
 2. Add `release.SyncReleases` to list every release via the
    paginated `GET /repos/{repo}/releases` endpoint and write the
    result as JSON.
@@ -66,7 +71,9 @@ the next doc edit.
 5. Point the footer's "Releases" link at `/releases/`.
 6. Run `sync-releases` in both `pages.yml` jobs, and call
    `pages.yml` from `release-candidate.yml` after a candidate
-   publishes, so each candidate reaches the site.
+   publishes, so each candidate reaches the site. The PR-time
+   fetch may fail without failing the job (the page then renders
+   its no-data note); the deploy's fetch must succeed.
 7. Add a Playwright spec for the footer link and the no-data
    fallback (the e2e build has no token, so no data file).
 8. Document the subcommand, the page, and the deploy trigger.
@@ -75,9 +82,9 @@ the next doc edit.
 
 - [x] `mdsmith-release sync-releases` writes stable releases and
       candidates, newest first, with drafts left out
-- [x] `/releases/` lists stable releases first and release
-      candidates below, each with its rendered notes and a link
-      to its GitHub release
+- [x] `/releases/` lists stable releases first and the release
+      candidates since the latest stable release below, each
+      with its rendered notes and a link to its GitHub release
 - [x] The page renders a fallback with a GitHub link when the
       data file is absent (local builds, e2e)
 - [x] The footer "Releases" link goes to `/releases/`

@@ -7,7 +7,8 @@
        `mdsmith-release sync-releases` writes from the GitHub
        releases API at deploy time; the file is gitignored. Stable
        releases render first, newest open, then the release
-       candidates collapsed below them. Without the data file
+       candidates since the latest stable release, collapsed
+       below them. Without the data file
        (a local or e2e build) the page says so and links to
        GitHub Releases. */ -}}
 {{ define "main" }}
@@ -26,11 +27,11 @@
           <p>No stable release has been published yet.</p>
         {{ end }}
         <h2 id="candidates">Release candidates</h2>
-        <p>Pre-releases cut on every merge to <code>main</code>. Each lists every change since the last stable release.</p>
+        <p>Pre-releases of the next version, cut on every merge to <code>main</code> since the latest stable release. Each lists every change since that release.</p>
         {{ range .candidates }}
           {{ partial "release-entry.html" (dict "page" $ "release" . "open" false) }}
         {{ else }}
-          <p>No release candidate has been published yet.</p>
+          <p>No release candidate since the latest stable release.</p>
         {{ end }}
       {{ else }}
         <div class="callout releases-missing">

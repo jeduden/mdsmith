@@ -1,6 +1,6 @@
 ---
 title: "Release notes"
-summary: "What changed in each mdsmith release, newest first. Stable releases come first; the release candidates cut on every merge to `main` follow below."
+summary: "What changed in each mdsmith release, newest first. Stable releases come first; the release candidates for the next version follow below."
 ---
 Each entry links to its GitHub release, which carries the
 binaries, checksums, and signatures. For install commands, see
