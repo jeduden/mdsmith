@@ -47,7 +47,8 @@ type Workspace interface {
 	// file under the workspace root except `.git` and `node_modules`,
 	// whether or not Files lists it. A file move counts same-stem and
 	// same-name files against it, so it must cover the same file set
-	// the resolver does. A nil index counts no files.
+	// the resolver does. A nil index (no readable root) makes the move
+	// count the Files list instead.
 	WikilinkIndex() *linkgraph.WikilinkIndex
 	// Files lists every workspace-relative file path the workspace
 	// knows about.

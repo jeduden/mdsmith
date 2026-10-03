@@ -807,3 +807,20 @@ func TestWikilinkBaseSpan(t *testing.T) {
 		})
 	}
 }
+
+// TestNewWikilinkIndexFromPaths locks that an index built from a path
+// list keys and orders files the way the walk does, skipping `.git`
+// and `node_modules`.
+func TestNewWikilinkIndexFromPaths(t *testing.T) {
+	paths := []string{"docs/guide.md", "guide.md", "img/Logo.PNG", "node_modules/p/guide.md", ".git/x.md"}
+	fsys := fstest.MapFS{}
+	for _, p := range paths {
+		fsys[p] = &fstest.MapFile{}
+	}
+	walked := NewWikilinkIndex(fsys)
+	listed := NewWikilinkIndexFromPaths(paths)
+	assert.Equal(t, []string{"guide.md", "docs/guide.md"}, listed.StemPaths("guide"))
+	assert.Equal(t, walked.StemPaths("guide"), listed.StemPaths("guide"))
+	assert.Equal(t, walked.NamePaths("logo.png"), listed.NamePaths("logo.png"))
+	assert.Empty(t, listed.StemPaths("x"))
+}

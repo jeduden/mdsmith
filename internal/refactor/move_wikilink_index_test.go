@@ -103,3 +103,33 @@ func TestMove_UnindexedDestinationKeepsWikilinks(t *testing.T) {
 		})
 	}
 }
+
+// nilIndexWorkspace is a memWorkspace whose WikilinkIndex is nil, as a
+// root walk that fails at the top leaves it.
+type nilIndexWorkspace struct{ *memWorkspace }
+
+func (nilIndexWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex { return nil }
+
+// TestMove_NilWikilinkIndexCountsListedFiles locks that a workspace with
+// no wikilink index still counts the files it lists: a listed same-stem
+// sibling blocks the `[[guide]]` rewrite, and a lone holder is still
+// rewritten.
+func TestMove_NilWikilinkIndexCountsListedFiles(t *testing.T) {
+	src := "See [[guide]].\n"
+	ws := nilIndexWorkspace{newMemWorkspace(map[string]string{
+		"docs/guide.md": "# Guide\n",
+		"ref/guide.md":  "# Ref\n",
+		"index.md":      src,
+	})}
+	plan, err := Move(ws, "docs/guide.md", "docs/manual.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"], "a listed sibling holds the stem")
+
+	ws = nilIndexWorkspace{newMemWorkspace(map[string]string{
+		"docs/guide.md": "# Guide\n",
+		"index.md":      src,
+	})}
+	plan, err = Move(ws, "docs/guide.md", "docs/manual.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[manual]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
+}

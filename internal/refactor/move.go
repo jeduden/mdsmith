@@ -843,7 +843,19 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	if !dstIsMarkdown {
 		newKey = linkgraph.FileNameKey(path.Base(dst))
 	}
-	oldHolders, newHolders := wikilinkKeyHolders(ws.WikilinkIndex(), src, oldStem, newKey, dstIsMarkdown)
+	// A workspace whose root walk failed has no index; the files it
+	// lists are then the best known set, so a listed sibling still
+	// blocks the rewrite.
+	idx := ws.WikilinkIndex()
+	if idx == nil {
+		files := ws.Files()
+		listed := make([]string, len(files))
+		for i, f := range files {
+			listed[i] = index.NormalizePath(f)
+		}
+		idx = linkgraph.NewWikilinkIndexFromPaths(listed)
+	}
+	oldHolders, newHolders := wikilinkKeyHolders(idx, src, oldStem, newKey, dstIsMarkdown)
 	if oldHolders > 1 || newHolders > 0 {
 		return
 	}

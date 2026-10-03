@@ -234,25 +234,53 @@ func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 		if d.IsDir() {
 			return skipHeavyDirs(p)
 		}
-		base := path.Base(p)
-		lcName := FileNameKey(base)
-		idx.names[lcName] = append(idx.names[lcName], p)
-		if lcStem, ok := FileStemKey(base); ok {
-			idx.stems[lcStem] = append(idx.stems[lcStem], p)
-		}
+		idx.add(p)
 		return nil
 	}); err != nil {
 		return nil
 	}
-	for k, v := range idx.stems {
-		sortByDepthThenName(v)
-		idx.stems[k] = v
-	}
-	for k, v := range idx.names {
-		sortByDepthThenName(v)
-		idx.names[k] = v
-	}
+	idx.sort()
 	return idx
+}
+
+// NewWikilinkIndexFromPaths builds the index over a list of
+// workspace-relative file paths instead of a walk, keying and ordering
+// them as NewWikilinkIndex does and dropping any path under `.git` or
+// `node_modules`. A caller with no readable root but a known file list
+// uses it so a lookup still sees those files.
+func NewWikilinkIndexFromPaths(paths []string) *WikilinkIndex {
+	idx := &WikilinkIndex{
+		stems: map[string][]string{},
+		names: map[string][]string{},
+	}
+	for _, p := range paths {
+		if WikilinkIndexed(p) {
+			idx.add(p)
+		}
+	}
+	idx.sort()
+	return idx
+}
+
+// add files p under its exact-name key and, for a Markdown file, its
+// stem key.
+func (idx *WikilinkIndex) add(p string) {
+	base := path.Base(p)
+	lcName := FileNameKey(base)
+	idx.names[lcName] = append(idx.names[lcName], p)
+	if lcStem, ok := FileStemKey(base); ok {
+		idx.stems[lcStem] = append(idx.stems[lcStem], p)
+	}
+}
+
+// sort orders every key's paths shallowest first, then by name.
+func (idx *WikilinkIndex) sort() {
+	for _, v := range idx.stems {
+		sortByDepthThenName(v)
+	}
+	for _, v := range idx.names {
+		sortByDepthThenName(v)
+	}
 }
 
 // Resolve answers the same question as ResolveWikiLink but serves

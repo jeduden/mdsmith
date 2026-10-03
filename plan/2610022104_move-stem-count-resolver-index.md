@@ -97,6 +97,10 @@ out of plan 2610022044, which fixes the extension filter.
     `node_modules`, so a move there leaves `[[stem]]` as
     written instead of retargeting it at a name no wikilink
     reaches (`linkgraph.WikilinkIndexed`).
+11. A workspace with no wikilink index (its root walk
+    failed) counts its listed files through
+    `linkgraph.NewWikilinkIndexFromPaths`, so a listed
+    same-stem sibling still blocks the rewrite.
 
 PR #885 already retired `fileStem`: the move planner keys
 files with `linkgraph.FileStemKey`, the same function
@@ -114,6 +118,8 @@ files with `linkgraph.FileStemKey`, the same function
       `[[stem]]` resolution reads
 - [x] A move into `node_modules` or `.git` leaves `[[stem]]`
       as written
+- [x] With no wikilink index, a listed same-stem sibling
+      still blocks the `[[stem]]` rewrite
 - [x] The move planner reuses `linkgraph`'s base-segment
       span, Markdown test, and name key, with no copies
 - [x] All tests pass: `go test ./...`
