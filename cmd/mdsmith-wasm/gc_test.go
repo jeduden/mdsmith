@@ -51,10 +51,7 @@ func jsGC() func() {
 // FinalizationRegistry callbacks.
 func collectUntil(t *testing.T, done func() bool) {
 	t.Helper()
-	gc := jsGC()
-	if gc == nil {
-		t.Skip("host cannot force a JS garbage collection")
-	}
+	gc := requireJSGC(t)
 	for i := 0; i < 100; i++ {
 		runtime.GC()
 		gc()
@@ -64,6 +61,20 @@ func collectUntil(t *testing.T, done func() bool) {
 		}
 	}
 	require.True(t, done(), "not collected after forced GC")
+}
+
+// requireJSGC returns jsGC's collector, skipping t when the host offers
+// none. A test that collects inside t.Run must call it on the parent
+// first: a parent whose subtests all skip reports a pass, which
+// test-js-wasm accepts, so only a skip of the top-level test fails that
+// gate by name.
+func requireJSGC(t *testing.T) func() {
+	t.Helper()
+	gc := jsGC()
+	if gc == nil {
+		t.Skip("host cannot force a JS garbage collection")
+	}
+	return gc
 }
 
 // collectGone collects until the session with the given id has left
@@ -88,6 +99,7 @@ func queued(id int64) bool {
 // engine entry point (a session method, dispose, createSession) then
 // frees it.
 func TestDroppedSessionFreedOnNextCall(t *testing.T) {
+	requireJSGC(t)
 	for name, call := range map[string]func(t *testing.T, keeper js.Value){
 		"session method": func(_ *testing.T, k js.Value) { k.Call("capabilities") },
 		"dispose":        func(_ *testing.T, k js.Value) { k.Call("dispose") },
@@ -357,13 +369,15 @@ func TestSessionWithoutFinalizationRegistry(t *testing.T) {
 func TestBindMethods_TokenOnDisposeAndKeepAlive(t *testing.T) {
 	sharedMethods()
 	old := finalizer
-	t.Cleanup(func() { finalizer = old })
 	var keys, vals []js.Value
 	rec := js.FuncOf(func(_ js.Value, args []js.Value) any {
 		keys, vals = append(keys, args[0]), append(vals, args[1])
 		return nil
 	})
 	t.Cleanup(rec.Release)
+	// Registered after rec.Release, so the seam is restored before the
+	// recording func is released.
+	t.Cleanup(func() { finalizer = old })
 	finalizer.keep = rec.Value
 
 	proxy := js.Global().Get("Object").New()
