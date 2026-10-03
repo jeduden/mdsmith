@@ -1,7 +1,7 @@
 ---
 id: 2610031420
 title: Free the func when js.FuncOf's wrapper call throws
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   `syscall/js.FuncOf` stores the handler in its private
