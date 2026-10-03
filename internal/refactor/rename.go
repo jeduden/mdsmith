@@ -106,13 +106,13 @@ func LinkRef(fileKey string, source []byte, oldLabel, newName string) (Plan, err
 	return Plan{Edits: map[string][]Edit{fileKey: edits}}, nil
 }
 
-// HasLinkRef reports whether source defines a reference definition
+// hasLinkRef reports whether source defines a reference definition
 // whose normalized label matches label (CommonMark link-label
-// normalization). DetectRenameKind uses it to auto-detect a link-ref
+// normalization). detectRenameKind uses it to auto-detect a link-ref
 // rename when the host passes no explicit kind. Def-shaped lines
 // inside code blocks or paragraph continuations are excluded,
 // matching LinkRef.
-func HasLinkRef(source []byte, label string) bool {
+func hasLinkRef(source []byte, label string) bool {
 	want := NormalizedLabel([]byte(label))
 	body, _ := bodyAndFMOffset(source)
 	for _, m := range validRefDefMatches(body) {
@@ -121,33 +121,6 @@ func HasLinkRef(source []byte, label string) bool {
 		}
 	}
 	return false
-}
-
-// The rename kinds DetectRenameKind reports. They are also the values
-// the hosts' explicit kind selector (`--as`, Session.Rename's `as`)
-// accepts, so every surface dispatches on the same strings.
-const (
-	KindHeading = "heading"
-	KindLabel   = "label"
-)
-
-// DetectRenameKind auto-detects whether oldName names a heading or a
-// link-ref label in source. kind is KindHeading or KindLabel when
-// exactly one matches. When both match, ambiguous is true and kind is
-// empty. found is true when at least one matches. It carries no
-// message text or exit code; each host formats its own error.
-func DetectRenameKind(source []byte, oldName string) (kind string, ambiguous, found bool) {
-	_, isHeading := FindHeadingLine(source, oldName)
-	isLabel := HasLinkRef(source, oldName)
-	switch {
-	case isHeading && isLabel:
-		return "", true, true
-	case isHeading:
-		return KindHeading, false, true
-	case isLabel:
-		return KindLabel, false, true
-	}
-	return "", false, false
 }
 
 // ValidRefDefBodyLines reports the body-line indices that hold a real

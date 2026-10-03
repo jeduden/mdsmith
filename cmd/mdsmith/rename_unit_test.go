@@ -234,80 +234,6 @@ func TestBuildWorkspace(t *testing.T) {
 	})
 }
 
-func TestDetectRenameMode(t *testing.T) {
-	src := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
-	mode, code := detectRenameMode("a.md", src, "Setup", "Install")
-	assert.Equal(t, "heading", mode)
-	assert.Equal(t, -1, code)
-
-	mode, code = detectRenameMode("a.md", src, "docs", "manual")
-	assert.Equal(t, "label", mode)
-	assert.Equal(t, -1, code)
-
-	both := []byte("# docs\n\nSee [docs].\n\n[docs]: u\n")
-	stderr := captureStderr(func() {
-		_, code = detectRenameMode("a.md", both, "docs", "x")
-	})
-	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "matches both a heading and a link-ref label")
-
-	stderr = captureStderr(func() {
-		_, code = detectRenameMode("a.md", src, "ghost", "x")
-	})
-	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, `no heading or link-ref label "ghost"`)
-
-	// A path-shaped request with no matching symbol is steered to move.
-	stderr = captureStderr(func() {
-		_, code = detectRenameMode("a.md", src, "old.md", "new.md")
-	})
-	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "mdsmith move old.md new.md")
-}
-
-func TestHeadingPlan(t *testing.T) {
-	renameWorkspace(t)
-	ws, src, code := buildRenameWorkspace(renameOptions{}, "a.md")
-	require.Equal(t, -1, code)
-
-	plan, c := headingPlan(ws, "a.md", src, "Setup", "Install")
-	assert.Equal(t, -1, c)
-	assert.Contains(t, plan.Edits, "a.md")
-	// The anchor link in b.md is rewritten too.
-	assert.Contains(t, plan.Edits, "b.md")
-
-	// A no-op rename produces no edits and exits 1.
-	_, c = headingPlan(ws, "a.md", src, "Setup", "Setup")
-	assert.Equal(t, 1, c, "no edits exits 1")
-
-	_, c = headingPlan(ws, "a.md", src, "Ghost", "X")
-	assert.Equal(t, 1, c, "missing heading exits 1")
-
-	// A new name that slugs onto an existing heading is an engine error.
-	two := []byte("# Setup\n\n# Other\n")
-	stderr := captureStderr(func() {
-		_, c = headingPlan(ws, "a.md", two, "Setup", "Other")
-	})
-	assert.Equal(t, 2, c)
-	assert.Contains(t, stderr, "collide")
-}
-
-func TestLinkRefPlan(t *testing.T) {
-	src := []byte("See [docs].\n\n[docs]: u\n")
-	plan, c := linkRefPlan("a.md", src, "docs", "manual")
-	assert.Equal(t, -1, c)
-	assert.Len(t, plan.Edits["a.md"], 2)
-
-	_, c = linkRefPlan("a.md", src, "ghost", "x")
-	assert.Equal(t, 1, c, "missing label exits 1")
-
-	stderr := captureStderr(func() {
-		_, c = linkRefPlan("a.md", src, "docs", "bad]name")
-	})
-	assert.Equal(t, 2, c, "invalid label rune exits 2")
-	assert.Contains(t, stderr, "label cannot contain")
-}
-
 func TestLooksLikePath(t *testing.T) {
 	assert.True(t, looksLikePath("docs/a.md"))
 	assert.True(t, looksLikePath("a.md"))
@@ -345,17 +271,59 @@ func TestResolveWriteMode(t *testing.T) {
 	assert.Equal(t, os.FileMode(0o644), resolveWriteMode(dangling))
 }
 
+// TestComputeRenamePlan pins every exit path computeRenamePlan maps
+// from refactor.Rename: -1 with a plan on success, 1 when an explicit
+// kind finds nothing (or a heading rename is a no-op), 2 on an
+// ambiguous or absent auto-detect, a path-shaped request, or an engine
+// conflict.
 func TestComputeRenamePlan(t *testing.T) {
 	renameWorkspace(t)
 	ws, src, code := buildRenameWorkspace(renameOptions{}, "a.md")
 	require.Equal(t, -1, code)
 
-	plan, c := computeRenamePlan(ws, "a.md", src, "Setup", "Install", "heading")
+	plan, c := computeRenamePlan(ws, "a.md", src, "Setup", "Install", refactor.KindHeading)
 	assert.Equal(t, -1, c)
 	assert.Contains(t, plan.Edits, "a.md")
+	// The anchor link in b.md is rewritten too.
+	assert.Contains(t, plan.Edits, "b.md")
 
-	_, c = computeRenamePlan(ws, "a.md", src, "Ghost", "X", "heading")
-	assert.Equal(t, 1, c)
+	plan, c = computeRenamePlan(ws, "a.md", src, "Setup", "Install", "")
+	assert.Equal(t, -1, c, "auto-detects the heading")
+	assert.Contains(t, plan.Edits, "b.md")
+
+	labelSrc := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
+	plan, c = computeRenamePlan(ws, "a.md", labelSrc, "docs", "manual", "")
+	assert.Equal(t, -1, c, "auto-detects the label")
+	assert.Len(t, plan.Edits["a.md"], 2)
+
+	cases := []struct {
+		name     string
+		src      []byte
+		old, neu string
+		kind     refactor.RenameKind
+		code     int
+		stderr   string
+	}{
+		{"no-op heading", src, "Setup", "Setup", "", 1, `nothing to rename for heading "Setup"`},
+		{"missing heading", src, "Ghost", "X", refactor.KindHeading, 1, `no heading "Ghost" in a.md`},
+		{"missing label", labelSrc, "ghost", "x", refactor.KindLabel, 1, `no link reference "ghost" in a.md`},
+		{"ambiguous", []byte("# docs\n\nSee [docs].\n\n[docs]: u\n"), "docs", "x", "", 2,
+			"matches both a heading and a link-ref label in a.md; pass --as heading or --as label"},
+		{"neither", labelSrc, "ghost", "x", "", 2, `no heading or link-ref label "ghost" in a.md`},
+		{"path-shaped", labelSrc, "old.md", "new.md", "", 2, "mdsmith move old.md new.md"},
+		{"heading collision", []byte("# Setup\n\n# Other\n"), "Setup", "Other", refactor.KindHeading, 2, "collide"},
+		{"invalid label rune", labelSrc, "docs", "bad]name", refactor.KindLabel, 2, "label cannot contain"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got int
+			stderr := captureStderr(func() {
+				_, got = computeRenamePlan(ws, "a.md", tc.src, tc.old, tc.neu, tc.kind)
+			})
+			assert.Equal(t, tc.code, got)
+			assert.Contains(t, stderr, tc.stderr)
+		})
+	}
 }
 
 func TestApplyPlan_Errors(t *testing.T) {

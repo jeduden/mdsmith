@@ -112,6 +112,27 @@ func TestSession_Rename_AutoDetectNeither(t *testing.T) {
 	assert.Contains(t, err.Error(), "no heading or link-ref label")
 }
 
+// A heading renamed to its own text yields no edits. The CLI exits 1
+// with "nothing to rename"; Session.Rename must error too rather than
+// return an empty plan, so the two surfaces mirror each other.
+func TestSession_Rename_SameNameHeadingErrors(t *testing.T) {
+	src := []byte("# Setup\n")
+	s := newRefactorSession(t, map[string][]byte{"a.md": src})
+	_, err := s.Rename("a.md", src, "", "Setup", "Setup")
+	require.Error(t, err)
+	assert.Equal(t, `nothing to rename for heading "Setup"`, err.Error())
+}
+
+// An explicit label that is not defined errors, matching the CLI's
+// exit-1 "no link reference" outcome.
+func TestSession_Rename_LabelNotFound(t *testing.T) {
+	src := []byte("# T\n\nSee [docs].\n\n[docs]: u\n")
+	s := newRefactorSession(t, map[string][]byte{"a.md": src})
+	_, err := s.Rename("a.md", src, "label", "ghost", "x")
+	require.Error(t, err)
+	assert.Equal(t, `no link reference "ghost" in a.md`, err.Error())
+}
+
 func TestSession_Rename_HeadingCollisionErrors(t *testing.T) {
 	src := []byte("# Alpha\n\n## Beta\n")
 	s := newRefactorSession(t, map[string][]byte{"a.md": src})
@@ -170,23 +191,24 @@ func TestSession_CapabilitiesIncludeRenameAndMove(t *testing.T) {
 	assert.Contains(t, caps, "move")
 }
 
-func TestDetectRenameKind(t *testing.T) {
-	src := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
-	kind, err := detectRenameKind(src, "Setup")
-	require.NoError(t, err)
-	assert.Equal(t, "heading", kind)
-
-	kind, err = detectRenameKind(src, "docs")
-	require.NoError(t, err)
-	assert.Equal(t, "label", kind)
-
-	_, err = detectRenameKind([]byte("# docs\n\nSee [docs].\n\n[docs]: u\n"), "docs")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "matches both")
-
-	_, err = detectRenameKind(src, "ghost")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no heading or link-ref label")
+func TestRenameError(t *testing.T) {
+	cases := []struct {
+		in   error
+		want string
+	}{
+		{
+			refactor.ErrAmbiguousRename,
+			`"docs" matches both a heading and a link-ref label; pass as="heading" or as="label"`,
+		},
+		{refactor.ErrNoRenameTarget, `no heading or link-ref label "docs"`},
+		{refactor.ErrNothingToRename, `nothing to rename for heading "docs"`},
+		{refactor.MissingSymbolError{Kind: refactor.KindHeading, Name: "docs"}, `no heading "docs" in a.md`},
+		{refactor.MissingSymbolError{Kind: refactor.KindLabel, Name: "docs"}, `no link reference "docs" in a.md`},
+		{refactor.ErrEmptyLabel, refactor.ErrEmptyLabel.Error()},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, renameError(c.in, "a.md", "docs").Error())
+	}
 }
 
 func TestToRefactorPlan(t *testing.T) {

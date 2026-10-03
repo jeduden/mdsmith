@@ -28,12 +28,12 @@ func TestLinkRef_DefAndShortcutUse(t *testing.T) {
 func TestHasLinkRef(t *testing.T) {
 	src := []byte("# T\n\nSee [the spec][Spec].\n\n[Spec]: u\n")
 	// Matches case-insensitively via CommonMark label normalization.
-	assert.True(t, HasLinkRef(src, "spec"))
-	assert.True(t, HasLinkRef(src, "SPEC"))
-	assert.False(t, HasLinkRef(src, "ghost"))
+	assert.True(t, hasLinkRef(src, "spec"))
+	assert.True(t, hasLinkRef(src, "SPEC"))
+	assert.False(t, hasLinkRef(src, "ghost"))
 	// A def-shaped line inside a code fence is not a real definition.
 	fenced := []byte("# T\n\n```\n[fake]: u\n```\n")
-	assert.False(t, HasLinkRef(fenced, "fake"))
+	assert.False(t, hasLinkRef(fenced, "fake"))
 }
 
 func TestLinkRef_PlanKeysUnderFileKeyNoFileOp(t *testing.T) {
@@ -540,30 +540,4 @@ func TestInlineTextBracket(t *testing.T) {
 	assert.Equal(t, 7, inlineTextBracket([]byte(`[a\](u)](v)`), 1))
 	assert.Equal(t, -1, inlineTextBracket([]byte("[a\n\n](u)"), 1))
 	assert.Equal(t, -1, inlineTextBracket([]byte("[a]"), 1))
-}
-
-func TestDetectRenameKind(t *testing.T) {
-	tests := []struct {
-		name      string
-		src       string
-		old       string
-		kind      string
-		ambiguous bool
-		found     bool
-	}{
-		{"heading only", "# Setup\n\nSee [docs].\n\n[docs]: u\n", "Setup", "heading", false, true},
-		{"label only", "# Setup\n\nSee [docs].\n\n[docs]: u\n", "docs", "label", false, true},
-		{"both match", "# docs\n\nSee [docs].\n\n[docs]: u\n", "docs", "", true, true},
-		{"neither match", "# Setup\n\nSee [docs].\n\n[docs]: u\n", "ghost", "", false, false},
-		{"label match is case-insensitive", "# Setup\n\nSee [docs].\n\n[docs]: u\n", "DOCS", "label", false, true},
-		{"fenced def is not a label", "# Setup\n\n```\n[docs]: u\n```\n", "docs", "", false, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			kind, ambiguous, found := DetectRenameKind([]byte(tt.src), tt.old)
-			assert.Equal(t, tt.kind, kind)
-			assert.Equal(t, tt.ambiguous, ambiguous)
-			assert.Equal(t, tt.found, found)
-		})
-	}
 }

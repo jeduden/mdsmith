@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -171,7 +172,8 @@ func runRename(args []string) int {
 			return code
 		}
 	}
-	if opts.as != "" && opts.as != refactor.KindHeading && opts.as != refactor.KindLabel {
+	kind, err := refactor.ParseRenameKind(opts.as)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: --as must be heading or label, got %q\n", opts.as)
 		return 2
 	}
@@ -191,7 +193,7 @@ func runRename(args []string) int {
 		return code
 	}
 
-	plan, code := computeRenamePlan(ws, target, src, oldName, newName, opts.as)
+	plan, code := computeRenamePlan(ws, target, src, oldName, newName, kind)
 	if code >= 0 {
 		return code
 	}
@@ -248,90 +250,54 @@ func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 	return cliRenameWorkspace{idx: idx, relToAbs: relToAbs, rootDir: rootDir, maxBytes: maxBytes}, -1
 }
 
-// computeRenamePlan resolves the rename mode — explicit --as, or
-// auto-detected from src — and runs the engine, mapping a typed engine
-// error to the CLI exit contract: 1 when an explicit mode finds
-// nothing, 2 on a conflict, invalid input, an ambiguous auto-detect, or
-// a request that looks like a file move.
+// computeRenamePlan runs the shared refactor.Rename dispatch — kind
+// from --as, or "" to auto-detect from src — and maps its outcome to
+// the CLI exit contract: 1 when an explicit kind finds nothing or a
+// heading rename is a no-op, 2 on a conflict, invalid input, an
+// ambiguous or absent auto-detect, or a request that looks like a file
+// move.
 func computeRenamePlan(
 	ws cliRenameWorkspace, target string, src []byte,
-	oldName, newName, as string,
+	oldName, newName string, kind refactor.RenameKind,
 ) (refactor.Plan, int) {
-	mode := as
-	if mode == "" {
-		m, code := detectRenameMode(target, src, oldName, newName)
-		if code >= 0 {
-			return refactor.Plan{}, code
-		}
-		mode = m
+	plan, err := refactor.Rename(ws, target, src, kind, oldName, newName)
+	if err != nil {
+		return refactor.Plan{}, renameExitCode(err, target, oldName, newName)
 	}
-	if mode == refactor.KindHeading {
-		return headingPlan(ws, target, src, oldName, newName)
-	}
-	return linkRefPlan(target, src, oldName, newName)
+	return plan, -1
 }
 
-// detectRenameMode auto-detects whether oldName names a heading or a
-// link-ref label in src. It returns the mode with code -1, or a
-// non-negative exit code when the choice is ambiguous (both match),
-// or absent (neither) — steering a path-shaped request to `mdsmith
-// move`.
-func detectRenameMode(target string, src []byte, oldName, newName string) (string, int) {
-	kind, ambiguous, found := refactor.DetectRenameKind(src, oldName)
+// renameExitCode prints the CLI message for a refactor.Rename error
+// and returns its exit code. An absent auto-detect steers a
+// path-shaped request to `mdsmith move`.
+func renameExitCode(err error, target, oldName, newName string) int {
+	var missing refactor.MissingSymbolError
 	switch {
-	case ambiguous:
+	case errors.Is(err, refactor.ErrAmbiguousRename):
 		fmt.Fprintf(os.Stderr,
 			"mdsmith: %q matches both a heading and a link-ref label in %s; pass --as heading or --as label\n",
 			oldName, target)
-		return "", 2
-	case found:
-		return kind, -1
-	}
-	if looksLikePath(oldName) || looksLikePath(newName) {
+		return 2
+	case errors.Is(err, refactor.ErrNoRenameTarget):
+		if looksLikePath(oldName) || looksLikePath(newName) {
+			fmt.Fprintf(os.Stderr,
+				"mdsmith: %q looks like a file path; to relocate a file use: mdsmith move %s %s\n",
+				firstPathish(oldName, newName), oldName, newName)
+			return 2
+		}
 		fmt.Fprintf(os.Stderr,
-			"mdsmith: %q looks like a file path; to relocate a file use: mdsmith move %s %s\n",
-			firstPathish(oldName, newName), oldName, newName)
-		return "", 2
-	}
-	fmt.Fprintf(os.Stderr,
-		"mdsmith: no heading or link-ref label %q in %s (to relocate a file, use mdsmith move)\n",
-		oldName, target)
-	return "", 2
-}
-
-// headingPlan runs the heading rename, mapping a missing heading to
-// exit 1 and an engine conflict to exit 2.
-func headingPlan(ws cliRenameWorkspace, target string, src []byte, oldName, newName string) (refactor.Plan, int) {
-	line, ok := refactor.FindHeadingLine(src, oldName)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "mdsmith: no heading %q in %s\n", oldName, target)
-		return refactor.Plan{}, 1
-	}
-	plan, err := refactor.Heading(ws, target, target, src, line, oldName, newName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return refactor.Plan{}, 2
-	}
-	if len(plan.Edits) == 0 {
+			"mdsmith: no heading or link-ref label %q in %s (to relocate a file, use mdsmith move)\n",
+			oldName, target)
+		return 2
+	case errors.Is(err, refactor.ErrNothingToRename):
 		fmt.Fprintf(os.Stderr, "mdsmith: nothing to rename for heading %q\n", oldName)
-		return refactor.Plan{}, 1
+		return 1
+	case errors.As(err, &missing):
+		fmt.Fprintf(os.Stderr, "mdsmith: %v in %s\n", missing, target)
+		return 1
 	}
-	return plan, -1
-}
-
-// linkRefPlan runs the link-ref rename, mapping a missing label to exit
-// 1 and an engine conflict or invalid label to exit 2.
-func linkRefPlan(target string, src []byte, oldName, newName string) (refactor.Plan, int) {
-	plan, err := refactor.LinkRef(target, src, oldName, newName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-		return refactor.Plan{}, 2
-	}
-	if len(plan.Edits[target]) == 0 {
-		fmt.Fprintf(os.Stderr, "mdsmith: no link reference %q in %s\n", oldName, target)
-		return refactor.Plan{}, 1
-	}
-	return plan, -1
+	fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+	return 2
 }
 
 // looksLikePath reports whether s reads as a file path rather than a
