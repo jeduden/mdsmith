@@ -62,8 +62,13 @@ Both are `tax`: neither sits on a public surface by itself
 3. Do not delete or duplicate the existing behavior-level
    tests named above. They cover the public contract and
    stay as-is.
-4. `go build ./...` passes.
-5. `go test ./internal/mdtext/... ./internal/directivefiles/...`
+4. Fix the one gap the new table exposed: `openingFence`
+   accepted a backtick fence whose info string holds a
+   backtick (e.g. "```a`b"). CommonMark and goldmark treat
+   that line as prose, so a real directive after it was
+   missed. It now returns (0, 0) for such a line.
+5. `go build ./...` passes.
+6. `go test ./internal/mdtext/... ./internal/directivefiles/...`
    passes.
 
 ## Acceptance Criteria
