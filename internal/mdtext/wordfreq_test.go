@@ -89,3 +89,37 @@ func TestWordFrequency_LastWordBelowMinLength(t *testing.T) {
 	freq := mdtext.WordFrequency("hi", 5)
 	assert.Empty(t, freq)
 }
+
+// TestWordFrequencyInto verifies that WordFrequencyInto correctly accumulates
+// word counts into a caller-owned map across multiple accumulate/clear cycles,
+// exercising the zero-allocation reuse behavior it exists for.
+func TestWordFrequencyInto(t *testing.T) {
+	// Create a reusable frequency map to be cleared and reused across
+	// multiple scope units (simulating a rule that maintains one map
+	// across multiple paragraphs or sections).
+	freq := make(map[string]int)
+
+	// First accumulation: count words in first text unit.
+	mdtext.WordFrequencyInto(freq, "hello world hello", 4)
+	assert.Equal(t, 2, freq["hello"])
+	assert.Equal(t, 1, freq["world"])
+	assert.Equal(t, 2, len(freq))
+
+	// Clear the map (simulating the start of a new scope unit).
+	clear(freq)
+	assert.Empty(t, freq)
+
+	// Second accumulation: count words in a different text unit.
+	mdtext.WordFrequencyInto(freq, "world peace peace", 4)
+	assert.Equal(t, 1, freq["world"])
+	assert.Equal(t, 2, freq["peace"])
+	assert.Equal(t, 2, len(freq))
+
+	// Clear and accumulate again to verify the pattern continues
+	// (the contract is that this reuse stays zero-alloc).
+	clear(freq)
+	mdtext.WordFrequencyInto(freq, "testing testing data", 4)
+	assert.Equal(t, 2, freq["testing"])
+	assert.Equal(t, 1, freq["data"])
+	assert.Equal(t, 2, len(freq))
+}

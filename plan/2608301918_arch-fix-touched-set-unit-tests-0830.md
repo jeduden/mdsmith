@@ -3,7 +3,7 @@ id: 2608301918
 title: >-
   Add dedicated unit tests for the 2026-08-30 touched-set
   tax findings
-status: "🔲"
+status: "🔳"
 model: haiku
 summary: >-
   WordFrequencyInto in internal/mdtext and three helpers in
