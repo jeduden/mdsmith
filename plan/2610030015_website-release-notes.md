@@ -49,7 +49,10 @@ the next doc edit.
    (`{#v0-55-1-whats-changed}`), since every release renders
    its own "What's Changed". A heading's own `{#id}` is scoped
    too, and headings inside block quotes and list items are
-   rewritten. Candidates published before the latest stable
+   rewritten. A zero-width space splits each Hugo shortcode
+   opener in a body: the page renders bodies with
+   `RenderString`, which expands shortcodes and fails on an
+   unknown one. Candidates published before the latest stable
    release are dropped: their cumulative notes are already in
    that release, and keeping them would grow the page by one
    changelog per merge.
@@ -69,9 +72,11 @@ the next doc edit.
    data file the page says the notes are not bundled and links
    to GitHub.
 5. Point the footer's "Releases" link at `/releases/`.
-6. Run `sync-releases` in both `pages.yml` jobs, and call
-   `pages.yml` from `release-candidate.yml` after a candidate
-   publishes, so each candidate reaches the site. The PR-time
+6. Run `sync-releases` in both `pages.yml` jobs, and dispatch
+   `pages.yml` on `main` from `release-candidate.yml` after a
+   candidate publishes, so each candidate reaches the site.
+   Dispatching on `main` builds the newest commit, so the
+   candidate's older commit never rolls back a docs merge. The PR-time
    fetch may fail without failing the job (the page then renders
    its no-data note); the deploy's fetch must succeed.
 7. Add a Playwright spec for the footer link and the no-data
@@ -88,8 +93,8 @@ the next doc edit.
 - [x] The page renders a fallback with a GitHub link when the
       data file is absent (local builds, e2e)
 - [x] The footer "Releases" link goes to `/releases/`
-- [x] `release-candidate.yml` calls `pages.yml` after the
-      candidate's publish step
+- [x] `release-candidate.yml` dispatches `pages.yml` on `main`
+      after the candidate's publish step
 - [x] All tests pass: `go test ./...`
 - [x] `go tool -modfile=tools/go.mod golangci-lint run` reports
       no issues

@@ -161,7 +161,10 @@ downloads.
   stable versus candidate. Each body's headings are
   demoted two levels and get tag-scoped ids, so
   "What's Changed" never repeats an id on the page and
-  no id in a body can collide with the page's own.
+  no id in a body can collide with the page's own. A
+  zero-width space splits each Hugo shortcode opener
+  in a body, so a PR title that quotes one cannot fail
+  the build.
 - **Without data** — a local or e2e build has no data
   file. The page then shows a "not bundled" note and
   the GitHub Releases link.
@@ -205,9 +208,9 @@ present more, never different, content.
 tag push.
 
 Each release candidate also redeploys the site. After
-the publish, `release-candidate.yml` calls `pages.yml`.
-That way the release notes page lists the new
-candidate.
+the publish, `release-candidate.yml` dispatches
+`pages.yml` on `main`. That way the release notes page
+lists the new candidate, built from the newest `main`.
 
 A push to `main` also deploys, via the path filter in
 `.github/workflows/pages.yml`. That filter watches

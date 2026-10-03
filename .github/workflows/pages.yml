@@ -8,8 +8,8 @@ name: Deploy mdsmith.dev
 # tool release also ships the site by calling this workflow (see
 # release.yml's `pages` job, which gates on the frozen release),
 # passing the release version so the published site shows it, and
-# release-candidate.yml calls it after each candidate publishes so
-# the /releases/ page lists the new candidate. The
+# release-candidate.yml dispatches it on main after each candidate
+# publishes so the /releases/ page lists the new candidate. The
 # site is pure HTML built from docs/**/*.md and the homepage data
 # files, so it never needs the registry-publish credentials.
 #
@@ -366,9 +366,9 @@ jobs:
         # every published release, stable ones first, then the
         # release candidates, each with its notes. The file is
         # gitignored and written here from the GitHub releases API
-        # at deploy time. release-candidate.yml calls this workflow
-        # after each candidate publishes, so a new candidate's notes
-        # reach the site without a docs change.
+        # at deploy time. release-candidate.yml dispatches this
+        # workflow on main after each candidate publishes, so a new
+        # candidate's notes reach the site without a docs change.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: go run ./cmd/mdsmith-release sync-releases
