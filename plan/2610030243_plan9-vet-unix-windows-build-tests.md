@@ -44,8 +44,11 @@ errors only then.
 2. Write a failing check first: a plan9-only compile
    error placed in a `_proc_test.go` file must fail
    CI.
-3. Apply the approach to every `_proc_test.go` file in
-   [internal/build](../internal/build).
+3. Apply the approach to every `unix || windows` test
+   file in [internal/build](../internal/build): the
+   `_proc_test.go` files and `recipe_output_pipe_test.go`.
+   Leave `exec_plan9_proc_test.go`, which is tagged
+   `plan9`, as it is.
 
 ## Acceptance Criteria
 
