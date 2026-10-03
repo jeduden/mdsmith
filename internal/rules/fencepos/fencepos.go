@@ -68,7 +68,13 @@ func OpenLineRange(src []byte, fcb *ast.FencedCodeBlock) (int, int) {
 		}
 		return lineStart, lineEnd
 	}
-	// Empty code block with no info - scan from previous sibling or start of file
+	// Empty code block with no info: the parser records the opener's
+	// offset as the node position, so take the line holding it.
+	if p := fcb.Pos(); p >= 0 && p < len(src) {
+		return lineAround(src, p)
+	}
+	// A hand-built node has no position: scan from the previous
+	// sibling or the start of the file.
 	searchStart := 0
 	if prev := fcb.PreviousSibling(); prev != nil {
 		searchStart = lastByteOfNodeStop(src, prev)
@@ -80,8 +86,7 @@ func OpenLineRange(src []byte, fcb *ast.FencedCodeBlock) (int, int) {
 		for lineEnd < len(src) && src[lineEnd] != '\n' {
 			lineEnd++
 		}
-		line := bytes.TrimLeft(src[lineStart:lineEnd], " ")
-		if bytes.HasPrefix(line, []byte("```")) || bytes.HasPrefix(line, []byte("~~~")) {
+		if isFenceOpenLine(bytes.TrimLeft(src[lineStart:lineEnd], " ")) {
 			return lineStart, lineEnd
 		}
 		if lineEnd >= len(src) {
@@ -90,6 +95,34 @@ func OpenLineRange(src []byte, fcb *ast.FencedCodeBlock) (int, int) {
 		pos = lineEnd + 1
 	}
 	return len(src), len(src)
+}
+
+// lineAround returns the byte range [start, end) of the line holding
+// offset p (without trailing newline).
+func lineAround(src []byte, p int) (int, int) {
+	start, end := p, p
+	for start > 0 && src[start-1] != '\n' {
+		start--
+	}
+	for end < len(src) && src[end] != '\n' {
+		end++
+	}
+	return start, end
+}
+
+// isFenceOpenLine reports whether line (leading spaces already
+// trimmed) starts with a fence run of three backticks or tildes. A
+// backtick run followed by another backtick ("```a`b") is paragraph
+// text, not a fence: CommonMark forbids backticks in a backtick
+// fence's info string.
+func isFenceOpenLine(line []byte) bool {
+	if bytes.HasPrefix(line, []byte("~~~")) {
+		return true
+	}
+	if !bytes.HasPrefix(line, []byte("```")) {
+		return false
+	}
+	return bytes.IndexByte(bytes.TrimLeft(line, "`"), '`') < 0
 }
 
 // CloseLineRange returns the byte range [start, end) of the closing

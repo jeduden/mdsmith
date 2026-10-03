@@ -337,3 +337,86 @@ func TestOpenLineRange_InfoWithTrailingSpace(t *testing.T) {
 		return ast.WalkContinue, nil
 	})
 }
+
+// TestOpenLineRange_SkipsBacktickInfoParagraph checks the scan
+// fallback for a hand-built node with no parser position: a "```a`b"
+// line is paragraph text (CommonMark forbids a backtick in a backtick
+// fence's info string), so the scan must skip it.
+func TestOpenLineRange_SkipsBacktickInfoParagraph(t *testing.T) {
+	src := []byte("```a`b\n```\n")
+	fcb := ast.NewFencedCodeBlock(nil)
+	require.Equal(t, -1, fcb.Pos(), "a hand-built node has no position")
+	start, end := OpenLineRange(src, fcb)
+	assert.Equal(t, 7, start)
+	assert.Equal(t, 10, end)
+}
+
+// TestOpenLineRange_PosPastEndFallsBackToScan checks that a position
+// outside src is ignored in favour of the scan.
+func TestOpenLineRange_PosPastEndFallsBackToScan(t *testing.T) {
+	src := []byte("text\n~~~\n")
+	fcb := ast.NewFencedCodeBlock(nil)
+	fcb.SetPos(len(src))
+	start, end := OpenLineRange(src, fcb)
+	assert.Equal(t, 5, start)
+	assert.Equal(t, 8, end)
+}
+
+func TestLineAround(t *testing.T) {
+	src := []byte("ab\ncde\nf")
+	start, end := lineAround(src, 4)
+	assert.Equal(t, 3, start)
+	assert.Equal(t, 6, end)
+	start, end = lineAround(src, 0)
+	assert.Equal(t, 0, start)
+	assert.Equal(t, 2, end)
+	start, end = lineAround(src, 7)
+	assert.Equal(t, 7, start)
+	assert.Equal(t, 8, end)
+}
+
+func TestIsFenceOpenLine(t *testing.T) {
+	assert.True(t, isFenceOpenLine([]byte("```")))
+	assert.True(t, isFenceOpenLine([]byte("````go")))
+	assert.True(t, isFenceOpenLine([]byte("~~~a`b")), "tilde info may hold a backtick")
+	assert.False(t, isFenceOpenLine([]byte("```a`b")))
+	assert.False(t, isFenceOpenLine([]byte("``x")))
+	assert.False(t, isFenceOpenLine([]byte("text")))
+}
+
+// emptyFenceOpenLines returns the 1-based opener line of every empty,
+// info-less fenced code block in src, in document order.
+func emptyFenceOpenLines(t *testing.T, src string) []int {
+	t.Helper()
+	f, err := lint.NewFile("test.md", []byte(src))
+	require.NoError(t, err)
+	var got []int
+	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		fcb, ok := n.(*ast.FencedCodeBlock)
+		if entering && ok && fcb.Info == nil && fcb.Lines().Len() == 0 {
+			got = append(got, OpenLine(f, fcb))
+		}
+		return ast.WalkContinue, nil
+	})
+	return got
+}
+
+// TestOpenLineRange_EmptyBlockPositions pins the opener line of an
+// empty, info-less block in the layouts where a backward text scan
+// guessed wrong: after another fenced block (it found that block's
+// closer), and as the first child of a list item or block quote (it
+// scanned from the start of the file).
+func TestOpenLineRange_EmptyBlockPositions(t *testing.T) {
+	assert.Equal(t, []int{6},
+		emptyFenceOpenLines(t, "# T\n\n```go\nx\n```\n```\n```\n"),
+		"after a fenced block")
+	assert.Equal(t, []int{7},
+		emptyFenceOpenLines(t, "# T\n\n```go\nx\n```\n\n- ```\n  ```\n"),
+		"first child of a list item")
+	assert.Equal(t, []int{7},
+		emptyFenceOpenLines(t, "# T\n\n```go\nx\n```\n\n> ```\n> ```\n"),
+		"first child of a block quote")
+	assert.Equal(t, []int{6},
+		emptyFenceOpenLines(t, "# T\n\n- a\n- b\n\n```\n```\n"),
+		"after a list")
+}
