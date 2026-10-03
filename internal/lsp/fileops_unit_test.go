@@ -321,14 +321,14 @@ func TestPlanRenameBatch(t *testing.T) {
 		assert.Len(t, moves, 1)
 		assert.False(t, moves[0].changesDir)
 	})
-	t.Run("a single rename skips the stem subset", func(t *testing.T) {
+	t.Run("a single rename keeps its stem subset", func(t *testing.T) {
 		t.Parallel()
 		moves := planRenameBatch(ws, root, []fileRename{
 			{OldURI: uri("docs/b.md"), NewURI: uri("docs/c.md")},
 		})
 		assert.Len(t, moves, 1)
 		assert.Len(t, moves[0].edits["docs/a.md"], 2)
-		assert.Nil(t, moves[0].stemEdits)
+		assert.Len(t, moves[0].stemEdits["docs/a.md"], 1)
 	})
 }
 

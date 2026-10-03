@@ -95,47 +95,48 @@ func (e SourceNotFoundError) Error() string {
 // not yet recomputed, so a cross-directory move can leave them stale —
 // a tracked follow-up.
 func Move(ws Workspace, src, dst string) (Plan, error) {
+	p, _, err := MoveWithStemEdits(ws, src, dst)
+	return p, err
+}
+
+// MoveWithStemEdits is Move that also returns the `[[stem]]` subset of
+// the plan's edits, keyed as the plan keys them (nil on error). Each
+// names dst by its stem, not by a path spelled from the file that
+// holds the link, so it stays right wherever that file moves. A host
+// planning several moves at once uses it to tell these from the path
+// rewrites that depend on the holder's directory, without planning
+// the stem pass a second time.
+func MoveWithStemEdits(ws Workspace, src, dst string) (Plan, map[string][]Edit, error) {
 	src = index.NormalizePath(src)
 	dst = index.NormalizePath(dst)
 	if !workspaceRelative(src) || !workspaceRelative(dst) {
-		return Plan{}, ErrTraversalPath
+		return Plan{}, nil, ErrTraversalPath
 	}
 	if src == dst {
-		return Plan{}, ErrSameFile
+		return Plan{}, nil, ErrSameFile
 	}
 	srcKey, srcSource, ok := ws.Resolve(src)
 	if !ok {
-		return Plan{}, SourceNotFoundError{Src: src}
+		return Plan{}, nil, SourceNotFoundError{Src: src}
 	}
 	if _, _, exists := ws.Resolve(dst); exists {
-		return Plan{}, DestinationExistsError{Dst: dst}
+		return Plan{}, nil, DestinationExistsError{Dst: dst}
 	}
 
 	changes := map[string][]Edit{}
 	p := lint.NewParser()
 	r := &destResolver{ws: ws, src: src}
 	appendReferrerEdits(changes, ws, p, r, src, dst)
-	appendWikilinkStemEdits(changes, ws, r, src, dst)
+	stems := map[string][]Edit{}
+	appendWikilinkStemEdits(stems, ws, r, src, dst)
+	for key, edits := range stems {
+		changes[key] = append(changes[key], edits...)
+	}
 	if mdpath.HasMarkdownExt(path.Ext(src)) || r.listed(src) {
 		appendOutboundEdits(changes, p, r, srcKey, src, dst, srcSource)
 	}
 	stableSortEdits(changes)
-	return Plan{Edits: changes, FileOp: &FileOp{From: src, To: dst}}, nil
-}
-
-// WikilinkStemEdits returns the `[[stem]]` rewrites Move plans for a
-// move of src to dst, keyed as Move keys them: a subset of Move's
-// edits, for a pair Move accepts. Each names dst by its stem, not by a
-// path spelled from the file that holds the link, so it stays right
-// wherever that file moves. A host planning several moves at once uses
-// it to tell these from the path rewrites that depend on the holder's
-// directory.
-func WikilinkStemEdits(ws Workspace, src, dst string) map[string][]Edit {
-	src = index.NormalizePath(src)
-	dst = index.NormalizePath(dst)
-	changes := map[string][]Edit{}
-	appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: src}, src, dst)
-	return changes
+	return Plan{Edits: changes, FileOp: &FileOp{From: src, To: dst}}, stems, nil
 }
 
 // workspaceRelative reports whether p is a safe workspace-relative path

@@ -79,6 +79,22 @@ then reports it.
    pre-batch snapshot, finds no `c`, and rewrites its links to
    `[[c]]`. The stopgap keeps both, so after the batch every
    such link names two files.
+9. Rewrite `[[stem]]` links when two moves leave a shared stem.
+   One request moves `x/guide.md` to `x/manual.md` and
+   `y/guide.md` to `y/howto.md`. Each move counts two `guide`
+   files in the pre-batch snapshot and skips the rewrite, so
+   every `[[guide]]` link dangles. No edit is withheld, so no
+   warning names them.
+10. Warn only about a link that no longer resolves. Moving
+    `docs/a.md` and `docs/b.md` into `docs/sub/` withholds both
+    rewrites of each link between them, and the kept text is
+    right. The warning still says "withheld 4 link rewrite(s)"
+    for those two links: it counts edits, not links.
+11. Count a rewrite that assumes an unplanned move stayed put.
+    One request moves `docs/a.md` to `other/a.md` and
+    `docs/b.md` onto an existing `x/b.md`. The move of `a.md`
+    spells its `b.md` link as `../docs/b.md`, a path the batch
+    empties. The edit is kept and the warning stays silent.
 
 ## Acceptance Criteria
 
