@@ -1,9 +1,10 @@
 // Node harness for the mdsmith WASM engine after its Go program exits.
 // It drops sessions without dispose(), lets Go release the JS values it
-// held for them, forces a V8 collection so the FinalizationRegistry
-// queues a cleanup callback per collected session, and then puts the Go
-// runtime in the state runtime.wasmExit leaves (wasm_exec.js sets
-// exited and deletes the value tables) before those callbacks run. A
+// held for them, and then, in one synchronous turn, forces a V8
+// collection so the FinalizationRegistry queues a cleanup callback per
+// collected session and puts the Go runtime in the state
+// runtime.wasmExit leaves (wasm_exec.js sets exited and deletes the
+// value tables), so those callbacks all run after the exit. A
 // cleanup callback that calls into Go then throws "Go program has
 // already exited" from a GC task, outside any caller's try.
 //
@@ -68,14 +69,21 @@ async function main() {
   const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
   go.run(instance);
 
+  // Hold the sessions to drop until the exit, so no V8 collection
+  // during the calls below can collect and drain them first; Go still
+  // releases its own references to their tokens meanwhile.
   const keeper = await globalThis.mdsmith.createSession({});
+  const held = [];
   for (let i = 0; i < 50; i++) {
-    await globalThis.mdsmith.createSession({});
+    held.push(await globalThis.mdsmith.createSession({}));
   }
   for (let i = 0; i < 50; i++) {
     await keeper.check("a.md", "# A\n\nSome text here.\n");
   }
 
+  // Drop, collect, and exit in one synchronous turn: the cleanup
+  // callbacks the collection queues can run only after the exit.
+  held.length = 0;
   gc();
   exited = true;
   simulateExit(go);
