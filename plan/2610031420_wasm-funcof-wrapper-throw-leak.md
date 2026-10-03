@@ -98,6 +98,9 @@ once its own call is no longer on top. A nested run from inside
 second run after the outermost one returned runs nothing, as a
 released func would not.
 
+`newPromise` binds before it pushes the call. A run that the bind's JS
+starts therefore finds no call to run.
+
 ## Tasks
 
 1. [x] Write a failing js/wasm test that patches

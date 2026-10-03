@@ -50,8 +50,11 @@ import (
 // constructor left it, never settling. Any other panic is re-raised
 // (recoverJS).
 func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
-	shared := sharedExecutor()
-	c := &promiseCall{executor: executor, seq: newPromiseSeq()}
+	// Bind before pushing the call, so nothing the bind's JS reaches (a
+	// patched Reflect.apply sees the raw executor and the number) can run
+	// the call before its constructor does.
+	exec, seq := callExecutor(sharedExecutor(), newPromiseSeq())
+	c := &promiseCall{executor: executor, seq: seq}
 	promiseCalls = append(promiseCalls, c)
 	// Pop c whatever happens, and clear the freed slot so the stack's
 	// backing array does not keep the executor, and the Session it
@@ -64,29 +67,29 @@ func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
 		}
 	}()
 	defer recoverJS(func() { p = js.Undefined() })
-	return js.Global().Get("Promise").New(callExecutor(shared, c))
+	return js.Global().Get("Promise").New(exec)
 }
 
 // callExecutor returns the executor newPromise hands the Promise
-// constructor for c: the shared func bound, through the bindTo captured
-// at load, to c's sequence number, so a script that kept it can run c
-// and no later call (runPromiseCall checks the number). bind builds a
-// JS bound function and registers no Go func. When the bind fails
-// (bindTo's capture failed because Function.prototype.bind or call was
-// patched to throw before load, or a Reflect.apply patched after load
-// throws on the call) it returns the shared func unbound and marks c
-// unbound (seq 0), which an unbound run alone can execute, so the
-// Promise still settles (a create still rejects). A script able to
-// make that bind throw already sees every call through Reflect.apply.
-func callExecutor(shared js.Value, c *promiseCall) js.Value {
+// constructor for a call numbered seq, and the number the call is bound
+// to: the shared func bound, through the bindTo captured at load, to
+// seq, so a script that kept it can run that call and no later one
+// (runPromiseCall checks the number). bind builds a JS bound function
+// and registers no Go func. When the bind fails (bindTo's capture failed
+// because Function.prototype.bind or call was patched to throw before
+// load, or a Reflect.apply patched after load throws on the call) it
+// returns the shared func unbound and 0, which marks the call unbound:
+// an unbound run alone can execute it, so the Promise still settles (a
+// create still rejects). A script able to make that bind throw already
+// sees every call through Reflect.apply.
+func callExecutor(shared js.Value, seq int64) (js.Value, int64) {
 	bound := tryJS(func() js.Value {
-		return bindTo.Invoke(shared, js.Undefined(), float64(c.seq))
+		return bindTo.Invoke(shared, js.Undefined(), float64(seq))
 	})
 	if jsType(bound) != js.TypeFunction {
-		c.seq = 0
-		return shared
+		return shared, 0
 	}
-	return bound
+	return bound, seq
 }
 
 // promiseCall is one pending newPromise call: its Go executor, how many
@@ -263,7 +266,7 @@ func toJS(v any) js.Value {
 	return js.Global().Get("JSON").Call("parse", string(data))
 }
 
-// rejectOnJSError, which newPromise defers around every executor, turns
+// rejectOnJSError, which runPromiseCall defers around every executor, turns
 // a JS-side failure (the panics recoverJS recovers) into a rejection: a
 // JS exception that a syscall/js Call, Invoke, or New raised as a
 // js.Error panic rejects with that exception, and a *js.ValueError (a
@@ -271,8 +274,9 @@ func toJS(v any) js.Value {
 // an Error carrying its message. Inspecting a caller's object can throw
 // (a revoked Proxy, a Proxy trap that throws), and an unrecovered panic
 // in a js.FuncOf callback ends the Go program and every session with it.
-// newPromise's executor callback swallows a failure this does not turn
-// into a rejection, which would leave the Promise pending forever.
+// runPromiseCall, the shared executor callback, swallows a failure this
+// does not turn into a rejection, which would leave the Promise pending
+// forever.
 // wasm_exec.js caught the exception before Go panicked, so the runtime
 // is intact. Any other panic is re-raised unchanged, and so is a
 // JS-side failure that unwound out of a JS-to-Go callback, as in

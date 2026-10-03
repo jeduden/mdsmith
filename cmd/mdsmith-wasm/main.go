@@ -759,7 +759,8 @@ func tryJS[T any](f func() T) (v T) {
 var objectKeys, objectCreate, recordTag js.Value
 
 // sharedMethods runs loadGlobals and registers the shared method funcs
-// on first use. exposeAPI calls it first, so main runs it before the
+// and the shared Promise executor (sharedExecutor) on first use.
+// exposeAPI calls it first, so main runs it before the
 // API is reachable; registerSession calls it too, for the tests. The
 // funcs are never released, so every session reuses the same
 // handler-table entries. Each takes the session id as args[0]; dispose

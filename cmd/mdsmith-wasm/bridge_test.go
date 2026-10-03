@@ -2230,19 +2230,19 @@ func TestSplitSeq(t *testing.T) {
 // returning undefined). A bindTo that throws gets the same fallback.
 // Not parallel: it swaps bindTo.
 func TestCallExecutor(t *testing.T) {
+	sharedMethods() // captures bindTo, which callExecutor binds through
 	shared := sharedExecutor()
-	c := &promiseCall{seq: 5}
-	bound := callExecutor(shared, c)
+	bound, seq := callExecutor(shared, 5)
 	assert.Equal(t, js.TypeFunction, bound.Type(), "a bound function")
 	assert.False(t, bound.Equal(shared), "not the shared func itself")
-	assert.Equal(t, int64(5), c.seq, "the call keeps its number")
+	assert.Equal(t, int64(5), seq, "the call keeps its number")
 
 	old := bindTo
 	t.Cleanup(func() { bindTo = old })
 	bindTo = js.Undefined()
-	c = &promiseCall{seq: 6}
-	assert.True(t, callExecutor(shared, c).Equal(shared), "the shared func, unbound")
-	assert.Zero(t, c.seq, "the call is marked unbound")
+	exec, seq := callExecutor(shared, 6)
+	assert.True(t, exec.Equal(shared), "the shared func, unbound")
+	assert.Zero(t, seq, "the call is marked unbound")
 	runs := 0
 	p := newPromise(func(resolve, _ func(any)) { runs++; resolve(1) })
 	bindTo = old
@@ -2251,10 +2251,65 @@ func TestCallExecutor(t *testing.T) {
 	assert.False(t, rejected, "and its Promise settles")
 
 	bindTo = js.Global().Get("Function").New("throw new TypeError('bind')")
-	c = &promiseCall{seq: 7}
-	assert.True(t, callExecutor(shared, c).Equal(shared), "a throwing bind also yields the shared func")
-	assert.Zero(t, c.seq, "and marks the call unbound")
+	exec, seq = callExecutor(shared, 7)
+	assert.True(t, exec.Equal(shared), "a throwing bind also yields the shared func")
+	assert.Zero(t, seq, "and marks the call unbound")
 	bindTo = old
+}
+
+// TestNewPromise_BindRunsBeforeCallIsPending replaces bindTo with one
+// that, like a Reflect.apply patched after load, sees the raw shared
+// executor and the call's number and runs the executor with them before
+// the bind returns. The call is not yet pending then, so that run
+// executes nothing: the body runs once, from its own constructor, and
+// the script's resolve receives nothing. Not parallel: it swaps bindTo
+// and a global.
+func TestNewPromise_BindRunsBeforeCallIsPending(t *testing.T) {
+	sharedMethods()
+	g := js.Global()
+	t.Cleanup(func() { g.Delete("__mdsmithStolen") })
+	old := bindTo
+	t.Cleanup(func() { bindTo = old })
+	bindTo = g.Get("Function").New("bind", `return function (f, self, seq) {
+		f(seq, function (v) { globalThis.__mdsmithStolen = v; }, function () {});
+		return bind(f, self, seq);
+	};`).Invoke(old)
+
+	runs := 0
+	p := newPromise(func(resolve, _ func(any)) { runs++; resolve("result") })
+	bindTo = old
+	// Checked before awaiting: a body the bind's run took over would
+	// leave p pending forever.
+	require.True(t, g.Get("__mdsmithStolen").IsUndefined(), "the run during the bind receives nothing")
+	assert.Equal(t, 1, runs, "the body runs once")
+	v, rejected := awaitPromise(t, p)
+	require.False(t, rejected, "the call's own Promise resolves")
+	assert.Equal(t, "result", v.String(), "with the body's result")
+	assert.Empty(t, promiseCalls, "no call is left pending")
+}
+
+// TestPopPromiseCall checks popPromiseCall removes the given call by
+// identity wherever it sits on promiseCalls, keeps the calls above and
+// below it in order, clears the freed last slot, and leaves the stack
+// as it was for a call that is not on it. Not parallel: it writes
+// promiseCalls.
+func TestPopPromiseCall(t *testing.T) {
+	old := promiseCalls
+	t.Cleanup(func() { promiseCalls = old })
+	a, b, c := &promiseCall{}, &promiseCall{}, &promiseCall{}
+	promiseCalls = []*promiseCall{a, b, c}
+
+	popPromiseCall(b)
+	require.Equal(t, []*promiseCall{a, c}, promiseCalls, "b is removed, a and c keep their order")
+	assert.Nil(t, promiseCalls[:3][2], "the freed last slot is cleared")
+
+	popPromiseCall(&promiseCall{})
+	assert.Equal(t, []*promiseCall{a, c}, promiseCalls, "a call not on the stack leaves it as it was")
+
+	popPromiseCall(c)
+	popPromiseCall(a)
+	assert.Empty(t, promiseCalls, "every call is popped")
+	assert.Nil(t, promiseCalls[:1][0], "and its slot cleared")
 }
 
 // TestNewPromise_SecondSequentialRunIsIgnored replaces Promise with a

@@ -416,6 +416,11 @@ as it sees every session id. Each number is AES of a counter under the
 key session ids use, so a script that saw the unbound executor and
 some numbers cannot step from them to a later call's number.
 
+If that `bind` throws, as it does when its capture failed at load, the
+call hands the constructor the unbound executor instead, so its
+`Promise` still settles. A script that keeps the unbound executor can
+then run any later call whose `bind` failed too.
+
 A `Reflect.get` or `Reflect.set` that throws while Go reads a
 callback's arguments or writes back its result still stops the Go
 runtime, as a throwing getter does: `wasm_exec.js` does not catch it.
