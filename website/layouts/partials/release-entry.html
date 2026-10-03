@@ -1,0 +1,27 @@
+{{- /* One release on the /releases/ page: a <details> whose
+       <summary> carries the release heading and date, and whose
+       body is the release's notes plus a link to its GitHub
+       release. Context: dict "page" (the page, for RenderString),
+       "release" (one entry of hugo.Data.releases), and "open"
+       (render expanded).
+
+       The id is the tag, so /releases/#v0.55.1 deep-links to a
+       release; browsers open a collapsed <details> on fragment
+       navigation. The notes' own headings arrive demoted to h4
+       with tag-scoped ids (sync-releases), so they nest under
+       this h3 and never collide across releases. Goldmark runs
+       with unsafe = false, so raw HTML in a release body is
+       dropped rather than rendered. */ -}}
+{{- $r := .release -}}
+<details class="release" id="{{ $r.tag }}"{{ if .open }} open{{ end }}>
+  <summary>
+    <h3 class="release-title">
+      <span class="release-name">{{ $r.name }}</span>
+      <time class="release-date" datetime="{{ $r.published }}">{{ (time.AsTime $r.published).Format "January 2, 2006" }}</time>
+    </h3>
+  </summary>
+  <div class="release-body">
+    {{ with $r.body }}{{ $.page.RenderString . }}{{ else }}<p>No notes for this release.</p>{{ end }}
+    <p class="release-link"><a href="{{ $r.url }}" rel="noopener">{{ $r.tag }} on GitHub →</a></p>
+  </div>
+</details>
