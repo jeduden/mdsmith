@@ -1,7 +1,7 @@
 ---
 id: 2610030244
 title: Run internal/build under js/wasm once in CI
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   CI's wasm job compiles and runs the js/wasm-only
@@ -28,7 +28,7 @@ added `mdsmith-release test-js-wasm --all
 ./internal/build`. The earlier stubs step runs the
 tests that only a js/wasm build compiles and fails when
 one of them skips. `--all` allows skips, because
-native-only tests skip under Node. So the stubs step
+tests the native build shares can skip under Node. So the stubs step
 cannot be dropped as it stands. Each CI run pays for an
 extra js/wasm compile and Node run of the package.
 
@@ -42,12 +42,27 @@ extra js/wasm compile and Node run of the package.
    set. Reuse the default mode's test listing.
 3. Drop `internal/build` from the stubs step in
    [ci.yml](../.github/workflows/ci.yml).
+4. Add `--require-js-only` to `--all` so CI keeps the
+   stubs step's guard: the run fails, before go test,
+   when the package has no js/wasm-only Test function.
+5. Fail a skipped test even when a same-named test
+   passes. `go test` reports a TestX of the internal
+   and of the external test package under one name.
+6. Run both `go list` calls with cgo off and pin the
+   native one to linux/amd64. The host's cgo setting
+   and OS must not change the js/wasm-only set.
 
 ## Acceptance Criteria
 
-- [ ] `test-js-wasm --all ./internal/build` fails when
+- [x] `test-js-wasm --all ./internal/build` fails when
       a js/wasm-only test skips.
-- [ ] The wasm CI job runs `internal/build` under Node
+- [x] The wasm CI job runs `internal/build` under Node
       once.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `test-js-wasm --all --require-js-only` fails when
+      the package has no js/wasm-only Test function.
+- [x] A js/wasm-only skip fails even when a same-named
+      test passes.
+- [x] The js/wasm-only set is the same with any
+      `CGO_ENABLED` value.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
