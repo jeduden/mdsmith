@@ -499,3 +499,13 @@ func TestFix_InnerAppendAllocBudget(t *testing.T) {
 		t.Fatalf("Fix allocs per call: want ≤ 4, got %v (nil h1s grows 2× without pre-sizing)", allocs)
 	}
 }
+
+// A clean file returns nil, not an empty slice
+// (docs/development/high-performance-go.md, "Return nil").
+func TestCheck_Clean_ReturnsNil(t *testing.T) {
+	for _, src := range []string{"# Title\n", "## Section\n", "Just text.\n"} {
+		f := newFile(t, src)
+		assert.Nil(t, (&Rule{}).Check(f), src)
+		assert.Nil(t, (&Rule{FrontMatterTitle: "title"}).Check(f), src)
+	}
+}

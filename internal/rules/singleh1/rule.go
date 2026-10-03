@@ -110,24 +110,27 @@ func isH1Span(f *lint.File, span lint.BlockSpan) bool {
 // verdict emits the diagnostics for the collected authored-h1 line numbers,
 // shared by the AST and Layer 0 paths so both produce identical output.
 func (r *Rule) verdict(f *lint.File, h1Lines []int) []lint.Diagnostic {
+	if len(h1Lines) == 0 {
+		return nil
+	}
+	// Decode the front matter only when an H1 exists to conflict with it.
 	hasFMTitle := r.FrontMatterTitle != "" && r.frontMatterHasTitle(f)
-
-	diags := make([]lint.Diagnostic, 0, len(h1Lines))
-
-	if hasFMTitle && len(h1Lines) > 0 {
-		diags = append(diags, r.newDiag(f, h1Lines[0],
-			"h1 heading conflicts with front-matter title"))
-		for _, line := range h1Lines[1:] {
-			diags = append(diags, r.newDiag(f, line,
-				"extra H1 heading; only one H1 is allowed per file"))
-		}
-	} else if len(h1Lines) > 1 {
-		for _, line := range h1Lines[1:] {
-			diags = append(diags, r.newDiag(f, line,
-				"extra H1 heading; only one H1 is allowed per file"))
-		}
+	if !hasFMTitle && len(h1Lines) == 1 {
+		return nil
 	}
 
+	var diags []lint.Diagnostic
+	if hasFMTitle {
+		diags = make([]lint.Diagnostic, 0, len(h1Lines))
+		diags = append(diags, r.newDiag(f, h1Lines[0],
+			"h1 heading conflicts with front-matter title"))
+	} else {
+		diags = make([]lint.Diagnostic, 0, len(h1Lines)-1)
+	}
+	for _, line := range h1Lines[1:] {
+		diags = append(diags, r.newDiag(f, line,
+			"extra H1 heading; only one H1 is allowed per file"))
+	}
 	return diags
 }
 
