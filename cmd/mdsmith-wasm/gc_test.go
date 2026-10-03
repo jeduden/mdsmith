@@ -105,7 +105,7 @@ func TestDroppedSessionFreedOnNextCall(t *testing.T) {
 		"dispose":        func(_ *testing.T, k js.Value) { k.Call("dispose") },
 		"createSession": func(t *testing.T, _ js.Value) {
 			opts := js.Global().Get("Object").New()
-			sess, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
+			sess, rejected := awaitPromise(t, exposeAPI().Get("createSession").Invoke(opts))
 			require.False(t, rejected, "createSession: %v", sess)
 			sess.Call("dispose")
 		},
@@ -441,3 +441,39 @@ func TestBindFinalizer_NoWeakMap(t *testing.T) {
 
 // indexEmpty indexes an empty slice at i, a Go runtime error for any i.
 func indexEmpty(i int) int { return []int{}[i] }
+
+// TestEveryEntryPointDrainsFirst checks that every function the engine
+// exposes (each mdsmith.* function exposeAPI publishes, and each shared
+// session method func, dispose among them) frees a collected session
+// before it runs. It walks the registered tables, so an entry point
+// added later is covered without a new case.
+func TestEveryEntryPointDrainsFirst(t *testing.T) {
+	require.Equal(t, js.TypeObject, finalizer.queue.Type(), "the host has a FinalizationRegistry")
+	entries := map[string]js.Value{}
+	api := exposeAPI()
+	keys := js.Global().Get("Object").Call("keys", api)
+	for i := 0; i < keys.Length(); i++ {
+		k := keys.Index(i).String()
+		if v := api.Get(k); v.Type() == js.TypeFunction {
+			entries["mdsmith."+k] = v
+		}
+	}
+	require.Contains(t, entries, "mdsmith.createSession")
+	for name, f := range sharedMethods() {
+		entries["session."+name] = f
+	}
+	promise := js.Global().Get("Promise")
+	for name, f := range entries {
+		t.Run(name, func(t *testing.T) {
+			keeper, kid := newTestProxyWithID(t)
+			defer keeper.Call("dispose")
+			_, victim := newTestProxyWithID(t)
+			finalizer.queue.Call("push", victim)
+			if res := f.Invoke(kid); res.InstanceOf(promise) {
+				awaitPromise(t, res)
+			}
+			assert.NotContains(t, sessions, victim, "the queued session is freed")
+			assert.Zero(t, finalizer.queue.Length(), "the queue is drained")
+		})
+	}
+}
