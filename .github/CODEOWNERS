@@ -9,6 +9,7 @@
 /demo.tape                                @jeduden
 /SECURITY.md                              @jeduden
 /docs/development/release.md              @jeduden
+/docs/development/release-candidates.md   @jeduden
 /docs/development/release-tooling.md      @jeduden
 /docs/development/secret-rotations.md     @jeduden
 /docs/security/                           @jeduden

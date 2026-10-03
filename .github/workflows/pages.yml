@@ -54,17 +54,17 @@ on:
   # Manual trigger from the Actions "Run workflow" UI. The optional
   # version input is read through the same `inputs.version` context
   # as workflow_call (the "Resolve site version" step below), so a
-  # blank input falls back to the latest v* tag.
+  # blank input falls back to the latest stable v* tag.
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to stamp into the site (defaults to the latest v* tag)"
+        description: "Version to stamp into the site (defaults to the latest stable v* tag)"
         required: false
         type: string
   workflow_call:
     inputs:
       version:
-        description: "Version to stamp into the site (defaults to the latest v* tag)"
+        description: "Version to stamp into the site (defaults to the latest stable v* tag)"
         required: false
         type: string
       benchmark-artifact:
@@ -228,7 +228,7 @@ jobs:
         with:
           persist-credentials: false
           # Full history + tags so the version resolver below can
-          # fall back to the latest v* tag on a docs-only push.
+          # fall back to the latest stable v* tag on a docs-only push.
           fetch-depth: 0
       - name: Read pinned Hugo version
         # .hugo-version at the repo root is the single source of truth
@@ -250,8 +250,10 @@ jobs:
         run: go install github.com/gohugoio/hugo@v${HUGO_VERSION}
       - name: Resolve site version
         # A tool release passes the release version. A docs-only
-        # push has no input, so fall back to the latest v* tag; if
-        # the repo has no release tag yet, leave the dev sentinel
+        # push has no input, so fall back to the latest stable v*
+        # tag (`--exclude 'v*-*'` skips the vX.Y.Z-rc.N tags that
+        # release-candidate.yml cuts on every merge); if the repo
+        # has no release tag yet, leave the dev sentinel
         # in place (empty SITE_VERSION skips the stamp). The input
         # is read through an env var, never interpolated into the
         # shell, so a crafted value cannot inject commands.
@@ -260,7 +262,7 @@ jobs:
         run: |
           v="$INPUT_VERSION"
           if [ -z "$v" ]; then
-            v="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+            v="$(git describe --tags --abbrev=0 --match 'v*' --exclude 'v*-*' 2>/dev/null || true)"
           fi
           echo "SITE_VERSION=${v#v}" >> "$GITHUB_ENV"
       - name: Stamp release version into tracked manifests

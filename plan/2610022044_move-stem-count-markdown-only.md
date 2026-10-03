@@ -1,7 +1,7 @@
 ---
 id: 2610022044
 title: Count only Markdown files as wikilink stem siblings on move
-status: "🔲"
+status: "✅"
 summary: >-
   The move planner's wikilink pass treats a non-Markdown file
   (for example an extensionless `LICENSE`) as a stem target,
@@ -61,7 +61,7 @@ Round 2 of the PR #884 code review found case 1.
 
 ## Out of scope
 
-`countFilesWithStem` counts `ws.Files()`. In the CLI that is
+The holder count reads `ws.Files()`. In the CLI that is
 the `files:` globs minus gitignored paths. The wikilink
 resolver walks every file on disk except `.git` and
 `node_modules`. So a gitignored `archive/guide.md` can take
@@ -71,7 +71,8 @@ counts against the resolver's own index.
 
 ## Tasks
 
-1. Add a failing row to `TestCountFilesWithStem` in
+1. Add a failing row to `TestCountFilesWithStem` (now
+   `TestWikilinkKeyHolders_OldStem`) in
    [move_coverage_test.go](../internal/refactor/move_coverage_test.go):
    an extensionless `notes/LICENSE` plus `docs/license.md`
    must give a count of 1 for `license`. Move the
@@ -98,19 +99,92 @@ counts against the resolver's own index.
    has a non-Markdown extension, the destination guard counts
    workspace files whose lowercased basename equals dst's,
    not Markdown stems.
+7. Fix the code-review findings on this change, each with a
+   failing test first:
+
+  - Keep the Markdown extension in the rewritten link when
+     the destination stem holds a dot: `v1.3.md` is
+     `[[v1.3.md]]`, since `[[v1.3]]` reads `.3` as a typed
+     extension.
+  - Skip the rewrite when the new spelling is empty
+     (`docs/.md`) or contains `#`, `|`, `[`, or `]`. Such a
+     link no longer parses as a link to dst.
+  - Apply the `oldStem == newStem` early return only to a
+     Markdown destination. Moving `guide.png.md` to
+     `guide.png` must rewrite `[[guide.png.md]]`.
+  - Count the moved file as a holder of its old stem even
+     when `ws.Files()` omits it. One listed same-stem sibling
+     then blocks the rewrite.
+  - Replace `countFilesWithStem` and `countFilesWithName`
+     with one pass, `wikilinkKeyHolders`.
+  - Also skip the rewrite when the new spelling has a newline
+     or a leading or trailing space. The target is trimmed, so
+     `[[guide.md ]]` would reach another `guide.md`.
+  - Skip a source with an empty stem (`docs/.md`). The
+     whole-name fallback keyed it as `.md` and rewrote
+     `[[.md.md]]` links to another file.
+  - Normalize listed paths before the source-listed check, so
+     a listed `./src` is not counted twice.
+  - Key both ends and every holder with
+     `linkgraph.FileStemKey`, the function `NewWikilinkIndex`
+     keys files with, and retire `fileStem`. A listed
+     `x/ guide.md` keys as ` guide` and no longer blocks a
+     `[[guide]]` rewrite.
+  - Replace the hand-written `#|[]` list with
+     `linkgraph.WikilinkReaches`. It runs the spelling back
+     through the wikilink grammar and the resolver's target
+     checks, so a drive-letter name such as `C:x.md` is
+     skipped too.
+  - Pick the spelling with `WikilinkReaches`: the bare stem
+     first, else the whole basename. This covers a dotted stem
+     and a stem ending in a space (`[[guide .md]]`). Refuse a
+     CR in the spelling, since CommonMark ends a line there.
+  - When no bare spelling reaches dst, try it behind `./`:
+     `[[./C:x]]` reaches `C:x.md` and `[[./ notes]]` reaches
+     ` notes.md`. Drop the `./` for a link that already has a
+     folder prefix.
+  - Refuse a backtick in the spelling. It can pair with a
+     later backtick on the line and open a code span.
+  - Replace only the stem segment the resolver reads: split
+     on `\` as well as `/`, and drop trailing whitespace and
+     separators, so `[[docs\api]]` keeps its prefix and a
+     table-escaped `[[api\|alias]]` keeps its `\`.
+  - Read `ws.Files()` once per move: `destResolver.paths`
+     normalizes the list once for the referrer scan, the
+     listed checks, and `wikilinkKeyHolders`.
+  - Document these cases in
+     [move.md](../docs/reference/cli/move.md).
 
 ## Acceptance Criteria
 
-- [ ] `countFilesWithStem` returns 1, not 2, for `license`
+- [x] The stem holder count is 1, not 2, for `license`
       when the workspace holds `notes/LICENSE` and
       `docs/license.md`
-- [ ] Moving `docs/license.md` to `docs/terms.md` rewrites
+- [x] Moving `docs/license.md` to `docs/terms.md` rewrites
       `[[license]]` even when an extensionless `LICENSE` is
       in the workspace
-- [ ] Moving `LICENSE` to `COPYING` leaves every `[[license]]`
+- [x] Moving `LICENSE` to `COPYING` leaves every `[[license]]`
       link to `docs/license.md` unchanged
-- [ ] Moving `docs/guide.md` to `docs/guide.mdx` leaves
+- [x] Moving `docs/guide.md` to `docs/guide.mdx` leaves
       `[[guide]]` unchanged while `a/guide.mdx` exists
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] Moving `docs/v1.2.md` to `docs/v1.3.md` rewrites
+      `[[v1.2.md]]` to `[[v1.3.md]]`
+- [x] No wikilink is rewritten to an empty name, to one
+      holding `#`, `|`, `[`, `]`, a backtick, a CR, or a
+      newline, or to one with a trailing space
+- [x] Moving `docs/api.md` to `docs/guide .md` rewrites
+      `[[api]]` to `[[guide .md]]`
+- [x] Moving `docs/.md` leaves `[[.md.md]]` unchanged
+- [x] A listed `x/ guide.md` does not block moving
+      `docs/guide.md` to `docs/manual.md`
+- [x] Moving `docs/api.md` to `docs/C:x.md` rewrites
+      `[[api]]` to `[[./C:x]]` and `[[ref/api]]` to
+      `[[ref/C:x]]`
+- [x] Moving `docs/api.md` to `docs/manual.md` rewrites
+      `[[docs\api]]` to `[[docs\manual]]` and keeps the `\`
+      in a table-escaped `[[api\|alias]]`
+- [x] Moving an unlisted `a/b/guide.md` while
+      `docs/guide.md` is listed leaves `[[guide]]` unchanged
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues

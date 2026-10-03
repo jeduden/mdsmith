@@ -58,3 +58,11 @@ token for `cosign sign-blob` against
 signature to this exact workflow file at the tag
 that triggered it. See [`release.md`](../release.md)
 for the end-user verification commands.
+
+Every merge to `main` also publishes a
+`vX.Y.Z-rc.N` pre-release with the same assets
+(no Flatpak bundle), built by
+`release-candidate.yml`. A pre-release never becomes
+`latest`, so the `releases/latest/download` URLs
+above always return the last stable release. See
+[`release-candidates.md`](../release-candidates.md).

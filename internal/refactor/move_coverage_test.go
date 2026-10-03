@@ -54,15 +54,9 @@ func TestRelFrom_ErrorFallsBackToTarget(t *testing.T) {
 	assert.Equal(t, "b", relFrom("../a", "b"))
 }
 
-func TestFileStem_NonMarkdownFallback(t *testing.T) {
-	// A typed non-Markdown basename has no wikilink stem; fileStem falls
-	// back to the lowercased basename.
-	assert.Equal(t, "image.png", fileStem("dir/Image.PNG"))
-	assert.Equal(t, "api", fileStem("docs/API.md"))
-}
-
-func TestCountFilesWithStem(t *testing.T) {
+func TestWikilinkKeyHolders_OldStem(t *testing.T) {
 	files := []string{"a.md", "docs/API.md", "api/api.md", "img/api.png", "notes/b.mdx", "notes/c.markdown"}
+	licenseFiles := []string{"notes/LICENSE", "docs/license.md"}
 	for name, tc := range map[string]struct {
 		files []string
 		stem  string
@@ -75,19 +69,83 @@ func TestCountFilesWithStem(t *testing.T) {
 		"case-folded basename":           {[]string{"docs/API.md"}, "api", 1},
 		"markdown extension is stripped": {files, "c", 1},
 		"upper-case markdown extension":  {[]string{"docs/Guide.MD"}, "guide", 1},
-		"non-markdown keeps extension":   {files, "api.png", 1},
+		"extensionless file is no stem":  {licenseFiles, "license", 1},
 		"stem is not a prefix match":     {files, "ap", 0},
-		"mdx keeps its extension":        {files, "b.mdx", 1},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tc.want, countFilesWithStem(stubWorkspace{files: tc.files}, tc.stem))
+			// src is listed as the first file so it adds no extra holder.
+			files := append([]string{"src.txt"}, tc.files...)
+			oldN, _ := wikilinkKeyHolders(files, "src.txt", tc.stem, "zzz", true)
+			assert.Equal(t, tc.want, oldN)
+			_, newN := wikilinkKeyHolders(files, "src.txt", "zzz", tc.stem, true)
+			assert.Equal(t, tc.want, newN, "a Markdown destination counts stems the same way")
 		})
 	}
 }
 
-func TestDstStemSpelling_NonMarkdownKeepsBase(t *testing.T) {
-	assert.Equal(t, "Service", dstStemSpelling("docs/Service.md"))
-	assert.Equal(t, "diagram.png", dstStemSpelling("img/diagram.png"))
+func TestWikilinkKeyHolders_NewName(t *testing.T) {
+	files := []string{"a.md", "img/api.png", "notes/b.mdx", "x/B.MDX"}
+	for name, tc := range map[string]struct {
+		files []string
+		base  string
+		want  int
+	}{
+		"no files":                     {nil, "api.png", 0},
+		"non-markdown keeps extension": {files, "api.png", 1},
+		"mdx keeps its extension":      {files, "b.mdx", 2},
+		"markdown name matches":        {files, "a.md", 1},
+		"no prefix match":              {files, "api", 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, newN := wikilinkKeyHolders(tc.files, "", "zzz", tc.base, false)
+			assert.Equal(t, tc.want, newN)
+		})
+	}
+}
+
+func TestWikilinkKeyHolders_UnlistedSourceCounts(t *testing.T) {
+	files := []string{"docs/guide.md"}
+	oldN, _ := wikilinkKeyHolders(files, "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 2, oldN, "an unlisted source holds its own stem")
+	oldN, _ = wikilinkKeyHolders(append(files, "a/guide.md"), "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 2, oldN, "a listed source is not counted twice")
+	r := &destResolver{ws: stubWorkspace{files: []string{"./a/guide.md"}}, src: "a/guide.md"}
+	oldN, _ = wikilinkKeyHolders(r.paths(), "a/guide.md", "guide", "manual", true)
+	assert.Equal(t, 1, oldN, "a source listed with a ./ prefix is still listed")
+}
+
+func TestDstWikilinkSpelling_NonMarkdownKeepsBase(t *testing.T) {
+	for dst, want := range map[string]string{
+		"docs/Service.md": "Service",
+		"img/diagram.png": "diagram.png",
+	} {
+		got, ok := dstWikilinkSpelling(dst)
+		assert.True(t, ok, dst)
+		assert.Equal(t, want, got, dst)
+	}
+}
+
+// TestDstWikilinkSpelling_FallsBackToBase locks that the whole basename
+// is written whenever the bare stem would not reach dst: a dotted stem
+// reads as a typed extension, and a stem ending in a space loses it to
+// the target trim.
+func TestDstWikilinkSpelling_FallsBackToBase(t *testing.T) {
+	for dst, want := range map[string]string{
+		"docs/v1.3.md":     "v1.3.md",
+		"docs/guide.md.md": "guide.md.md",
+		"docs/guide .md":   "guide .md",
+		"docs/C:x.md":      "./C:x",
+		"img/C:x.png":      "./C:x.png",
+		"docs/ notes.md":   "./ notes",
+	} {
+		got, ok := dstWikilinkSpelling(dst)
+		assert.True(t, ok, dst)
+		assert.Equal(t, want, got, dst)
+	}
+	for _, dst := range []string{"docs/.md", "docs/COPYING", "docs/guide.md ", "docs/C#.md"} {
+		_, ok := dstWikilinkSpelling(dst)
+		assert.False(t, ok, dst)
+	}
 }
 
 // locatedTokens parses body and returns each located destination as
@@ -221,6 +279,29 @@ func TestWikilinkStemBytes(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, "Page", string(row[s:e]))
 	})
+	// The resolver turns `\` into `/` and reads path.Base of the
+	// trimmed target, so the range is the last segment the same way.
+	for row, want := range map[string]string{
+		`[[docs\Page]]`:        "Page",
+		`[[Page\|alias]]`:      "Page",
+		"[[docs/Page/ ]]":      "Page",
+		`[[docs\Page\#f|a]]`:   "Page",
+		"[[ Page ]]":           "Page",
+		"[[x/Page.md#f]]":      "Page.md",
+		`[[a\b/c\Page.md|al]]`: "Page.md",
+		"[[x/ guide]]":         " guide",
+		"[[api /]]":            "api ",
+	} {
+		t.Run(row, func(t *testing.T) {
+			s, e, ok := wikilinkStemBytes([]byte(row), 0)
+			require.True(t, ok)
+			assert.Equal(t, want, row[s:e])
+		})
+	}
+	t.Run("only separators returns false", func(t *testing.T) {
+		_, _, ok := wikilinkStemBytes([]byte(`[[/\ ]]`), 0)
+		assert.False(t, ok)
+	})
 }
 
 // TestMove_SameDirOutboundIsNoOp covers destEdit's no-op branch: moving
@@ -293,7 +374,7 @@ func TestAppendWikilinkStemEdits_DefensiveBranches(t *testing.T) {
 	}
 	// Basename changes (api -> service) so the pass runs, but every edge
 	// hits a skip branch.
-	appendWikilinkStemEdits(changes, ws, "api.md", "service.md")
+	appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: "api.md"}, "api.md", "service.md")
 	assert.Empty(t, changes)
 }
 
@@ -381,4 +462,51 @@ func TestMove_SelfPathLinkStaysValid(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, plan.Edits["docs/a.md"])
 	require.NotNil(t, plan.FileOp)
+}
+
+// TestMove_UnlistedSourceCountsTowardStemAmbiguity locks that a moved
+// Markdown file absent from ws.Files() (excluded by a `files:` glob,
+// yet still readable through Resolve) counts as a holder of its own
+// stem. One listed same-stem sibling then makes `[[guide]]` ambiguous,
+// so no wikilink is rewritten to the moved file's new name.
+func TestMove_UnlistedSourceCountsTowardStemAmbiguity(t *testing.T) {
+	ws := stubWorkspace{
+		wikilinkEdges: []index.Edge{{SourceFile: "index.md", SourceLine: 1, SourceCol: 5}},
+		files:         []string{"docs/guide.md", "index.md"},
+		sources: map[string][]byte{
+			"a/b/guide.md":  []byte("# Guide\n"),
+			"docs/guide.md": []byte("# Docs guide\n"),
+			"index.md":      []byte("See [[guide]].\n"),
+		},
+	}
+	plan, err := Move(ws, "a/b/guide.md", "a/b/manual.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"],
+		"unlisted source plus a listed sibling: [[guide]] is ambiguous")
+}
+
+// countingWorkspace counts Files calls on a wrapped workspace.
+type countingWorkspace struct {
+	*memWorkspace
+	files int
+}
+
+func (w *countingWorkspace) Files() []string {
+	w.files++
+	return w.memWorkspace.Files()
+}
+
+// TestMove_ListsFilesOnce locks that a move reads the workspace file
+// list once and shares the normalized copy between the referrer scan,
+// the listed-source check, and the wikilink holder count, instead of
+// copying the list per pass.
+func TestMove_ListsFilesOnce(t *testing.T) {
+	ws := &countingWorkspace{memWorkspace: newMemWorkspace(map[string]string{
+		"docs/api.md": "# API\n",
+		"index.md":    "See [[api]] and [a](docs/api.md?x).\n",
+	})}
+	plan, err := Move(ws, "docs/api.md", "docs/service.md")
+	require.NoError(t, err)
+	require.NotEmpty(t, plan.Edits["index.md"])
+	assert.Equal(t, 1, ws.files)
 }

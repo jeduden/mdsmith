@@ -54,6 +54,9 @@ setup step.
 | ---------------------------- | ----------------------------------------------------------------- |
 | `stamp <version>`            | `release.yml` publishing jobs; `pages.yml`                        |
 | `publish-release`            | `release.yml` release job                                         |
+| `rc-version`                 | `release-candidate.yml` version job                               |
+| `release-notes <out>`        | `release.yml` + `release-candidate.yml` release jobs              |
+| `check-rc [--discard-draft]` | `release-candidate.yml` release job                               |
 | `check`                      | `ci.yml` version-guard                                            |
 | `check-release-gates`        | `ci.yml` release-gate-guard                                       |
 | `check-release-smoke`        | `ci.yml` release-gate-guard                                       |

@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
@@ -60,7 +61,12 @@ func (e SourceNotFoundError) Error() string {
 //   - wikilink stems — `[[old-stem]]` → `[[new-stem]]`, but only when
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
-//     asymmetry with path links);
+//     asymmetry with path links). Only a Markdown src with a non-empty
+//     stem is a stem target, and a dst no wikilink can name — no
+//     extension, an empty stem, a `#`, `|`, `[`, `]`, backtick, CR, or
+//     newline in the name, or a name that ends with a space — gets no
+//     rewrite. A name that starts with a space or reads as a drive path
+//     (`C:x.md`) is written behind `./`;
 //   - outbound destinations inside src, when it has a Markdown
 //     extension or the workspace lists it (an `.mdx` file that
 //     `files:` matches) — every `[t](path)`, `![a](path)` and
@@ -109,7 +115,7 @@ func Move(ws Workspace, src, dst string) (Plan, error) {
 	p := lint.NewParser()
 	r := &destResolver{ws: ws, src: src}
 	appendReferrerEdits(changes, ws, p, r, src, dst)
-	appendWikilinkStemEdits(changes, ws, src, dst)
+	appendWikilinkStemEdits(changes, ws, r, src, dst)
 	if mdpath.HasMarkdownExt(path.Ext(src)) || r.listed(src) {
 		appendOutboundEdits(changes, p, r, srcKey, src, dst, srcSource)
 	}
@@ -162,8 +168,7 @@ func appendReferrerEdits(
 	changes map[string][]Edit, ws Workspace, p parser.Parser, r *destResolver, src, dst string,
 ) {
 	base := []byte(path.Base(src))
-	for _, rel := range ws.Files() {
-		rel = index.NormalizePath(rel)
+	for _, rel := range r.paths() {
 		if rel == src {
 			continue
 		}
@@ -271,12 +276,27 @@ type destRef struct {
 	dir    bool   // path ends in `/` and target is no file: a directory
 }
 
-// destResolver reads destinations for a move of src. It lists the
-// workspace's files only when a literal `?` needs them (see target).
+// destResolver reads destinations for a move of src. It also holds the
+// workspace file list, read once per move and normalized, which the
+// referrer scan, the listed checks, and the wikilink holder count share.
 type destResolver struct {
 	ws    Workspace
 	src   string
+	list  []string // nil until paths first runs; never nil after
 	files map[string]bool
+}
+
+// paths returns the workspace's files, normalized as Resolve keys
+// them. It reads ws.Files() once, on the first call.
+func (r *destResolver) paths() []string {
+	if r.list == nil {
+		files := r.ws.Files()
+		r.list = make([]string, len(files))
+		for i, f := range files {
+			r.list[i] = index.NormalizePath(f)
+		}
+	}
+	return r.list
 }
 
 // target reads dest, written in refFile, the way the index does:
@@ -362,13 +382,14 @@ func (r *destResolver) exists(p string) bool {
 	return p == r.src || r.listed(p)
 }
 
-// listed reports whether the workspace lists p. It lists the files
-// once, on the first call.
+// listed reports whether the workspace lists p. It builds the lookup
+// set once, on the first call.
 func (r *destResolver) listed(p string) bool {
 	if r.files == nil {
-		r.files = map[string]bool{}
-		for _, f := range r.ws.Files() {
-			r.files[index.NormalizePath(f)] = true
+		list := r.paths()
+		r.files = make(map[string]bool, len(list))
+		for _, f := range list {
+			r.files[f] = true
 		}
 	}
 	return r.files[p]
@@ -734,14 +755,38 @@ func skipGap(src []byte, i int) int {
 	return i
 }
 
-// appendWikilinkStemEdits rewrites `[[old-stem]]` links to the new
-// basename stem, but only when the move changes the basename. A move
-// that keeps the basename leaves wikilinks alone: a stem still resolves
-// to the file at its new path.
-func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst string) {
-	oldStem := fileStem(src)
-	newStem := fileStem(dst)
-	if oldStem == newStem {
+// appendWikilinkStemEdits rewrites the basename segment of each
+// `[[old-stem]]` link to the token dstWikilinkSpelling picks for dst:
+// the new stem, the whole basename, or either behind `./`. It runs only
+// when `[[old-stem]]` would stop reaching dst: a Markdown dst with
+// another stem, or a dst with a non-Markdown name. A move that keeps the
+// stem leaves wikilinks alone: a stem still resolves to the file at its
+// new path.
+func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destResolver, src, dst string) {
+	// Both ends are keyed the way NewWikilinkIndex keys files. Only a
+	// Markdown src has a stem key, so moving any other file retargets
+	// no `[[stem]]` link. An empty src key (`docs/.md`) matches no edge,
+	// since no target spells it, so the edge lookup below returns early.
+	// ` guide.md` keys as " guide": a bare `[[guide]]` never reached it,
+	// while a folder-prefixed `[[x/ guide]]` did and is rewritten.
+	oldStem, ok := linkgraph.FileStemKey(path.Base(src))
+	if !ok {
+		return
+	}
+	// A Markdown destination is addressed by stem, so keeping the stem
+	// keeps every link resolving. A typed destination (`guide.png`) is
+	// addressed by exact name, a different key space, so it always needs
+	// the rewrite: comparing its name to oldStem would wrongly skip a
+	// move such as docs/guide.png.md → docs/guide.png.
+	newStem, dstIsMarkdown := linkgraph.FileStemKey(path.Base(dst))
+	if dstIsMarkdown && oldStem == newStem {
+		return
+	}
+	// The rewritten token must parse back as a wikilink that resolves by
+	// dst's key; linkgraph.WikilinkReaches holds the list of names that
+	// cannot, and such a dst gets no rewrite.
+	newSpelling, ok := dstWikilinkSpelling(dst)
+	if !ok {
 		return
 	}
 	// A wikilink resolves by basename stem, and the index keys these
@@ -753,21 +798,35 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 	// docs/Guide.md and ref/Guide.md exist and only docs/Guide.md
 	// moves). Leave every such wikilink untouched in that case rather
 	// than break an unrelated reference — the moved file's own links
-	// stay resolvable by the sibling's stem.
-	if countFilesWithStem(ws, oldStem) > 1 {
-		return
-	}
+	// stay resolvable by the sibling's stem. The source is counted even
+	// when ws.Files() omits it (a `files:` glob can exclude a file
+	// Resolve still reads): it holds oldStem either way, so one listed
+	// sibling already makes the link ambiguous.
+	//
 	// The destination stem must be unique too. dst does not exist in the
 	// workspace yet (Move rejected an existing destination), so any file
 	// already carrying newStem is a *different* file: retargeting
 	// `[[oldStem]]` to `[[newStem]]` would make the link resolve to that
 	// sibling (or become ambiguous) instead of the moved file. Leave the
-	// wikilinks alone, mirroring the source-side ambiguity guard above.
-	if countFilesWithStem(ws, newStem) > 0 {
+	// wikilinks alone, mirroring the source-side ambiguity guard.
+	// A Markdown destination is addressed by stem; a typed non-Markdown
+	// destination (`guide.mdx`) is addressed by exact file name.
+	//
+	// Most moves have no `[[oldStem]]` link at all, so the edges are
+	// fetched first and the scan over every workspace file is skipped.
+	edges := ws.IncomingWikilinkEdges(oldStem)
+	if len(edges) == 0 {
 		return
 	}
-	newSpelling := dstStemSpelling(dst)
-	for _, e := range ws.IncomingWikilinkEdges(oldStem) {
+	newKey := newStem
+	if !dstIsMarkdown {
+		newKey = linkgraph.FileNameKey(path.Base(dst))
+	}
+	oldHolders, newHolders := wikilinkKeyHolders(r.paths(), src, oldStem, newKey, dstIsMarkdown)
+	if oldHolders > 1 || newHolders > 0 {
+		return
+	}
+	for _, e := range edges {
 		key, source, ok := ws.Resolve(e.SourceFile)
 		if !ok {
 			continue
@@ -781,20 +840,29 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst s
 		if !ok {
 			continue
 		}
+		text := newSpelling
+		if start > 0 && (row[start-1] == '/' || row[start-1] == '\\') {
+			// A folder prefix already keeps the name from reading as
+			// a drive path, so the `./` guard is not needed.
+			text = strings.TrimPrefix(text, "./")
+		}
 		changes[key] = append(changes[key], Edit{
 			Range: Range{
 				Start: Position{Line: e.SourceLine - 1, Character: mdtext.UTF16FromByteOffset(row, start)},
 				End:   Position{Line: e.SourceLine - 1, Character: mdtext.UTF16FromByteOffset(row, end)},
 			},
-			NewText: newSpelling,
+			NewText: text,
 		})
 	}
 }
 
 // wikilinkStemBytes returns the byte range of the basename-stem token
 // inside a `[[target#anchor|alias]]` link starting at bracketStart.
-// Any folder prefix, anchor, and alias are preserved: only the stem
-// after the last `/` and before `#` / `|` / `]]` is returned.
+// The range is the segment the resolver reads: it trims the target,
+// turns `\` into `/`, and takes path.Base, so trailing whitespace and
+// separators are dropped and the segment starts after the last `/` or
+// `\`. Any folder prefix, anchor, and alias are preserved, and so is
+// the `\` that escapes a `|` inside a table cell (`[[api\|alias]]`).
 func wikilinkStemBytes(row []byte, bracketStart int) (int, int, bool) {
 	i := bracketStart
 	if i < 0 || i+1 >= len(row) || row[i] != '[' || row[i+1] != '[' {
@@ -809,9 +877,15 @@ func wikilinkStemBytes(row []byte, bracketStart int) (int, int, bool) {
 		}
 		end++
 	}
-	stemStart := start
-	for j := start; j < end; j++ {
-		if row[j] == '/' {
+	tgt := row[start:end]
+	lo := start + len(tgt) - len(bytes.TrimLeftFunc(tgt, unicode.IsSpace))
+	end = start + len(bytes.TrimRightFunc(tgt, unicode.IsSpace))
+	for end > lo && (row[end-1] == '/' || row[end-1] == '\\') {
+		end--
+	}
+	stemStart := lo
+	for j := lo; j < end; j++ {
+		if row[j] == '/' || row[j] == '\\' {
 			stemStart = j + 1
 		}
 	}
@@ -821,38 +895,67 @@ func wikilinkStemBytes(row []byte, bracketStart int) (int, int, bool) {
 	return stemStart, end, true
 }
 
-// countFilesWithStem reports how many workspace files share the given
-// lowercased basename stem. A count above one means a bare `[[stem]]`
-// is ambiguous, so the move planner cannot safely rewrite wikilinks by
-// stem alone.
-func countFilesWithStem(ws Workspace, stem string) int {
-	n := 0
-	for _, f := range ws.Files() {
-		if fileStem(f) == stem {
-			n++
+// wikilinkKeyHolders counts, in one pass over files, the Markdown
+// files addressed by oldStem and the files holding newKey. newKey is a
+// stem when newIsStem (a Markdown destination) and otherwise a
+// lowercased exact basename, since a typed wikilink such as
+// `[[guide.mdx]]` resolves by file name. src always counts as an
+// oldStem holder, listed or not, because Resolve reads it from disk.
+// files must already be normalized (destResolver.paths), so a listed
+// `./src` compares equal to src and is not counted a second time.
+func wikilinkKeyHolders(files []string, src, oldStem, newKey string, newIsStem bool) (oldN, newN int) {
+	srcListed := false
+	for _, f := range files {
+		if f == src {
+			srcListed = true
+		}
+		base := path.Base(f)
+		stem, isMD := linkgraph.FileStemKey(base)
+		if isMD && stem == oldStem {
+			oldN++
+		}
+		if newIsStem {
+			if isMD && stem == newKey {
+				newN++
+			}
+		} else if linkgraph.FileNameKey(base) == newKey {
+			newN++
 		}
 	}
-	return n
-}
-
-// fileStem returns the lowercased basename stem a file is addressed by
-// as a wikilink target (matching linkgraph.WikilinkStem's lookup key).
-func fileStem(p string) string {
-	if stem, ok := linkgraph.WikilinkStem(path.Base(p)); ok {
-		return stem
+	if !srcListed {
+		oldN++
 	}
-	return strings.ToLower(path.Base(p))
+	return oldN, newN
 }
 
-// dstStemSpelling returns the basename stem of dst with its original
-// casing, so a rewritten wikilink reads naturally (`[[Service]]`, not a
-// lowercased match key). A Markdown extension is stripped; any other
-// name is kept whole.
-func dstStemSpelling(dst string) string {
+// dstWikilinkSpelling returns the token a rewritten wikilink names dst
+// by, with ok=false when no token reaches it (see
+// linkgraph.WikilinkReaches). A Markdown dst is first tried as its
+// basename stem in its original casing, so the link reads naturally
+// (`[[Service]]`, not a lowercased match key). When the bare stem does
+// not reach dst, the whole basename is tried: `[[v1.3]]` reads `.3` as
+// a typed extension and `[[guide ]]` loses its space to the target
+// trim, while `[[v1.3.md]]` and `[[guide .md]]` reach the file. Any
+// other name is only ever spelled whole. A name the resolver refuses as
+// a drive path (`C:x.md`) is tried last behind a `./` prefix, which the
+// resolver drops when it reads the basename; the caller strips that
+// prefix again for a link that already has a folder prefix.
+func dstWikilinkSpelling(dst string) (string, bool) {
 	base := path.Base(dst)
-	ext := path.Ext(base)
-	if mdpath.HasMarkdownExt(ext) {
-		return strings.TrimSuffix(base, ext)
+	var candidates [2]string
+	n := 0
+	if ext := path.Ext(base); mdpath.HasMarkdownExt(ext) {
+		candidates[n] = strings.TrimSuffix(base, ext)
+		n++
 	}
-	return base
+	candidates[n] = base
+	n++
+	for _, prefix := range [...]string{"", "./"} {
+		for _, c := range candidates[:n] {
+			if linkgraph.WikilinkReaches(prefix+c, base) {
+				return prefix + c, true
+			}
+		}
+	}
+	return "", false
 }

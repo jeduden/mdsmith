@@ -30,6 +30,7 @@ row: "- [{title}]({filename})"
 - [PGO and the uncommitted profile](pgo-profile.md)
 - [PR Fixup Workflow](pr-fixup-workflow.md)
 - [Public Markdown Library](markdown-library.md)
+- [Release Candidates](release-candidates.md)
 - [Release Pipeline](release.md)
 - [Release Tooling Architecture](release-tooling.md)
 - [Secret Rotations](secret-rotations.md)
