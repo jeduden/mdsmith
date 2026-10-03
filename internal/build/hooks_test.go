@@ -31,28 +31,10 @@ func TestTokenizeHook_AbsentParam_ExpandsEmpty(t *testing.T) {
 
 // --- RunHooks / RunAfterHooks integration ---
 
-// hookEntry builds a HookEntry that calls `echo` (a real binary available
-// everywhere) so we can test success without a custom binary.
-func echoEntry(name, msg string) HookEntry {
-	return HookEntry{
-		Tokens: []string{"echo", msg},
-		Name:   name,
-	}
-}
-
 // failEntry builds a HookEntry that calls a non-existent binary so the hook fails.
 func failEntry(name string) HookEntry {
 	return HookEntry{
 		Tokens: []string{"false"},
-		Name:   name,
-	}
-}
-
-// sentinelEntry returns a HookEntry that touches a file in dir.
-func sentinelEntry(t *testing.T, dir, name, sentinel string) HookEntry {
-	t.Helper()
-	return HookEntry{
-		Tokens: []string{"touch", filepath.Join(dir, sentinel)},
 		Name:   name,
 	}
 }

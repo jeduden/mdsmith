@@ -13,6 +13,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// hookEntry builds a HookEntry that calls `echo` (a real binary available
+// everywhere) so we can test success without a custom binary.
+func echoEntry(name, msg string) HookEntry {
+	return HookEntry{
+		Tokens: []string{"echo", msg},
+		Name:   name,
+	}
+}
+
+// sentinelEntry returns a HookEntry that touches a file in dir.
+func sentinelEntry(t *testing.T, dir, name, sentinel string) HookEntry {
+	t.Helper()
+	return HookEntry{
+		Tokens: []string{"touch", filepath.Join(dir, sentinel)},
+		Name:   name,
+	}
+}
+
 func TestRunHooks_SingleSuccess(t *testing.T) {
 	var w bytes.Buffer
 	result := RunHooks(context.Background(), []HookEntry{echoEntry("greet", "hi")}, t.TempDir(), &w)
