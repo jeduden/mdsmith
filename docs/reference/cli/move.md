@@ -275,4 +275,7 @@ mdsmith move guide.md reference/guide.md --dry-run
   to find incoming references.
 - [`mdsmith lsp`](lsp.md) — the editor surface; an explorer
   rename fires `workspace/willRenameFiles`, which runs the same
-  move engine.
+  move engine. A rename of several files at once plans
+  each move alone, so a link between two of the moved files
+  gets two overlapping edits. The server drops both, and
+  MDS027 reports the link after the move.

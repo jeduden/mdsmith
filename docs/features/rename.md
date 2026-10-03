@@ -61,6 +61,9 @@ mdsmith move docs/api.md reference/api.md
 mdsmith move guide.md reference/guide.md --dry-run
 ```
 
+When one explorer action moves two files that link to each
+other, the editor leaves that link as is and MDS027 reports it.
+
 ## Which command?
 
 | You want to…                                   | Command  |
