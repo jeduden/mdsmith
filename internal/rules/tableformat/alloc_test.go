@@ -19,12 +19,12 @@ import (
 // Tightened from 110 to 60 after five targeted byte-native fixes
 // (pipe guard in findStructureTables, structureDetectPrefix rewrite,
 // rowContent/isSeparatorContent bytes, detectPrefix bytes,
-// splitRowBytes). The remaining cost is the tablefmt cell-string
-// allocation from splitRow, deferred to the full single-table-walk
-// refactor in plan 195 task 3.
+// splitRowBytes), then to 44 once splitRow sliced cells out of one
+// string per row. The remaining cost is deferred to the full
+// single-table-walk refactor in plan 195 task 3.
 const (
 	allocBudgetMDS025              = 10
-	allocBudgetGrandfatheredMDS025 = 60
+	allocBudgetGrandfatheredMDS025 = 44
 )
 
 const allocBudgetFixture = "# Document title\n" +

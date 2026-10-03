@@ -39,11 +39,20 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 	}
 
 	h1s := collectH1s(f)
+	if len(h1s) == 0 {
+		return nil
+	}
+	// A lone H1 only draws a diagnostic when it conflicts with the
+	// front-matter title, so skip the line lookups otherwise.
+	hasFMTitle := r.hasFMTitle(f)
+	if len(h1s) == 1 && !hasFMTitle {
+		return nil
+	}
 	h1Lines := make([]int, len(h1s))
 	for i, h := range h1s {
 		h1Lines[i] = astutil.HeadingLine(h, f)
 	}
-	return r.verdict(f, h1Lines)
+	return r.verdictFM(f, h1Lines, hasFMTitle)
 }
 
 // checkNilAST is the parse-skip path: it collects the 1-based line of every
@@ -110,24 +119,31 @@ func isH1Span(f *lint.File, span lint.BlockSpan) bool {
 // verdict emits the diagnostics for the collected authored-h1 line numbers,
 // shared by the AST and Layer 0 paths so both produce identical output.
 func (r *Rule) verdict(f *lint.File, h1Lines []int) []lint.Diagnostic {
-	hasFMTitle := r.FrontMatterTitle != "" && r.frontMatterHasTitle(f)
+	if len(h1Lines) == 0 {
+		return nil
+	}
+	// Decode the front matter only when an H1 exists to conflict with it.
+	return r.verdictFM(f, h1Lines, r.hasFMTitle(f))
+}
 
-	diags := make([]lint.Diagnostic, 0, len(h1Lines))
-
-	if hasFMTitle && len(h1Lines) > 0 {
-		diags = append(diags, r.newDiag(f, h1Lines[0],
-			"h1 heading conflicts with front-matter title"))
-		for _, line := range h1Lines[1:] {
-			diags = append(diags, r.newDiag(f, line,
-				"extra H1 heading; only one H1 is allowed per file"))
-		}
-	} else if len(h1Lines) > 1 {
-		for _, line := range h1Lines[1:] {
-			diags = append(diags, r.newDiag(f, line,
-				"extra H1 heading; only one H1 is allowed per file"))
-		}
+// verdictFM is verdict with the front-matter title check already done.
+func (r *Rule) verdictFM(f *lint.File, h1Lines []int, hasFMTitle bool) []lint.Diagnostic {
+	if !hasFMTitle && len(h1Lines) <= 1 {
+		return nil
 	}
 
+	var diags []lint.Diagnostic
+	if hasFMTitle {
+		diags = make([]lint.Diagnostic, 0, len(h1Lines))
+		diags = append(diags, r.newDiag(f, h1Lines[0],
+			"h1 heading conflicts with front-matter title"))
+	} else {
+		diags = make([]lint.Diagnostic, 0, len(h1Lines)-1)
+	}
+	for _, line := range h1Lines[1:] {
+		diags = append(diags, r.newDiag(f, line,
+			"extra H1 heading; only one H1 is allowed per file"))
+	}
 	return diags
 }
 
@@ -139,17 +155,11 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	}
 	h1s := collectH1s(f)
 
-	hasFMTitle := r.FrontMatterTitle != "" && r.frontMatterHasTitle(f)
-
-	// Determine which headings to demote.
+	// Every H1 after the first is demoted. A first H1 that conflicts with a
+	// front-matter title is reported by Check but never auto-fixed, so the
+	// front matter does not change what Fix demotes.
 	var toDemote []*ast.Heading
-	if hasFMTitle {
-		// The first H1 conflicts with front matter — no auto-fix for that.
-		// Extra H1s beyond the first still get demoted.
-		if len(h1s) > 1 {
-			toDemote = h1s[1:]
-		}
-	} else if len(h1s) > 1 {
+	if len(h1s) > 1 {
 		toDemote = h1s[1:]
 	}
 
@@ -261,6 +271,12 @@ func (r *Rule) newDiag(f *lint.File, line int, msg string) lint.Diagnostic {
 		Severity: lint.Warning,
 		Message:  msg,
 	}
+}
+
+// hasFMTitle reports whether a title field is configured and f's front
+// matter sets it to a non-empty string.
+func (r *Rule) hasFMTitle(f *lint.File) bool {
+	return r.FrontMatterTitle != "" && r.frontMatterHasTitle(f)
 }
 
 // frontMatterHasTitle reports whether the configured front-matter field is

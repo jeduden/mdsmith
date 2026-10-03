@@ -34,11 +34,11 @@ func TestFindTables_PreSizedRowSlices(t *testing.T) {
 	})
 	t.Logf("findTables allocs/op for a 52-row table = %.0f", allocs)
 	// Most of the remaining allocs come from splitRowBytes's per-row
-	// cells slice, unrelated to this fix. Before pre-sizing
+	// string and cells slice, unrelated to this fix. Before pre-sizing
 	// rawLines/rows in tryParseTable, this fixture measured 174
 	// allocs/op; pre-sizing removed the slice-growth reallocs on both
-	// slices, dropping it to 162.
-	require.LessOrEqualf(t, allocs, float64(162),
-		"findTables allocs/op = %.0f; want <= 162 (rawLines+rows pre-sized "+
+	// slices (162), and substring cells in splitRow brought it to 110.
+	require.LessOrEqualf(t, allocs, float64(114),
+		"findTables allocs/op = %.0f; want <= 114 (rawLines+rows pre-sized "+
 			"in tryParseTable)", allocs)
 }

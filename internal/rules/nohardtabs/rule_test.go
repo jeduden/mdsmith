@@ -165,3 +165,11 @@ func TestCategory(t *testing.T) {
 		t.Error("expected non-empty category")
 	}
 }
+
+func TestCheck_CodeBlockTabIgnored_ProseFlagged(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("```\n\tcode\n```\n\nprose\ttab\n"))
+	require.NoError(t, err)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1)
+	require.Equal(t, 5, diags[0].Line)
+}
