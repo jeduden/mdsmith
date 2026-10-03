@@ -38,10 +38,13 @@ covers what such a script can reach. This plan covers
 what its exceptions break.
 
 - `newSessionProxy` stores the session in `sessions`
-  before `bindMethods` and the create Promise's resolve
-  run. If either throws, `rejectOnJSError` rejects the
-  create, but the session stays registered with no
-  proxy to dispose it.
+  before the create Promise's resolve runs. If resolve
+  throws, `rejectOnJSError` rejects the create, but the
+  session stays registered with no proxy to dispose it.
+  Plan 2610021439 already moved the store after
+  `bindMethods`, and
+  `TestNewSessionProxy_BindThrowRegistersNoSession`
+  covers a `bindTo` that throws.
 - `newPromise` calls `Promise.New(handler)` outside the
   guard. A throwing `Promise` constructor panics inside
   the shared func and ends the program. If the
@@ -52,8 +55,8 @@ what its exceptions break.
 
 ## Tasks
 
-1. Write a failing js/wasm test that makes `bindTo`
-   throw during create, then asserts that `sessions`
+1. Write a failing js/wasm test that makes the create
+   Promise's resolve throw, then asserts that `sessions`
    is back to its size before the create.
 2. Remove the session from `sessions` when create
    fails after it was registered.

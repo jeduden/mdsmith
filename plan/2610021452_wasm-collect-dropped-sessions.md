@@ -61,9 +61,12 @@ red/green.
    while any method is reachable. Do not keep the token
    on the Go side as an unregister token: a `js.Value`
    held in Go pins it, so it is never collected.
-   `proxyDispose` gets only the bound id. A callback
-   after an explicit dispose finds no id and does
-   nothing, since ids are never reused.
+   `proxyDispose` gets the bound id and the token, and
+   calls `unregister(token)` on the registry before it
+   drops the id. Ids never repeat (plan 2610021439), so a
+   callback that still fired after an explicit dispose
+   would find no session; unregister anyway so the
+   registry drops the entry with the session.
 4. Check the WASM size budgets with
    [size_test.go](../cmd/mdsmith-wasm/size_test.go), and
    update the engine-api page to describe the fallback.

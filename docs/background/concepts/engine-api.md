@@ -282,14 +282,32 @@ method made read-only with
 `Object.defineProperty(session, "check", { writable: false })`. None
 of them logs "call to released function".
 
-The id is a small sequential integer, not a secret. A script in the
-same page that reaches a raw shared function can call it with any
-live id. The engine binds through a `bind` captured at load, so a
-later patch of `Function.prototype.bind` or `call` never sees one.
-`wasm_exec.js` looks up `Reflect.apply` on every Go-to-JS call, though,
-so a patched `Reflect.apply` does. Plan
-[2610021439](../../../plan/2610021439_wasm-unforgeable-session-binding.md)
-tracks closing that gap.
+Each id is a counter passed through a 10-round Feistel permutation
+whose round function is AES-128 under a key drawn at random when the
+engine loads. The ids span 2^53 values in both the standard Go and
+the TinyGo build. So a script that reaches a raw shared function
+cannot find a session by trying 0, 1, 2, and so on, or by stepping
+from an id it knows. Ids it sees after a `Reflect.apply` patch do not
+predict the ids handed out before it, short of breaking AES. The
+permutation never maps two counter values to the same id, so no id
+is handed out twice. A method kept from a disposed session never
+reaches a later one.
+
+The engine also binds through a `bind` captured at load, so a later
+patch of `Function.prototype.bind` or `call` never sees a raw shared
+function. This is hardening, not a privilege boundary. A `bind` or
+`call` patched before the engine loads sees each raw shared function
+and the id of every session. `wasm_exec.js` looks up `Reflect.apply`
+on every Go-to-JS call, so a patched `Reflect.apply` sees the same
+for each session created while the patch is in place, and every
+session object the engine resolves. Go also reads the arguments of
+each call into a method through `Reflect.get`, the bound id first.
+So a patched `Reflect.get` sees the id of each session whose method
+is called while the patch is in place.
+
+A random id or a token object crosses those calls too, so the engine
+does not try to hide it. The keyed id shields only a session that is
+neither created nor called while such a patch is in place.
 
 An argument of the wrong type, a `BigInt` included, makes an async
 method reject and `invalidate()` do nothing. So does an options object

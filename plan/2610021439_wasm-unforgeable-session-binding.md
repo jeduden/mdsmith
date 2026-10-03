@@ -1,7 +1,7 @@
 ---
 id: 2610021439
 title: Make wasm session method bindings unforgeable
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Wasm session methods are shared funcs bound to a
@@ -20,7 +20,17 @@ summary: >-
 
 A script in the same JS global scope that holds a raw shared
 session func cannot reach a session whose object it was
-never given.
+never given by guessing its id. A script that patched
+`bind` or `call` before load still sees the id of every
+session, because the engine captures that patched `bind`.
+One that patches `Reflect.apply` sees the id of each
+session bound while its patch is in place. One that
+patches `Reflect.get` sees the id of each session whose
+method is called while its patch is in place, since Go
+reads each call's arguments through it. That limit is
+documented in
+[engine-api.md](../docs/background/concepts/engine-api.md),
+not closed.
 
 ## Background
 
@@ -51,27 +61,40 @@ for the stale-dispose fix.
 
 ## Tasks
 
-1. Pick an approach: random 53-bit ids drawn with
+1. [x] Pick an approach: random 53-bit ids drawn with
    `math/rand/v2` and retried on collision, or a
    per-session JS token object compared with
    `js.Value.Equal`. Weigh the WASM size budget in
    [engine-api.md](../docs/background/concepts/engine-api.md).
    Decide whether to also capture `Reflect` at load in
    the shipped `wasm_exec.js`.
-2. Write a failing js/wasm test that calls a raw shared
-   func with every id from 0 to `nextSessionID` and
-   reaches a live session.
-3. Implement the chosen approach and make the test pass.
-4. Update the engine-api page if the binding contract
+   Decision: random 53-bit ids (no extra js.Value per
+   session, no size cost beyond `math/rand/v2`). Review
+   round 2 replaced the random draw and its redraw loop
+   with a keyed Feistel permutation of a counter, so no id
+   repeats after dispose, and made the id an int64 so the
+   TinyGo build also spans 2^53. Review round 3 made the
+   round function AES-128 with 10 rounds, the FF1 shape,
+   so ids seen after a patch do not reveal earlier ones.
+   Review round 4 draws its key from `crypto/rand`, not
+   `math/rand/v2`, whose docs rule it out for secrets.
+   `Reflect`
+   is not captured; the limit is documented in engine-api.md.
+2. [x] Write a failing js/wasm test that calls a raw shared
+   func with every id from -1 to 4096, and with every id
+   within 4096 of its own session's id, and reaches
+   another live session.
+3. [x] Implement the chosen approach and make the test pass.
+4. [x] Update the engine-api page if the binding contract
    changes.
 
 ## Acceptance Criteria
 
-- [ ] Calling a raw shared func with a guessed id does
+- [x] Calling a raw shared func with a guessed id does
       not reach a live session
-- [ ] A create/dispose loop still holds a fixed number
+- [x] A create/dispose loop still holds a fixed number
       of registered funcs and registry entries
-- [ ] All tests pass: `go test ./...` and
+- [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
-- [ ] `go tool golangci-lint run` reports no issues,
+- [x] `go tool golangci-lint run` reports no issues,
       on the host and with `GOOS=js GOARCH=wasm`

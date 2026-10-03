@@ -3,8 +3,11 @@
 package main
 
 import (
+	"crypto/aes"
+	"encoding/hex"
 	"errors"
 	"maps"
+	"reflect"
 	"runtime"
 	"runtime/debug"
 	"slices"
@@ -310,10 +313,25 @@ func TestCreateSession_RejectsThrowingObjects(t *testing.T) {
 // returns the session proxy.
 func newTestProxy(t *testing.T) js.Value {
 	t.Helper()
+	v, _ := newTestProxyWithID(t)
+	return v
+}
+
+// newTestProxyWithID is newTestProxy plus the id the new session was
+// registered under, found as the one key sessions gained.
+func newTestProxyWithID(t *testing.T) (js.Value, int64) {
+	t.Helper()
+	before := maps.Clone(sessions)
 	opts := js.ValueOf(map[string]any{})
 	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
 	require.False(t, rejected, "promise must resolve: %v", v)
-	return v
+	for id := range sessions {
+		if _, had := before[id]; !had {
+			return v, id
+		}
+	}
+	require.Fail(t, "createSession registered no new session")
+	return v, 0
 }
 
 // TestNewSessionProxy_KeysMatchSessionMethodNames ties the proxy's real
@@ -669,12 +687,17 @@ func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
 // or truncate a fraction, NaN, Infinity, or an id past 2^53 onto a
 // live id.
 func TestBoundSession(t *testing.T) {
-	proxy := newTestProxy(t)
+	proxy, liveID := newTestProxyWithID(t)
 	defer proxy.Call("dispose")
-	liveID := nextSessionID - 1
-	require.NotNil(t, sessions[liveID], "newTestProxy registered the newest id")
+	require.NotNil(t, sessions[liveID], "newTestProxyWithID returned a live id")
 	src := js.ValueOf("a.md")
-	frac := js.ValueOf(float64(liveID) + 0.5)
+	// Random ids can exceed 2^52, where float64 has no .5, so the
+	// fraction targets a small id registered by hand.
+	const smallID int64 = 7
+	require.NotContains(t, sessions, smallID, "precondition: id 7 is free")
+	sessions[smallID] = sessions[liveID]
+	defer delete(sessions, smallID)
+	frac := js.ValueOf(float64(smallID) + 0.5)
 	nan := js.Global().Get("NaN")
 	inf := js.Global().Get("Infinity")
 	huge := js.ValueOf(0x1p64)
@@ -682,7 +705,7 @@ func TestBoundSession(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     []js.Value
-		wantID   int
+		wantID   int64
 		wantLive bool
 		wantRest []js.Value
 	}{
@@ -813,16 +836,33 @@ func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
 	assert.False(t, proxy.Call("hasOwnProperty", "missing").Bool())
 }
 
+// TestNewSessionProxy_BindThrowRegistersNoSession swaps in a bind that
+// throws, as a Function.prototype.bind patched before load would be
+// captured. createSession must reject without leaving the Session in
+// sessions, where no session object would ever reach dispose().
+// Not parallel: it swaps bindTo.
+func TestNewSessionProxy_BindThrowRegistersNoSession(t *testing.T) {
+	sharedMethods()
+	old := bindTo
+	t.Cleanup(func() { bindTo = old })
+	bindTo = js.Global().Get("Function").New("throw new TypeError('bind')")
+	before := maps.Clone(sessions)
+	opts := js.ValueOf(map[string]any{})
+	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
+	require.True(t, rejected, "createSession rejects when bind throws")
+	assert.True(t, v.InstanceOf(js.Global().Get("TypeError")), "rejects with the thrown TypeError")
+	assert.Equal(t, before, sessions, "no session is left registered")
+}
+
 // TestSharedFunc checks the dispatch every shared method func runs: a
 // live bound id calls impl.call with that session and the remaining
 // args, and a disposed id, an unknown id, or no id returns
 // impl.disposed() without ever calling impl.call.
 func TestSharedFunc(t *testing.T) {
-	proxy := newTestProxy(t)
+	proxy, liveID := newTestProxyWithID(t)
 	// Disposed mid-test too; a second dispose is a no-op, and the defer
 	// frees the session if a require stops the test before that.
 	defer proxy.Call("dispose")
-	liveID := nextSessionID - 1
 	live := sessions[liveID]
 	require.NotNil(t, live)
 	var calls []*mdsmith.Session
@@ -1015,4 +1055,155 @@ func TestJSErrorFor(t *testing.T) {
 
 	e = jsErrorFor(mdsmith.ErrNothingToRename)
 	assert.Equal(t, mdsmith.ErrorCodeNothingToRename, e.Get("code").String())
+}
+
+// TestSharedFunc_GuessedIDsReachNoSession calls a raw shared func as a
+// script that captured one could: with every small integer id, and with
+// every id within 4096 of one it learned (its own session's). None may
+// reach the other live session: ids are a keyed permutation of a
+// counter over a 53-bit range, so neither counting up from 0 nor
+// stepping from a known id finds it. Plan 2610021439.
+func TestSharedFunc_GuessedIDsReachNoSession(t *testing.T) {
+	own, ownID := newTestProxyWithID(t)
+	defer own.Call("dispose")
+	other := newTestProxy(t)
+	defer other.Call("dispose")
+	raw := sharedMethods()["capabilities"]
+	// Positive control: the raw func does reach a session by its id, so
+	// an empty result below means a miss, not a broken call path.
+	require.Positive(t, raw.Invoke(ownID).Length(), "raw func reaches its own session by id")
+	guess := func(id int64) {
+		// ownID is the one id this script holds; past maxSessionID a
+		// float64 can round back onto it.
+		if id == ownID || id > maxSessionID {
+			return
+		}
+		got := raw.Invoke(id)
+		assert.Equal(t, 0, got.Length(), "guessed id %d reached a live session", id)
+	}
+	for id := int64(-1); id <= 4096; id++ {
+		guess(id)
+	}
+	for d := int64(1); d <= 4096; d++ {
+		guess(ownID - d)
+		guess(ownID + d)
+	}
+	// Each session's own method still works.
+	assert.Positive(t, own.Call("capabilities").Length())
+	assert.Positive(t, other.Call("capabilities").Length())
+}
+
+// fipsKey is the FIPS-197 appendix C.1 AES-128 key 00 01 … 0f.
+var fipsKey = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+
+// TestPermuteSessionID_IsBijection runs the Feistel permutation over
+// a 10-bit domain (5-bit halves) and checks every input maps to a
+// distinct output inside the domain, so counter values never collide.
+func TestPermuteSessionID_IsBijection(t *testing.T) {
+	blk := mustCipher(aes.NewCipher(fipsKey))
+	const half = 5
+	seen := make(map[uint64]bool, 1<<(2*half))
+	for x := uint64(0); x < 1<<(2*half); x++ {
+		y := permuteSessionID(x, blk, half)
+		require.Less(t, y, uint64(1)<<(2*half), "permute(%d) left the domain", x)
+		require.False(t, seen[y], "permute(%d) = %d repeats", x, y)
+		seen[y] = true
+	}
+}
+
+// TestRoundSessionID pins the Feistel round function: the low 64 bits,
+// little-endian, of AES-128 over the block holding the round index in
+// byte 0 and the half little-endian in bytes 1 to 8. The key is
+// FIPS-197's, whose C.1 vector checks the cipher itself. The scratch
+// block starts dirty, so a byte left from an earlier round would show.
+func TestRoundSessionID(t *testing.T) {
+	blk := mustCipher(aes.NewCipher(fipsKey))
+	var out [16]byte
+	pt, err := hex.DecodeString("00112233445566778899aabbccddeeff")
+	require.NoError(t, err)
+	blk.Encrypt(out[:], pt)
+	require.Equal(t, "69c4e0d86a7b0430d8cdb78070b4c55a", hex.EncodeToString(out[:]))
+	buf := [aes.BlockSize]byte{0: 0xff, 9: 0xff, 15: 0xff}
+	assert.Equal(t, uint64(0x825b8f87373ba1c6), roundSessionID(blk, &buf, 0, 0))
+	assert.Equal(t, uint64(0x574272ad725f2164), roundSessionID(blk, &buf, 3, 0x123456))
+	assert.Equal(t, uint64(0xb4a429fecc1ba37c), roundSessionID(blk, &buf, 9, 0x7ffffff))
+}
+
+// TestMustCipher checks mustCipher returns the block it is given and
+// panics on the error aes.NewCipher returns for a bad key length.
+func TestMustCipher(t *testing.T) {
+	blk, err := aes.NewCipher(fipsKey)
+	require.NoError(t, err)
+	assert.Same(t, blk, mustCipher(blk, nil))
+	assert.Panics(t, func() { mustCipher(aes.NewCipher(make([]byte, 3))) })
+}
+
+// TestSessionIDCipher_IsAES128 checks the load-time id cipher is an
+// AES block, the PRF the Feistel rounds rely on, and that each
+// newSessionIDCipher call draws a fresh key: a fixed key (all zero, or
+// a constant) would encrypt the same block the same way every time and
+// make every load's ids the same sequence.
+func TestSessionIDCipher_IsAES128(t *testing.T) {
+	require.NotNil(t, sessionIDCipher)
+	assert.Equal(t, aes.BlockSize, sessionIDCipher.BlockSize())
+	assert.Equal(t, 10, sessionIDRounds)
+	var zero, a, b [aes.BlockSize]byte
+	newSessionIDCipher().Encrypt(a[:], zero[:])
+	newSessionIDCipher().Encrypt(b[:], zero[:])
+	assert.NotEqual(t, a, b, "two keys encrypt the zero block alike")
+	zeroKey := mustCipher(aes.NewCipher(make([]byte, 16)))
+	var z [aes.BlockSize]byte
+	zeroKey.Encrypt(z[:], zero[:])
+	assert.NotEqual(t, z, a, "the key is all zero")
+}
+
+// TestNewSessionID_NeverRepeats draws 4096 ids in a row and checks none
+// repeats, so a method kept from a disposed session never reaches a
+// later one, each id is in [1, maxSessionID], and the ids are not a
+// counting sequence a script could step through. Not parallel: it
+// advances the shared counter.
+func TestNewSessionID_NeverRepeats(t *testing.T) {
+	seen := make(map[int64]bool, 4096)
+	prev := int64(0)
+	for range 4096 {
+		id := newSessionID()
+		require.GreaterOrEqual(t, id, int64(1))
+		require.LessOrEqual(t, id, int64(maxSessionID))
+		require.False(t, seen[id], "id %d repeats", id)
+		assert.NotEqual(t, prev+1, id, "ids count up")
+		seen[id] = true
+		prev = id
+	}
+}
+
+// TestNewSessionID_SkipsOutOfRange sets the counter to a value whose
+// image is at or past maxSessionID and checks newSessionID moves on to
+// the next counter value rather than hand out an id past the range.
+// It only moves the counter forward and leaves it there: winding it
+// back would hand the same ids out again. Not parallel: it moves the
+// shared counter.
+func TestNewSessionID_SkipsOutOfRange(t *testing.T) {
+	image := func(c uint64) uint64 { return permuteSessionID(c, sessionIDCipher, sessionIDHalfBits) }
+	c := sessionIDCounter
+	for image(c) < maxSessionID {
+		c++
+	}
+	next := c + 1
+	for image(next) >= maxSessionID {
+		next++
+	}
+	sessionIDCounter = c
+	assert.Equal(t, int64(image(next))+1, newSessionID())
+	assert.Equal(t, next+1, sessionIDCounter)
+}
+
+// TestSessionID_Int64On32BitInt pins the session id to int64, so the
+// TinyGo build, whose int is 32 bits on wasm, hands ids out from the
+// same 2^53 range as standard Go rather than a 2^31 − 1 one a script can sweep.
+// Plan 2610021439.
+func TestSessionID_Int64On32BitInt(t *testing.T) {
+	// The func's result type, not a call, so no id is handed out.
+	assert.Equal(t, reflect.Int64, reflect.TypeOf(newSessionID).Out(0).Kind())
+	assert.Equal(t, reflect.Int64, reflect.TypeOf(sessions).Key().Kind())
+	assert.Equal(t, int64(1)<<53, int64(maxSessionID))
 }
