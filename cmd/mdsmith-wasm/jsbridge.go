@@ -5,6 +5,8 @@ package main
 import (
 	"encoding/json"
 	"syscall/js"
+
+	"github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
 // newPromise wraps a Go executor in a JavaScript Promise. The executor
@@ -41,6 +43,19 @@ func newPromise(executor func(resolve, reject func(any))) js.Value {
 // rejection value the design contract specifies for failed methods.
 func jsError(msg string) js.Value {
 	return js.Global().Get("Error").New(msg)
+}
+
+// jsErrorFor builds a JS Error from a Go engine error: its message is
+// err.Error(), and a non-empty mdsmith.ErrorCode(err) is set as the
+// Error's `code` property (as Node does for system errors), so a host
+// can branch on a harmless outcome such as "nothing-to-rename" without
+// matching message text.
+func jsErrorFor(err error) js.Value {
+	e := jsError(err.Error())
+	if code := mdsmith.ErrorCode(err); code != "" {
+		e.Set("code", code)
+	}
+	return e
 }
 
 // toJS marshals a Go value to JSON and parses it back into a native JS

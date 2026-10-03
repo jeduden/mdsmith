@@ -1,6 +1,8 @@
 package mdsmith
 
 import (
+	"errors"
+	"fmt"
 	"io/fs"
 	"testing"
 
@@ -131,6 +133,31 @@ func TestSession_Rename_SameNameLabelErrors(t *testing.T) {
 	_, err := s.Rename("a.md", src, "label", "docs", "docs")
 	require.Error(t, err)
 	assert.Equal(t, `nothing to rename for label "docs"`, err.Error())
+}
+
+// A host must tell a harmless no-op rename from a real failure without
+// matching message text: the error matches ErrNothingToRename and
+// ErrorCode names it; any other rename error does neither.
+func TestSession_Rename_NothingToRenameIsTyped(t *testing.T) {
+	src := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
+	s := newRefactorSession(t, map[string][]byte{"a.md": src})
+	for _, c := range [][3]string{{"", "Setup", "Setup"}, {"label", "docs", "docs"}} {
+		_, err := s.Rename("a.md", src, c[0], c[1], c[2])
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrNothingToRename, c[1])
+		assert.Equal(t, ErrorCodeNothingToRename, ErrorCode(err), c[1])
+	}
+	_, err := s.Rename("a.md", src, "label", "ghost", "x")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrNothingToRename)
+	assert.Empty(t, ErrorCode(err))
+}
+
+func TestErrorCode(t *testing.T) {
+	assert.Empty(t, ErrorCode(nil))
+	assert.Empty(t, ErrorCode(errors.New("boom")))
+	assert.Equal(t, ErrorCodeNothingToRename, ErrorCode(ErrNothingToRename))
+	assert.Equal(t, ErrorCodeNothingToRename, ErrorCode(fmt.Errorf("wrapped: %w", ErrNothingToRename)))
 }
 
 // An explicit label that is not defined errors, matching the CLI's
