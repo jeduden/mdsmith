@@ -1,7 +1,7 @@
 ---
 id: 2610021028
 title: Gate untagged internal/build tests under js/wasm in CI
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   CI's `test-js-wasm` step runs only tests that compile
@@ -38,17 +38,17 @@ still fails about 25 tests that start real processes
 1. [x] List every `internal/build` test that fails under
    `GOOS=js GOARCH=wasm` and move each one into a
    `unix || windows` file. Keep the pure ones untagged.
-2. Add a CI step, through `mdsmith-release` per
+2. [x] Add a CI step, through `mdsmith-release` per
    [release-tooling.md](../docs/development/release-tooling.md),
    that runs the whole `internal/build` package under
    Node and fails on any failure.
-3. Note in the test-fixtures docs that a test which
+3. [x] Note in the test-fixtures docs that a test which
    spawns a process or opens a pipe needs the tag.
 
 ## Acceptance Criteria
 
-- [ ] `GOOS=js GOARCH=wasm go test ./internal/build`
+- [x] `GOOS=js GOARCH=wasm go test ./internal/build`
       passes under Node.
-- [ ] CI runs that command and gates on it.
-- [ ] Native `go test ./internal/build` still runs every
+- [x] CI runs that command and gates on it.
+- [x] Native `go test ./internal/build` still runs every
       moved test.

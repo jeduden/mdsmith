@@ -324,6 +324,14 @@ When adding or changing a rule, add both:
    Discovered automatically by
    `internal/integration/rules_test.go`.
 
+A Go test that spawns a process or opens a pipe cannot
+run under `GOOS=js GOARCH=wasm`. Put it in a file tagged
+`//go:build unix || windows` (for `internal/build`,
+a `*_proc_test.go` file). CI runs the whole
+`internal/build` package under Node with
+`mdsmith-release test-js-wasm --all ./internal/build`,
+so an untagged test of that kind fails the build.
+
 ### Config Merge Semantics
 
 Layered config (defaults → kinds → overrides) is
