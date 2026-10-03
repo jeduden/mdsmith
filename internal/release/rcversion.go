@@ -127,6 +127,32 @@ func PreviousStableTag(tags []string, version string) (string, bool, error) {
 	return c.String(), true, nil
 }
 
+// PreviousNotesTag returns the tag a release's notes start from. A
+// release candidate (vX.Y.Z-rc.N) starts at the highest earlier
+// candidate of the same version (vX.Y.Z-rc.M, M < N), so its notes
+// list only the merges since that candidate. The first candidate of
+// a version, and every other release, starts at PreviousStableTag.
+func PreviousNotesTag(tags []string, version string) (string, bool, error) {
+	if m := rcTagRE.FindStringSubmatch(version); m != nil {
+		core := coreFromMatch(m)
+		n, _ := strconv.Atoi(m[4])
+		best := 0
+		for _, tag := range tags {
+			tm := rcTagRE.FindStringSubmatch(tag)
+			if tm == nil || coreFromMatch(tm) != core {
+				continue
+			}
+			if rc, _ := strconv.Atoi(tm[4]); rc < n && rc > best {
+				best = rc
+			}
+		}
+		if best > 0 {
+			return fmt.Sprintf("%s-rc.%d", core, best), true, nil
+		}
+	}
+	return PreviousStableTag(tags, version)
+}
+
 // GitHubRepoOptions addresses one repository on the GitHub REST API.
 type GitHubRepoOptions struct {
 	Repository string
@@ -225,9 +251,12 @@ type NotesOptions struct {
 }
 
 // GenerateReleaseNotes asks GitHub to write the notes for opts.Tag,
-// pinning previous_tag_name to the last stable tag. Left unpinned,
-// GitHub may start the range at the latest release candidate, so a
-// stable release would list only the merges since its last RC.
+// pinning previous_tag_name to PreviousNotesTag: the previous
+// candidate of the same version for a release candidate, so its
+// notes list only its own merges, and the last stable tag otherwise.
+// Left unpinned, GitHub may start a stable release's range at its
+// latest release candidate, so the notes would list only the merges
+// since that candidate.
 func GenerateReleaseNotes(opts NotesOptions) (string, error) {
 	if opts.Tag == "" {
 		return "", errors.New("release-notes requires tag")
@@ -242,8 +271,8 @@ func GenerateReleaseNotes(opts NotesOptions) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// The tag was validated above, so PreviousStableTag cannot fail.
-	prev, havePrev, _ := PreviousStableTag(tags, opts.Tag)
+	// The tag was validated above, so PreviousNotesTag cannot fail.
+	prev, havePrev, _ := PreviousNotesTag(tags, opts.Tag)
 
 	payload := map[string]string{
 		"tag_name":         opts.Tag,

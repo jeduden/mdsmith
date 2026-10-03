@@ -30,8 +30,12 @@ release, except the Flatpak bundle: the five binaries
 (PGO-built), the `.vsix`, the Obsidian zip, the SBOM,
 `checksums.txt`, SLSA attestations, and a cosign
 bundle. It uses the same draft-then-publish flow, so
-each candidate is an immutable release. Its notes span
-from the last stable tag.
+each candidate is an immutable release. Its notes
+start at the previous candidate of the same version,
+so they list only the merges it adds. The first
+candidate after a stable release starts at that
+stable tag. A stable release's notes still span every
+merge since the previous stable release.
 
 Only GitHub Releases receives a candidate. The
 workflow publishes nothing to npm, PyPI, the

@@ -78,7 +78,8 @@ Commands:
                                   Check the rendered install picker matches the channel docs.
   publish-release                 Flip the tag's draft release to published.
   rc-version                      Print the next release-candidate version (vX.Y+1.0-rc.N).
-  release-notes <out-path>        Write GitHub release notes for RELEASE_TAG since the last stable tag.
+  release-notes <out-path>        Write GitHub release notes for RELEASE_TAG (stable: since the last
+                                  stable tag; candidate: since the previous candidate).
   check-rc [--discard-draft]      Report whether RELEASE_TAG is still the next release candidate.
   sbom <out-path>                 Emit a CycloneDX SBOM of the Go module to <out-path>.
   check-secret-rotations          Open GitHub issues for secrets due for rotation.
