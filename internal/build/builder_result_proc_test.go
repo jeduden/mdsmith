@@ -1,4 +1,4 @@
-//go:build unix || windows
+//go:build !js && !wasip1
 
 package build
 
@@ -16,6 +16,7 @@ import (
 )
 
 func TestBuildWithResult_CapturesArgvCwdAndLog(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}
@@ -49,6 +50,7 @@ func TestBuildWithResult_CapturesArgvCwdAndLog(t *testing.T) {
 }
 
 func TestBuildWithResult_FailingRecipeReportsExitCode(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}
@@ -72,6 +74,7 @@ func TestBuildWithResult_FailingRecipeReportsExitCode(t *testing.T) {
 }
 
 func TestBuildWithResult_LiveSinkForwardsLines(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}
@@ -96,6 +99,7 @@ func TestBuildWithResult_LiveSinkForwardsLines(t *testing.T) {
 }
 
 func TestBuildWithResult_TimeoutFlagSet(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}

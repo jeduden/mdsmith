@@ -1,4 +1,4 @@
-//go:build unix || windows
+//go:build !js && !wasip1
 
 package build
 
@@ -17,6 +17,7 @@ import (
 )
 
 func TestBuild_SingleOutputCp(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("cp is not available on Windows")
 	}
@@ -40,6 +41,7 @@ func TestBuild_SingleOutputCp(t *testing.T) {
 }
 
 func TestBuild_MultiOutputTee(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("tee/sh is not available on Windows")
 	}
@@ -67,6 +69,7 @@ func TestBuild_MultiOutputTee(t *testing.T) {
 }
 
 func TestBuild_ParamSubstitutionNoShell(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}
@@ -95,6 +98,7 @@ func TestBuild_ParamSubstitutionNoShell(t *testing.T) {
 }
 
 func TestBuild_InputGlobResolves(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("cat is not available on Windows")
 	}
@@ -123,6 +127,7 @@ func TestBuild_InputGlobResolves(t *testing.T) {
 }
 
 func TestBuild_RecipeDoesNotProduceOutput(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}
@@ -143,6 +148,7 @@ func TestBuild_RecipeDoesNotProduceOutput(t *testing.T) {
 }
 
 func TestBuild_VerifyNoUndeclaredWritesSnapshotError(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}
@@ -175,6 +181,7 @@ func TestBuild_VerifyNoUndeclaredWritesSnapshotError(t *testing.T) {
 }
 
 func TestBuild_UndeclaredWriteDetected(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}
@@ -203,6 +210,7 @@ func TestBuild_UndeclaredWriteDetected(t *testing.T) {
 }
 
 func TestBuild_LstatErrorRefusesOutput(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}
@@ -226,6 +234,7 @@ func TestBuild_LstatErrorRefusesOutput(t *testing.T) {
 }
 
 func TestBuild_FailingRecipeLeavesNoPartialOutput(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}
@@ -249,6 +258,7 @@ func TestBuild_FailingRecipeLeavesNoPartialOutput(t *testing.T) {
 }
 
 func TestBuild_FailingRecipePreservesExistingOutput(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}
@@ -272,6 +282,7 @@ func TestBuild_FailingRecipePreservesExistingOutput(t *testing.T) {
 }
 
 func TestBuild_Timeout(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep is not available on Windows")
 	}

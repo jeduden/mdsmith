@@ -1,4 +1,4 @@
-//go:build unix || windows
+//go:build !js && !wasip1
 
 package build
 
@@ -17,6 +17,7 @@ import (
 )
 
 func TestRecipeOutput_FileWritersGoDirect(t *testing.T) {
+	skipOnPlan9(t)
 	cmd := &exec.Cmd{}
 	ro := &recipeOutput{}
 	require.NoError(t, ro.attach(cmd, nil, nil))
@@ -27,6 +28,7 @@ func TestRecipeOutput_FileWritersGoDirect(t *testing.T) {
 }
 
 func TestRecipeOutput_AttachSecondPipeFailsClosesFirst(t *testing.T) {
+	skipOnPlan9(t)
 	// The first pipeFn call is the real os.Pipe, which js/wasm and
 	// wasip1 lack, so this test lives in the unix || windows file.
 	failPipeAfter(t, 1)
@@ -38,6 +40,7 @@ func TestRecipeOutput_AttachSecondPipeFailsClosesFirst(t *testing.T) {
 }
 
 func TestRecipeOutput_OneWriterSharesOnePipe(t *testing.T) {
+	skipOnPlan9(t)
 	cmd := &exec.Cmd{}
 	out := &lockedBuffer{}
 	ro := &recipeOutput{}
@@ -57,6 +60,7 @@ func TestRecipeOutput_OneWriterSharesOnePipe(t *testing.T) {
 }
 
 func TestRecipeOutput_TwoWritersGetTwoPipes(t *testing.T) {
+	skipOnPlan9(t)
 	cmd := &exec.Cmd{}
 	o, e := &lockedBuffer{}, &lockedBuffer{}
 	ro := &recipeOutput{}
@@ -80,6 +84,7 @@ type failingWriter struct{ err error }
 func (f failingWriter) Write([]byte) (int, error) { return 0, f.err }
 
 func TestRecipeOutput_WriterErrorRecordedAndPipeClosed(t *testing.T) {
+	skipOnPlan9(t)
 	cmd := &exec.Cmd{}
 	want := errors.New("disk full")
 	ro := &recipeOutput{}
@@ -98,6 +103,7 @@ func TestRecipeOutput_WriterErrorRecordedAndPipeClosed(t *testing.T) {
 }
 
 func TestRecipeOutput_AbandonEndsCopyWhileWriterOpen(t *testing.T) {
+	skipOnPlan9(t)
 	cmd := &exec.Cmd{}
 	ro := &recipeOutput{}
 	require.NoError(t, ro.attach(cmd, &lockedBuffer{}, nil))
@@ -108,6 +114,7 @@ func TestRecipeOutput_AbandonEndsCopyWhileWriterOpen(t *testing.T) {
 }
 
 func TestTimeoutResult(t *testing.T) {
+	skipOnPlan9(t)
 	old := reapWait
 	reapWait = 50 * time.Millisecond
 	t.Cleanup(func() { reapWait = old })

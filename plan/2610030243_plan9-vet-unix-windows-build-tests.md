@@ -1,7 +1,7 @@
 ---
 id: 2610030243
 title: Vet the internal/build spawn tests for plan9
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Plan 2610021028 moved about 35 process-spawning
@@ -36,7 +36,13 @@ errors only then.
 
 ## Tasks
 
-1. Pick one approach and record it here. Option A:
+1. Pick one approach and record it here. **Chosen:
+   Option A.** Option B cannot work with a tag override:
+   `go vet -tags unix` under `GOOS=plan9` also pulls in
+   the stdlib's unix runtime files and fails to compile
+   `runtime`. Option A needs no new CI step because the
+   existing `GOOS=plan9 go vet ./...` step now covers
+   the files. Option A:
    change the tag to `!js && !wasip1` and skip each
    `sh`-dependent test at run time on plan9. Option B:
    keep the tag and add a CI step that type-checks the
@@ -52,9 +58,9 @@ errors only then.
 
 ## Acceptance Criteria
 
-- [ ] A plan9 compile error in a `_proc_test.go` file
+- [x] A plan9 compile error in a `_proc_test.go` file
       fails a CI step.
-- [ ] Native and js/wasm runs of `internal/build` still
+- [x] Native and js/wasm runs of `internal/build` still
       pass.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

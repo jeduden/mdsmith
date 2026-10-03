@@ -1,4 +1,4 @@
-//go:build unix || windows
+//go:build !js && !wasip1
 
 package build
 
@@ -18,6 +18,7 @@ import (
 )
 
 func TestRunRecipe_NonNilJobCleanup(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh is not available on Windows")
 	}
@@ -43,6 +44,7 @@ func TestRunRecipe_NonNilJobCleanup(t *testing.T) {
 }
 
 func TestRunRecipe_HermeticEnvVisibleToProcess(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh not available on Windows")
 	}
@@ -73,6 +75,7 @@ func TestRunRecipe_HermeticEnvVisibleToProcess(t *testing.T) {
 }
 
 func TestRunRecipe_CmdDirIsStaging(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh not available on Windows")
 	}
@@ -97,6 +100,7 @@ func TestRunRecipe_CmdDirIsStaging(t *testing.T) {
 }
 
 func TestRunRecipe_TimeoutErrorMessageIsDeterministic(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh not available on Windows")
 	}
@@ -118,6 +122,7 @@ func TestRunRecipe_TimeoutErrorMessageIsDeterministic(t *testing.T) {
 }
 
 func TestRunRecipe_CancellationReported(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("sh not available on Windows")
 	}
@@ -138,4 +143,15 @@ func TestRunRecipe_CancellationReported(t *testing.T) {
 	require.Error(t, err)
 	// A non-deadline cancellation reports "cancelled", not "timed out".
 	assert.Contains(t, err.Error(), "cancelled")
+}
+
+// skipOnPlan9 skips a test that runs a `sh` recipe or opens a unix
+// pipe. These files carry `!js && !wasip1` so GOOS=plan9 go vet still
+// type-checks them (plan 2610030243), but plan9 has only `rc`; the
+// tests it runs live in exec_plan9_test.go.
+func skipOnPlan9(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "plan9" {
+		t.Skip("plan9 has no sh; see exec_plan9_test.go")
+	}
 }

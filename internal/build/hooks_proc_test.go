@@ -1,4 +1,4 @@
-//go:build unix || windows
+//go:build !js && !wasip1
 
 package build
 
@@ -42,6 +42,7 @@ func skipWithoutUnixTools(t *testing.T) {
 }
 
 func TestRunHooks_SingleSuccess(t *testing.T) {
+	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	result := RunHooks(context.Background(), []HookEntry{echoEntry("greet", "hi")}, t.TempDir(), &w)
@@ -50,6 +51,7 @@ func TestRunHooks_SingleSuccess(t *testing.T) {
 }
 
 func TestRunHooks_MultipleSuccess(t *testing.T) {
+	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	dir := t.TempDir()
 	hooks := []HookEntry{
@@ -66,6 +68,7 @@ func TestRunHooks_MultipleSuccess(t *testing.T) {
 }
 
 func TestRunHooks_UsesRootAsWorkDir(t *testing.T) {
+	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	dir := t.TempDir()
 	// The hook creates a file named "ok" — relative to cwd (= root).
@@ -78,6 +81,7 @@ func TestRunHooks_UsesRootAsWorkDir(t *testing.T) {
 }
 
 func TestRunAfterHooks_AllSucceed_ReturnsNil(t *testing.T) {
+	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	result := RunAfterHooks(context.Background(),
@@ -87,6 +91,7 @@ func TestRunAfterHooks_AllSucceed_ReturnsNil(t *testing.T) {
 }
 
 func TestRunAfterHooks_FailContinues(t *testing.T) {
+	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	dir := t.TempDir()
 	sentinel := filepath.Join(dir, "second-ran")
@@ -103,6 +108,7 @@ func TestRunAfterHooks_FailContinues(t *testing.T) {
 }
 
 func TestRunHooks_OutputLines(t *testing.T) {
+	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	hooks := []HookEntry{
@@ -116,6 +122,7 @@ func TestRunHooks_OutputLines(t *testing.T) {
 
 // Regression: zero-exit hook must not produce a FAIL line.
 func TestRunHooks_SuccessNoFailLine(t *testing.T) {
+	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	hooks := []HookEntry{echoEntry("x", "hello")}
@@ -125,6 +132,7 @@ func TestRunHooks_SuccessNoFailLine(t *testing.T) {
 }
 
 func TestRunAfterHooks_UnnamedHook_UsesFirstToken(t *testing.T) {
+	skipOnPlan9(t)
 	skipWithoutUnixTools(t)
 	var w bytes.Buffer
 	h := echoEntry("echo", "hello")
@@ -138,6 +146,7 @@ func TestRunAfterHooks_UnnamedHook_UsesFirstToken(t *testing.T) {
 // can only come from exec.ExitError. A start failure, or a dropped
 // ExitCode branch, would report the default code 1 and fail this test.
 func TestRunHook_ExitCodePreserved(t *testing.T) {
+	skipOnPlan9(t)
 	tokens := []string{"cmd", "/c", "exit 42"}
 	if runtime.GOOS != "windows" {
 		tokens = []string{writeScript(t, t.TempDir(), "exit42.sh", `exit 42`)}
@@ -151,6 +160,7 @@ func TestRunHook_ExitCodePreserved(t *testing.T) {
 // a process killed by a signal yields ExitCode() == -1, which runHook normalizes to 1.
 // Only meaningful on Unix (Windows processes don't signal-kill the same way).
 func TestRunHook_SignalKilled_NormalizesExitCode(t *testing.T) {
+	skipOnPlan9(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("signal kill not available on windows")
 	}
