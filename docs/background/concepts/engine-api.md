@@ -282,13 +282,16 @@ method made read-only with
 `Object.defineProperty(session, "check", { writable: false })`. None
 of them logs "call to released function".
 
-Each id is a counter passed through a permutation keyed at random
-when the engine loads, over 2^53 values in both the standard Go and
+Each id is a counter passed through a 10-round Feistel permutation
+whose round function is AES-128 under a key drawn at random when the
+engine loads. The ids span 2^53 values in both the standard Go and
 the TinyGo build. So a script that reaches a raw shared function
 cannot find a session by trying 0, 1, 2, and so on, or by stepping
-from an id it knows. The permutation never maps two counter values to
-the same id, so no id is handed out twice. A method kept from a
-disposed session never reaches a later one.
+from an id it knows. Ids it sees after a `Reflect.apply` patch do not
+predict the ids handed out before it, short of breaking AES. The
+permutation never maps two counter values to the same id, so no id
+is handed out twice. A method kept from a disposed session never
+reaches a later one.
 
 The engine also binds through a `bind` captured at load, so a later
 patch of `Function.prototype.bind` or `call` never sees a raw shared

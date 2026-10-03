@@ -21,9 +21,11 @@ summary: >-
 A script in the same JS global scope that holds a raw shared
 session func cannot reach a session whose object it was
 never given by guessing its id. A script that patched
-`bind` or `call` before load, or `Reflect.apply` at any
-time, still sees the id of each session bound while its
-patch is in place. That limit is documented in
+`bind` or `call` before load still sees the id of every
+session, because the engine captures that patched `bind`.
+One that patches `Reflect.apply` sees the id of each
+session bound while its patch is in place. That limit is
+documented in
 [engine-api.md](../docs/background/concepts/engine-api.md),
 not closed.
 
@@ -68,7 +70,10 @@ for the stale-dispose fix.
    round 2 replaced the random draw and its redraw loop
    with a keyed Feistel permutation of a counter, so no id
    repeats after dispose, and made the id an int64 so the
-   TinyGo build also spans 2^53. `Reflect`
+   TinyGo build also spans 2^53. Review round 3 made the
+   round function AES-128 with 10 rounds, the FF1 shape,
+   so ids seen after a patch do not reveal earlier ones.
+   `Reflect`
    is not captured; the limit is documented in engine-api.md.
 2. [x] Write a failing js/wasm test that calls a raw shared
    func with every id from -1 to 4096, and with every id
