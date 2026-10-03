@@ -359,36 +359,20 @@ func TestIsInsert(t *testing.T) {
 	assert.False(t, isInsert(edAt(1, 3, 4, "")))
 }
 
-// TestWikilinkIndexAt locks that the move guard's index walks every file
-// under root, a `.mdx` the Markdown index omits included, and skips
-// node_modules, the way the wikilink resolver does.
-func TestWikilinkIndexAt(t *testing.T) {
-	t.Parallel()
-	root := t.TempDir()
-	for _, rel := range []string{"docs/guide.md", "a/guide.mdx", "node_modules/p/guide.md"} {
-		p := filepath.Join(root, filepath.FromSlash(rel))
-		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
-		require.NoError(t, os.WriteFile(p, []byte("# G\n"), 0o644))
-	}
-	idx := wikilinkIndexAt(root)
-	assert.Equal(t, []string{"docs/guide.md"}, idx.StemPaths("guide"))
-	assert.Equal(t, []string{"a/guide.mdx"}, idx.NamePaths("guide.mdx"))
-	assert.Nil(t, wikilinkIndexAt(filepath.Join(root, "missing")), "an unreadable root builds no index")
-}
-
-// TestLSPRenameWorkspace_WikilinkIndex locks that the move guard's index
-// comes only from the batch's shared builder, which walks the root the
-// move paths were spelled against. With no builder the workspace has no
-// index, rather than a walk of a root a config reload may have changed.
-func TestLSPRenameWorkspace_WikilinkIndex(t *testing.T) {
+// TestServerRenameWorkspace_WikilinkIndex locks that every rename
+// workspace the server builds carries a wikilink index walked once, at
+// the root its paths were spelled against, so no move path can fall
+// back to counting listed files. An unreadable root builds no index.
+func TestServerRenameWorkspace_WikilinkIndex(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "guide.md"), []byte("# G\n"), 0o644))
 	s := New(Options{})
-	s.rootDir = root
-	assert.Nil(t, lspRenameWorkspace{s: s}.WikilinkIndex())
-
-	shared := linkgraph.NewWikilinkIndex(fstest.MapFS{"x/manual.md": {}})
-	ws := lspRenameWorkspace{s: s, wikilinks: func() *linkgraph.WikilinkIndex { return shared }}
-	assert.Same(t, shared, ws.WikilinkIndex())
+	s.rootDir = t.TempDir() // a config reload moved the server's root
+	ws := s.renameWorkspace(root)
+	idx := ws.WikilinkIndex()
+	require.NotNil(t, idx)
+	assert.Equal(t, []string{"guide.md"}, idx.StemPaths("guide"))
+	assert.Same(t, idx, ws.WikilinkIndex(), "the walk runs once per workspace")
+	assert.Nil(t, s.renameWorkspace(filepath.Join(root, "missing")).WikilinkIndex())
 }

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/internal/refactor"
 )
@@ -331,28 +331,31 @@ func (s *Server) handleRename(msg *requestMessage) {
 type lspRenameWorkspace struct {
 	refactor.IndexEdges
 	s *Server
-	// wikilinks supplies the wikilink index a move reads, built once per
-	// batch against the root the move paths were spelled against. nil
-	// means no index: the move planner then counts listed files.
+	// wikilinks supplies the wikilink index a move reads, walked once
+	// per workspace at the root its paths were spelled against.
 	wikilinks func() *linkgraph.WikilinkIndex
+}
+
+// renameWorkspace returns the rename engine's Workspace over the warm
+// index, with a wikilink index walked lazily, at most once, at root.
+// Every rename builds its workspace here, so none lacks the index a
+// move's same-stem guard reads. A caller passes the root it spelled its
+// paths against, so a config reload in between cannot key the index to
+// another directory.
+func (s *Server) renameWorkspace(root string) lspRenameWorkspace {
+	return lspRenameWorkspace{
+		s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex()),
+		wikilinks: sync.OnceValue(func() *linkgraph.WikilinkIndex {
+			return linkgraph.WikilinkIndexAtDir(root)
+		}),
+	}
 }
 
 // WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
 // resolution reads, over the whole workspace root on disk, or nil when
-// no builder is set (a heading or link-label rename, which never asks).
+// that root is unreadable.
 func (w lspRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
-	if w.wikilinks == nil {
-		return nil
-	}
 	return w.wikilinks()
-}
-
-// wikilinkIndexAt walks root for the wikilink index, through the same
-// lint.OpenRootFS view the MDS027 resolver walks. A caller that
-// already spelled its move paths against a root passes that root, so a
-// config reload in between cannot key the index to another directory.
-func wikilinkIndexAt(root string) *linkgraph.WikilinkIndex {
-	return linkgraph.NewWikilinkIndex(lint.OpenRootFS(root))
 }
 
 func (w lspRenameWorkspace) Resolve(file string) (string, []byte, bool) {
@@ -368,7 +371,8 @@ func (s *Server) renameHeading(
 	msg *requestMessage, p renameParams,
 	source []byte, rel string, line int, res index.LocateResult, newName string,
 ) {
-	ws := lspRenameWorkspace{s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex())}
+	_, _, root := s.snapshotConfig()
+	ws := s.renameWorkspace(root)
 	plan, err := refactor.Heading(ws, p.TextDocument.URI, rel, source, line, res.Name, newName)
 	if err != nil {
 		s.writeRenameError(msg.ID, err)

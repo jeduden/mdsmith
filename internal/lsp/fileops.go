@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"path"
 	"slices"
-	"sync"
 
 	"github.com/jeduden/mdsmith/internal/index"
-	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/refactor"
 )
 
@@ -59,12 +57,9 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 		return
 	}
 	_, _, root := s.snapshotConfig()
-	ws := lspRenameWorkspace{
-		s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex()),
-		// The batch shares one index, walked at the root its move paths
-		// are spelled against.
-		wikilinks: sync.OnceValue(func() *linkgraph.WikilinkIndex { return wikilinkIndexAt(root) }),
-	}
+	// The batch shares one wikilink index, walked at the root its move
+	// paths are spelled against.
+	ws := s.renameWorkspace(root)
 
 	moves := planRenameBatch(ws, root, p.Files)
 	merged := map[string][]textEdit{}
