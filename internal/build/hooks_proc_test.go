@@ -117,13 +117,17 @@ func TestRunAfterHooks_UnnamedHook_UsesFirstToken(t *testing.T) {
 	assert.Contains(t, w.String(), "hook echo: running")
 }
 
-// TestRunHook_ExitCodePreserved runs the real `false` binary, so the
-// exit code comes from exec.ExitError. Under js/wasm the start would
-// fail and the default code 1 would pass this test for the wrong reason.
+// TestRunHook_ExitCodePreserved runs a script that exits 42, so the code
+// can only come from exec.ExitError. A start failure, or a dropped
+// ExitCode branch, would report the default code 1 and fail this test.
 func TestRunHook_ExitCodePreserved(t *testing.T) {
-	result := runHook(context.Background(), []string{"false"}, t.TempDir())
+	tokens := []string{"cmd", "/c", "exit 42"}
+	if runtime.GOOS != "windows" {
+		tokens = []string{writeScript(t, t.TempDir(), "exit42.sh", `exit 42`)}
+	}
+	result := runHook(context.Background(), tokens, t.TempDir())
 	require.NotNil(t, result)
-	assert.Equal(t, 1, result.ExitCode)
+	assert.Equal(t, 42, result.ExitCode)
 }
 
 // TestRunHook_SignalKilled_NormalizesExitCode exercises the code < 0 branch:

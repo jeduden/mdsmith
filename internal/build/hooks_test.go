@@ -63,7 +63,10 @@ func TestRunHooks_StopsOnFirstFailure(t *testing.T) {
 	var w bytes.Buffer
 	result := RunHooks(context.Background(), hooks, dir, &w)
 	require.NotNil(t, result)
-	// Second hook must not have run.
+	// Under js/wasm no hook can start, so the sentinel would be absent
+	// even if the second hook ran. RunHooks logs "running" before it
+	// starts a hook, so the log check holds without a real process.
+	assert.NotContains(t, w.String(), "hook second: running", "second hook should not have started")
 	_, err := os.Stat(sentinel)
 	assert.True(t, os.IsNotExist(err), "second hook should not have run after first failed")
 }
@@ -84,11 +87,22 @@ func TestRunAfterHooks_Empty_ReturnsNil(t *testing.T) {
 }
 
 func TestRunAfterHooks_ReturnsFirstFailure(t *testing.T) {
-	hooks := []HookEntry{failEntry("a"), failEntry("b")}
+	// Distinct missing binaries make the two failures distinguishable
+	// by their error text; equal exit codes cannot tell first from last.
+	// A missing binary is a start failure on every platform, js/wasm
+	// included, so this test needs no process to run.
+	hooks := []HookEntry{
+		{Tokens: []string{"/no/such/hook-a"}, Name: "a"},
+		{Tokens: []string{"/no/such/hook-b"}, Name: "b"},
+	}
 	var w bytes.Buffer
 	result := RunAfterHooks(context.Background(), hooks, t.TempDir(), &w)
 	require.NotNil(t, result)
 	assert.Equal(t, 1, result.ExitCode)
+	require.Error(t, result.Err)
+	assert.Contains(t, result.Err.Error(), "hook-a", "should return the first failure")
+	assert.NotContains(t, result.Err.Error(), "hook-b", "should not return a later failure")
+	assert.Contains(t, w.String(), "hook b: running", "after-hooks keep running past a failure")
 }
 
 func TestRunHooks_CancelledContext(t *testing.T) {
