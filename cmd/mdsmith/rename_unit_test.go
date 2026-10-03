@@ -732,9 +732,8 @@ func TestCliRenameWorkspace_EdgePassThroughs(t *testing.T) {
 // A cliRenameWorkspace built without an index (as several unit tests
 // construct it) answers edge queries with nothing instead of panicking,
 // as the nil *index.Index it replaced did.
-func TestCliRenameWorkspace_Index_ZeroValue(t *testing.T) {
+func TestCliRenameWorkspace_ZeroValue(t *testing.T) {
 	var ws cliRenameWorkspace
-	assert.Nil(t, ws.index())
 	assert.Empty(t, ws.IncomingAnchorEdges("a.md", "x"))
 	assert.Empty(t, ws.IncomingPathEdges("a.md"))
 	assert.Empty(t, ws.IncomingWikilinkEdges("a"))
