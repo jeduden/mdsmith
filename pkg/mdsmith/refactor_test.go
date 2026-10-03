@@ -346,23 +346,3 @@ func TestSession_Rename_IndexesWorkspaceOnlyForHeadings(t *testing.T) {
 	assert.Contains(t, p.Edits, "b.md")
 	assert.NotZero(t, ws.reads, "a heading rename indexes the workspace")
 }
-
-func TestLazyRefactorWorkspace_BuildsOnce(t *testing.T) {
-	src := []byte("# Setup\n")
-	s := newRefactorSession(t, map[string][]byte{"a.md": src})
-	builds := 0
-	lw := &lazyRefactorWorkspace{build: func() *sessionRefactorWorkspace {
-		builds++
-		return s.buildRefactorWorkspace("a.md", src)
-	}}
-	assert.Zero(t, builds, "nothing is built up front")
-	assert.Equal(t, []string{"a.md"}, lw.Files())
-	assert.Empty(t, lw.IncomingAnchorEdges("a.md", "setup"))
-	assert.Empty(t, lw.IncomingPathEdges("a.md"))
-	assert.Empty(t, lw.IncomingWikilinkEdges("a"))
-	key, got, ok := lw.Resolve("a.md")
-	assert.True(t, ok)
-	assert.Equal(t, "a.md", key)
-	assert.Equal(t, src, got)
-	assert.Equal(t, 1, builds, "every method shares one build")
-}

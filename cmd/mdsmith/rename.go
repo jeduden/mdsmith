@@ -82,7 +82,11 @@ type renameSummary struct {
 // under is its workspace-relative path — the same string the CLI
 // writes back to disk.
 type cliRenameWorkspace struct {
-	idx      *index.Index
+	// idx builds the transient index on its first call and returns
+	// the same index after that. Only the engine's edge queries call
+	// it, so a label rename — and Resolve or applyPlan — reads no
+	// file beyond the ones it touches.
+	idx      func() *index.Index
 	relToAbs map[string]string
 	rootDir  string
 	maxBytes int64
@@ -91,21 +95,21 @@ type cliRenameWorkspace struct {
 // Trivial index pass-through; no dedicated test by design (covered
 // by the heading-rename behavioral tests via the engine).
 func (w cliRenameWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
-	return w.idx.IncomingEdges(file, slug)
+	return w.idx().IncomingEdges(file, slug)
 }
 
 // Trivial index pass-through; no dedicated test by design.
 func (w cliRenameWorkspace) IncomingPathEdges(file string) []index.Edge {
-	return w.idx.IncomingPathEdges(file)
+	return w.idx().IncomingPathEdges(file)
 }
 
 // Trivial index pass-through; no dedicated test by design.
 func (w cliRenameWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
-	return w.idx.IncomingWikilinkEdges(stem)
+	return w.idx().IncomingWikilinkEdges(stem)
 }
 
 // Trivial index pass-through; no dedicated test by design.
-func (w cliRenameWorkspace) Files() []string { return w.idx.Files() }
+func (w cliRenameWorkspace) Files() []string { return w.idx().Files() }
 
 func (w cliRenameWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
@@ -201,8 +205,8 @@ func runRename(args []string) int {
 	return applyPlan(os.Stdout, ws, plan, opts.format, opts.dryRun)
 }
 
-// buildRenameWorkspace discovers the workspace, builds the transient
-// index, and reads the target file's bytes. A non-negative return
+// buildRenameWorkspace discovers the workspace, prepares the lazy
+// transient index, and reads the target file's bytes. A non-negative return
 // code means stop (1 = empty workspace, 2 = error); src is the target
 // source on the success path.
 func buildRenameWorkspace(opts renameOptions, target string) (cliRenameWorkspace, []byte, int) {
@@ -218,9 +222,10 @@ func buildRenameWorkspace(opts renameOptions, target string) (cliRenameWorkspace
 	return ws, src, -1
 }
 
-// buildWorkspace discovers the workspace and builds the transient index
-// shared by `rename` and `move`, without resolving any particular
-// target file (each command resolves its own). A non-negative return
+// buildWorkspace discovers the workspace and prepares the transient
+// index shared by `rename` and `move` — built on first use, so a
+// rename that never queries edges never indexes — without resolving
+// any particular target file (each command resolves its own). A non-negative return
 // code means stop (1 = empty workspace, 2 = error).
 func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 	cfg, cfgPath, _, files, code := discoverFiles(opts.configPath, false, opts.walk)
@@ -244,9 +249,12 @@ func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 		relToAbs[rel] = srcPath
 		rels = append(rels, rel)
 	}
-	idx := index.New(rootDir)
-	idx.BuildSerial(rels, func(rel string) ([]byte, error) {
-		return bytelimit.ReadFileLimited(relToAbs[rel], maxBytes)
+	idx := sync.OnceValue(func() *index.Index {
+		idx := index.New(rootDir)
+		idx.BuildSerial(rels, func(rel string) ([]byte, error) {
+			return bytelimit.ReadFileLimited(relToAbs[rel], maxBytes)
+		})
+		return idx
 	})
 	return cliRenameWorkspace{idx: idx, relToAbs: relToAbs, rootDir: rootDir, maxBytes: maxBytes}, -1
 }

@@ -59,9 +59,11 @@ func (s *Session) Rename(uri string, source []byte, as, oldName, newName string)
 		return RefactorPlan{}, fmt.Errorf("rename: as must be %s, got %q",
 			refactor.RenameKindList("%q"), as)
 	}
-	ws := &lazyRefactorWorkspace{build: func() *sessionRefactorWorkspace {
+	// Lazy: only a heading rename consults the workspace, so a label
+	// rename or a failed detection never walks a large WASM vault.
+	ws := refactor.NewLazyWorkspace(func() refactor.Workspace {
 		return s.buildRefactorWorkspace(uri, source)
-	}}
+	})
 	key := index.NormalizePath(uri)
 	p, err := refactor.Rename(ws, key, source, kind, oldName, newName)
 	if err != nil {
@@ -162,43 +164,6 @@ func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 		return "", nil, false
 	}
 	return rel, src, true
-}
-
-// lazyRefactorWorkspace defers buildRefactorWorkspace's walk-and-index
-// to the first Workspace call. refactor.Rename consults the workspace
-// only for a heading rename (incoming anchors), so a label rename or a
-// failed detection never reads the rest of the workspace — which
-// matters in a large WASM-hosted vault. refactor.Rename calls it from
-// one goroutine, so the memoization needs no lock.
-type lazyRefactorWorkspace struct {
-	build func() *sessionRefactorWorkspace
-	ws    *sessionRefactorWorkspace
-}
-
-// get builds the workspace on first use and memoizes it.
-func (l *lazyRefactorWorkspace) get() *sessionRefactorWorkspace {
-	if l.ws == nil {
-		l.ws = l.build()
-	}
-	return l.ws
-}
-
-func (l *lazyRefactorWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
-	return l.get().IncomingAnchorEdges(file, slug)
-}
-
-func (l *lazyRefactorWorkspace) IncomingPathEdges(file string) []index.Edge {
-	return l.get().IncomingPathEdges(file)
-}
-
-func (l *lazyRefactorWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
-	return l.get().IncomingWikilinkEdges(stem)
-}
-
-func (l *lazyRefactorWorkspace) Files() []string { return l.get().Files() }
-
-func (l *lazyRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
-	return l.get().Resolve(file)
 }
 
 // buildRefactorWorkspace walks the session's workspace for Markdown

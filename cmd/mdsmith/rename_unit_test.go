@@ -698,3 +698,20 @@ func TestReplaceWithStaged(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "new", string(got))
 }
+
+// TestBuildWorkspace_IndexesOnFirstUse pins that buildWorkspace only
+// discovers files: the index is built when an engine call first needs
+// it, so a label rename (which never asks) reads no other file. A
+// link written after buildWorkspace returns shows up in the index only
+// because the index is built after it.
+func TestBuildWorkspace_IndexesOnFirstUse(t *testing.T) {
+	dir := renameWorkspace(t)
+	ws, code := buildWorkspace(renameOptions{})
+	require.Equal(t, -1, code)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"),
+		[]byte("See [go](a.md#setup).\n\nAnd [again](a.md#setup).\n"), 0o644))
+	assert.Len(t, ws.IncomingAnchorEdges("a.md", "setup"), 2, "indexed after the edit")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"), []byte("no links\n"), 0o644))
+	assert.Len(t, ws.IncomingAnchorEdges("a.md", "setup"), 2, "built once, then reused")
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, ws.Files())
+}
