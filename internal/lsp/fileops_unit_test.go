@@ -376,16 +376,17 @@ func TestWikilinkIndexAt(t *testing.T) {
 	assert.Nil(t, wikilinkIndexAt(filepath.Join(root, "missing")), "an unreadable root builds no index")
 }
 
-// TestLSPRenameWorkspace_WikilinkIndex locks both sources of the move
-// guard's index: the batch's shared builder when set, and otherwise a
-// walk of the server's current root.
+// TestLSPRenameWorkspace_WikilinkIndex locks that the move guard's index
+// comes only from the batch's shared builder, which walks the root the
+// move paths were spelled against. With no builder the workspace has no
+// index, rather than a walk of a root a config reload may have changed.
 func TestLSPRenameWorkspace_WikilinkIndex(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "guide.md"), []byte("# G\n"), 0o644))
 	s := New(Options{})
 	s.rootDir = root
-	assert.Equal(t, []string{"guide.md"}, lspRenameWorkspace{s: s}.WikilinkIndex().StemPaths("guide"))
+	assert.Nil(t, lspRenameWorkspace{s: s}.WikilinkIndex())
 
 	shared := linkgraph.NewWikilinkIndex(fstest.MapFS{"x/manual.md": {}})
 	ws := lspRenameWorkspace{s: s, wikilinks: func() *linkgraph.WikilinkIndex { return shared }}

@@ -331,25 +331,20 @@ func (s *Server) handleRename(msg *requestMessage) {
 type lspRenameWorkspace struct {
 	refactor.IndexEdges
 	s *Server
-	// wikilinks, when set, supplies the wikilink index so a batch of
-	// moves builds it once; nil builds one per WikilinkIndex call.
+	// wikilinks supplies the wikilink index a move reads, built once per
+	// batch against the root the move paths were spelled against. nil
+	// means no index: the move planner then counts listed files.
 	wikilinks func() *linkgraph.WikilinkIndex
 }
 
 // WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
-// resolution reads, over the whole workspace root on disk.
+// resolution reads, over the whole workspace root on disk, or nil when
+// no builder is set (a heading or link-label rename, which never asks).
 func (w lspRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
-	if w.wikilinks != nil {
-		return w.wikilinks()
+	if w.wikilinks == nil {
+		return nil
 	}
-	return w.s.buildWikilinkIndex()
-}
-
-// buildWikilinkIndex walks the current workspace root for the wikilink
-// index.
-func (s *Server) buildWikilinkIndex() *linkgraph.WikilinkIndex {
-	_, _, root := s.snapshotConfig()
-	return wikilinkIndexAt(root)
+	return w.wikilinks()
 }
 
 // wikilinkIndexAt walks root for the wikilink index, through the same
