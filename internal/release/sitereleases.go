@@ -530,8 +530,9 @@ func (h *headingIDs) claim(base string) string {
 }
 
 // hasAttributeBlock reports whether heading text ends in a Goldmark
-// attribute block: "{#id}", "{.class}", or "{key=value}". Plain
-// braces such as "Fix {x}" are heading text, not attributes.
+// attribute block: braces holding only "#id", ".class", and
+// "key=value" tokens. Plain braces such as "Fix {x}" or "{a == b}"
+// are heading text, not attributes.
 func hasAttributeBlock(text string) bool {
 	if !strings.HasSuffix(text, "}") {
 		return false
@@ -540,8 +541,41 @@ func hasAttributeBlock(text string) bool {
 	if i < 0 {
 		return false
 	}
-	inner := strings.TrimSpace(text[i+1 : len(text)-1])
-	return strings.HasPrefix(inner, "#") || strings.HasPrefix(inner, ".") || strings.Contains(inner, "=")
+	tokens := strings.Fields(text[i+1 : len(text)-1])
+	if len(tokens) == 0 {
+		return false
+	}
+	for _, tok := range tokens {
+		if !isAttributeToken(tok) {
+			return false
+		}
+	}
+	return true
+}
+
+// isAttributeToken reports whether tok is one well-formed attribute:
+// "#id", ".class", or "key=value" with a name-like key and a
+// non-empty value. Brace text such as "{a == b}" is heading text.
+func isAttributeToken(tok string) bool {
+	switch {
+	case strings.ContainsAny(tok, " \t{}"):
+		return false
+	case len(tok) > 1 && (tok[0] == '#' || tok[0] == '.'):
+		return true
+	case strings.Count(tok, "=") == 0:
+		return false
+	}
+	key, value, _ := strings.Cut(tok, "=")
+	if key == "" || value == "" {
+		return false
+	}
+	for i, r := range key {
+		alpha := r == '_' || r == ':' || unicode.IsLetter(r)
+		if !alpha && (i == 0 || (r != '-' && r != '.' && !unicode.IsDigit(r))) {
+			return false
+		}
+	}
+	return true
 }
 
 // setextLevel returns 1 for a setext h1 underline ("==="), 2 for an

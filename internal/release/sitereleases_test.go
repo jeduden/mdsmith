@@ -102,6 +102,7 @@ func TestRewriteHeadingsAddsScopedIDs(t *testing.T) {
 		{"explicit id joins the uniqueness set", "## A {#a}\n## A", "#### A {#v1-a}\n#### A {#v1-a-1}"},
 		{"unmatched brace is heading text", "## Support for {", "#### Support for { {#v1-support-for}"},
 		{"empty braces are heading text", "## Support for {}", "#### Support for {} {#v1-support-for}"},
+		{"comparison braces are heading text", "## What {a == b}", "#### What {a == b} {#v1-what-a-b}"},
 		{"heading in a block quote", "> ## Quote", "> #### Quote {#v1-quote}"},
 		{"heading in a nested block quote", "> > # Deep", "> > ### Deep {#v1-deep}"},
 		{"heading in a bullet item", "- ## Item", "- #### Item {#v1-item}"},
@@ -376,14 +377,21 @@ func TestOpensNonParagraphBlock(t *testing.T) {
 
 func TestHasAttributeBlock(t *testing.T) {
 	cases := map[string]bool{
-		"A {#id}":    true,
-		"A {.cls}":   true,
-		"A {k=v}":    true,
-		"A { #id }":  true,
-		"Fix {x}":    false,
-		"Plain":      false,
-		"Ends in }":  false,
-		"{#id} then": false,
+		"A {#id}":        true,
+		"A {.cls}":       true,
+		"A {k=v}":        true,
+		"A { #id }":      true,
+		"Fix {x}":        false,
+		"Plain":          false,
+		"Ends in }":      false,
+		"{#id} then":     false,
+		"What {a == b}":  false,
+		"A {#id .c k=v}": true,
+		"A {k=}":         false,
+		"A {=v}":         false,
+		"A {#}":          false,
+		"A {}":           false,
+		"A {# x}":        false,
 	}
 	for in, want := range cases {
 		t.Run(in, func(t *testing.T) {
@@ -765,4 +773,27 @@ func TestCandidatesAfterStable(t *testing.T) {
 
 	all := []SiteRelease{{Tag: "v0.1.0-rc.1"}}
 	assert.Equal(t, all, candidatesAfterStable(all, nil), "no stable release keeps every candidate")
+}
+
+func TestIsAttributeToken(t *testing.T) {
+	cases := map[string]bool{
+		"#id":      true,
+		".cls":     true,
+		".NET":     true,
+		"k=v":      true,
+		"data-x=1": true,
+		"#":        false,
+		".":        false,
+		"k=":       false,
+		"=v":       false,
+		"a":        false,
+		"==":       false,
+		"1k=v":     false,
+		"#a b":     false,
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			assert.Equal(t, want, isAttributeToken(in))
+		})
+	}
 }
