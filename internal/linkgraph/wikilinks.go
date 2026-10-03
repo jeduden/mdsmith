@@ -214,10 +214,7 @@ func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 	if root == nil {
 		return nil
 	}
-	idx := &WikilinkIndex{
-		stems: map[string][]string{},
-		names: map[string][]string{},
-	}
+	idx := newEmptyWikilinkIndex()
 	if err := fs.WalkDir(root, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			// Root-level read failures (e.g. ReadDir(".") returns an
@@ -249,10 +246,7 @@ func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 // `node_modules`. A caller with no readable root but a known file list
 // uses it so a lookup still sees those files.
 func NewWikilinkIndexFromPaths(paths []string) *WikilinkIndex {
-	idx := &WikilinkIndex{
-		stems: map[string][]string{},
-		names: map[string][]string{},
-	}
+	idx := newEmptyWikilinkIndex()
 	for _, p := range paths {
 		if WikilinkIndexed(p) {
 			idx.add(p)
@@ -260,6 +254,14 @@ func NewWikilinkIndexFromPaths(paths []string) *WikilinkIndex {
 	}
 	idx.sort()
 	return idx
+}
+
+// newEmptyWikilinkIndex returns an index with no files, ready for add.
+func newEmptyWikilinkIndex() *WikilinkIndex {
+	return &WikilinkIndex{
+		stems: map[string][]string{},
+		names: map[string][]string{},
+	}
 }
 
 // add files p under its exact-name key and, for a Markdown file, its
@@ -327,10 +329,12 @@ func (idx *WikilinkIndex) NamePaths(key string) []string {
 	return idx.names[key]
 }
 
-// WikilinkIndexed reports whether NewWikilinkIndex indexes the
-// workspace-relative file p: no directory on its path is one
+// WikilinkIndexed reports whether NewWikilinkIndex's walk prunes no
+// directory on the workspace-relative path p: none is one
 // skipHeavyDirs prunes (`.git`, `node_modules`). No wikilink reaches a
-// file the index skips, whatever its name.
+// file under a pruned directory, whatever its name. It reads p alone,
+// so it cannot see that the walk also stays out of a symlinked or
+// unreadable directory.
 func WikilinkIndexed(p string) bool {
 	for d := path.Dir(p); d != "." && d != "/"; d = path.Dir(d) {
 		if skipHeavyDirs(d) != nil {
