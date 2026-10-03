@@ -62,7 +62,8 @@ func (e SourceNotFoundError) Error() string {
 //     the basename stem changes; a move that keeps the basename leaves
 //     wikilinks alone because a stem still resolves (a documented
 //     asymmetry with path links). Only a Markdown src with a non-empty
-//     stem is a stem target, and a dst no wikilink can name — no
+//     stem, outside `.git` and `node_modules`, is a stem target, and a
+//     dst no wikilink can name — no
 //     extension, an empty stem, a `#`, `|`, `[`, `]`, backtick, CR, or
 //     newline in the name, a name that ends with a space, or a path
 //     under `.git` or `node_modules`, which the resolver skips — gets no
@@ -779,15 +780,18 @@ func skipGap(src []byte, i int) int {
 // another stem, or a dst with a non-Markdown name. A move that keeps the
 // stem leaves wikilinks alone: a stem still resolves to the file at its
 // new path.
-func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst string) {
+func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destResolver, src, dst string) {
 	// Both ends are keyed the way NewWikilinkIndex keys files. Only a
 	// Markdown src has a stem key, so moving any other file retargets
 	// no `[[stem]]` link. An empty src key (`docs/.md`) matches no edge,
 	// since no target spells it, so the edge lookup below returns early.
 	// ` guide.md` keys as " guide": a bare `[[guide]]` never reached it,
 	// while a folder-prefixed `[[x/ guide]]` did and is rewritten.
+	// A src under `.git` or `node_modules` is never indexed, so no
+	// `[[oldStem]]` link reached it: one that resolved elsewhere or
+	// nowhere must not be retargeted at dst.
 	oldStem, ok := linkgraph.FileStemKey(path.Base(src))
-	if !ok {
+	if !ok || !linkgraph.WikilinkIndexed(src) {
 		return
 	}
 	// A Markdown destination is addressed by stem, so keeping the stem

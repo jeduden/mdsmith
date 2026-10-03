@@ -96,7 +96,9 @@ out of plan 2610022044, which fixes the extension filter.
 10. The resolver never indexes a file under `.git` or
     `node_modules`, so a move there leaves `[[stem]]` as
     written instead of retargeting it at a name no wikilink
-    reaches (`linkgraph.WikilinkIndexed`).
+    reaches (`linkgraph.WikilinkIndexed`). A move out of one
+    leaves it as written too: no `[[stem]]` reached the
+    source, so none is retargeted at the moved file.
 11. A workspace with no wikilink index (its root walk
     failed) counts its listed files through
     `linkgraph.NewWikilinkIndexFromPaths`, so a listed
@@ -121,8 +123,8 @@ files with `linkgraph.FileStemKey`, the same function
       `docs/logo.png`
 - [x] The move planner's stem counts come from the same index
       `[[stem]]` resolution reads
-- [x] A move into `node_modules` or `.git` leaves `[[stem]]`
-      as written
+- [x] A move into or out of `node_modules` or `.git` leaves
+      `[[stem]]` as written
 - [x] With no wikilink index, a listed same-stem sibling
       still blocks the `[[stem]]` rewrite
 - [x] A stale edge whose column holds a link to another

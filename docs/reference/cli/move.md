@@ -129,9 +129,10 @@ cross-directory move, check them by hand.
   empty stem such as `.md`, a `#`, `|`, `[`, or `]` as in `C#.md`,
   a backtick, a line break, or a name that ends with a space.
   So does a move into `.git` or `node_modules`, which a wikilink
-  never searches. Those links break. A name that starts with a
-  space, or reads as a drive letter such as `C:x.md`, is written
-  as `[[./C:x]]`.
+  never searches. Those links break. A move out of one of them
+  also leaves `[[stem]]` as written, since no wikilink reached
+  the file there. A name that starts with a space, or reads as
+  a drive letter such as `C:x.md`, is written as `[[./C:x]]`.
 - **Footnote text that is a lone link.** mdsmith reads
   `[^1]: [z](a.md)` as a footnote definition and leaves its text
   as written, so the link inside it is not repointed. Longer

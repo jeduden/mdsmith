@@ -104,6 +104,26 @@ func TestMove_UnindexedDestinationKeepsWikilinks(t *testing.T) {
 	}
 }
 
+// TestMove_UnindexedSourceKeepsWikilinks locks that a move out of
+// `node_modules` or `.git` leaves `[[guide]]` as written: the resolver
+// never indexes the source, so no `[[guide]]` link ever reached it, and
+// retargeting one at `[[manual]]` would point it at a file it never
+// named.
+func TestMove_UnindexedSourceKeepsWikilinks(t *testing.T) {
+	for _, src := range []string{"node_modules/pkg/guide.md", ".git/guide.md"} {
+		t.Run(src, func(t *testing.T) {
+			link := "See [[guide]].\n"
+			ws := newMemWorkspace(map[string]string{
+				src:        "# Guide\n",
+				"index.md": link,
+			})
+			plan, err := Move(ws, src, "docs/manual.md")
+			require.NoError(t, err)
+			assert.Equal(t, link, applyEditsToSource(t, link, plan.Edits["index.md"]))
+		})
+	}
+}
+
 // nilIndexWorkspace is a memWorkspace whose WikilinkIndex is nil, as a
 // root walk that fails at the top leaves it.
 type nilIndexWorkspace struct{ *memWorkspace }
