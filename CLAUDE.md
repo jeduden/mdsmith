@@ -328,7 +328,8 @@ A Go test that needs a real process or pipe cannot
 run under `GOOS=js GOARCH=wasm`. Put it in a file tagged
 `//go:build unix || windows || plan9` (for
 `internal/build`, a `*_proc_test.go` file), so
-`GOOS=plan9 go vet ./...` still type-checks it. CI runs the whole
+`GOOS=plan9 GOARCH=amd64 go vet ./...` still
+type-checks it. CI runs the whole
 `internal/build` package under Node with
 `mdsmith-release test-js-wasm --all --require-js-only
 ./internal/build`, so an untagged one fails the build
@@ -336,12 +337,15 @@ when it fails there.
 CI cannot see a test that passes there only because
 its process never started, so tag that one too.
 
-Plan9 has only `rc`, not `sh`. A test that runs an
-`sh` script, an `sh` argv, or a recipe must first
-call `skipOnPlan9` or `skipWithoutPOSIXTools`.
-`TestProcTestFilesCoverPlan9` fails on an
-`internal/build` file that drops the `plan9` tag or
-skips neither way.
+Plan9 has only `rc`, not `sh`, and Windows has
+neither. In `internal/build`, a test that calls
+`writeScript` or `recipeCmd`, or passes an `"sh"`
+argv, must first call `skipWithoutPOSIXTools`. It
+skips on plan9 and on Windows. Call `skipOnPlan9`
+only in a test with its own Windows branch.
+`TestProcTestFilesCoverPlan9` fails when an
+`internal/build` spawn test file drops the `plan9`
+tag, or when one of its tests calls neither helper.
 
 ### Config Merge Semantics
 

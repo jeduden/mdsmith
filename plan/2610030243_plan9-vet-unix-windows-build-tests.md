@@ -87,5 +87,9 @@ errors only then.
       `TestProcTestFilesCoverPlan9`.
 - [x] Native and js/wasm runs of `internal/build` still
       pass.
+- [x] `docs/development/index.md` and its three
+      included copies name `unix || windows || plan9`
+      and the plan9 skip helpers.
+- [x] `mdsmith check .` passes.
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues
