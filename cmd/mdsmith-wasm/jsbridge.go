@@ -25,21 +25,26 @@ import (
 // that throws, or a Promise that is no constructor, would end the
 // program, and a handler it never ran would stay registered: newPromise
 // releases that handler and returns undefined instead, since Go cannot
-// throw to its caller. A constructor that passes the executor too few
-// arguments, or a reject that itself throws or is no function, would
-// end the program from inside the handler callback: a panic that leaves
-// a js.FuncOf callback unwinds into the Go frames below the JS that
-// called it. The handler swallows that failure, and the Promise stays
-// as the constructor left it. Any other panic is re-raised (recoverJS).
+// throw to its caller. A constructor that returns without running the
+// executor, which a spec Promise runs during construction, gets the
+// same treatment: its handler would otherwise stay registered for good,
+// and a later call to the released handler only logs an error. A
+// constructor that passes the executor too few arguments, or a reject
+// that itself throws or is no function, would end the program from
+// inside the handler callback: a panic that leaves a js.FuncOf callback
+// unwinds into the Go frames below the JS that called it. The handler
+// swallows that failure, and the Promise stays as the constructor left
+// it, never settling. Any other panic is re-raised (recoverJS).
 func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
-	var handler js.Func
-	ran := false
-	handler = funcOf(func(_ js.Value, pArgs []js.Value) any {
-		ran = true
+	// One heap object for the handler and its ran flag: the escaping
+	// callback captures both.
+	st := new(promiseHandler)
+	st.f = funcOf(func(_ js.Value, pArgs []js.Value) any {
+		st.ran = true
 		// Free this handler once the executor body returns; the executor
 		// runs to completion synchronously within Promise construction
 		// for our synchronous engine calls.
-		defer releaseFunc(handler)
+		defer releaseFunc(st.f)
 		defer recoverJS(func() {})
 		var resolveFn, rejectFn js.Value // undefined unless passed
 		if len(pArgs) > 0 {
@@ -56,12 +61,24 @@ func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
 	})
 	// A handler the constructor already ran released itself.
 	defer recoverJS(func() {
-		if !ran {
-			releaseFunc(handler)
+		if !st.ran {
+			releaseFunc(st.f)
 		}
 		p = js.Undefined()
 	})
-	return js.Global().Get("Promise").New(handler)
+	p = js.Global().Get("Promise").New(st.f)
+	if !st.ran {
+		releaseFunc(st.f)
+		return js.Undefined()
+	}
+	return p
+}
+
+// promiseHandler is newPromise's executor func and whether the Promise
+// constructor ran it.
+type promiseHandler struct {
+	f   js.Func
+	ran bool
 }
 
 // jsError constructs a JavaScript Error with the given message, the

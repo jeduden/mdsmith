@@ -347,8 +347,12 @@ implement `recover()` on WebAssembly.
 A script that replaces `Promise`, `Reflect.construct`, or
 `Reflect.apply` can make the engine's own JS calls throw. Go cannot
 throw to a caller, so one failed call ends only itself. A `Promise`
-that throws or is not a constructor makes `createSession` and each
-async method return `undefined`. A `resolve` that throws during
+that throws, is not a constructor, or returns without running its
+executor makes `createSession` and each async method return
+`undefined`. A `Promise` that passes the executor no `resolve` or
+`reject`, or whose `reject` throws, returns an object that never
+settles, because the engine has no working callback left to settle
+it. A `resolve` that throws during
 `createSession`, or a `Promise` that throws after it ran the executor,
 disposes the new session, so none stays registered.
 TinyGo has no `recover()` on WebAssembly, so there the exception still

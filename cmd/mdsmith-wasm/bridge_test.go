@@ -1244,6 +1244,8 @@ func swapPromise(t *testing.T, ctor js.Value) {
 // exists to dispose it. Not parallel: it swaps globalThis.Promise.
 func TestCreateSession_ResolveThrowRegistersNoSession(t *testing.T) {
 	sharedMethods()
+	released := recordReleases(t)
+	made := recordFuncs(t)
 	swapPromise(t, js.Global().Get("Function").New(`executor`,
 		`var self = this;
 		executor(function () { throw new TypeError("resolve"); },
@@ -1254,6 +1256,9 @@ func TestCreateSession_ResolveThrowRegistersNoSession(t *testing.T) {
 	rej := p.Get("rejection")
 	require.True(t, rej.InstanceOf(js.Global().Get("TypeError")), "create rejects with the thrown TypeError")
 	assert.Equal(t, before, sessions, "no session is left registered")
+	require.Len(t, *made, 1, "the executor func was registered")
+	require.Len(t, *released, 1, "and released once")
+	assert.True(t, (*released)[0].Equal((*made)[0].Value), "the executor func is the one released")
 }
 
 // TestCreateSession_CtorThrowAfterExecutorRegistersNoSession replaces
@@ -1275,9 +1280,10 @@ func TestCreateSession_CtorThrowAfterExecutorRegistersNoSession(t *testing.T) {
 
 // TestPromiseCtorThrow_KeepsProgramAndReleasesFunc replaces Promise with
 // a constructor that fails: one that throws before it calls the
-// executor, one that runs the executor and then throws, and a Promise
+// executor, one that runs the executor and then throws, a Promise
 // that is no function at all (syscall/js raises that as a
-// *js.ValueError, not a js.Error). An async method returns undefined
+// *js.ValueError, not a js.Error), and one that returns without ever
+// running the executor, which a spec Promise runs during construction. An async method returns undefined
 // instead of ending the program, and the executor's func is released
 // exactly once. Not parallel: it swaps Promise and the funcOf and
 // releaseFunc seams.
@@ -1291,6 +1297,7 @@ func TestPromiseCtorThrow_KeepsProgramAndReleasesFunc(t *testing.T) {
 		{"throws after the executor", fn.New(`executor`,
 			`executor(function () {}, function () {}); throw new TypeError("after");`)},
 		{"not a function", js.Undefined()},
+		{"never runs the executor", fn.New(`executor`, `this.ignored = executor;`)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			proxy := newTestProxy(t)
