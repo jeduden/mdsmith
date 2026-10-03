@@ -160,3 +160,9 @@ Follow-up tasks:
 4. Find out whether a plan9 runner, such as a 9front VM in
    CI, is practical. If so, split `skipWithoutPOSIXTools` so
    the `cp` tests run there.
+5. Tighten three known limits of the guard. Mutually
+   recursive helpers can get a verdict that depends on
+   check order. Example functions with an `// Output:`
+   comment are not checked. The test-name check repeats
+   `isTestName` from `internal/release/jswasmtests.go`,
+   which is unexported.
