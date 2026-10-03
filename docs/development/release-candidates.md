@@ -73,5 +73,16 @@ it deletes the run's draft and skips the publish. The
 run stays green with a notice, and the next merge cuts
 `v0.57.0-rc.1`.
 
+When the candidate publishes, the `pages` job dispatches
+`pages.yml` on `main` to redeploy mdsmith.dev. It builds
+the newest `main`, not the candidate's commit, so a docs
+merge that landed while the candidate built is never
+rolled back. The deploy runs
+`mdsmith-release sync-releases`, so the site's
+[release notes page](https://mdsmith.dev/releases/)
+lists the new candidate. The candidates for versions
+above the highest stable version appear below the stable
+releases there, each collapsed, with its notes.
+
 The build steps copy `release.yml`'s `build`, `vscode`,
 and `obsidian` jobs. Keep the two files in step.

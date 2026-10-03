@@ -35,6 +35,7 @@
 //	mdsmith-release pgo [workdir]
 //	mdsmith-release pull-site-assets
 //	mdsmith-release sync-messaging [--check]
+//	mdsmith-release sync-releases [--out <path>]
 //	mdsmith-release render-scoop-manifest <version> <checksums-file>
 //	mdsmith-release render-winget-manifest --out <dir> <version> <checksums-file>
 //
@@ -101,6 +102,8 @@ Commands:
                                   (or check drift).
   sync-channels [--check]         Regenerate website/data/channels.yaml from the channel files
                                   (or check drift).
+  sync-releases [--out <path>]    Write every published GitHub release's notes to
+                                  website/data/releases.json for the /releases/ page.
   render-scoop-manifest <ver> <checksums>
                                   Emit the Scoop bucket/mdsmith.json manifest to stdout.
   render-winget-manifest --out <dir> <ver> <checksums>
@@ -206,6 +209,8 @@ func dispatchGenerators(cmd, root string, rest []string) int {
 		return runSyncParityRules(root, rest)
 	case "sync-channels":
 		return runSyncChannels(root, rest)
+	case "sync-releases":
+		return runSyncReleases(root, rest)
 	case "render-scoop-manifest":
 		return runRenderScoopManifest(root, rest)
 	case "render-winget-manifest":

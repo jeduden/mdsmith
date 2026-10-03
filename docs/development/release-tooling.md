@@ -75,6 +75,7 @@ setup step.
 | `bench-check <base> <fresh>` | `release.yml` benchmark-publish + bench-regression-gate           |
 | `render-bench-page <out>`    | `release.yml` benchmark-publish                                   |
 | `pull-site-assets`           | `pages.yml` deploy job                                            |
+| `sync-releases [--out <p>]`  | `pages.yml` build-content + deploy jobs                           |
 | `sync-messaging [--check]`   | `ci.yml` messaging-drift; local sync                              |
 | `sync-channels [--check]`    | `ci.yml` channels-drift; local sync                               |
 

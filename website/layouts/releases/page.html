@@ -1,0 +1,72 @@
+{{- /* The /releases/ page (content/releases.md). Hugo picks this
+       template by content path, so the page needs no `layout:`
+       front-matter key (the website-page kind schema does not
+       declare one).
+
+       The notes come from website/data/releases.json, which
+       `mdsmith-release sync-releases` writes from the GitHub
+       releases API at deploy time; the file is gitignored. Stable
+       releases render first, newest open, then the release
+       candidates since the latest stable release, collapsed
+       below them. Without the data file
+       (a local or e2e build) the page says so and links to
+       GitHub Releases. */ -}}
+{{ define "main" }}
+  {{- $releases := hugo.Data.releases -}}
+  {{- $github := printf "https://github.com/%s/releases" site.Params.githubRepo -}}
+  <div class="container-prose releases-page">
+    <article class="docs-prose">
+      <h1>{{ .Title }}</h1>
+      {{ if .Params.summary }}<p class="lead">{{ .RenderString (dict "display" "inline") .Params.summary }}</p>{{ end }}
+      {{ .Content }}
+      {{ with $releases }}
+        <h2 id="stable">Stable releases</h2>
+        {{ range $i, $r := .stable }}
+          {{ partial "release-entry.html" (dict "page" $ "release" $r "open" (eq $i 0)) }}
+        {{ else }}
+          <p>No stable release has been published yet.</p>
+        {{ end }}
+        <h2 id="candidates">Release candidates</h2>
+        <p>Pre-releases of the next version, cut on every merge to <code>main</code> since the latest stable release. Each lists every change since that release.</p>
+        {{ range .candidates }}
+          {{ partial "release-entry.html" (dict "page" $ "release" . "open" false) }}
+        {{ else }}
+          <p>No release candidate since the latest stable release.</p>
+        {{ end }}
+      {{ else }}
+        <div class="callout releases-missing">
+          <span class="label">Not bundled</span>
+          This build does not include the release notes. Read them on GitHub Releases.
+        </div>
+      {{ end }}
+      <p class="releases-more"><a href="{{ $github }}" rel="noopener">All releases and downloads on GitHub →</a></p>
+    </article>
+  </div>
+  {{- /* Fragment navigation does not open a collapsed <details>,
+         so /releases/#v0.40.0 (or a heading id inside one) would
+         scroll to a closed card. Open the target's release and
+         re-scroll; with JS off the link still lands on the card. */}}
+  <script>
+    (() => {
+      const openTarget = () => {
+        // A malformed escape (#%E0) makes decodeURIComponent throw;
+        // treat it as no target so the hashchange listener below
+        // still registers.
+        let id = "";
+        try {
+          id = decodeURIComponent(location.hash.slice(1));
+        } catch {
+          return;
+        }
+        const el = id && document.getElementById(id);
+        const release = el && el.closest("details.release");
+        if (release && !release.open) {
+          release.open = true;
+          el.scrollIntoView();
+        }
+      };
+      openTarget();
+      window.addEventListener("hashchange", openTarget);
+    })();
+  </script>
+{{ end }}

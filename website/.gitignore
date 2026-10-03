@@ -5,3 +5,7 @@ resources/
 # truth lives in the repository's docs/ tree; this copy is a build
 # artifact.
 content/docs/
+
+# Written by `mdsmith-release sync-releases` from the GitHub
+# releases API at deploy time; the /releases/ page renders it.
+data/releases.json
