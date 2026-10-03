@@ -92,7 +92,8 @@ func TestRewriteHeadingsAddsScopedIDs(t *testing.T) {
 		{"repeat gets a counter", "## A\n## A", "#### A {#v1-a}\n#### A {#v1-a-1}"},
 		{"explicit id is scoped", "## A {#own}", "#### A {#v1-own}"},
 		{"explicit page id cannot collide", "## S {#stable}", "#### S {#v1-stable}"},
-		{"no slug, no id", "## !!!", "#### !!!"},
+		{"no slug falls back to heading", "## !!!", "#### !!! {#v1-heading}"},
+		{"emoji heading gets an id", "## 🎉\n## 🎉", "#### 🎉 {#v1-heading}\n#### 🎉 {#v1-heading-1}"},
 		{"empty heading", "##", "####"},
 		{"counter skips a taken id", "## A\n## A\n## A 1", "#### A {#v1-a}\n#### A {#v1-a-1}\n#### A 1 {#v1-a-1-1}"},
 		{"brace text is not an attribute", "## Fix {x}", "#### Fix {x} {#v1-fix-x}"},
@@ -212,19 +213,6 @@ func TestBuildSiteReleasesKeepsAllCandidatesWithoutStable(t *testing.T) {
 		{TagName: "v0.1.0-rc.2", Prerelease: true, PublishedAt: mustTime(t, "2026-01-02T00:00:00Z")},
 	})
 	assert.Len(t, got.Candidates, 2)
-}
-
-func TestCandidatesAfter(t *testing.T) {
-	cut := mustTime(t, "2026-01-02T00:00:00Z")
-	rs := []SiteRelease{
-		{Tag: "new", Published: mustTime(t, "2026-01-03T00:00:00Z")},
-		{Tag: "same", Published: cut},
-		{Tag: "old", Published: mustTime(t, "2026-01-01T00:00:00Z")},
-	}
-	got := candidatesAfter(rs, cut)
-	require.Len(t, got, 1)
-	assert.Equal(t, "new", got[0].Tag)
-	assert.Empty(t, candidatesAfter(nil, cut))
 }
 
 func TestBuildSiteReleasesTieBreaksOnTag(t *testing.T) {
@@ -409,7 +397,8 @@ func TestHeadingIDsNext(t *testing.T) {
 	assert.Equal(t, "v1-a-1", ids.next("A 1"))
 	assert.Equal(t, "v1-a", ids.next("A"))
 	assert.Equal(t, "v1-a-2", ids.next("A"))
-	assert.Empty(t, ids.next("!!!"))
+	assert.Equal(t, "v1-heading", ids.next("!!!"))
+	assert.Empty(t, ids.next(""), "an empty heading gets no id")
 
 	none := headingIDs{seen: map[string]bool{}}
 	assert.Empty(t, none.next("A"))
@@ -432,8 +421,10 @@ func TestHeadingIDsScoped(t *testing.T) {
 		{"B {#own}", "B {#v1-own}", true},
 		{"C {.c k=v}", "C {#v1-c .c k=v}", true},
 		{"D {#!!}", "D {#v1-d}", true},
-		{"!!! {.c}", "!!! {.c}", false},
-		{"!!!", "!!!", false},
+		{"!!! {.c}", "!!! {#v1-heading .c}", true},
+		{"!!!", "!!! {#v1-heading-1}", true},
+		{"", "", false},
+		{"{.c}", "{.c}", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {
@@ -474,7 +465,8 @@ func TestContainerPrefix(t *testing.T) {
 func TestHeadingIDsATX(t *testing.T) {
 	ids := headingIDs{prefix: "v1", seen: map[string]bool{}}
 	assert.Equal(t, "### A {#v1-a}", ids.atx("###", " A ##"))
-	assert.Equal(t, "###\t!!!", ids.atx("###", "\t!!!"))
+	assert.Equal(t, "### !!! {#v1-heading}", ids.atx("###", "\t!!!"))
+	assert.Equal(t, "###  ", ids.atx("###", "  "), "an empty heading keeps its line")
 }
 
 func TestFenceContainers(t *testing.T) {
@@ -726,4 +718,51 @@ func TestHeadingRewriterIsCloser(t *testing.T) {
 	assert.False(t, w.isCloser("~~~"), "other fence char")
 	assert.False(t, w.isCloser("``` x"), "text after the run")
 	assert.False(t, w.isCloser("> ```"), "markers are stripContainers' job")
+}
+
+func TestBuildSiteReleasesBackportKeepsNextLineCandidates(t *testing.T) {
+	got := BuildSiteReleases([]GitHubRelease{
+		{TagName: "v0.56.0", PublishedAt: mustTime(t, "2026-08-01T00:00:00Z")},
+		{TagName: "v0.57.0-rc.1", Prerelease: true, PublishedAt: mustTime(t, "2026-08-02T00:00:00Z")},
+		{TagName: "v0.55.2", PublishedAt: mustTime(t, "2026-08-03T00:00:00Z")},
+		{TagName: "v0.57.0-rc.2", Prerelease: true, PublishedAt: mustTime(t, "2026-08-04T00:00:00Z")},
+	})
+	tags := make([]string, 0, len(got.Candidates))
+	for _, c := range got.Candidates {
+		tags = append(tags, c.Tag)
+	}
+	assert.Equal(t, []string{"v0.57.0-rc.2", "v0.57.0-rc.1"}, tags,
+		"a later backport of an older line must not hide the next line's candidates")
+}
+
+func TestCandidatesAfterStable(t *testing.T) {
+	at := func(s string) time.Time { return mustTime(t, s) }
+	stable := []SiteRelease{
+		{Tag: "v0.55.2", Published: at("2026-08-03T00:00:00Z")},
+		{Tag: "v0.56.0", Published: at("2026-08-01T00:00:00Z")},
+	}
+	cands := []SiteRelease{
+		{Tag: "v0.57.0-rc.1", Published: at("2026-08-02T00:00:00Z")},
+		{Tag: "v0.56.0-rc.4", Published: at("2026-07-30T00:00:00Z")},
+		{Tag: "nightly-late", Published: at("2026-08-05T00:00:00Z")},
+		{Tag: "nightly-early", Published: at("2026-08-02T00:00:00Z")},
+	}
+	got := candidatesAfterStable(cands, stable)
+	tags := make([]string, 0, len(got))
+	for _, c := range got {
+		tags = append(tags, c.Tag)
+	}
+	assert.Equal(t, []string{"v0.57.0-rc.1", "nightly-late"}, tags,
+		"semver candidates compare by version; others by date against the newest stable")
+
+	noSemver := []SiteRelease{{Tag: "v0.49.0-marketplace", Published: at("2026-08-01T00:00:00Z")}}
+	got = candidatesAfterStable([]SiteRelease{
+		{Tag: "v0.1.0-rc.1", Published: at("2026-08-02T00:00:00Z")},
+		{Tag: "v0.0.9-rc.1", Published: at("2026-07-01T00:00:00Z")},
+	}, noSemver)
+	require.Len(t, got, 1, "without a plain vX.Y.Z stable the cut falls back to dates")
+	assert.Equal(t, "v0.1.0-rc.1", got[0].Tag)
+
+	all := []SiteRelease{{Tag: "v0.1.0-rc.1"}}
+	assert.Equal(t, all, candidatesAfterStable(all, nil), "no stable release keeps every candidate")
 }

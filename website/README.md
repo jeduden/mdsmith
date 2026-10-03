@@ -143,10 +143,12 @@ release-channel docs, gated against drift in CI:
 
 `/releases/` lists the notes of every published stable
 release, newest open. Below them come the release
-candidates published since the latest stable release,
-each collapsed. Older candidates are left out: each
-candidate's notes repeat every change since the last
-stable release, and that release already lists them.
+candidates for versions above the highest stable
+version, each collapsed. Older candidates are left out:
+each candidate's notes repeat every change since the
+last stable release, and that release already lists
+them. Versions are compared, not dates, so a later
+backport of an older line hides no candidate.
 Each entry links to its GitHub release for the
 downloads.
 

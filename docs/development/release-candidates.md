@@ -80,8 +80,8 @@ merge that landed while the candidate built is never
 rolled back. The deploy runs
 `mdsmith-release sync-releases`, so the site's
 [release notes page](https://mdsmith.dev/releases/)
-lists the new candidate. The candidates published since
-the latest stable release appear below the stable
+lists the new candidate. The candidates for versions
+above the highest stable version appear below the stable
 releases there, each collapsed, with its notes.
 
 The build steps copy `release.yml`'s `build`, `vscode`,

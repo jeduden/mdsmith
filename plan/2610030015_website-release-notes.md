@@ -52,10 +52,13 @@ the next doc edit.
    rewritten. A zero-width space splits each Hugo shortcode
    opener in a body: the page renders bodies with
    `RenderString`, which expands shortcodes and fails on an
-   unknown one. Candidates published before the latest stable
-   release are dropped: their cumulative notes are already in
-   that release, and keeping them would grow the page by one
-   changelog per merge.
+   unknown one. Candidates whose version is not above the
+   highest stable version are dropped: their cumulative notes
+   are already in that release, and keeping them would grow
+   the page by one changelog per merge. Comparing versions, not
+   dates, keeps a later backport (v0.55.2) from hiding the next
+   line's candidates. A heading with no letter or digit gets a
+   `heading` slug so it is scoped too.
 2. Add `release.SyncReleases` to list every release via the
    paginated `GET /repos/{repo}/releases` endpoint and write the
    result as JSON.

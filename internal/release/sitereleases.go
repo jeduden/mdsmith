@@ -80,9 +80,7 @@ func BuildSiteReleases(rels []GitHubRelease) SiteReleases {
 	}
 	sortNewestFirst(out.Stable)
 	sortNewestFirst(out.Candidates)
-	if len(out.Stable) > 0 {
-		out.Candidates = candidatesAfter(out.Candidates, out.Stable[0].Published)
-	}
+	out.Candidates = candidatesAfterStable(out.Candidates, out.Stable)
 	return out
 }
 
@@ -102,16 +100,42 @@ func defuseShortcodes(body string) string {
 	return shortcodeDefuser.Replace(body)
 }
 
-// candidatesAfter keeps the candidates published after cut, the
-// latest stable release. Each candidate's notes span every change
-// since the previous stable release, and one is cut per merge, so
-// keeping the candidates a stable release has already shipped would
-// grow the page by a whole changelog per merge, forever.
-func candidatesAfter(rs []SiteRelease, cut time.Time) []SiteRelease {
-	kept := rs[:0]
-	for _, r := range rs {
-		if r.Published.After(cut) {
-			kept = append(kept, r)
+// candidatesAfterStable keeps the candidates that are newer than
+// the stable releases. Each candidate's notes span every change since
+// the previous stable release, and one is cut per merge, so keeping
+// the candidates a stable release has already shipped would grow the
+// page by a whole changelog per merge, forever.
+//
+// A candidate with a v-prefixed semver tag is kept when its
+// major.minor.patch is above the highest plain vX.Y.Z stable tag, as
+// rc-version decides: a backport (v0.55.2) published after
+// v0.56.0-rc.3 then hides nothing of the next line. Any other
+// candidate, or every candidate when no stable tag is plain semver,
+// is kept when it was published after the newest stable release.
+// With no stable release, every candidate is kept.
+func candidatesAfterStable(cands, stable []SiteRelease) []SiteRelease {
+	if len(stable) == 0 {
+		return cands
+	}
+	tags := make([]string, 0, len(stable))
+	var newest time.Time
+	for _, r := range stable {
+		tags = append(tags, r.Tag)
+		if r.Published.After(newest) {
+			newest = r.Published
+		}
+	}
+	highest, haveHighest := latestStableBelow(tags, nil)
+	kept := make([]SiteRelease, 0, len(cands))
+	for _, c := range cands {
+		if m := versionCoreRE.FindStringSubmatch(c.Tag); haveHighest && m != nil {
+			if highest.less(coreFromMatch(m)) {
+				kept = append(kept, c)
+			}
+			continue
+		}
+		if c.Published.After(newest) {
+			kept = append(kept, c)
 		}
 	}
 	return kept
@@ -461,7 +485,10 @@ func (h *headingIDs) scoped(text string) (string, bool) {
 		}
 	}
 	if slug == "" {
-		return text, false
+		if label == "" {
+			return text, false
+		}
+		slug = fallbackHeadingSlug
 	}
 	id := "#" + h.claim(h.prefix+"-"+slug)
 	if idAt >= 0 {
@@ -472,12 +499,21 @@ func (h *headingIDs) scoped(text string) (string, bool) {
 	return label + " {" + strings.Join(attrs, " ") + "}", true
 }
 
+// fallbackHeadingSlug names a heading whose text has no letter or
+// digit ("## 🎉"), so it still gets a scoped id instead of an
+// automatic one that repeats across releases.
+const fallbackHeadingSlug = "heading"
+
 // next returns the scoped id for plain heading text, or "" when
-// there is no prefix or the text has no slug.
+// there is no prefix or the text is empty. Text without a letter or
+// digit slugs to fallbackHeadingSlug.
 func (h *headingIDs) next(text string) string {
-	slug := headingSlug(text)
-	if h.prefix == "" || slug == "" {
+	if h.prefix == "" || strings.TrimSpace(text) == "" {
 		return ""
+	}
+	slug := headingSlug(text)
+	if slug == "" {
+		slug = fallbackHeadingSlug
 	}
 	return h.claim(h.prefix + "-" + slug)
 }
