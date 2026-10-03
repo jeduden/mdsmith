@@ -337,7 +337,7 @@ func newTestProxyWithID(t *testing.T) (js.Value, int64) {
 // TestNewSessionProxy_KeysMatchSessionMethodNames ties the proxy's real
 // keys to sessionMethodNames, the list the native parity test checks
 // against the Go Session, so a key added to or dropped from
-// newSessionProxy alone cannot drift past that test. The order must
+// registerSession alone cannot drift past that test. The order must
 // match too, so Object.keys(session) is the same for every session.
 func TestNewSessionProxy_KeysMatchSessionMethodNames(t *testing.T) {
 	proxy := newTestProxy(t)
@@ -1207,4 +1207,74 @@ func TestSessionID_Int64On32BitInt(t *testing.T) {
 	assert.Equal(t, reflect.Int64, reflect.TypeOf(newSessionID).Out(0).Kind())
 	assert.Equal(t, reflect.Int64, reflect.TypeOf(sessions).Key().Kind())
 	assert.Equal(t, int64(1)<<53, int64(maxSessionID))
+}
+
+// swapPromise replaces globalThis.Promise with ctor for the rest of t.
+// A caller must not run in parallel.
+func swapPromise(t *testing.T, ctor js.Value) {
+	t.Helper()
+	g := js.Global()
+	old := g.Get("Promise")
+	t.Cleanup(func() { g.Set("Promise", old) })
+	g.Set("Promise", ctor)
+}
+
+// TestCreateSession_ResolveThrowRegistersNoSession replaces Promise with
+// a constructor whose resolve throws. The create is rejected, and the
+// session registerSession registered is released with it: no proxy
+// exists to dispose it. Not parallel: it swaps globalThis.Promise.
+func TestCreateSession_ResolveThrowRegistersNoSession(t *testing.T) {
+	sharedMethods()
+	swapPromise(t, js.Global().Get("Function").New(`executor`,
+		`var self = this;
+		executor(function () { throw new TypeError("resolve"); },
+			function (e) { self.rejection = e; });`))
+	before := maps.Clone(sessions)
+	opts := js.ValueOf(map[string]any{})
+	p := jsValue(t, createSession(js.Undefined(), []js.Value{opts}))
+	rej := p.Get("rejection")
+	require.True(t, rej.InstanceOf(js.Global().Get("TypeError")), "create rejects with the thrown TypeError")
+	assert.Equal(t, before, sessions, "no session is left registered")
+}
+
+// TestPromiseCtorThrow_KeepsProgramAndReleasesFunc replaces Promise with
+// a constructor that throws before it calls the executor. An async
+// method returns undefined instead of ending the program, and the
+// executor's func is released. Not parallel: it swaps Promise and the
+// releaseFunc seam.
+func TestPromiseCtorThrow_KeepsProgramAndReleasesFunc(t *testing.T) {
+	proxy := newTestProxy(t)
+	defer proxy.Call("dispose")
+	released := recordReleases(t)
+	made := recordFuncs(t)
+	swapPromise(t, js.Global().Get("Function").New(`throw new TypeError("ctor");`))
+
+	v := proxy.Call("check", "a.md", "# A\n")
+	assert.True(t, v.IsUndefined(), "a failed Promise construction yields undefined")
+	require.Len(t, *made, 1, "the executor func was registered")
+	assert.Len(t, *released, 1, "and released")
+}
+
+// TestSyncMethodJSException_ReturnsDisposedValue makes the Go-to-JS
+// call a sync method performs throw. The method returns its disposed
+// value instead of ending the program. Not parallel: it swaps the
+// shared method table.
+func TestSyncMethodJSException_ReturnsDisposedValue(t *testing.T) {
+	sharedMethods()
+	throwing := func(*mdsmith.Session, []js.Value) js.Value {
+		panic(js.Error{Value: js.Global().Get("TypeError").New("sync")})
+	}
+	_, id := newTestProxyWithID(t)
+	defer disposeSession(id)
+	list := sharedFunc(methodImpl{call: throwing, disposed: disposedEmptyList})
+	v := jsValue(t, list(js.Undefined(), []js.Value{js.ValueOf(id)}))
+	assert.Equal(t, 0, v.Length(), "capabilities-shaped method returns an empty list")
+	void := sharedFunc(methodImpl{call: throwing, disposed: disposedUndefined})
+	assert.True(t, jsValue(t, void(js.Undefined(), []js.Value{js.ValueOf(id)})).IsUndefined())
+	assert.PanicsWithValue(t, "go bug", func() {
+		sharedFunc(methodImpl{
+			call:     func(*mdsmith.Session, []js.Value) js.Value { panic("go bug") },
+			disposed: disposedUndefined,
+		})(js.Undefined(), []js.Value{js.ValueOf(id)})
+	}, "a Go panic is re-raised")
 }

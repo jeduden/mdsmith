@@ -2,7 +2,7 @@ package main
 
 // sessionMethodNames is the full set of methods the JS session proxy
 // exposes, in lower-camel JS form. A js/wasm test checks the keys of the
-// proxy the WASM bridge (newSessionProxy) builds against it, and a
+// proxy the WASM bridge (registerSession) builds against it, and a
 // native test compares it against pkg/mdsmith.Session's method set, so
 // the two surfaces can never drift name-for-name.
 //

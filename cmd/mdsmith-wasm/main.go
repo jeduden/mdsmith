@@ -148,7 +148,17 @@ func createSession(_ js.Value, args []js.Value) any {
 			reject(jsError(err.Error()))
 			return
 		}
-		resolve(newSessionProxy(sess))
+		proxy, id := registerSession(sess)
+		// A resolve that throws (a patched Promise) rejects the create
+		// through newPromise's guard; the proxy never reaches the caller,
+		// so free the session it registered before that guard runs.
+		defer func() {
+			if r := recover(); r != nil {
+				disposeSession(id)
+				panic(r)
+			}
+		}()
+		resolve(proxy)
 	})
 }
 
@@ -196,7 +206,7 @@ func isRecord(v js.Value) bool {
 // objectToString caches Object.prototype.toString for isRecord.
 var objectToString js.Value
 
-// newSessionProxy builds the JS object whose methods forward to the Go
+// registerSession builds the JS object whose methods forward to the Go
 // Session. Method names match the Go method names exactly; the WASM
 // smoke test and a native test assert the set equals
 // pkg/mdsmith.Session's capability list, and a js/wasm test asserts
@@ -224,9 +234,9 @@ var objectToString js.Value
 // bound and the token registered: a bind or register that throws (one
 // patched before load) rejects createSession without leaving a Session
 // no session object can dispose. A resolve that throws after this
-// returns still leaves one until JS collects the dropped session
-// object; plan 2610021800 tracks that.
-func newSessionProxy(sess *mdsmith.Session) js.Value {
+// returns is handled by createSession, which disposes the session by the
+// id this returns beside the proxy.
+func registerSession(sess *mdsmith.Session) (js.Value, int64) {
 	shared := sharedMethods()
 	id := newSessionID()
 	proxy := js.Global().Get("Object").New()
@@ -236,7 +246,7 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 		finalizer.register.Invoke(token, id, token)
 	}
 	sessions[id] = sess
-	return proxy
+	return proxy, id
 }
 
 // bindMethods sets each named method on proxy to its shared func bound
@@ -267,7 +277,7 @@ func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id 
 
 // bindTo is Function.prototype.call.bind(Function.prototype.bind), as
 // captured by sharedMethods: bindTo(f, this, ...args) is f.bind(this,
-// ...args) with no property lookup at call time. newSessionProxy binds
+// ...args) with no property lookup at call time. registerSession binds
 // through it, so a bind or call that another script installs after the
 // engine loads never receives a raw shared func, which would accept any
 // session id. It does not cover Reflect.apply: wasm_exec.js looks that
@@ -518,7 +528,7 @@ var (
 )
 
 // sharedMethods captures bindTo and registers the shared method funcs on
-// first use. main calls it before exposing the API; newSessionProxy
+// first use. main calls it before exposing the API; registerSession
 // calls it too, for the tests, which never run main. The funcs are
 // never released, so every session reuses the same handler-table
 // entries. Each takes the session id as args[0]; dispose also takes
@@ -605,10 +615,31 @@ func recoverJS(onJS func()) {
 func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 	return func(_ js.Value, args []js.Value) any {
 		if _, sess, rest := boundSession(args); sess != nil {
-			return impl.call(sess, rest)
+			return callOrDisposed(impl, sess, rest)
 		}
 		return impl.disposed()
 	}
+}
+
+// callOrDisposed runs impl.call, and returns impl.disposed() when it
+// raised a JS exception (a js.Error panic). Go code cannot throw a JS
+// exception to its caller: an unrecovered panic in a js.FuncOf callback
+// ends the program, so a sync method cannot rethrow. It returns the
+// disposed value instead, so one failed call ends only that call. Any
+// other panic is re-raised. TinyGo does not implement recover() on
+// WebAssembly, so there the exception still ends the program.
+func callOrDisposed(impl methodImpl, sess *mdsmith.Session, args []js.Value) (v js.Value) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		if _, ok := r.(js.Error); !ok {
+			panic(r)
+		}
+		v = impl.disposed()
+	}()
+	return impl.call(sess, args)
 }
 
 // drainFinalized disposes each session whose token JS has collected

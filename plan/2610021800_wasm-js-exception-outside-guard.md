@@ -1,7 +1,7 @@
 ---
 id: 2610021800
 title: Contain wasm JS exceptions outside the executor guard
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   `rejectOnJSError` covers only the Promise executor
@@ -74,13 +74,13 @@ what its exceptions break.
 
 ## Acceptance Criteria
 
-- [ ] A JS exception during create leaves `sessions`
+- [x] A JS exception during create leaves `sessions`
       the same size as before the create
-- [ ] A throwing `Promise` constructor or a throwing
+- [x] A throwing `Promise` constructor or a throwing
       sync-path call does not end the Go program
-- [ ] No func stays registered after either failure
-- [ ] All tests pass: `go test ./...` and
+- [x] No func stays registered after either failure
+- [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues, natively and with
       `GOOS=js GOARCH=wasm`

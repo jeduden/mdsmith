@@ -22,6 +22,7 @@ import (
 // needs its own guard.
 func newPromise(executor func(resolve, reject func(any))) js.Value {
 	var handler js.Func
+	released := false
 	handler = funcOf(func(_ js.Value, pArgs []js.Value) any {
 		resolveFn := pArgs[0]
 		rejectFn := pArgs[1]
@@ -31,11 +32,39 @@ func newPromise(executor func(resolve, reject func(any))) js.Value {
 		// the resolve/reject functions; the executor runs to
 		// completion synchronously within Promise construction for
 		// our synchronous engine calls.
-		defer releaseFunc(handler)
+		defer func() {
+			released = true
+			releaseFunc(handler)
+		}()
 		defer rejectOnJSError(reject)
 		executor(resolve, reject)
 		return js.Undefined()
 	})
+	return constructPromise(handler, func() {
+		if !released {
+			releaseFunc(handler)
+		}
+	})
+}
+
+// constructPromise is new Promise(handler). A JS exception the
+// constructor raises before it calls the executor (a patched Promise)
+// would end the program, and handler, never run, would stay registered:
+// it calls release and returns undefined instead, since Go cannot throw
+// to the caller. If the executor already ran, release is a second call
+// on a freed func, so newPromise's release callback skips it.
+func constructPromise(handler js.Func, release func()) (p js.Value) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		if _, ok := r.(js.Error); !ok {
+			panic(r)
+		}
+		release()
+		p = js.Undefined()
+	}()
 	return js.Global().Get("Promise").New(handler)
 }
 
