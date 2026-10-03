@@ -73,6 +73,12 @@ then reports it.
    `refactor.Move` refuses `a.md` because `b.md` exists in the
    pre-batch snapshot, so links to `a.md` stay stale and the
    warning does not count them.
+8. Guard `[[stem]]` rewrites against a stem two moves share.
+   One request moves `x/a.md` to `x/c.md` and `y/b.md` to
+   `y/c.md`. Each move checks the new stem against the
+   pre-batch snapshot, finds no `c`, and rewrites its links to
+   `[[c]]`. The stopgap keeps both, so after the batch every
+   such link names two files.
 
 ## Acceptance Criteria
 

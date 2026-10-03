@@ -45,7 +45,8 @@ func markdownFileOperationCapabilities() *workspaceServerCapabilities {
 // an edit that assumes another batch member stayed put is withheld:
 // overlapping edits from two moves (see dropConflictingTextEdits) and
 // any path rewrite one move plans inside another moved file whose
-// directory changes (see dropCrossMoveEdits); a `[[stem]]` rewrite
+// directory changes (see dropCrossMoveEdits), including a batch
+// member whose own move could not be planned; a `[[stem]]` rewrite
 // does not depend on where its file sits, so it is kept. A
 // window/logMessage warning names how many rewrites were withheld.
 // Batch-aware planning is tracked by plan 2610030438.
@@ -58,28 +59,7 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 	_, _, root := s.snapshotConfig()
 	ws := lspRenameWorkspace{s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex())}
 
-	var moves []plannedMove
-	planned := map[[2]string]bool{}
-	for _, f := range p.Files {
-		src := index.NormalizePath(workspaceRelative(root, uriToPath(f.OldURI)))
-		dst := index.NormalizePath(workspaceRelative(root, uriToPath(f.NewURI)))
-		pair := [2]string{src, dst}
-		if src == "" || dst == "" || src == dst || planned[pair] {
-			continue
-		}
-		planned[pair] = true
-		plan, err := refactor.Move(ws, src, dst)
-		if err != nil {
-			continue
-		}
-		key, _, _ := ws.Resolve(src)
-		moves = append(moves, plannedMove{
-			key:        key,
-			changesDir: path.Dir(src) != path.Dir(dst),
-			edits:      plan.Edits,
-			stemEdits:  refactor.WikilinkStemEdits(ws, src, dst),
-		})
-	}
+	moves := planRenameBatch(ws, root, p.Files)
 	merged := map[string][]textEdit{}
 	total, kept := 0, 0
 	for _, m := range moves {
@@ -111,11 +91,50 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 	_ = s.t.writeResponse(msg.ID, &workspaceEdit{Changes: merged})
 }
 
+// planRenameBatch runs refactor.Move for each rename in files, read
+// against root, and returns the planned moves in request order. A pair
+// with an empty or unchanged path is skipped, and a pair listed twice
+// is planned once. A file whose move cannot be planned (an overwritten
+// destination) is still recorded, with no edits, because the editor
+// moves it anyway: dropCrossMoveEdits then withholds another move's
+// path rewrite inside it. The `[[stem]]` subset is computed only for a
+// request that renames more than one file; dropCrossMoveEdits, its
+// only reader, drops nothing from a lone move.
+func planRenameBatch(ws refactor.Workspace, root string, files []fileRename) []plannedMove {
+	var moves []plannedMove
+	planned := map[[2]string]bool{}
+	for _, f := range files {
+		src := index.NormalizePath(workspaceRelative(root, uriToPath(f.OldURI)))
+		dst := index.NormalizePath(workspaceRelative(root, uriToPath(f.NewURI)))
+		pair := [2]string{src, dst}
+		if src == "" || dst == "" || src == dst || planned[pair] {
+			continue
+		}
+		planned[pair] = true
+		key, _, ok := ws.Resolve(src)
+		m := plannedMove{key: key, changesDir: path.Dir(src) != path.Dir(dst)}
+		plan, err := refactor.Move(ws, src, dst)
+		if err != nil {
+			if ok {
+				moves = append(moves, m)
+			}
+			continue
+		}
+		m.edits = plan.Edits
+		if len(files) > 1 {
+			m.stemEdits = refactor.WikilinkStemEdits(ws, src, dst)
+		}
+		moves = append(moves, m)
+	}
+	return moves
+}
+
 // plannedMove is one willRenameFiles move after planning: key is the
 // moved file's edit key (its URI as ws.Resolve returns it), changesDir
 // reports whether the move lands in another directory, edits is the
 // plan's per-key edit set, and stemEdits is its `[[stem]]` subset
-// (refactor.WikilinkStemEdits).
+// (refactor.WikilinkStemEdits). A move that could not be planned has
+// neither, and stemEdits is left nil for a single-file request.
 type plannedMove struct {
 	key        string
 	changesDir bool

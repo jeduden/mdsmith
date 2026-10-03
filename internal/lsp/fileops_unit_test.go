@@ -2,12 +2,14 @@ package lsp
 
 import (
 	"math/rand/v2"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/refactor"
 )
 
@@ -260,6 +262,74 @@ func TestDropCrossMoveEdits_KeepsStemRewrites(t *testing.T) {
 	merged := map[string][]textEdit{"a": {edAt(1, 0, 4, "own"), edAt(3, 0, 4, "c"), edAt(5, 0, 4, "x")}}
 	dropCrossMoveEdits(merged, moves)
 	assert.Equal(t, map[string][]textEdit{"a": {edAt(1, 0, 4, "own"), edAt(3, 0, 4, "c")}}, merged)
+}
+
+// memRenameWorkspace is a refactor.Workspace over an in-memory file
+// set: the production index behind refactor.IndexEdges, with Resolve
+// keying each file by its workspace-relative path.
+type memRenameWorkspace struct {
+	refactor.IndexEdges
+	files map[string]string
+}
+
+func newMemRenameWorkspace(files map[string]string) memRenameWorkspace {
+	rels := make([]string, 0, len(files))
+	for rel := range files {
+		rels = append(rels, rel)
+	}
+	idx := index.New(".")
+	idx.BuildSerial(rels, func(rel string) ([]byte, error) { return []byte(files[rel]), nil })
+	return memRenameWorkspace{IndexEdges: refactor.NewIndexEdges(idx), files: files}
+}
+
+func (w memRenameWorkspace) Resolve(file string) (string, []byte, bool) {
+	rel := index.NormalizePath(file)
+	src, ok := w.files[rel]
+	return rel, []byte(src), ok
+}
+
+func TestPlanRenameBatch(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	uri := func(rel string) string { return pathToURI(filepath.Join(root, filepath.FromSlash(rel))) }
+	ws := newMemRenameWorkspace(map[string]string{
+		"docs/a.md": "# A\n\n[b](b.md) and [[b]]\n",
+		"docs/b.md": "# B\n",
+		"x/y/a.md":  "# Old\n",
+	})
+	t.Run("an unplanned move is kept without edits", func(t *testing.T) {
+		t.Parallel()
+		moves := planRenameBatch(ws, root, []fileRename{
+			{OldURI: uri("docs/a.md"), NewURI: uri("x/y/a.md")},
+			{OldURI: uri("docs/b.md"), NewURI: uri("x/y/c.md")},
+		})
+		assert.Len(t, moves, 2)
+		assert.Equal(t, plannedMove{key: "docs/a.md", changesDir: true}, moves[0])
+		assert.Equal(t, "docs/b.md", moves[1].key)
+		assert.Len(t, moves[1].edits["docs/a.md"], 2, "one path and one stem rewrite")
+		assert.Len(t, moves[1].stemEdits["docs/a.md"], 1)
+	})
+	t.Run("skips empty, unchanged, repeated, and unreadable pairs", func(t *testing.T) {
+		t.Parallel()
+		pair := fileRename{OldURI: uri("docs/b.md"), NewURI: uri("docs/c.md")}
+		moves := planRenameBatch(ws, root, []fileRename{
+			pair, pair,
+			{OldURI: uri("docs/a.md"), NewURI: uri("docs/a.md")},
+			{OldURI: "untitled:x", NewURI: uri("docs/z.md")},
+			{OldURI: uri("gone.md"), NewURI: uri("gone2.md")},
+		})
+		assert.Len(t, moves, 1)
+		assert.False(t, moves[0].changesDir)
+	})
+	t.Run("a single rename skips the stem subset", func(t *testing.T) {
+		t.Parallel()
+		moves := planRenameBatch(ws, root, []fileRename{
+			{OldURI: uri("docs/b.md"), NewURI: uri("docs/c.md")},
+		})
+		assert.Len(t, moves, 1)
+		assert.Len(t, moves[0].edits["docs/a.md"], 2)
+		assert.Nil(t, moves[0].stemEdits)
+	})
 }
 
 func TestCompareTextEditsTopDown(t *testing.T) {

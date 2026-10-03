@@ -320,6 +320,32 @@ func TestWillRenameFilesBatchWithholdsOneSidedCrossEdit(t *testing.T) {
 	assert.Equal(t, "docs/sub/b.md", edit.Changes[rootURI+"/c.md"][0].NewText)
 }
 
+// TestWillRenameFilesBatchWithholdsEditInsideUnplannedMove locks that
+// a batch member whose own move cannot be planned still counts as a
+// moved file. refactor.Move refuses docs/a.md because x/y/a.md exists
+// (the editor still moves it, overwriting), yet moving docs/b.md to
+// x/y/b.md would spell docs/a.md's `b.md` as `../x/y/b.md` from docs/,
+// which names x/x/y/b.md once a.md sits in x/y/ — where `b.md`, left
+// alone, is already right.
+func TestWillRenameFilesBatchWithholdsEditInsideUnplannedMove(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\n[b](b.md)\n",
+		"docs/b.md": "# Beta\n",
+		"x/y/a.md":  "# Old\n",
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/x/y/a.md"},
+			{OldURI: rootURI + "/docs/b.md", NewURI: rootURI + "/x/y/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	assert.NotContains(t, edit.Changes, rootURI+"/docs/a.md")
+}
+
 // TestWillRenameFilesBatchKeepsCrossEditInSameDirectoryRename locks
 // that a file renamed within its directory still receives another
 // move's rewrite: the edit is spelled from that directory, which the
