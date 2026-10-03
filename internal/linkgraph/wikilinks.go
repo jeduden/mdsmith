@@ -421,14 +421,10 @@ func WikilinkStem(target string) (string, bool) {
 // the two cannot disagree on where a target ends. ok is false when no
 // wikilink starts there or the resolver refuses its target.
 func WikilinkBaseSpan(row []byte, bracketStart int) (start, end int, ok bool) {
-	if bracketStart < 0 || bracketStart >= len(row) {
+	raw, at, ok := wikilinkTargetAt(row, bracketStart)
+	if !ok {
 		return 0, 0, false
 	}
-	m := wikilinkRE.FindSubmatchIndex(row[bracketStart:])
-	if m == nil || m[0] != 0 {
-		return 0, 0, false
-	}
-	raw := row[bracketStart+m[4] : bracketStart+m[5]]
 	if _, ok := normalizeTarget(string(raw)); !ok {
 		return 0, 0, false
 	}
@@ -443,7 +439,36 @@ func WikilinkBaseSpan(row []byte, bracketStart int) (start, end int, ok bool) {
 			lo = j + 1
 		}
 	}
-	return bracketStart + m[4] + lo, bracketStart + m[4] + hi, true
+	return at + lo, at + hi, true
+}
+
+// WikilinkStemAt returns the stem key (as WikilinkStem returns it) of
+// the wikilink whose `[[` starts at bracketStart in row. ok is false
+// when no wikilink starts there or its target has no stem key: a typed
+// non-Markdown name, or a target the resolver refuses. A caller holding
+// an edge from an index that may be stale checks the key before it
+// edits the link at that column.
+func WikilinkStemAt(row []byte, bracketStart int) (string, bool) {
+	raw, _, ok := wikilinkTargetAt(row, bracketStart)
+	if !ok {
+		return "", false
+	}
+	return WikilinkStem(string(raw))
+}
+
+// wikilinkTargetAt returns the raw target of the wikilink whose `[[`
+// starts at bracketStart, read by the same match ExtractWikiLinks uses,
+// and the target's byte offset within row.
+func wikilinkTargetAt(row []byte, bracketStart int) (raw []byte, at int, ok bool) {
+	if bracketStart < 0 || bracketStart >= len(row) {
+		return nil, 0, false
+	}
+	m := wikilinkRE.FindSubmatchIndex(row[bracketStart:])
+	if m == nil || m[0] != 0 {
+		return nil, 0, false
+	}
+	at = bracketStart + m[4]
+	return row[at : bracketStart+m[5]], at, true
 }
 
 // wikilinkSearchKey splits target into the lookup parameters

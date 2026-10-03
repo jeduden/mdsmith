@@ -824,3 +824,26 @@ func TestNewWikilinkIndexFromPaths(t *testing.T) {
 	assert.Equal(t, walked.NamePaths("logo.png"), listed.NamePaths("logo.png"))
 	assert.Empty(t, listed.StemPaths("x"))
 }
+
+// TestWikilinkStemAt locks the stem key read at a `[[` column: folder,
+// anchor, alias, casing, and outer spaces do not change it (a space
+// before a trailing slash stays, as the index keys it), and a typed name, a
+// refused target, or a column with no wikilink returns ok=false.
+func TestWikilinkStemAt(t *testing.T) {
+	for row, want := range map[string]string{
+		"[[docs/Guide#a|G]]": "guide",
+		"[[guide.md]]":       "guide",
+		"[[ Guide ]]":        "guide",
+		"[[Guide /]]":        "guide ",
+	} {
+		got, ok := WikilinkStemAt([]byte(row), 0)
+		assert.True(t, ok, row)
+		assert.Equal(t, want, got, row)
+	}
+	for _, row := range []string{"[[logo.png]]", "[[../x]]", "x [[a]]", "[["} {
+		_, ok := WikilinkStemAt([]byte(row), 0)
+		assert.False(t, ok, row)
+	}
+	_, ok := WikilinkStemAt([]byte("[[a]]"), -1)
+	assert.False(t, ok)
+}

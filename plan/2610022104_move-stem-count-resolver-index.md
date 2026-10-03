@@ -101,6 +101,11 @@ out of plan 2610022044, which fixes the extension filter.
     failed) counts its listed files through
     `linkgraph.NewWikilinkIndexFromPaths`, so a listed
     same-stem sibling still blocks the rewrite.
+12. Before it edits the link at an incoming edge's column,
+    the planner reads that link's stem key with
+    `linkgraph.WikilinkStemAt` and skips it unless the key is
+    still the old stem, so an edge from a stale index cannot
+    rewrite a link to another file.
 
 PR #885 already retired `fileStem`: the move planner keys
 files with `linkgraph.FileStemKey`, the same function
@@ -120,6 +125,8 @@ files with `linkgraph.FileStemKey`, the same function
       as written
 - [x] With no wikilink index, a listed same-stem sibling
       still blocks the `[[stem]]` rewrite
+- [x] A stale edge whose column holds a link to another
+      stem is not rewritten
 - [x] The move planner reuses `linkgraph`'s base-segment
       span, Markdown test, and name key, with no copies
 - [x] All tests pass: `go test ./...`

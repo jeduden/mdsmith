@@ -500,3 +500,31 @@ func TestMove_ListsFilesOnce(t *testing.T) {
 	require.NotEmpty(t, plan.Edits["index.md"])
 	assert.Equal(t, 1, ws.files)
 }
+
+// TestAppendWikilinkStemEdits_StaleEdgeKeyMismatch locks that an edge
+// whose column now holds a link to another stem, or a typed name such
+// as `[[api.png]]`, is skipped, while a link still keyed by the old
+// stem in other casing or behind a folder is rewritten. `[[docs/Api /]]`
+// keys as `api ` (the space before the slash stays), so it never
+// reached api.md and is skipped too.
+func TestAppendWikilinkStemEdits_StaleEdgeKeyMismatch(t *testing.T) {
+	for row, want := range map[string]int{
+		"[[other]]":      0,
+		"[[api.png]]":    0,
+		"[[docs/API]]":   1,
+		"[[docs/Api /]]": 0,
+	} {
+		t.Run(row, func(t *testing.T) {
+			changes := map[string][]Edit{}
+			ws := stubWorkspace{
+				wikilinkEdges: []index.Edge{
+					{Kind: index.EdgeWikilink, SourceFile: "d.md", TargetLabel: "api", SourceLine: 1, SourceCol: 1},
+				},
+				files:   []string{"api.md", "d.md"},
+				sources: map[string][]byte{"d.md": []byte(row + "\n")},
+			}
+			appendWikilinkStemEdits(changes, ws, "api.md", "service.md")
+			assert.Len(t, changes["d.md"], want)
+		})
+	}
+}
