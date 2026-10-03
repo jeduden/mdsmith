@@ -10,8 +10,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // The fixture the Node harness (testdata/smoke.cjs) and this test both
@@ -127,9 +130,36 @@ var shippingBuild struct {
 	err  error
 }
 
+const (
+	buildDirPrefix = "mdsmith-wasm-test-"
+	// staleBuildDirAge is how old a build directory must be before a
+	// later run treats it as left by a killed run, not a concurrent one.
+	staleBuildDirAge = time.Hour
+)
+
+// sweepStaleBuildDirs removes build directories in tmp older than age.
+// A panic or a `go test -timeout` kill skips TestMain's cleanup, so the
+// next run reclaims what that one left.
+func sweepStaleBuildDirs(tmp string, age time.Duration) {
+	entries, err := os.ReadDir(tmp)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), buildDirPrefix) {
+			continue
+		}
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > age {
+			_ = os.RemoveAll(filepath.Join(tmp, e.Name()))
+		}
+	}
+}
+
 // TestMain removes the shared artifact's directory once every test has
-// run; a temp dir of one test would vanish before the next.
+// run; a temp dir of one test would vanish before the next. It first
+// sweeps directories that earlier killed runs left behind.
 func TestMain(m *testing.M) {
+	sweepStaleBuildDirs(os.TempDir(), staleBuildDirAge)
 	code := m.Run()
 	if shippingBuild.dir != "" {
 		_ = os.RemoveAll(shippingBuild.dir)
@@ -147,7 +177,7 @@ func buildWASM(t *testing.T) string {
 	t.Helper()
 	b := &shippingBuild
 	b.once.Do(func() {
-		if b.dir, b.err = os.MkdirTemp("", "mdsmith-wasm-test-"); b.err != nil {
+		if b.dir, b.err = os.MkdirTemp("", buildDirPrefix); b.err != nil {
 			return
 		}
 		b.path = filepath.Join(b.dir, "mdsmith.wasm")
@@ -251,4 +281,27 @@ func equalSmokeDiags(a, b []smokeDiag) bool {
 		}
 	}
 	return true
+}
+
+// TestSweepStaleBuildDirs checks that a directory a killed run left
+// behind is reclaimed, while a fresh one (a concurrent run's) and an
+// unrelated one survive.
+func TestSweepStaleBuildDirs(t *testing.T) {
+	tmp := t.TempDir()
+	old := time.Now().Add(-2 * time.Hour)
+	for name, mtime := range map[string]time.Time{
+		"mdsmith-wasm-test-old":   old,
+		"mdsmith-wasm-test-fresh": time.Now(),
+		"unrelated-old":           old,
+	} {
+		p := filepath.Join(tmp, name)
+		require.NoError(t, os.Mkdir(p, 0o755))
+		require.NoError(t, os.Chtimes(p, mtime, mtime))
+	}
+
+	sweepStaleBuildDirs(tmp, time.Hour)
+
+	assert.NoDirExists(t, filepath.Join(tmp, "mdsmith-wasm-test-old"))
+	assert.DirExists(t, filepath.Join(tmp, "mdsmith-wasm-test-fresh"))
+	assert.DirExists(t, filepath.Join(tmp, "unrelated-old"))
 }
