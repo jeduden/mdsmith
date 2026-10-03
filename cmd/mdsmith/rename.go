@@ -99,11 +99,10 @@ type cliRenameWorkspace struct {
 // WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
 // resolution reads, over the whole workspace root on disk rather than
 // the discovered file list, so a gitignored file still counts. It walks
-// the same lint.OpenRootFS view the MDS027 resolver walks.
+// the same lint.OpenRootFS view the MDS027 resolver walks. An empty or
+// unreadable root fails os.OpenRoot, so the walk fails and the index is
+// nil.
 func (w cliRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
-	if w.rootDir == "" {
-		return nil
-	}
 	return linkgraph.NewWikilinkIndex(lint.OpenRootFS(w.rootDir))
 }
 
