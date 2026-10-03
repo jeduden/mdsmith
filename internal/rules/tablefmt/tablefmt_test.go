@@ -1059,8 +1059,8 @@ func TestTable_StructFieldsRoundTrip(t *testing.T) {
 
 // TestSplitRowBytes_AllocBudget verifies that splitRowBytes pre-sizes the
 // cells slice via make([]string, 0, n), eliminating append-growth allocs
-// in the tryParseTable hot path. Budget: make + one string per cell; no
-// builder buffers and no slice-growth allocs.
+// in the tryParseTable hot path. Budget: one string(row) conversion plus
+// make; cells are substrings.
 func TestSplitRowBytes_AllocBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
@@ -1072,7 +1072,7 @@ func TestSplitRowBytes_AllocBudget(t *testing.T) {
 	_ = splitRowBytes(row) // warm up
 	const (
 		runs   = 100
-		budget = 4 // make(1) + one string per cell (3); no builder, no slice growth
+		budget = 2 // string(row) + make(1); cells are substrings
 	)
 	allocs := testing.AllocsPerRun(runs, func() {
 		_ = splitRowBytes(row)
@@ -1094,7 +1094,7 @@ func TestSplitRow_AllocBudget(t *testing.T) {
 	_ = splitRow(row) // warm up
 	const (
 		runs   = 100
-		budget = 7 // make(1) + builder-buf-growths(~3) + String()×3; no slice-growth allocs
+		budget = 1 // make(1); cells are substrings
 	)
 	allocs := testing.AllocsPerRun(runs, func() {
 		_ = splitRow(row)

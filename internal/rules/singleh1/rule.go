@@ -142,17 +142,11 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	}
 	h1s := collectH1s(f)
 
-	hasFMTitle := r.FrontMatterTitle != "" && r.frontMatterHasTitle(f)
-
-	// Determine which headings to demote.
+	// Every H1 after the first is demoted. A first H1 that conflicts with a
+	// front-matter title is reported by Check but never auto-fixed, so the
+	// front matter does not change what Fix demotes.
 	var toDemote []*ast.Heading
-	if hasFMTitle {
-		// The first H1 conflicts with front matter — no auto-fix for that.
-		// Extra H1s beyond the first still get demoted.
-		if len(h1s) > 1 {
-			toDemote = h1s[1:]
-		}
-	} else if len(h1s) > 1 {
+	if len(h1s) > 1 {
 		toDemote = h1s[1:]
 	}
 
