@@ -13,9 +13,10 @@
 //
 // With --all (RunJSWasmPackage) it instead runs every test a js/wasm
 // build compiles under Node, untagged ones included, and fails on any
-// go test failure or when no test passes, so an untagged test that
-// fails without a real process or pipe fails CI. Both modes need <pkg>
-// to match exactly one package.
+// go test failure, when no test passes, or when a test from the
+// js/wasm-only files skips, so an untagged test that fails without a
+// real process or pipe fails CI and one run covers both guarantees.
+// Both modes need <pkg> to match exactly one package.
 package release
 
 import (
@@ -98,8 +99,9 @@ func (d jsWasmDeps) output(env []string, args ...string) ([]byte, error) {
 // RunJSWasmPackage runs every test of pkg that a js/wasm build compiles
 // under Node, untagged ones included, and fails on any go test failure
 // or when no test passes. pkg must match exactly one package.
-// Unlike RunJSWasmTests it does not require each test to pass by name:
-// a skip is fine as long as some test passed.
+// Unlike RunJSWasmTests it does not require every test to pass: a skip
+// of a native-only test is fine as long as some test passed. A skip of
+// a test from the js/wasm-only files still fails, by name.
 func RunJSWasmPackage(root, pkg string, out io.Writer) error {
 	return runJSWasmPackageWith(osJSWasmDeps(root, out), pkg)
 }
@@ -120,8 +122,17 @@ func runJSWasmPackageWith(d jsWasmDeps, pkg string) error {
 	if err != nil {
 		return err
 	}
-	if err := onePackageOf(d, pkg); err != nil {
+	// The js/wasm-only tests must pass by name, as in the default mode;
+	// a skip elsewhere in the package (a native-only test) stays fine.
+	files, err := listJSOnlyFiles(d, "test-js-wasm --all", pkg, "-e")
+	if err != nil {
 		return err
+	}
+	var names []string
+	if len(files) > 0 {
+		if names, err = testsInFiles(d, files); err != nil {
+			return err
+		}
 	}
 	passed, err := d.goTest(pkg, execFlag)
 	if err != nil {
@@ -132,7 +143,7 @@ func runJSWasmPackageWith(d jsWasmDeps, pkg string) error {
 	if len(passed) == 0 {
 		return fmt.Errorf("no test passed in %s under js/wasm", pkg)
 	}
-	return nil
+	return checkAllPassed(names, passed)
 }
 
 // execFlag returns the go test -exec value for d.path and the
@@ -148,19 +159,6 @@ func (d jsWasmDeps) execFlag() (string, error) {
 		return "", errors.New("go env GOROOT: empty output")
 	}
 	return jsWasmExecFlag(d.path, goroot)
-}
-
-// onePackageOf errors unless pkg matches exactly one package under
-// js/wasm. The --all no-pass check sums passes across the whole run,
-// so across packages one with no pass would hide behind another's.
-// -e: a missing package still lists once, so go test reports why.
-func onePackageOf(d jsWasmDeps, pkg string) error {
-	out, err := d.output(jsWasmEnv, "list", "-e", "-f", pkgLineTemplate, pkg)
-	if err != nil {
-		return fmt.Errorf("go list (js/wasm) %s: %w", pkg, err)
-	}
-	pkgs, _ := splitListOutput(out)
-	return requireOnePackage("test-js-wasm --all", pkg, pkgs)
 }
 
 // requireOnePackage errors unless pkgs, the import paths pkg matched,
@@ -228,12 +226,29 @@ func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
 // matches bare test names, so across packages a same-named test that
 // passed elsewhere could stand in for a skipped one.
 func jsOnlyFilesOf(d jsWasmDeps, pkg string) ([]string, error) {
-	jsOut, err := d.output(jsWasmEnv, "list", "-f", testFilesTemplate, pkg)
+	files, err := listJSOnlyFiles(d, "test-js-wasm", pkg)
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no js/wasm-only test files in %s", pkg)
+	}
+	return files, nil
+}
+
+// listJSOnlyFiles is jsOnlyFilesOf without the empty-list error, for
+// both modes: --all also runs a package that has no js/wasm-only test
+// files. mode names the command in the one-package error; listFlags go
+// to the js/wasm `go list`. --all passes -e so a missing package still
+// lists once and go test reports why.
+func listJSOnlyFiles(d jsWasmDeps, mode, pkg string, listFlags ...string) ([]string, error) {
+	args := append(append([]string{"list"}, listFlags...), "-f", testFilesTemplate, pkg)
+	jsOut, err := d.output(jsWasmEnv, args...)
 	if err != nil {
 		return nil, fmt.Errorf("go list (js/wasm) %s: %w", pkg, err)
 	}
 	pkgs, jsFiles := splitListOutput(jsOut)
-	if err := requireOnePackage("test-js-wasm", pkg, pkgs); err != nil {
+	if err := requireOnePackage(mode, pkg, pkgs); err != nil {
 		return nil, err
 	}
 	// -e: a package whose non-test files are all js/wasm-only has no
@@ -244,11 +259,7 @@ func jsOnlyFilesOf(d jsWasmDeps, pkg string) ([]string, error) {
 		return nil, fmt.Errorf("go list (native) %s: %w", pkg, err)
 	}
 	_, nativeFiles := splitListOutput(nativeOut)
-	files := JSOnlyTestFiles(jsFiles, nativeFiles)
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no js/wasm-only test files in %s", pkg)
-	}
-	return files, nil
+	return JSOnlyTestFiles(jsFiles, nativeFiles), nil
 }
 
 // testsInFiles collects the Test functions declared across files, in

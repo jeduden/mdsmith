@@ -1,7 +1,7 @@
 ---
 id: 2610030244
 title: Run internal/build under js/wasm once in CI
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   CI's wasm job compiles and runs the js/wasm-only

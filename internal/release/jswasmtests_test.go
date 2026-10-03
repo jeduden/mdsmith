@@ -785,16 +785,17 @@ func TestRunJSWasmPackageWith(t *testing.T) {
 		d := jsWasmDeps{run: f.run, path: "/bin", out: &out}
 		require.NoError(t, runJSWasmPackageWith(d, "./p"))
 		assert.Contains(t, out.String(), "--- PASS: TestA")
-		require.Len(t, f.calls, 3)
+		require.Len(t, f.calls, 4)
 		assert.Equal(t, []string{"env", "GOROOT"}, f.calls[0])
-		assert.Equal(t, []string{"list", "-e", "-f", pkgLineTemplate, "./p"}, f.calls[1])
+		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[1])
 		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm"}, f.envs[1])
+		assert.Equal(t, []string{"list", "-e", "-f", testFilesTemplate, "./p"}, f.calls[2])
 		assert.Equal(t, []string{
 			"test", "-json",
 			"-exec=env -i 'PATH=/bin' '/go/lib/wasm/go_js_wasm_exec'",
 			"./p",
-		}, f.calls[2])
-		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm"}, f.envs[2])
+		}, f.calls[3])
+		assert.Equal(t, []string{"GOOS=js", "GOARCH=wasm"}, f.envs[3])
 	})
 
 	t.Run("a skipped test does not fail", func(t *testing.T) {
@@ -825,6 +826,33 @@ func TestRunJSWasmPackageWith(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "exit status 1")
 		assert.Contains(t, out.String(), "--- FAIL: TestA")
+	})
+}
+
+// TestRunJSWasmPackageWith_JSOnlySkips covers the --all guarantee that
+// a skipped test from the js/wasm-only files fails by name, while a
+// skipped test elsewhere in the package stays allowed.
+func TestRunJSWasmPackageWith_JSOnlySkips(t *testing.T) {
+	x := newJSWasmPkg(t)
+
+	t.Run("a skipped js/wasm-only test fails by name", func(t *testing.T) {
+		log := goTestJSON(t, append(result("pass", "TestA"), append(result("skip", "TestB"), result("pass", "TestN")...)...)...)
+		f := x.fake(log, nil)
+		err := runJSWasmPackageWith(x.deps(f, &bytes.Buffer{}), "./p")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not passed: TestB")
+	})
+
+	t.Run("all js/wasm-only tests passing succeeds, native skip allowed", func(t *testing.T) {
+		log := goTestJSON(t, append(result("pass", "TestA"), append(result("pass", "TestB"), result("skip", "TestN")...)...)...)
+		f := x.fake(log, nil)
+		require.NoError(t, runJSWasmPackageWith(x.deps(f, &bytes.Buffer{}), "./p"))
+	})
+
+	t.Run("a package with no js/wasm-only files still runs", func(t *testing.T) {
+		f := x.fake(goTestJSON(t, result("pass", "TestN")...), nil)
+		f.jsList = "#pkg example.com/p\n" + x.native + "\n"
+		require.NoError(t, runJSWasmPackageWith(x.deps(f, &bytes.Buffer{}), "./p"))
 	})
 }
 
