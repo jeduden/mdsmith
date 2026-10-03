@@ -264,6 +264,12 @@ binding is collected once that method is unreachable. A method taken
 off the object, such as `const { check } = session`, keeps its
 binding after the object is gone.
 
+The session object also has a non-enumerable own `then` property set
+to `undefined`. It is not in `Object.keys`. It stops the Promise
+resolve in `createSession` from reading a `then` that a page defined
+on `Object.prototype`, which would reject the create and strand the
+session.
+
 Each session also has a token object. `dispose` is bound to it, and a
 private `WeakMap` maps every other method to it, so the token lives
 while any method does and no call but `dispose()` carries it. A

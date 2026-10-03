@@ -1609,3 +1609,53 @@ func TestSyncMethodJSException_ReturnsUndefined(t *testing.T) {
 		}))(js.Undefined(), []js.Value{js.ValueOf(id)})
 	}, "a Go panic is re-raised")
 }
+
+// TestCreateSession_ThrowingThenGetterFreesSession defines a throwing
+// `then` getter on Object.prototype. A native Promise resolve reads
+// `then` on the session object and rejects the create with the thrown
+// error without throwing to Go, so the session must never reach that
+// lookup: sessions stays the size it was and no func is left live.
+// Not parallel: it swaps package seams and patches Object.prototype.
+func TestCreateSession_ThrowingThenGetterFreesSession(t *testing.T) {
+	oldOf, oldRelease := funcOf, releaseFunc
+	t.Cleanup(func() { funcOf, releaseFunc = oldOf, oldRelease })
+	var live []js.Value
+	funcOf = func(fn func(js.Value, []js.Value) any) js.Func {
+		f := oldOf(fn)
+		live = append(live, f.Value)
+		return f
+	}
+	releaseFunc = func(f js.Func) {
+		oldRelease(f)
+		for i, v := range live {
+			if v.Equal(f.Value) {
+				live = append(live[:i], live[i+1:]...)
+				return
+			}
+		}
+	}
+	// Warm-up registers the shared method funcs so they are not counted.
+	newTestProxy(t).Call("dispose")
+	baseFuncs, baseSessions := len(live), len(sessions)
+
+	objectProto := js.Global().Get("Object").Get("prototype")
+	getter := js.Global().Get("Function").New("throw new Error('then getter')")
+	desc := js.Global().Get("Object").New()
+	desc.Set("get", getter)
+	desc.Set("configurable", true)
+	js.Global().Get("Object").Call("defineProperty", objectProto, "then", desc)
+	defer js.Global().Get("Reflect").Call("deleteProperty", objectProto, "then")
+
+	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{js.ValueOf(map[string]any{})})))
+	if rejected {
+		// A rejected create must have freed its session already.
+		assert.Equal(t, "then getter", v.Get("message").String())
+	} else {
+		// The session never reaches the getter, so the create resolves
+		// and the caller owns a session it can dispose.
+		assert.True(t, v.Get("then").IsUndefined(), "session object carries its own then")
+		v.Call("dispose")
+	}
+	assert.Len(t, sessions, baseSessions, "sessions after the create")
+	assert.Len(t, live, baseFuncs, "live funcs after the create")
+}

@@ -1,7 +1,7 @@
 ---
 id: 2610031253
 title: Free the session when a then getter rejects the create
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   `createSession` resolves its Promise with the session
@@ -41,6 +41,17 @@ it rejects. The first changes the object's shape that
 [engine-api.md](../docs/background/concepts/engine-api.md)
 documents. The second costs a func per create.
 
+## Decision
+
+Chose the own `then: undefined` property. Go watching the
+Promise would register a func per create and still leave the
+session registered until the rejection handler runs. The
+property closes the path at the source, costs no func, and is
+non-enumerable, so `Object.keys(session)` and
+`TestRegisterSession_KeysMatchSessionMethodNames` are
+unchanged. The create now resolves instead of rejecting, and
+the caller owns a session it can dispose.
+
 ## Tasks
 
 1. Write a failing js/wasm test that defines a
@@ -58,11 +69,11 @@ documents. The second costs a func per create.
 
 ## Acceptance Criteria
 
-- [ ] A throwing `then` getter on `Object.prototype`
+- [x] A throwing `then` getter on `Object.prototype`
       leaves `sessions` the same size after a create
-- [ ] No func stays registered after that create
-- [ ] All tests pass: `go test ./...` and
+- [x] No func stays registered after that create
+- [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues, natively and with
       `GOOS=js GOARCH=wasm`

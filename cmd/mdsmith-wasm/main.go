@@ -282,12 +282,26 @@ func registerSession(sess *mdsmith.Session) (proxy js.Value, id int64, token js.
 	id = newSessionID()
 	proxy = js.Global().Get("Object").New()
 	token = js.Global().Get("Object").New()
+	hideThen(proxy)
 	bindMethods(proxy, sessionMethodNames(), shared, id, token)
 	if jsType(finalizer.register) == js.TypeFunction {
 		finalizer.register.Invoke(token, id, token)
 	}
 	sessions[id] = sess
 	return proxy, id, token
+}
+
+// hideThen gives proxy its own non-enumerable `then: undefined`. A
+// native Promise resolve reads `then` on the value it resolves with, and
+// a page-defined `then` on Object.prototype (a throwing getter) would
+// reject the create without throwing to Go, leaving the session
+// registered with no object to dispose it. An own property ends the
+// lookup before the prototype chain. defineProperty, not Set, keeps it
+// out of Object.keys and for-in. Plan 2610031253.
+func hideThen(proxy js.Value) {
+	desc := js.Global().Get("Object").New()
+	desc.Set("value", js.Undefined())
+	js.Global().Get("Object").Call("defineProperty", proxy, "then", desc)
 }
 
 // bindMethods sets each named method on proxy to its shared func bound
