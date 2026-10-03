@@ -577,14 +577,17 @@ func TestRefDefColonOffset(t *testing.T) {
 func TestAnchorEditForEdge_SkipPaths(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{"b.md": "[x](a.md#setup)\n"})
 	// Source file the workspace can't resolve.
-	_, _, ok := anchorEditForEdge(&edgeLines{ws: ws}, index.Edge{SourceFile: "gone.md", SourceLine: 1, SourceCol: 1}, "setup", "x")
+	_, _, ok := anchorEditForEdge(&edgeLines{ws: ws},
+		index.Edge{SourceFile: "gone.md", SourceLine: 1, SourceCol: 1}, "setup", "x")
 	assert.False(t, ok)
 	// SourceLine past EOF.
-	_, _, ok = anchorEditForEdge(&edgeLines{ws: ws}, index.Edge{SourceFile: "b.md", SourceLine: 99, SourceCol: 1}, "setup", "x")
+	_, _, ok = anchorEditForEdge(&edgeLines{ws: ws},
+		index.Edge{SourceFile: "b.md", SourceLine: 99, SourceCol: 1}, "setup", "x")
 	assert.False(t, ok)
 	// Fragment can't be located on the line.
 	ws2 := newMemWorkspace(map[string]string{"b.md": "no link here\n"})
-	_, _, ok = anchorEditForEdge(&edgeLines{ws: ws2}, index.Edge{SourceFile: "b.md", SourceLine: 1, SourceCol: 1}, "setup", "x")
+	_, _, ok = anchorEditForEdge(&edgeLines{ws: ws2},
+		index.Edge{SourceFile: "b.md", SourceLine: 1, SourceCol: 1}, "setup", "x")
 	assert.False(t, ok)
 }
 

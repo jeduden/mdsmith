@@ -66,8 +66,8 @@ func TestWikilinkReaches(t *testing.T) {
 // matches a link starting at offset 0, so a stale column whose row
 // holds a link further on is refused without scanning to it.
 func TestWikilinkAtRE_Anchored(t *testing.T) {
-	assert.Nil(t, wikilinkAtRE.FindIndex([]byte("x [[a]]")))
-	assert.Equal(t, []int{0, 5}, wikilinkAtRE.FindIndex([]byte("[[a]] x")))
-	assert.Equal(t, []int{0, 6}, wikilinkAtRE.FindIndex([]byte("![[a]]")))
+	assert.Nil(t, wikilinkAtRE.FindStringIndex("x [[a]]"))
+	assert.Equal(t, []int{0, 5}, wikilinkAtRE.FindStringIndex("[[a]] x"))
+	assert.Equal(t, []int{0, 6}, wikilinkAtRE.FindStringIndex("![[a]]"))
 	assert.Equal(t, wikilinkRE.NumSubexp(), wikilinkAtRE.NumSubexp())
 }
