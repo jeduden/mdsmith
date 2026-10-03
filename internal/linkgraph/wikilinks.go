@@ -193,6 +193,16 @@ func WikilinkIndexFor(cache *runcache.Cache, rootKey string, root fs.FS) *Wikili
 	return idx
 }
 
+// WikilinkIndexAtDir walks the directory dir on disk for the wikilink
+// index, through the lint.OpenRootFS view the MDS027 resolver walks.
+// It is the entry point for a caller holding a root path and no run
+// cache (the CLI, the LSP move guard, `mdsmith list backlinks`), so the
+// way that root is opened stays in one place. An empty or unreadable
+// dir builds no index (nil).
+func WikilinkIndexAtDir(dir string) *WikilinkIndex {
+	return WikilinkIndexFor(nil, "", lint.OpenRootFS(dir))
+}
+
 // WikilinkIndex is a pre-built directory of every file under one
 // workspace root, keyed for the two lookup shapes ResolveWikiLink
 // uses: stem (.md/.markdown filename minus extension) and exact
