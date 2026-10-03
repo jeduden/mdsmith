@@ -61,26 +61,33 @@ func adjustLinks(content string, includedFilePath string, includingFilePath stri
 // leaving fenced code block lines unchanged. Link rewriting is applied on
 // full lines so that backticks inside link text (e.g. [`name`](target))
 // do not prevent matching. Fences are read as the heading scan reads
-// them (fenceScan), with an open paragraph approximated as "the line
-// before was non-blank text outside a fence".
+// them (fenceScan), and the paragraph a list marker line must interrupt
+// is tracked as the heading scan tracks it (nextPara), approximated by
+// reading every non-blank line outside a fence, headings and HTML
+// included, as paragraph text.
 func rewriteSkippingCode(content string, rewriteFn func(string) string) string {
-	var b strings.Builder
+	var sb strings.Builder
 	var fence fenceScan
-	text := false
+	para := paraNone
 
 	lines := strings.SplitAfter(content, "\n")
 	for _, line := range lines {
-		if fence.step(util.StringToReadOnlyBytes(line), text) {
-			text = false
-			b.WriteString(line)
+		b := util.StringToReadOnlyBytes(strings.TrimSuffix(line, "\n"))
+		if fence.step(b, para == paraRoot) {
+			para = paraNone
+			sb.WriteString(line)
 			continue
 		}
-		text = strings.TrimSpace(line) != ""
+		if strings.TrimSpace(line) == "" {
+			para = paraNone
+		} else {
+			para = nextPara(b, para)
+		}
 
-		b.WriteString(rewriteFn(line))
+		sb.WriteString(rewriteFn(line))
 	}
 
-	return b.String()
+	return sb.String()
 }
 
 // shouldSkip returns true for targets that must not be rewritten.

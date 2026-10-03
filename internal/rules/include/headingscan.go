@@ -61,7 +61,7 @@ func (h *headingScan) step(line string) (level, text int) {
 	case h.pi:
 		h.pi = strings.TrimSpace(line) != "?>"
 		return 0, 0
-	case h.fence.step(b, wasPara != paraNone):
+	case h.fence.step(b, wasPara == paraRoot):
 		return 0, 0
 	}
 	if level := setextLevel(line); level > 0 {

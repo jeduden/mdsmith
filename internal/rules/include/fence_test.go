@@ -122,3 +122,15 @@ func TestFenceScan_StepLeavesLineIntact(t *testing.T) {
 		assert.Equal(t, l, string(b), "input mutated")
 	}
 }
+
+// TestRewriteSkippingCode_SiblingItemFence pins that a list marker line
+// after a list item's paragraph opens its fence: the paragraph-interrupt
+// rule binds only a document-level paragraph, so "2. ```" there starts a
+// sibling item rather than continuing the text.
+func TestRewriteSkippingCode_SiblingItemFence(t *testing.T) {
+	up := func(s string) string { return strings.ToUpper(s) }
+	assert.Equal(t, "1. A\n2. ```\n   x\n   ```\nY\n",
+		rewriteSkippingCode("1. a\n2. ```\n   x\n   ```\ny\n", up))
+	assert.Equal(t, "> Q\n2. ```\n   x\n   ```\nY\n",
+		rewriteSkippingCode("> q\n2. ```\n   x\n   ```\ny\n", up))
+}

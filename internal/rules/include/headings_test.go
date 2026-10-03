@@ -484,3 +484,12 @@ func TestApplyShift_BacktickInInfoIsNotAFence(t *testing.T) {
 	got := applyShift([]string{"```x``` is code.", "", "## Head"}, 1)
 	assert.Equal(t, []string{"```x``` is code.", "", "### Head"}, got)
 }
+
+// TestAdjustHeadings_SiblingItemFence pins that a fence opened on a
+// sibling ordered item ("2. ```" after "1. a") is code: the comment
+// inside it keeps its level, and the heading after it shifts.
+func TestAdjustHeadings_SiblingItemFence(t *testing.T) {
+	src := "1. a\n2. ```\n   # x\n   ```\n# y\n"
+	assert.Equal(t, "1. a\n2. ```\n   # x\n   ```\n## y\n", adjustHeadingsByOffset(src, 1))
+	assert.True(t, astHasHeading(src))
+}

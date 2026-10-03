@@ -35,10 +35,13 @@ type fenceScan struct {
 }
 
 // step advances the scan past b and reports whether b belongs to a
-// fenced code block (opener, content, or closer). inPara reports that a
-// paragraph is open, which a list marker line must be able to interrupt
-// before it can open a fence.
-func (s *fenceScan) step(b []byte, inPara bool) bool {
+// fenced code block (opener, content, or closer). rootPara reports that
+// a document-level paragraph is open, which a list marker line must be
+// able to interrupt before it can open a fence. A paragraph inside a
+// list item or block quote binds no marker line: goldmark applies the
+// interrupt rule only to a paragraph in the parent the new list opens
+// in, so "2. ```" after "1. a" starts a sibling item and its fence.
+func (s *fenceScan) step(b []byte, rootPara bool) bool {
 	if s.fence.Char != 0 {
 		if !s.leavesItem(b) {
 			if mdfence.CloseIn(b, s.fence, 0, s.base) {
@@ -53,7 +56,7 @@ func (s *fenceScan) step(b []byte, inPara bool) bool {
 		s.fence, s.base = f, 0
 		return true
 	}
-	if inPara && !lint.StartsInterruptingBlock(b) {
+	if rootPara && !lint.StartsInterruptingBlock(b) {
 		return false
 	}
 	if col, off, ok := listContent(b); ok {
