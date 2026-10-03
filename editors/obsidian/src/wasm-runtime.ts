@@ -119,17 +119,19 @@ interface MdsmithFactory {
   createSession(opts: {
     workspace: Record<string, string>;
     configYAML: string;
-  }): Promise<WasmSession>;
+  }): Promise<WasmSession | undefined> | undefined;
   version: string;
 }
 
 // WasmSession is the JS proxy the factory returns. Method names match
 // the Go Session exactly (see cmd/mdsmith-wasm/methods.go).
+// An async method yields undefined instead of a Promise when a patched
+// globalThis.Promise breaks its Promise construction.
 interface WasmSession {
-  check(uri: string, source: string): Promise<Diagnostic[]>;
-  fix(uri: string, source: string): Promise<FixResult>;
-  rename(uri: string, source: string, as: string, oldName: string, newName: string): Promise<RefactorPlan>;
-  move(src: string, dst: string): Promise<RefactorPlan>;
+  check(uri: string, source: string): Promise<Diagnostic[]> | undefined;
+  fix(uri: string, source: string): Promise<FixResult> | undefined;
+  rename(uri: string, source: string, as: string, oldName: string, newName: string): Promise<RefactorPlan> | undefined;
+  move(src: string, dst: string): Promise<RefactorPlan> | undefined;
   capabilities(): string[];
   invalidate(uri: string, content?: string): void;
   dispose(): void;
@@ -247,6 +249,14 @@ export async function createRuntime(
     workspace: opts.workspace,
     configYAML: opts.configYAML ?? "",
   });
+  // The engine yields undefined instead of a session when a patched
+  // globalThis.Promise breaks its Promise construction, since Go cannot
+  // throw to its caller. Fail here, not on the first check().
+  if (!session || typeof session.check !== "function") {
+    throw new Error(
+      "mdsmith: createSession returned no session (is globalThis.Promise patched?)",
+    );
+  }
   return new SessionRuntime(session);
 }
 
@@ -257,6 +267,20 @@ export async function createRuntime(
 // simply re-evaluates wasm_exec.js and re-instantiates.
 export function __resetEngineForTests(): void {
   enginePromise = undefined;
+}
+
+// settle turns an engine async method's result into a Promise that
+// rejects with a clear error when the engine returned undefined (a
+// patched globalThis.Promise broke its Promise construction). It is an
+// async function, so the Promise it returns is the intrinsic one even
+// while globalThis.Promise is patched.
+async function settle<T>(method: string, result: Promise<T> | undefined): Promise<T> {
+  if (result === undefined) {
+    throw new Error(
+      `mdsmith: ${method} returned no result (is globalThis.Promise patched?)`,
+    );
+  }
+  return await result;
 }
 
 // SessionRuntime adapts a WasmSession to the MdsmithRuntime facade. It
@@ -276,22 +300,22 @@ class SessionRuntime implements MdsmithRuntime {
 
   check(uri: string, source: string): Promise<Diagnostic[]> {
     this.assertLive();
-    return this.session.check(uri, source);
+    return settle("check", this.session.check(uri, source));
   }
 
   fix(uri: string, source: string): Promise<FixResult> {
     this.assertLive();
-    return this.session.fix(uri, source);
+    return settle("fix", this.session.fix(uri, source));
   }
 
   rename(uri: string, source: string, as: string, oldName: string, newName: string): Promise<RefactorPlan> {
     this.assertLive();
-    return this.session.rename(uri, source, as, oldName, newName);
+    return settle("rename", this.session.rename(uri, source, as, oldName, newName));
   }
 
   move(src: string, dst: string): Promise<RefactorPlan> {
     this.assertLive();
-    return this.session.move(src, dst);
+    return settle("move", this.session.move(src, dst));
   }
 
   invalidate(uri: string, content?: string): void {

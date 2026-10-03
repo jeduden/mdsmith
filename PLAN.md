@@ -3,10 +3,7 @@
 <?catalog
 glob: ["plan/*.md", "!plan/proto.md"]
 sort: numeric:id
-header: |
-
-  | ID  | Status | Model | Title |
-  |-----|--------|-------|-------|
+header: "\n| ID  | Status | Model | Title |\n|-----|--------|-------|-------|\n"
 row: "| {id} | {status} | {model} | [{title}]({filename}) |"
 footer: ""
 ?>
@@ -287,7 +284,7 @@ footer: ""
 | 2610021439 | ✅     | sonnet | [Make wasm session method bindings unforgeable](plan/2610021439_wasm-unforgeable-session-binding.md)                                                    |
 | 2610021452 | ✅     | sonnet | [Free wasm sessions dropped without dispose](plan/2610021452_wasm-collect-dropped-sessions.md)                                                          |
 | 2610021556 | ✅     | sonnet | [Declare each wasm method's disposed result next to its impl](plan/2610021556_wasm-disposed-result-table.md)                                            |
-| 2610021800 | 🔲     | sonnet | [Contain wasm JS exceptions outside the executor guard](plan/2610021800_wasm-js-exception-outside-guard.md)                                             |
+| 2610021800 | ✅     | sonnet | [Contain wasm JS exceptions outside the executor guard](plan/2610021800_wasm-js-exception-outside-guard.md)                                             |
 | 2610021849 | 🔲     | sonnet | [Kill running build recipes when the CLI is interrupted](plan/2610021849_cancel-recipes-on-cli-interrupt.md)                                            |
 | 2610021917 | 🔲     | sonnet | [Replace the per-platform kill maps with a per-recipe group killer](plan/2610021917_per-recipe-group-killer.md)                                         |
 | 2610022044 | ✅     | sonnet | [Count only Markdown files as wikilink stem siblings on move](plan/2610022044_move-stem-count-markdown-only.md)                                         |
@@ -297,4 +294,6 @@ footer: ""
 | 2610030244 | ✅     | sonnet | [Run internal/build under js/wasm once in CI](plan/2610030244_dedupe-build-js-wasm-ci-run.md)                                                           |
 | 2610030438 | 🔲     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
 | 2610030846 | ✅     | sonnet | [Silence wasm session finalizers after the Go program exits](plan/2610030846_wasm-finalizer-after-exit.md)                                              |
+| 2610031253 | 🔲     | sonnet | [Free the session when a then getter rejects the create](plan/2610031253_wasm-create-then-getter-leak.md)                                               |
+| 2610031420 | 🔲     | sonnet | [Free the func when js.FuncOf's wrapper call throws](plan/2610031420_wasm-funcof-wrapper-throw-leak.md)                                                 |
 <?/catalog?>

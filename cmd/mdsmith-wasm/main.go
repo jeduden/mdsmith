@@ -27,14 +27,19 @@ import (
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
-// funcOf and releaseFunc are js.FuncOf and js.Func.Release behind seams
-// so a test can count the funcs a session's lifecycle registers (every
-// Promise executor, plus the shared method funcs on first use), which
-// syscall/js keeps private.
+// funcOf and releaseFunc are js.FuncOf (through trackCallback) and
+// js.Func.Release behind seams so a test can count the funcs a
+// session's lifecycle registers (every Promise executor, plus the
+// shared method funcs on first use), which syscall/js keeps private.
 var (
-	funcOf      = js.FuncOf
+	funcOf      = trackedFuncOf
 	releaseFunc = js.Func.Release
 )
+
+// trackedFuncOf is js.FuncOf for a callback trackCallback counts.
+func trackedFuncOf(fn func(js.Value, []js.Value) any) js.Func {
+	return js.FuncOf(trackCallback(fn))
+}
 
 // version is set via ldflags at build time (-X main.version=v1.0.0),
 // mirroring cmd/mdsmith. It falls back to the module build info.
@@ -67,11 +72,12 @@ var apiFuncs = map[string]func(js.Value, []js.Value) any{
 }
 
 // exposeAPI builds the mdsmith global: version, plus each of apiFuncs
-// registered through drainFirst. The funcs are never released.
+// registered through drainFirst and the funcOf seam. The funcs are
+// never released.
 func exposeAPI() js.Value {
 	api := map[string]any{"version": resolveVersion()}
 	for name, fn := range apiFuncs {
-		api[name] = js.FuncOf(drainFirst(fn))
+		api[name] = funcOf(drainFirst(fn))
 	}
 	return js.ValueOf(api)
 }
@@ -80,8 +86,16 @@ func exposeAPI() js.Value {
 // JS has collected since the last call (drainFinalized). Every func
 // exposeAPI and sharedMethods register goes through it, so no entry
 // point can forget the drain.
+//
+// It is also the last guard of every entry point: a JS-side failure
+// (recoverJS) that no inner guard turned into a result makes the call
+// return undefined instead of ending the program, since Go cannot throw
+// to its caller. Any other panic is re-raised. TinyGo does not
+// implement recover() on WebAssembly, so there the failure still ends
+// the program.
 func drainFirst(fn func(js.Value, []js.Value) any) func(js.Value, []js.Value) any {
-	return func(this js.Value, args []js.Value) any {
+	return func(this js.Value, args []js.Value) (v any) {
+		defer recoverJS(func() { v = js.Undefined() })
 		drainFinalized()
 		return fn(this, args)
 	}
@@ -113,7 +127,14 @@ func resolveVersion() string {
 // returning factory keeps the JS API ergonomic. exposeAPI registers it
 // through drainFirst.
 func createSession(_ js.Value, args []js.Value) any {
-	return newPromise(func(resolve, reject func(any)) {
+	// Every session the executor registered. A patched Promise can run
+	// the executor more than once, so this is a list, not one id.
+	type registered struct {
+		id    int64
+		token js.Value
+	}
+	var created []registered
+	p := newPromise(func(resolve, reject func(any)) {
 		if len(args) < 1 || !isRecord(args[0]) {
 			reject(jsError("createSession requires an options object"))
 			return
@@ -148,8 +169,38 @@ func createSession(_ js.Value, args []js.Value) any {
 			reject(jsError(err.Error()))
 			return
 		}
-		resolve(newSessionProxy(sess))
+		proxy, sid, tok := registerSession(sess)
+		created = append(created, registered{sid, tok})
+		// A resolve that throws (a patched Promise) rejects the create
+		// through newPromise's guard; the proxy never reaches the caller,
+		// so free the session it registered before that guard runs. It
+		// frees this run's own session: a patched resolve can run the
+		// executor again and register another one.
+		resolved := false
+		defer func() {
+			if !resolved {
+				releaseSessionKeepingPanic(sid, tok)
+			}
+		}()
+		resolve(proxy)
+		resolved = true
 	})
+	// A Promise constructor that ran the executor and then threw makes
+	// newPromise return undefined: the session objects reached only the
+	// constructor's resolve, never the caller, so free every session it
+	// registered. Every session is disposed before any unregister call, so
+	// one that throws (a patched Reflect.apply) cannot leave a later
+	// session registered. Disposing is idempotent, so one the executor's
+	// own defer already freed is freed again harmlessly.
+	if p.IsUndefined() {
+		for _, c := range created {
+			disposeSession(c.id)
+		}
+		for _, c := range created {
+			releaseSession(c.id, c.token)
+		}
+	}
+	return p
 }
 
 // workspaceFromJS converts a JS Record<string,string> into the
@@ -196,7 +247,7 @@ func isRecord(v js.Value) bool {
 // objectToString caches Object.prototype.toString for isRecord.
 var objectToString js.Value
 
-// newSessionProxy builds the JS object whose methods forward to the Go
+// registerSession builds the JS object whose methods forward to the Go
 // Session. Method names match the Go method names exactly; the WASM
 // smoke test and a native test assert the set equals
 // pkg/mdsmith.Session's capability list, and a js/wasm test asserts
@@ -224,19 +275,19 @@ var objectToString js.Value
 // bound and the token registered: a bind or register that throws (one
 // patched before load) rejects createSession without leaving a Session
 // no session object can dispose. A resolve that throws after this
-// returns still leaves one until JS collects the dropped session
-// object; plan 2610021800 tracks that.
-func newSessionProxy(sess *mdsmith.Session) js.Value {
+// returns is handled by createSession, which releases the session by the
+// id and finalizer token this returns beside the proxy.
+func registerSession(sess *mdsmith.Session) (proxy js.Value, id int64, token js.Value) {
 	shared := sharedMethods()
-	id := newSessionID()
-	proxy := js.Global().Get("Object").New()
-	token := js.Global().Get("Object").New()
+	id = newSessionID()
+	proxy = js.Global().Get("Object").New()
+	token = js.Global().Get("Object").New()
 	bindMethods(proxy, sessionMethodNames(), shared, id, token)
 	if jsType(finalizer.register) == js.TypeFunction {
 		finalizer.register.Invoke(token, id, token)
 	}
 	sessions[id] = sess
-	return proxy
+	return proxy, id, token
 }
 
 // bindMethods sets each named method on proxy to its shared func bound
@@ -247,7 +298,7 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 // them while a call carries only the id. A name with no shared func
 // (the names list and sharedMethodImpls drifted) is left off rather
 // than passed to bind, which would throw on every createSession;
-// TestNewSessionProxy_KeysMatchSessionMethodNames reports the drift.
+// TestRegisterSession_KeysMatchSessionMethodNames reports the drift.
 func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int64, token js.Value) {
 	for _, name := range names {
 		f, ok := shared[name]
@@ -267,7 +318,7 @@ func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id 
 
 // bindTo is Function.prototype.call.bind(Function.prototype.bind), as
 // captured by sharedMethods: bindTo(f, this, ...args) is f.bind(this,
-// ...args) with no property lookup at call time. newSessionProxy binds
+// ...args) with no property lookup at call time. registerSession binds
 // through it, so a bind or call that another script installs after the
 // engine loads never receives a raw shared func, which would accept any
 // session id. It does not cover Reflect.apply: wasm_exec.js looks that
@@ -424,7 +475,8 @@ type methodImpl struct {
 // Error(err.Error()) — carrying mdsmith.ErrorCode(err) as its `code`
 // when the error has one — otherwise the Promise resolves to toJS(value). A
 // JS exception raised on the way (a js.Error panic) rejects with that
-// exception, as newPromise does for every executor. After dispose the
+// exception, and a *js.ValueError with an Error, as newPromise does for
+// every executor. After dispose the
 // Promise rejects with Error("session disposed").
 func asyncMethod(fn func(sess *mdsmith.Session, args []js.Value) (any, error)) methodImpl {
 	if fn == nil {
@@ -518,7 +570,7 @@ var (
 )
 
 // sharedMethods captures bindTo and registers the shared method funcs on
-// first use. main calls it before exposing the API; newSessionProxy
+// first use. main calls it before exposing the API; registerSession
 // calls it too, for the tests, which never run main. The funcs are
 // never released, so every session reuses the same handler-table
 // entries. Each takes the session id as args[0]; dispose also takes
@@ -585,14 +637,13 @@ func bindFinalizer(ctor js.Value) (f sessionFinalizer) {
 // JS exception from Call, Invoke, or New) or a *js.ValueError (a Value
 // method on the wrong type, such as Get on undefined). Any other panic
 // is re-raised unchanged, so a Go bug is not mistaken for a host
-// without the JS feature.
+// without the JS feature. So is a JS-side failure that unwound out of
+// a JS-to-Go callback (escapedCallback): Go cannot resume below a
+// callback whose JS caller is still on the wasm stack.
 func recoverJS(onJS func()) {
-	switch r := recover(); r.(type) {
-	case nil:
-	case js.Error, *js.ValueError:
+	if r := recover(); r != nil {
+		repanicUnlessJS(r)
 		onJS()
-	default:
-		panic(r)
 	}
 }
 
@@ -601,7 +652,11 @@ func recoverJS(onJS func()) {
 // after the bound id, and returns impl.disposed() when that
 // session is disposed or args[0] is no live id, so impl.call never
 // runs without a live session. sharedMethods registers it through
-// drainFirst.
+// drainFirst, which turns a JS-side failure in impl.call into
+// undefined: Go cannot throw to its caller, and the disposed value
+// would make a live session's failed call look like a disposed one.
+// An async method's call is newPromise, which recovers its own JS
+// failures.
 func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 	return func(_ js.Value, args []js.Value) any {
 		if _, sess, rest := boundSession(args); sess != nil {
@@ -781,16 +836,43 @@ func proxyInvalidate(sess *mdsmith.Session, args []js.Value) {
 // does nothing. sharedMethods registers it through drainFirst.
 func proxyDispose(_ js.Value, args []js.Value) any {
 	if id, sess, rest := boundSession(args); sess != nil {
-		// Cancel the registered finalizer first, so the registry drops
-		// its entry with the session. A direct call with no token
-		// object, or a host with no FinalizationRegistry, has nothing
-		// to cancel.
-		if len(rest) > 0 && jsType(rest[0]) == js.TypeObject && jsType(finalizer.unregister) == js.TypeFunction {
-			finalizer.unregister.Invoke(rest[0])
+		var token js.Value // undefined for a direct call with no token
+		if len(rest) > 0 {
+			token = rest[0]
 		}
-		disposeSession(id)
+		releaseSession(id, token)
 	}
 	return js.Undefined()
+}
+
+// releaseSession disposes the session with the given id and cancels
+// the finalizer registered for token, so the registry drops its entry
+// with the session. It disposes before the JS call, so an unregister
+// that throws (a patched Reflect.apply; the caller's guard turns it into
+// a rejection or undefined) cannot keep the session alive. A token that
+// is no object, or a host with no FinalizationRegistry, has nothing to
+// cancel.
+func releaseSession(id int64, token js.Value) {
+	disposeSession(id)
+	if jsType(token) == js.TypeObject && jsType(finalizer.unregister) == js.TypeFunction {
+		finalizer.unregister.Invoke(token)
+	}
+}
+
+// releaseSessionKeepingPanic is releaseSession for cleanup that runs
+// while another JS-side failure is unwinding, such as createSession's
+// executor after a patched resolve threw. A JS-side failure from
+// finalizer.unregister (a patched Reflect.apply) is swallowed so it
+// does not replace the failure in flight, which is the reason the
+// caller sees; the session is already disposed by then. Any other
+// panic is re-raised (repanicUnlessJS).
+func releaseSessionKeepingPanic(id int64, token js.Value) {
+	defer func() {
+		if r := recover(); r != nil {
+			repanicUnlessJS(r)
+		}
+	}()
+	releaseSession(id, token)
 }
 
 // disposedAsyncReason is the message of a disposed async method's
