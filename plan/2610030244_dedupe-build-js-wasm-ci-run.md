@@ -1,7 +1,7 @@
 ---
 id: 2610030244
 title: Run internal/build under js/wasm once in CI
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   CI's wasm job compiles and runs the js/wasm-only
@@ -45,9 +45,9 @@ extra js/wasm compile and Node run of the package.
 
 ## Acceptance Criteria
 
-- [ ] `test-js-wasm --all ./internal/build` fails when
+- [x] `test-js-wasm --all ./internal/build` fails when
       a js/wasm-only test skips.
-- [ ] The wasm CI job runs `internal/build` under Node
+- [x] The wasm CI job runs `internal/build` under Node
       once.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

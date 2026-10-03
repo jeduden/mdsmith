@@ -829,6 +829,15 @@ func TestRunJSWasmPackageWith(t *testing.T) {
 	})
 }
 
+// results joins result events for action, test pairs given in order.
+func results(pairs ...string) []testEvent {
+	var evs []testEvent
+	for i := 0; i+1 < len(pairs); i += 2 {
+		evs = append(evs, result(pairs[i], pairs[i+1])...)
+	}
+	return evs
+}
+
 // TestRunJSWasmPackageWith_JSOnlySkips covers the --all guarantee that
 // a skipped test from the js/wasm-only files fails by name, while a
 // skipped test elsewhere in the package stays allowed.
@@ -836,7 +845,7 @@ func TestRunJSWasmPackageWith_JSOnlySkips(t *testing.T) {
 	x := newJSWasmPkg(t)
 
 	t.Run("a skipped js/wasm-only test fails by name", func(t *testing.T) {
-		log := goTestJSON(t, append(result("pass", "TestA"), append(result("skip", "TestB"), result("pass", "TestN")...)...)...)
+		log := goTestJSON(t, results("pass", "TestA", "skip", "TestB", "pass", "TestN")...)
 		f := x.fake(log, nil)
 		err := runJSWasmPackageWith(x.deps(f, &bytes.Buffer{}), "./p")
 		require.Error(t, err)
@@ -844,7 +853,7 @@ func TestRunJSWasmPackageWith_JSOnlySkips(t *testing.T) {
 	})
 
 	t.Run("all js/wasm-only tests passing succeeds, native skip allowed", func(t *testing.T) {
-		log := goTestJSON(t, append(result("pass", "TestA"), append(result("pass", "TestB"), result("skip", "TestN")...)...)...)
+		log := goTestJSON(t, results("pass", "TestA", "pass", "TestB", "skip", "TestN")...)
 		f := x.fake(log, nil)
 		require.NoError(t, runJSWasmPackageWith(x.deps(f, &bytes.Buffer{}), "./p"))
 	})
