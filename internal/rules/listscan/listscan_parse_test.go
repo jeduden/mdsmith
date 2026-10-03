@@ -139,3 +139,11 @@ func BenchmarkParse_NestedList(b *testing.B) {
 		Parse(lines)
 	}
 }
+
+// ParseLists must not build the flat item slice that Parse builds.
+func TestParseLists_SkipsFlatSlice(t *testing.T) {
+	lines := split(strings.Repeat("- a\n  - b\n", 20))
+	parseAllocs := testing.AllocsPerRun(20, func() { Parse(lines) })
+	listsAllocs := testing.AllocsPerRun(20, func() { ParseLists(lines) })
+	assert.Less(t, listsAllocs, parseAllocs)
+}

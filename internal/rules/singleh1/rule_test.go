@@ -509,3 +509,16 @@ func TestCheck_Clean_ReturnsNil(t *testing.T) {
 		assert.Nil(t, (&Rule{FrontMatterTitle: "title"}).Check(f), src)
 	}
 }
+
+func TestRule_hasFMTitle(t *testing.T) {
+	f := newFile(t, "---\ntitle: Hi\n---\n# Hi\n")
+	assert.True(t, (&Rule{FrontMatterTitle: "title"}).hasFMTitle(f))
+	assert.False(t, (&Rule{}).hasFMTitle(f), "no field configured")
+	assert.False(t, (&Rule{FrontMatterTitle: "name"}).hasFMTitle(f), "field absent")
+}
+
+// An escaped YAML key decodes to the configured field name.
+func TestCheck_EscapedTitleKey_Conflicts(t *testing.T) {
+	f := newFile(t, "---\n\"t\\u0069tle\": X\n---\n# H1\n")
+	assert.Len(t, (&Rule{FrontMatterTitle: "title"}).Check(f), 1)
+}

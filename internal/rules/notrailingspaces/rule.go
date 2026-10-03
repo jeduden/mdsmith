@@ -25,7 +25,8 @@ func (r *Rule) Category() string { return "whitespace" }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	// Built on the first candidate line, so clean files never pay for it.
+	// Fetched on the first candidate line, saving a map lookup on every
+	// other line.
 	var codeLines map[int]struct{}
 	codeLinesReady := false
 	var diags []lint.Diagnostic
