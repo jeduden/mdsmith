@@ -138,3 +138,22 @@ itself while it runs. `recoverJS` and
 `rejectOnJSError` re-raise a JS failure when the
 stack holds more `syscall/js.handleEvent` frames than
 running callbacks.
+
+## Review Round 3
+
+A third review found that a `Promise` whose `resolve`
+ran the `createSession` executor again could free the
+wrong session. The executor's own defer freed the shared
+last id, and a constructor that threw afterwards freed
+only the last session it registered. Each executor run
+now frees its own session, and the late release frees
+every session the create registered.
+
+`recoverJS` and `rejectOnJSError` now classify a
+recovered panic through one helper, `repanicUnlessJS`,
+so the two guards cannot drift. `js.FuncOf` stores a
+handler before it builds the JS wrapper, so a throwing
+`Reflect.apply` there leaks the entry where this
+package cannot release it. Plan
+[2610031420](2610031420_wasm-funcof-wrapper-throw-leak.md)
+covers that path.

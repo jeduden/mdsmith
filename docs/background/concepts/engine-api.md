@@ -349,12 +349,19 @@ A script that replaces `Promise`, `Reflect.construct`, or
 throw to a caller, so one failed call ends only itself. A `Promise`
 that throws, is not a constructor, or returns without running its
 executor makes `createSession` and each async method return
-`undefined`. A `Promise` that passes the executor no `resolve` or
-`reject`, or whose `reject` throws, returns an object that never
-settles, because the engine has no working callback left to settle
-it. A `resolve` that throws during
+`undefined`. A `Promise` that passes the executor no `reject`, or a
+`reject` that throws, returns an object that never settles when the
+call fails, because the engine has no working callback left to settle
+it. A missing or throwing `resolve` turns a success into a rejection.
+A `resolve` that throws during
 `createSession`, or a `Promise` that throws after it ran the executor,
-disposes the new session, so none stays registered.
+disposes every session the create registered, so none stays
+registered.
+
+A patched `Reflect.apply` that throws while the engine builds a
+callback's JS wrapper leaks that callback. `syscall/js` stores it in
+the Go runtime's func table first, then drops its id on the panic.
+Plan 2610031420 tracks that leak.
 
 A `Reflect.get` or `Reflect.set` patched so that Go cannot read a
 callback's arguments or write back its result still ends the program.
