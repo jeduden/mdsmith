@@ -45,7 +45,7 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 		return
 	}
 	_, _, root := s.snapshotConfig()
-	ws := lspRenameWorkspace{s: s, idx: s.ensureIndex()}
+	ws := lspRenameWorkspace{s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex())}
 
 	merged := map[string][]textEdit{}
 	for _, f := range p.Files {
