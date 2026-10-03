@@ -20,51 +20,47 @@ import (
 // A JS exception the executor raises (a js.Error panic) rejects the
 // Promise with that exception (see rejectOnJSError), so no executor
 // needs its own guard.
-func newPromise(executor func(resolve, reject func(any))) js.Value {
+//
+// A patched Promise can fail around the executor too. A constructor
+// that throws, or a Promise that is no constructor, would end the
+// program, and a handler it never ran would stay registered: newPromise
+// releases that handler and returns undefined instead, since Go cannot
+// throw to its caller. A constructor that passes the executor too few
+// arguments, or a reject that itself throws or is no function, would
+// end the program from inside the handler callback: a panic that leaves
+// a js.FuncOf callback unwinds into the Go frames below the JS that
+// called it. The handler swallows that failure, and the Promise stays
+// as the constructor left it. Any other panic is re-raised (recoverJS).
+func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
 	var handler js.Func
-	released := false
+	ran := false
 	handler = funcOf(func(_ js.Value, pArgs []js.Value) any {
-		resolveFn := pArgs[0]
-		rejectFn := pArgs[1]
+		ran = true
+		// Free this handler once the executor body returns; the executor
+		// runs to completion synchronously within Promise construction
+		// for our synchronous engine calls.
+		defer releaseFunc(handler)
+		defer recoverJS(func() {})
+		var resolveFn, rejectFn js.Value // undefined unless passed
+		if len(pArgs) > 0 {
+			resolveFn = pArgs[0]
+		}
+		if len(pArgs) > 1 {
+			rejectFn = pArgs[1]
+		}
 		resolve := func(v any) { resolveFn.Invoke(v) }
 		reject := func(v any) { rejectFn.Invoke(v) }
-		// Free this handler now that the executor body has captured
-		// the resolve/reject functions; the executor runs to
-		// completion synchronously within Promise construction for
-		// our synchronous engine calls.
-		defer func() {
-			released = true
-			releaseFunc(handler)
-		}()
 		defer rejectOnJSError(reject)
 		executor(resolve, reject)
 		return js.Undefined()
 	})
-	return constructPromise(handler, func() {
-		if !released {
+	// A handler the constructor already ran released itself.
+	defer recoverJS(func() {
+		if !ran {
 			releaseFunc(handler)
 		}
-	})
-}
-
-// constructPromise is new Promise(handler). A JS exception the
-// constructor raises before it calls the executor (a patched Promise)
-// would end the program, and handler, never run, would stay registered:
-// it calls release and returns undefined instead, since Go cannot throw
-// to the caller. If the executor already ran, release is a second call
-// on a freed func, so newPromise's release callback skips it.
-func constructPromise(handler js.Func, release func()) (p js.Value) {
-	defer func() {
-		r := recover()
-		if r == nil {
-			return
-		}
-		if _, ok := r.(js.Error); !ok {
-			panic(r)
-		}
-		release()
 		p = js.Undefined()
-	}()
+	})
 	return js.Global().Get("Promise").New(handler)
 }
 

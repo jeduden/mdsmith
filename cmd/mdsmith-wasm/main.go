@@ -80,8 +80,16 @@ func exposeAPI() js.Value {
 // JS has collected since the last call (drainFinalized). Every func
 // exposeAPI and sharedMethods register goes through it, so no entry
 // point can forget the drain.
+//
+// It is also the last guard of every entry point: a JS-side failure
+// (recoverJS) that no inner guard turned into a result makes the call
+// return undefined instead of ending the program, since Go cannot throw
+// to its caller. Any other panic is re-raised. TinyGo does not
+// implement recover() on WebAssembly, so there the failure still ends
+// the program.
 func drainFirst(fn func(js.Value, []js.Value) any) func(js.Value, []js.Value) any {
-	return func(this js.Value, args []js.Value) any {
+	return func(this js.Value, args []js.Value) (v any) {
+		defer recoverJS(func() { v = js.Undefined() })
 		drainFinalized()
 		return fn(this, args)
 	}
@@ -152,13 +160,14 @@ func createSession(_ js.Value, args []js.Value) any {
 		// A resolve that throws (a patched Promise) rejects the create
 		// through newPromise's guard; the proxy never reaches the caller,
 		// so free the session it registered before that guard runs.
+		resolved := false
 		defer func() {
-			if r := recover(); r != nil {
+			if !resolved {
 				disposeSession(id)
-				panic(r)
 			}
 		}()
 		resolve(proxy)
+		resolved = true
 	})
 }
 
@@ -622,23 +631,16 @@ func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 }
 
 // callOrDisposed runs impl.call, and returns impl.disposed() when it
-// raised a JS exception (a js.Error panic). Go code cannot throw a JS
+// raised a JS-side failure (recoverJS). Go code cannot throw a JS
 // exception to its caller: an unrecovered panic in a js.FuncOf callback
 // ends the program, so a sync method cannot rethrow. It returns the
-// disposed value instead, so one failed call ends only that call. Any
-// other panic is re-raised. TinyGo does not implement recover() on
+// disposed value instead, so one failed call ends only that call. The
+// disposed value can fail the same way (a patched Reflect.construct
+// fails every array); drainFirst then returns undefined. Any other
+// panic is re-raised. TinyGo does not implement recover() on
 // WebAssembly, so there the exception still ends the program.
 func callOrDisposed(impl methodImpl, sess *mdsmith.Session, args []js.Value) (v js.Value) {
-	defer func() {
-		r := recover()
-		if r == nil {
-			return
-		}
-		if _, ok := r.(js.Error); !ok {
-			panic(r)
-		}
-		v = impl.disposed()
-	}()
+	defer recoverJS(func() { v = impl.disposed() })
 	return impl.call(sess, args)
 }
 
@@ -812,14 +814,16 @@ func proxyInvalidate(sess *mdsmith.Session, args []js.Value) {
 // does nothing. sharedMethods registers it through drainFirst.
 func proxyDispose(_ js.Value, args []js.Value) any {
 	if id, sess, rest := boundSession(args); sess != nil {
-		// Cancel the registered finalizer first, so the registry drops
-		// its entry with the session. A direct call with no token
-		// object, or a host with no FinalizationRegistry, has nothing
-		// to cancel.
+		// Dispose before the JS call below, so an unregister that throws
+		// (a patched Reflect.apply; drainFirst turns it into undefined)
+		// cannot keep the session alive.
+		disposeSession(id)
+		// Cancel the registered finalizer, so the registry drops its
+		// entry with the session. A direct call with no token object, or
+		// a host with no FinalizationRegistry, has nothing to cancel.
 		if len(rest) > 0 && jsType(rest[0]) == js.TypeObject && jsType(finalizer.unregister) == js.TypeFunction {
 			finalizer.unregister.Invoke(rest[0])
 		}
-		disposeSession(id)
 	}
 	return js.Undefined()
 }

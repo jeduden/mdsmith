@@ -1238,27 +1238,113 @@ func TestCreateSession_ResolveThrowRegistersNoSession(t *testing.T) {
 }
 
 // TestPromiseCtorThrow_KeepsProgramAndReleasesFunc replaces Promise with
-// a constructor that throws before it calls the executor. An async
-// method returns undefined instead of ending the program, and the
-// executor's func is released. Not parallel: it swaps Promise and the
-// releaseFunc seam.
+// a constructor that fails: one that throws before it calls the
+// executor, one that runs the executor and then throws, and a Promise
+// that is no function at all (syscall/js raises that as a
+// *js.ValueError, not a js.Error). An async method returns undefined
+// instead of ending the program, and the executor's func is released
+// exactly once. Not parallel: it swaps Promise and the funcOf and
+// releaseFunc seams.
 func TestPromiseCtorThrow_KeepsProgramAndReleasesFunc(t *testing.T) {
+	fn := js.Global().Get("Function")
+	for _, tt := range []struct {
+		name string
+		ctor js.Value
+	}{
+		{"throws before the executor", fn.New(`throw new TypeError("ctor");`)},
+		{"throws after the executor", fn.New(`executor`,
+			`executor(function () {}, function () {}); throw new TypeError("after");`)},
+		{"not a function", js.Undefined()},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			proxy := newTestProxy(t)
+			defer proxy.Call("dispose")
+			released := recordReleases(t)
+			made := recordFuncs(t)
+			swapPromise(t, tt.ctor)
+
+			v := proxy.Call("check", "a.md", "# A\n")
+			assert.True(t, v.IsUndefined(), "a failed Promise construction yields undefined")
+			require.Len(t, *made, 1, "the executor func was registered")
+			require.Len(t, *released, 1, "and released once")
+			assert.True(t, (*released)[0].Equal((*made)[0].Value), "the executor func is the one released")
+		})
+	}
+}
+
+// TestNewPromise_BadExecutorArgs replaces Promise with a constructor
+// that calls the executor with no resolve or reject, and with a resolve
+// and a reject that both throw. The executor callback must not let
+// either failure out: a panic that leaves a js.FuncOf callback unwinds
+// into the Go frames below the JS that called it. createSession returns,
+// no session stays registered, and the executor func is released. Not
+// parallel: it swaps Promise and the funcOf and releaseFunc seams.
+func TestNewPromise_BadExecutorArgs(t *testing.T) {
+	sharedMethods()
+	fn := js.Global().Get("Function")
+	for _, tt := range []struct {
+		name string
+		ctor js.Value
+	}{
+		{"no arguments", fn.New(`executor`, `executor();`)},
+		{"resolve and reject throw", fn.New(`executor`,
+			`executor(function () { throw new TypeError("resolve"); },
+				function () { throw new TypeError("reject"); });`)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			released := recordReleases(t)
+			made := recordFuncs(t)
+			swapPromise(t, tt.ctor)
+			before := maps.Clone(sessions)
+			opts := js.ValueOf(map[string]any{})
+			v := jsValue(t, createSession(js.Undefined(), []js.Value{opts}))
+			assert.Equal(t, js.TypeObject, v.Type(), "createSession returns what the constructor built")
+			assert.Equal(t, before, sessions, "no session is left registered")
+			require.Len(t, *made, 1, "the executor func was registered")
+			assert.Len(t, *released, 1, "and released once")
+		})
+	}
+}
+
+// TestProxyDispose_UnregisterThrows makes the FinalizationRegistry
+// unregister call dispose() performs throw, as a patched Reflect.apply
+// could. dispose() returns undefined instead of ending the program, and
+// the session is disposed all the same. Not parallel: it swaps
+// finalizer.unregister.
+func TestProxyDispose_UnregisterThrows(t *testing.T) {
+	proxy, id := newTestProxyWithID(t)
+	defer disposeSession(id)
+	old := finalizer.unregister
+	t.Cleanup(func() { finalizer.unregister = old })
+	finalizer.unregister = js.Global().Get("Function").New(`throw new TypeError("unregister");`)
+
+	assert.True(t, proxy.Call("dispose").IsUndefined())
+	assert.NotContains(t, sessions, id, "the session is disposed")
+}
+
+// TestCapabilities_ConstructThrows replaces Reflect.construct, which
+// wasm_exec.js calls for every Go New, with one that throws. capabilities()
+// then fails to build its live result and its disposed [] alike; it
+// returns undefined instead of ending the program. Not parallel: it
+// swaps Reflect.construct.
+func TestCapabilities_ConstructThrows(t *testing.T) {
 	proxy := newTestProxy(t)
 	defer proxy.Call("dispose")
-	released := recordReleases(t)
-	made := recordFuncs(t)
-	swapPromise(t, js.Global().Get("Function").New(`throw new TypeError("ctor");`))
+	reflectObj := js.Global().Get("Reflect")
+	construct := reflectObj.Get("construct")
+	t.Cleanup(func() { reflectObj.Set("construct", construct) })
+	reflectObj.Set("construct", js.Global().Get("Function").New(`throw new TypeError("construct");`))
+	v := proxy.Call("capabilities")
+	reflectObj.Set("construct", construct) // nothing else runs under the patch
 
-	v := proxy.Call("check", "a.md", "# A\n")
-	assert.True(t, v.IsUndefined(), "a failed Promise construction yields undefined")
-	require.Len(t, *made, 1, "the executor func was registered")
-	assert.Len(t, *released, 1, "and released")
+	assert.True(t, v.IsUndefined(), "capabilities() yields undefined")
+	assert.Positive(t, proxy.Call("capabilities").Length(), "the session still works")
 }
 
 // TestSyncMethodJSException_ReturnsDisposedValue makes the Go-to-JS
 // call a sync method performs throw. The method returns its disposed
-// value instead of ending the program. Not parallel: it swaps the
-// shared method table.
+// value instead of ending the program. Not parallel: it registers a
+// session in the shared sessions map.
 func TestSyncMethodJSException_ReturnsDisposedValue(t *testing.T) {
 	sharedMethods()
 	throwing := func(*mdsmith.Session, []js.Value) js.Value {

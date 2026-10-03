@@ -344,15 +344,19 @@ getter or `Proxy` `get` trap on the options object that throws, because
 other is a `BigInt` passed to the TinyGo build, because TinyGo does not
 implement `recover()` on WebAssembly.
 
-A script that replaces `Promise` can make the engine's own JS calls
-throw. Go cannot throw to a caller, so one failed call ends only
-itself. A `Promise` constructor that throws makes an async method
-return `undefined`. A synchronous method whose JS call throws returns
-its disposed value: `[]` for `capabilities()`, `undefined` for
-`invalidate()`. A `resolve` that throws during `createSession`
-disposes the new session, so none stays registered. TinyGo has no
-`recover()` on WebAssembly, so there the exception still ends the
-program.
+A script that replaces `Promise`, `Reflect.construct`, or
+`Reflect.apply` can make the engine's own JS calls throw. Go cannot
+throw to a caller, so one failed call ends only itself. A `Promise`
+that throws or is not a constructor makes `createSession` and each
+async method return `undefined`. A `resolve` that throws during
+`createSession` disposes the new session, so none stays registered.
+TinyGo has no `recover()` on WebAssembly, so there the exception still
+ends the program.
+
+A synchronous method whose JS call throws returns its disposed value:
+`[]` for `capabilities()`, `undefined` for `invalidate()`. When
+building that value fails too, the method returns `undefined`.
+`dispose()` frees the session even when its own JS call throws.
 
 `createSession` rejects when `opts` is not a plain object. It also
 rejects when `opts.workspace` is present but is not a plain object of
