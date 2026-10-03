@@ -1,9 +1,8 @@
 package fencedcodelanguage
 
 import (
-	"bytes"
-
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/fencepos"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -65,7 +64,8 @@ func (r *Rule) CheckNode(n ast.Node, entering bool, f *lint.File) []lint.Diagnos
 // fence run on that line — goldmark's info segment is that same text
 // trimmed — so the language-presence verdict is byte-identical.
 func (r *Rule) CheckBlock(span lint.BlockSpan, f *lint.File) []lint.Diagnostic {
-	return r.verdict(f, fenceLineHasInfo(f.Lines[span.Start-1]), span.Start)
+	final := span.Start == f.FinalLineNoEOL()
+	return r.verdict(f, fenceLineHasInfo(f.Lines[span.Start-1], final), span.Start)
 }
 
 // blockKinds is the static block-kind interest CheckBlock declares via
@@ -100,25 +100,15 @@ func (r *Rule) verdict(f *lint.File, hasLanguage bool, line int) []lint.Diagnost
 }
 
 // fenceLineHasInfo reports whether a BlockFencedCode opening line carries
-// a non-empty info string: any non-whitespace after the leading spaces
-// and the backtick/tilde fence run. This mirrors goldmark's info segment,
-// which is that trailing text trimmed of surrounding whitespace.
-func fenceLineHasInfo(line []byte) bool {
-	i := 0
-	for i < len(line) && line[i] == ' ' {
-		i++
-	}
-	if i >= len(line) {
-		return false
-	}
-	fc := line[i]
-	if fc != '`' && fc != '~' {
-		return false
-	}
-	for i < len(line) && line[i] == fc {
-		i++
-	}
-	return len(bytes.TrimSpace(line[i:])) > 0
+// a non-empty info string. Layer 0 only opens a BlockFencedCode span on a
+// line mdfence.Open accepts, and mdfence trims the info of the same
+// whitespace goldmark's info segment is trimmed of, so the verdict
+// matches the AST path. final reports that line is the source's last
+// line with no trailing newline, where goldmark drops a one-byte info
+// string (mdfence.OpenFinal).
+func fenceLineHasInfo(line []byte, final bool) bool {
+	f, ok := mdfence.OpenFinal(line, final)
+	return ok && f.HasInfo
 }
 
 // enteringKinds is the static node-kind interest CheckNode declares

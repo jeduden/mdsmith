@@ -1,6 +1,7 @@
 package release
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -863,4 +864,31 @@ func TestRulePageTransforms_NoLeftoverRelativeNonMDSLinks(t *testing.T) {
 				"ref-def non-MDS relative link survived rule-page transforms")
 		})
 	}
+}
+
+func TestApplyOutsideFences_NBSPAfterCloserDoesNotClose(t *testing.T) {
+	// Only CommonMark whitespace may follow a closing run. A run
+	// followed by an NBSP is fence content, so the fence stays open
+	// until the real closer and only the text after it is rewritten.
+	src := []byte("```\nkeep\n```\u00a0\nstill code\n```\nrewrite me")
+	got := applyOutsideFences(src, bytes.ToUpper)
+	assert.Equal(t, "```\nkeep\n```\u00a0\nstill code\n```\nREWRITE ME", string(got))
+}
+
+func TestApplyOutsideFences_BacktickInInfoIsNotAFence(t *testing.T) {
+	// "```x```" is paragraph text (CommonMark forbids a backtick in a
+	// backtick fence's info string), so the line after it is outside
+	// any fence and must still be rewritten.
+	src := []byte("```x``` is inline code\nrewrite me")
+	got := applyOutsideFences(src, bytes.ToUpper)
+	assert.Equal(t, "```X``` IS INLINE CODE\nREWRITE ME", string(got))
+}
+
+func TestApplyOutsideFences_IndentedFenceLineIsNoFence(t *testing.T) {
+	// mdfence's indent policy: four columns (or a tab) is indented code
+	// or paragraph continuation, never a fence, so the lines after it
+	// are rewritten. Up to three spaces still opens a fence.
+	src := []byte("para\n    ```\nrewrite\n\t```\nrewrite\n   ```\nkeep\n```")
+	got := applyOutsideFences(src, bytes.ToUpper)
+	assert.Equal(t, "PARA\n    ```\nREWRITE\n\t```\nREWRITE\n   ```\nkeep\n```", string(got))
 }

@@ -23,8 +23,12 @@ func TestFenceLineHasInfo(t *testing.T) {
 		"not a fence": false, // first non-space is not a fence char
 	}
 	for line, want := range cases {
-		assert.Equal(t, want, fenceLineHasInfo([]byte(line)), "line %q", line)
+		assert.Equal(t, want, fenceLineHasInfo([]byte(line), false), "line %q", line)
 	}
+	// On the source's final line with no newline, goldmark drops a
+	// one-byte info string but keeps a longer one.
+	assert.False(t, fenceLineHasInfo([]byte("```x"), true))
+	assert.True(t, fenceLineHasInfo([]byte("```xy"), true))
 }
 
 // TestCheck_NilASTMatchesAST pins the Layer-0 migration: Check on a
@@ -39,6 +43,22 @@ func TestCheck_NilASTMatchesAST(t *testing.T) {
 		[]byte("# H\n\n~~~python\ncode\n~~~\n"),
 		[]byte("# H\n\ntext\n\n```   \ncode\n```\n\nmore\n"),
 		[]byte("# H\n\n   ```js\ncode\n   ```\n"),
+		// goldmark trims info of ASCII space/tab/CR/LF only, so an NBSP
+		// or vertical tab after the run is a (non-empty) info string.
+		[]byte("# H\n\n```\u00a0\ncode\n```\n"),
+		[]byte("# H\n\n```\v\ncode\n```\n"),
+		// goldmark reads an info string only when two or more bytes
+		// follow the run on a line with no newline: a one-byte info on
+		// the final line is dropped.
+		[]byte("# H\n\n```x"),
+		[]byte("# H\n\n```\v"),
+		[]byte("# H\n\n``` x"),
+		[]byte("# H\n\n```xy"),
+		[]byte("# H\n\n```x\n"),
+		[]byte("# H\n\n```x\ncode\n```x"),
+		// An empty info-less fence after a list: the AST path locates
+		// its opening line from the node, not a forward scan.
+		[]byte("```js\nx\n```\n\n- item\n\n```\n```\n"),
 	}
 	for _, src := range srcs {
 		astFile, err := lint.NewFile("f.md", src)

@@ -59,6 +59,7 @@ question. The current production set:
   [Public Markdown Library](../markdown-library.md).
 - `internal/mdtext` — walk an already-parsed AST (slugging, TOC,
   plain-text). `pkg/markdown` produces the node it walks.
+- `internal/mdfence`, `internal/mdhtml` — goldmark-exact fence/HTML lines.
 - `internal/punkt` — sentence segmenter (vendored Punkt); only
   `internal/mdtext` imports it.
 - `internal/rule` — interfaces for rules and fixes (the ports package).
@@ -71,10 +72,9 @@ question. The current production set:
   `internal/rules/MDS###-<rule-name>/` (e.g.
   `internal/rules/MDS001-line-length/`).
 
-The names answer the question the package
-exists to answer. A package named `util`
-fails that test — it answers "a grab bag",
-so unrelated code accumulates.
+The names answer the question the package exists to answer. A
+package named `util` fails that test — it answers "a grab bag", so
+unrelated code accumulates.
 
 ## Open/closed via plugin packages (OCP)
 

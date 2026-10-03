@@ -4,28 +4,24 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/jeduden/mdsmith/internal/mdfence"
 )
 
-func TestOpeningFenceRel_BacktickInInfoString(t *testing.T) {
-	line := []byte("```go`extra")
-	_, ok := openingFenceRel(line, 0, 0)
-	assert.False(t, ok, "backtick fence with backtick in info string must not be a valid opener")
-}
-
-func TestOpeningFenceRel_CleanInfoString(t *testing.T) {
-	line := []byte("```go")
-	_, ok := openingFenceRel(line, 0, 0)
-	assert.True(t, ok, "valid backtick fence must be recognized")
-}
-
-func TestOpeningFenceRel_TildeAllowsBacktickInInfo(t *testing.T) {
-	line := []byte("~~~go`extra")
-	_, ok := openingFenceRel(line, 0, 0)
-	assert.True(t, ok, "tilde fence allows backtick in info string")
-}
-
-func TestOpeningFenceRel_BareFence(t *testing.T) {
-	line := []byte("```")
-	_, ok := openingFenceRel(line, 0, 0)
-	assert.True(t, ok, "bare backtick fence with no info string must be a valid opener")
+// TestFence_RelativeIndentBudget pins the container-relative semantics
+// the scanner relies on: a fence four columns past the item's content
+// column is indented code, three columns past still opens and closes,
+// and a tab reaches the next multiple of four.
+func TestFence_RelativeIndentBudget(t *testing.T) {
+	_, ok := mdfence.OpenIn([]byte("      ```"), 0, 2)
+	assert.False(t, ok, "4 columns past baseCol is indented code")
+	f, ok := mdfence.OpenIn([]byte("     ```"), 0, 2)
+	assert.True(t, ok, "3 columns past baseCol opens")
+	assert.False(t, mdfence.CloseIn([]byte("      ```"), f, 0, 2),
+		"4 columns past baseCol does not close")
+	assert.True(t, mdfence.CloseIn([]byte("  ```"), f, 0, 2))
+	assert.True(t, mdfence.CloseIn([]byte("\t```"), f, 0, 2),
+		"a tab reaches column 4, 2 past baseCol")
+	assert.True(t, mdfence.CloseIn([]byte("```"), f, 0, 2),
+		"a line left of baseCol counts as indent 0")
 }

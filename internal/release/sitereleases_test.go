@@ -41,6 +41,7 @@ func TestRewriteHeadingsDemotes(t *testing.T) {
 		{"other fence char does not close", "```\n~~~\n# in\n```", "```\n~~~\n# in\n```"},
 		{"tab after hashes", "#\tTab", "###\tTab"},
 		{"fence closer with trailing spaces", "```\n# c\n```  \n# after", "```\n# c\n```  \n### after"},
+		{"vertical tab after a run is no closer", "```\n# c\n```\v\n# in", "```\n# c\n```\v\n# in"},
 		{"setext h2 becomes atx", "Highlights\n---\n\nx", "#### Highlights\n\n\nx"},
 		{"setext h1 becomes atx", "Title\n===", "### Title\n"},
 		{"multi-line setext joins its lines", "Two\nlines\n---", "#### Two lines\n\n"},
@@ -537,28 +538,6 @@ func TestStripContainers(t *testing.T) {
 	}
 }
 
-func TestOpeningFence(t *testing.T) {
-	cases := []struct {
-		in   string
-		char byte
-		n    int
-	}{
-		{"```", '`', 3},
-		{"````go", '`', 4},
-		{"~~~ `x`", '~', 3},
-		{"```go``` inline", 0, 0},
-		{"``x", 0, 0},
-		{"text", 0, 0},
-	}
-	for _, tc := range cases {
-		t.Run(tc.in, func(t *testing.T) {
-			c, n := openingFence(tc.in)
-			assert.Equal(t, tc.char, c)
-			assert.Equal(t, tc.n, n)
-		})
-	}
-}
-
 func TestIsThematicBreak(t *testing.T) {
 	cases := map[string]bool{
 		"***":     true,
@@ -610,7 +589,7 @@ func TestHeadingRewriterVisit(t *testing.T) {
 	}
 	assert.Equal(t, []string{"- ```", "  # code", "### after"}, w.lines,
 		"a line outside the item ends the fence and is handled as ordinary")
-	assert.Zero(t, w.fenceChar)
+	assert.Zero(t, w.fence)
 	assert.Nil(t, w.fenceIn)
 }
 
@@ -716,16 +695,6 @@ func TestHeadingRewriterContainedATX(t *testing.T) {
 			assert.Equal(t, tc.want, w.lines[0])
 		})
 	}
-}
-
-func TestHeadingRewriterIsCloser(t *testing.T) {
-	w := headingRewriter{fenceChar: '`', fenceLen: 3}
-	assert.True(t, w.isCloser("```"))
-	assert.True(t, w.isCloser("````  "))
-	assert.False(t, w.isCloser("``"), "shorter run")
-	assert.False(t, w.isCloser("~~~"), "other fence char")
-	assert.False(t, w.isCloser("``` x"), "text after the run")
-	assert.False(t, w.isCloser("> ```"), "markers are stripContainers' job")
 }
 
 func TestBuildSiteReleasesBackportKeepsNextLineCandidates(t *testing.T) {

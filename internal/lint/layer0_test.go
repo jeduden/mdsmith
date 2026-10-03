@@ -40,6 +40,38 @@ func TestLayer0_BacktickInInfoStringIsNotAFence(t *testing.T) {
 	assert.Empty(t, l0.CodeBlockLines)
 }
 
+func TestLayer0_NonASCIISpaceInfoMatchesAST(t *testing.T) {
+	// goldmark trims an info string of ASCII space/tab/CR/LF only, so a
+	// vertical tab, form feed, or NBSP after the run is real info: the
+	// empty fence keeps a position and its lines count as code.
+	for _, src := range []string{"```\v\n```\n", "```\f\n```\n", "```\u00a0\n```\n"} {
+		f, err := NewFile("t.md", []byte(src))
+		require.NoError(t, err)
+		assert.Equal(t, keysOf(collectCodeBlockLines(f)), keysOf(scan(src).CodeBlockLines), "%q", src)
+	}
+}
+
+func TestLayer0_OneByteInfoAtEOFMatchesAST(t *testing.T) {
+	// goldmark reads an info string only when two or more bytes follow
+	// the run on a line with no newline: a one-byte info on the final
+	// line is dropped, so the empty fence has no position and no code
+	// lines.
+	for _, src := range []string{
+		"```x", "```\v", "``` x", "```xy", "```x\n", "```\v\n", "~~~`", "para\n\n```x",
+		"> ```x", "> a\n>\n> ```x", "> ```x\n", "```x\r", "> ```x\r",
+		// Nested quotes, lazy continuation, and fences before the final
+		// line: the final line maps through every quote level.
+		"> > ```x", "> > a\n> > ```x", "> a\n> > ```x", ">> ```x", "> > > ```x",
+		"> a\nb\n> ```x", "> ```\n> b\n> ```\n> ```x", "> ```y\n> ```x",
+		"> > ```\n> > c\n> > ```\n> > ```x", "> - a\n>\n> ```x", "> a\n> ```x",
+		"> > a\n> b\n> ```x", "> ~~~\n> ~~~x", "> ```\n> ```\n>\n> ```x",
+	} {
+		f, err := NewFile("t.md", []byte(src))
+		require.NoError(t, err)
+		assert.Equal(t, keysOf(collectCodeBlockLines(f)), keysOf(scan(src).CodeBlockLines), "%q", src)
+	}
+}
+
 func TestLayer0_UnclosedFenceMarksPhantomClose(t *testing.T) {
 	// An unclosed fence with content marks the opening fence, its content,
 	// and a phantom closing-fence line after the last content line.
@@ -389,7 +421,7 @@ func TestLayer0_BlockquoteFenceClosedMidQuote(t *testing.T) {
 func TestLayer0_BlockquoteLazyContinuationSuppressedByOpenFence(t *testing.T) {
 	// While a fence is open in the quote, a plain non-marker line is not a
 	// lazy continuation, so the quote ends. Pairs with isLazyContinuation
-	// being suppressed by openFence != nil.
+	// being suppressed while openFence is set.
 	l0 := scan("> ```go\n> code\nnot continuation\n")
 	assert.Equal(t, BlockQuote, l0.BlockSpans[0].Kind)
 }
@@ -537,20 +569,6 @@ func TestStripQuoteMarker_MarkerWithoutSpace(t *testing.T) {
 	assert.Equal(t, "x", string(stripQuoteMarker([]byte(">x"))))
 }
 
-func TestOpeningFence_IndentOnlyLineIsNotFence(t *testing.T) {
-	// A line of only spaces (indent >= len) does not open a fence.
-	_, ok := openingFence([]byte("   "))
-	assert.False(t, ok)
-}
-
-func TestClosingFence_IndentOnlyLineIsNotClose(t *testing.T) {
-	fi := fenceInfo{char: '`', length: 3}
-	// A blank/indent-only line does not close a fence.
-	assert.False(t, closingFence([]byte("   "), fi))
-	// An over-indented (>=4) line does not close a fence.
-	assert.False(t, closingFence([]byte("    ```"), fi))
-}
-
 func TestHTMLBlockCloses_EachType(t *testing.T) {
 	assert.True(t, htmlBlockCloses([]byte("</script>"), htmlType1))
 	assert.True(t, htmlBlockCloses([]byte("x -->"), htmlType2))
@@ -570,12 +588,6 @@ func TestIsThematicBreak_NonMarkerLeadIsFalse(t *testing.T) {
 	// A line whose first non-space byte is not `-`, `*`, or `_` is not a
 	// thematic break.
 	assert.False(t, isThematicBreak([]byte("abc")))
-}
-
-func TestOpeningFence_IndentOnlyLineReturnsFalse(t *testing.T) {
-	// A line that is all spaces (indent >= len(line)) is not a fence opener.
-	_, ok := openingFence([]byte("   "))
-	assert.False(t, ok)
 }
 
 func TestTryFence_InfoFenceImmediateClose(t *testing.T) {
@@ -602,12 +614,6 @@ func TestScanParagraph_HTMLInterruptsParagraph(t *testing.T) {
 	}
 	assert.Contains(t, kinds, BlockParagraph)
 	assert.Contains(t, kinds, BlockHTML)
-}
-
-func TestOpeningFence_TwoCharRunNotAFence(t *testing.T) {
-	// A run of only 2 fence characters (length < 3) is not a fence opener.
-	_, ok := openingFence([]byte("``code"))
-	assert.False(t, ok)
 }
 
 func TestScanParagraph_ATXHeadingInterruptsParagraph(t *testing.T) {
@@ -684,4 +690,38 @@ func TestSourceMayHaveBlockQuote(t *testing.T) {
 		assert.True(t, SourceMayHaveBlockQuote([]byte(src)),
 			"expected may-have-quote: %q", src)
 	}
+}
+
+func TestFinalLineNoEOL(t *testing.T) {
+	assert.Equal(t, 2, FinalLineNoEOL(splitLines("a\nb")))
+	assert.Equal(t, 0, FinalLineNoEOL(splitLines("a\nb\n")))
+	assert.Equal(t, 0, FinalLineNoEOL(nil))
+}
+
+func TestFile_FinalLineNoEOL(t *testing.T) {
+	assert.Equal(t, 3, NewFileLines("f.md", []byte("a\n\n```x")).FinalLineNoEOL())
+	assert.Equal(t, 0, NewFileLines("f.md", []byte("a\n```x\n")).FinalLineNoEOL())
+	f, err := NewFile("f.md", []byte("# H\n\nx"))
+	require.NoError(t, err)
+	assert.Equal(t, 3, f.FinalLineNoEOL())
+}
+
+func TestQuoteBodyFinal(t *testing.T) {
+	body := [][]byte{[]byte("a"), []byte("```x")}
+	// The quote's last body line comes from parent line index 4, the
+	// 1-based final line 5.
+	assert.Equal(t, 2, quoteBodyFinal(body, []int{3, 4}, 5))
+	assert.Equal(t, 0, quoteBodyFinal(body, []int{3, 4}, 0))
+	assert.Equal(t, 0, quoteBodyFinal(body, []int{2, 3}, 5))
+	// A trailing phantom slot (nil line) is skipped, even when it maps to
+	// the final line.
+	withPhantom := [][]byte{[]byte("```x"), nil}
+	assert.Equal(t, 1, quoteBodyFinal(withPhantom, []int{4, 5}, 5))
+	assert.Equal(t, 0, quoteBodyFinal(withPhantom, []int{3, 4}, 5))
+	assert.Equal(t, 0, quoteBodyFinal(nil, nil, 5))
+	// Any number of trailing phantom slots is skipped: the last real
+	// body line decides.
+	twoPhantoms := [][]byte{[]byte("a"), []byte("```x"), nil, nil}
+	assert.Equal(t, 2, quoteBodyFinal(twoPhantoms, []int{3, 4, 5, 6}, 5))
+	assert.Equal(t, 0, quoteBodyFinal([][]byte{nil}, []int{4}, 5))
 }

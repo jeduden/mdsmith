@@ -5,6 +5,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -229,45 +230,13 @@ func TestRanges_TildeFence(t *testing.T) {
 	})
 }
 
-// --- lastByteOfNodeStop coverage ---
-
-func TestLastByteOfNodeStop_Paragraph(t *testing.T) {
-	src := []byte("paragraph text\n\n```\ncode\n```\n")
-	f, err := lint.NewFile("test.md", src)
-	require.NoError(t, err)
-
-	// Find the paragraph node
-	_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if !entering {
-			return ast.WalkContinue, nil
-		}
-		if _, ok := n.(*ast.Paragraph); ok {
-			stop := lastByteOfNodeStop(f.Source, n)
-			assert.Greater(t, stop, 0, "paragraph should have non-zero stop")
-			return ast.WalkStop, nil
-		}
-		return ast.WalkContinue, nil
-	})
-}
-
-func TestLastByteOfNodeStop_NoLines(t *testing.T) {
-	// A node with no Lines() should return 0
-	heading := ast.NewHeading(1)
-	result := lastByteOfNodeStop([]byte("# test\n"), heading)
-	assert.Equal(t, 0, result)
-}
-
 // --- OpenLineRange: synthetic block with no fence in source ---
 
 func TestOpenLineRange_NoFenceFound_ReturnsEndSentinel(t *testing.T) {
-	// Synthetic FencedCodeBlock with Info=nil, no Lines, and no parent
-	// (so PreviousSibling is nil and searchStart starts at 0). The src
-	// contains no fence characters anywhere, so the scan loop exhausts
-	// the source and returns the (len(src), len(src)) sentinel.
-	//
-	// Two src shapes exercise the two loop-exit branches: trailing
-	// newline lets the for-condition fail naturally; no trailing
-	// newline forces the `lineEnd >= len(src)` break.
+	// Synthetic FencedCodeBlock with no position, Info=nil, and no
+	// Lines. The src holds no fence line, so the scan exhausts the source
+	// and returns the (len(src), len(src)) sentinel, with and without a
+	// trailing newline.
 	for _, src := range [][]byte{
 		[]byte("paragraph line one\nparagraph line two\n"),
 		[]byte("paragraph with no trailing newline"),
@@ -336,4 +305,90 @@ func TestOpenLineRange_InfoWithTrailingSpace(t *testing.T) {
 		}
 		return ast.WalkContinue, nil
 	})
+}
+
+// TestOpenLine_EmptyInfolessFence pins the opening line of an empty
+// fence with no info string, which goldmark gives no info or content
+// segment, in layouts where scanning forward from the previous sibling
+// would land on an earlier fence-looking line: after a list (no Lines of
+// its own), after a fenced block (whose Lines stop before its closer),
+// inside a block quote, and in a list item after a tab.
+func TestOpenLine_EmptyInfolessFence(t *testing.T) {
+	tests := []struct {
+		src  string
+		want []int
+	}{
+		{"```js\nx\n```\n\n- item\n\n```\n```\n", []int{1, 7}},
+		{"```\nx\n```\n```\n```\n", []int{1, 4}},
+		{"> ```\n> ```\n", []int{1}},
+		{"para\n\n~~~\n~~~\n", []int{3}},
+	}
+	for _, tt := range tests {
+		f, err := lint.NewFile("test.md", []byte(tt.src))
+		require.NoError(t, err)
+		var got []int
+		_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if fcb, ok := n.(*ast.FencedCodeBlock); ok && entering {
+				got = append(got, OpenLine(f, fcb))
+			}
+			return ast.WalkContinue, nil
+		})
+		assert.Equal(t, tt.want, got, "%q", tt.src)
+	}
+}
+
+func TestOpenLineRange_SyntheticBlockFindsFirstFence(t *testing.T) {
+	src := []byte("text\n  ~~~\nx\n")
+	start, end := OpenLineRange(src, ast.NewFencedCodeBlock(nil))
+	assert.Equal(t, "  ~~~", string(src[start:end]))
+}
+
+func TestLineAround(t *testing.T) {
+	src := []byte("ab\ncd\nef")
+	for _, tt := range []struct{ p, start, end int }{
+		{0, 0, 2}, {1, 0, 2}, {3, 3, 5}, {4, 3, 5}, {7, 6, 8}, {8, 6, 8},
+	} {
+		start, end := lineAround(src, tt.p)
+		assert.Equal(t, [2]int{tt.start, tt.end}, [2]int{start, end}, "p=%d", tt.p)
+	}
+}
+
+func TestLineLen(t *testing.T) {
+	assert.Equal(t, 2, lineLen([]byte("ab\ncd")))
+	assert.Equal(t, 2, lineLen([]byte("ab")))
+	assert.Equal(t, 0, lineLen([]byte("\n")))
+	assert.Equal(t, 0, lineLen(nil))
+}
+
+// TestOpenLineRange_SyntheticBlockWithInfo pins the hand-built path for
+// a block with no position but an info segment: the opening line is
+// the line holding the info string.
+func TestOpenLineRange_SyntheticBlockWithInfo(t *testing.T) {
+	src := []byte("text\n```go\nx\n```\n")
+	info := ast.NewText()
+	info.Segment = text.NewSegment(8, 10)
+	start, end := OpenLineRange(src, ast.NewFencedCodeBlock(info))
+	assert.Equal(t, "```go", string(src[start:end]))
+}
+
+// TestOpenLineRange_SyntheticBlockWithLines pins the hand-built path for
+// a block with no position or info but content lines: the opening line
+// ends just before the first content line, and a first content line at
+// offset 0 (no newline before it) is its own line.
+func TestOpenLineRange_SyntheticBlockWithLines(t *testing.T) {
+	src := []byte("~~~\nbody\n~~~\n")
+	fcb := ast.NewFencedCodeBlock(nil)
+	segs := text.NewSegments()
+	segs.Append(text.NewSegment(4, 9))
+	fcb.SetLines(segs)
+	start, end := OpenLineRange(src, fcb)
+	assert.Equal(t, "~~~", string(src[start:end]))
+
+	fcb = ast.NewFencedCodeBlock(nil)
+	segs = text.NewSegments()
+	segs.Append(text.NewSegment(0, 5))
+	fcb.SetLines(segs)
+	start, end = OpenLineRange([]byte("body\n"), fcb)
+	assert.Equal(t, 0, start)
+	assert.Equal(t, 4, end)
 }

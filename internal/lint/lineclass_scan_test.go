@@ -59,35 +59,6 @@ func TestHeadingScanners(t *testing.T) {
 	assert.False(t, lcIsSetextUnderline([]byte("abc")))
 }
 
-func TestFenceScanners(t *testing.T) {
-	ch, n, info, ok := detectFenceOpen([]byte("```"))
-	assert.True(t, ok)
-	assert.Equal(t, byte('`'), ch)
-	assert.Equal(t, 3, n)
-	assert.False(t, info)
-	_, _, info, ok = detectFenceOpen([]byte("```go"))
-	assert.True(t, ok)
-	assert.True(t, info)
-	_, _, _, ok = detectFenceOpen([]byte("``"))
-	assert.False(t, ok, "fewer than three backticks")
-	_, _, _, ok = detectFenceOpen([]byte("```a`b"))
-	assert.False(t, ok, "backtick in a backtick-fence info string")
-	_, _, info, ok = detectFenceOpen([]byte("~~~a`b"))
-	assert.True(t, ok, "tilde fence allows a backtick in its info")
-	assert.True(t, info)
-	_, _, _, ok = detectFenceOpen([]byte("    ```"))
-	assert.False(t, ok, "four-space indent is code, not a fence")
-	_, _, _, ok = detectFenceOpen([]byte("text"))
-	assert.False(t, ok)
-
-	assert.True(t, isFenceClose([]byte("```"), '`', 3))
-	assert.True(t, isFenceClose([]byte("````"), '`', 3), "longer than the open fence")
-	assert.True(t, isFenceClose([]byte("```   "), '`', 3), "trailing whitespace allowed")
-	assert.False(t, isFenceClose([]byte("``"), '`', 3), "shorter than the open fence")
-	assert.False(t, isFenceClose([]byte("```x"), '`', 3), "non-space after the fence")
-	assert.False(t, isFenceClose([]byte("    ```"), '`', 3), "over-indented")
-}
-
 func TestHTMLScanners(t *testing.T) {
 	end, kind := htmlBlockEnd([]byte("<!-- x"))
 	assert.Equal(t, htmlMarker, kind)

@@ -174,3 +174,12 @@ func TestEmptyFootnoteDefinition(t *testing.T) {
 		assert.False(t, EmptyFootnoteDefinition([]byte(line)), "%q", line)
 	}
 }
+
+func TestIsThematicBreak(t *testing.T) {
+	for _, line := range []string{"***", "---", "___", "* * *", "- - -", "   ***", "_\t_ _", "****  \r"} {
+		assert.True(t, IsThematicBreak([]byte(line)), "%q", line)
+	}
+	for _, line := range []string{"**", "    ***", "*-*", "- x", "***x", "===", "", "text"} {
+		assert.False(t, IsThematicBreak([]byte(line)), "%q", line)
+	}
+}

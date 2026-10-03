@@ -120,11 +120,18 @@ type expectedRelated struct {
 type fixtureFrontMatter struct {
 	Settings    map[string]any `yaml:"settings"`
 	Diagnostics []expectedDiag `yaml:"diagnostics"`
+	// FrontMatter is YAML the linted document carries as its own
+	// front matter, for rules that read it (MDS020's body sync). The
+	// fixture's block is stripped, so without this key the document
+	// has none. Read by good/ and bad/ folder fixtures; see
+	// newFixtureFile.
+	FrontMatter string `yaml:"front-matter"`
 }
 
 // parseFixtureFrontMatter extracts YAML front matter from markdown,
 // then strips it from the raw bytes so lint.NewFile receives plain
-// markdown content. Returns settings, diagnostics, and content.
+// markdown content. Returns settings, diagnostics, content, and the
+// document front matter from the `front-matter:` key.
 // requireDiagnostics makes the function fail the test when no front
 // matter is found; use this for bad fixtures that must declare
 // expected diagnostics. A misspelled key (e.g. dropping a letter
@@ -133,7 +140,7 @@ type fixtureFrontMatter struct {
 // as "no front matter."
 func parseFixtureFrontMatter(
 	t *testing.T, data []byte, requireDiagnostics bool,
-) (map[string]any, []expectedDiag, []byte) {
+) (map[string]any, []expectedDiag, []byte, string) {
 	t.Helper()
 
 	var fm fixtureFrontMatter
@@ -144,7 +151,7 @@ func parseFixtureFrontMatter(
 	if !hadFM {
 		require.False(t, requireDiagnostics,
 			"bad fixture is missing front matter with expected diagnostics")
-		return nil, nil, content
+		return nil, nil, content, ""
 	}
 	if requireDiagnostics && len(fm.Diagnostics) == 0 {
 		t.Fatal("bad fixture front matter must contain a non-empty diagnostics key")
@@ -171,7 +178,28 @@ func parseFixtureFrontMatter(
 		}
 	}
 
-	return fm.Settings, fm.Diagnostics, content
+	return fm.Settings, fm.Diagnostics, content, fm.FrontMatter
+}
+
+// newFixtureFile parses fixture content as a lint.File. With docFM
+// set, the document gets docFM as its own front matter, stripped and
+// line-offset as the engine does for a real file; without it the
+// content is parsed as is, so a leading `---` block stays source.
+func newFixtureFile(path string, content []byte, docFM string) (*lint.File, error) {
+	if docFM == "" {
+		return lint.NewFile(path, content)
+	}
+	src := make([]byte, 0, len(docFM)+len(content)+9)
+	src = append(src, "---\n"...)
+	src = append(src, docFM...)
+	if !strings.HasSuffix(docFM, "\n") {
+		// A quoted scalar or a `|-` block carries no final newline; the
+		// closing `---` must still sit on a line of its own.
+		src = append(src, '\n')
+	}
+	src = append(src, "---\n"...)
+	src = append(src, content...)
+	return lint.NewFileFromSource(path, src, true)
 }
 
 // applySettingsToRule applies fixture settings to a rule. It snapshots the
@@ -324,10 +352,10 @@ func runGoodFolderFile(
 ) {
 	t.Helper()
 	raw := readFixture(t, filePath)
-	settings, _, content := parseFixtureFrontMatter(t, raw, false)
+	settings, _, content, docFM := parseFixtureFrontMatter(t, raw, false)
 	applySettingsToRule(t, r, settings)
 
-	f, err := lint.NewFile(fixtureFilePath(t, r, filePath), content)
+	f, err := newFixtureFile(fixtureFilePath(t, r, filePath), content, docFM)
 	require.NoError(t, err, "parsing %s: %v", filepath.Base(filePath), err)
 	attachFixtureFS(f, filepath.Dir(filePath), r)
 	diags := checkAllRules(f, r)
@@ -381,10 +409,10 @@ func runBadFolderFile(
 ) {
 	t.Helper()
 	raw := readFixture(t, filePath)
-	settings, expected, content := parseFixtureFrontMatter(t, raw, true)
+	settings, expected, content, docFM := parseFixtureFrontMatter(t, raw, true)
 	applySettingsToRule(t, r, settings)
 
-	f, err := lint.NewFile(fixtureFilePath(t, r, filePath), content)
+	f, err := newFixtureFile(fixtureFilePath(t, r, filePath), content, docFM)
 	require.NoError(t, err, "parsing %s: %v", filepath.Base(filePath), err)
 	attachFixtureFS(f, filepath.Dir(filePath), r)
 	diags := filterByRule(r.Check(f), ruleID)
@@ -411,7 +439,7 @@ func runFixFolderFile(
 		ruleDir, "bad", filepath.Base(fixedPath),
 	)
 	badRaw := readFixture(t, badPath)
-	settings, _, badContent := parseFixtureFrontMatter(t, badRaw, false)
+	settings, _, badContent, _ := parseFixtureFrontMatter(t, badRaw, false)
 	applySettingsToRule(t, r, settings)
 
 	fPath := fixtureFilePath(t, r, fixedPath)
@@ -423,7 +451,7 @@ func runFixFolderFile(
 
 	// Load fixed/ file and strip its frontmatter.
 	fixedRaw := readFixture(t, fixedPath)
-	_, _, want := parseFixtureFrontMatter(t, fixedRaw, false)
+	_, _, want, _ := parseFixtureFrontMatter(t, fixedRaw, false)
 
 	if !bytes.Equal(got, want) {
 		t.Errorf(
@@ -458,7 +486,7 @@ func runBadSingleFile(
 ) {
 	t.Helper()
 	raw := readFixture(t, filepath.Join(dir, "bad.md"))
-	_, expected, src := parseFixtureFrontMatter(t, raw, true)
+	_, expected, src, _ := parseFixtureFrontMatter(t, raw, true)
 	f, err := lint.NewFile("bad.md", src)
 	require.NoError(t, err, "parsing bad.md: %v", err)
 	attachFixtureFS(f, dir, r)
@@ -479,7 +507,7 @@ func runFixSingleFile(
 	}
 
 	badSrc := readFixture(t, filepath.Join(dir, "bad.md"))
-	_, _, content := parseFixtureFrontMatter(t, badSrc, false)
+	_, _, content, _ := parseFixtureFrontMatter(t, badSrc, false)
 	f, err := lint.NewFile("bad.md", content)
 	require.NoError(t, err, "parsing bad.md: %v", err)
 	attachFixtureFS(f, dir, r)

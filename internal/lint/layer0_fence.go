@@ -1,93 +1,25 @@
 package lint
 
-import "bytes"
-
-// fenceInfo describes an opening fenced-code fence line. Fields are
-// ordered large-to-small (both ints before the two single-byte
-// fields) to avoid the padding a byte-then-int layout would cost;
-// openingFence returns this by value on the hottest per-line scan
-// path (docs/development/high-performance-go.md "Struct layout").
-type fenceInfo struct {
-	indent int
-	length int
-	char   byte
-	// hasInfo records whether the opening fence carries a non-empty info
-	// string after the fence run. goldmark exposes no source position for
-	// an info-less, content-less fence, so the projection emits no lines
-	// for it — hasInfo drives that quirk.
-	hasInfo bool
-}
-
-// openingFence parses line as a fenced-code opening fence, returning its
-// data and ok=true when it qualifies: indent < 4, a run of >= 3 identical
-// fence characters, and (for backtick fences) no backtick in the info
-// string. Mirrors fencedCodeBlockParser.Open.
-func openingFence(line []byte) (fenceInfo, bool) {
-	indent := leadingSpaces(line)
-	if indent >= 4 {
-		return fenceInfo{}, false
-	}
-	if indent >= len(line) {
-		return fenceInfo{}, false
-	}
-	ch := line[indent]
-	if ch != '`' && ch != '~' {
-		return fenceInfo{}, false
-	}
-	j := indent
-	for j < len(line) && line[j] == ch {
-		j++
-	}
-	length := j - indent
-	if length < 3 {
-		return fenceInfo{}, false
-	}
-	rest := line[j:]
-	if ch == '`' && bytes.IndexByte(rest, '`') >= 0 {
-		return fenceInfo{}, false
-	}
-	return fenceInfo{
-		char:    ch,
-		indent:  indent,
-		length:  length,
-		hasInfo: len(bytes.TrimSpace(rest)) > 0,
-	}, true
-}
-
-// closingFence reports whether line closes a fence opened with fi: indent
-// < 4, a run of >= fi.length identical fence characters, and only
-// whitespace after the run. Mirrors fencedCodeBlockParser.Continue.
-func closingFence(line []byte, fi fenceInfo) bool {
-	indent := leadingSpaces(line)
-	if indent >= 4 {
-		return false
-	}
-	j := indent
-	for j < len(line) && line[j] == fi.char {
-		j++
-	}
-	if j-indent < fi.length {
-		return false
-	}
-	return isBlankLine(line[j:])
-}
+import "github.com/jeduden/mdsmith/internal/mdfence"
 
 // advanceFenceState advances the open-fence tracking for a block quote's
 // stripped body line, using the fence-open result the caller already
-// computed (opensFence / fi) so openingFence is not re-run. When no fence
+// computed (opensFence / fi) so mdfence.Open is not re-run. When no fence
 // is open, a fence opener starts one; when a fence is open, a matching
 // closing fence ends it. Used so the quote scan knows a fenced code block
 // is still open and therefore cannot be lazily continued by a non-marker
-// line.
-func advanceFenceState(open *fenceInfo, line []byte, fi fenceInfo, opensFence bool) *fenceInfo {
-	if open == nil {
+// line. The state is a Fence value whose zero (Char == 0) means no fence
+// is open: tracking it by pointer would move every body line's Open
+// result to the heap.
+func advanceFenceState(open mdfence.Fence, line []byte, fi mdfence.Fence, opensFence bool) mdfence.Fence {
+	if open.Char == 0 {
 		if opensFence {
-			return &fi
+			return fi
 		}
-		return nil
+		return mdfence.Fence{}
 	}
-	if closingFence(line, *open) {
-		return nil
+	if mdfence.Close(line, open) {
+		return mdfence.Fence{}
 	}
 	return open
 }
@@ -97,7 +29,7 @@ func advanceFenceState(open *fenceInfo, line []byte, fi fenceInfo, opensFence bo
 // document for an unclosed fence) as code, records the span, and advances
 // the cursor past it. Returns false when the cursor line is not a fence.
 func (s *scanner) tryFence() bool {
-	fi, ok := openingFence(s.lines[s.i])
+	fi, ok := mdfence.OpenFinal(s.lines[s.i], s.i+1 == s.final)
 	if !ok {
 		return false
 	}
@@ -111,7 +43,7 @@ func (s *scanner) tryFence() bool {
 		if s.trailingEmptyLine(s.i) {
 			break
 		}
-		if closingFence(s.lines[s.i], fi) {
+		if mdfence.Close(s.lines[s.i], fi) {
 			closed = true
 			break
 		}
@@ -121,7 +53,7 @@ func (s *scanner) tryFence() bool {
 	// goldmark exposes no source position for an info-less, content-less
 	// fence, so addFencedCodeBlockLines emits nothing for it. Mirror that:
 	// skip marking entirely when the fence has neither info nor content.
-	if fi.hasInfo || lastContent > 0 {
+	if fi.HasInfo || lastContent > 0 {
 		s.markCode(openLine)
 		for ln := openLine + 2; ln <= lastContent; ln++ {
 			s.markCode(ln - 1)

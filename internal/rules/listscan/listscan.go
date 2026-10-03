@@ -31,6 +31,7 @@ import (
 	"bytes"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 )
 
@@ -212,12 +213,12 @@ func (p *parser) scanLine(i int, line []byte) int {
 	// columns past the parent content column (same indent budget a marker
 	// gets). Detect it relative to baseCol so a fence nested inside a list
 	// item — whose absolute indent is the item's content column — is still
-	// recognized.
-	if fence, ok := openingFenceRel(line, indent, baseCol); ok {
+	// recognized; mdfence expands tabs at their true columns.
+	if fence, ok := mdfence.OpenIn(line, 0, baseCol); ok {
 		// A fenced code block is not a paragraph, so a marker after it (once
 		// the block closes) interrupts nothing.
 		p.topInParagraph = false
-		return p.consumeFence(i, fence)
+		return p.consumeFence(i, fence, baseCol)
 	}
 
 	if mi, ok := parseMarker(line, indent, baseCol); ok && !p.markerIsLazyText(indent, mi) {
@@ -281,9 +282,11 @@ func (p *parser) isSetextUnderline(line []byte, indent int) bool {
 // closing fence are skipped so their bytes are never read as list
 // markers, while the containing list's LastLine extends to the last
 // content line (never the closing fence, matching goldmark's
-// FencedCodeBlock.Lines). It returns the 0-based index of the block's
-// last line.
-func (p *parser) consumeFence(open int, fence fenceInfo) int {
+// FencedCodeBlock.Lines). baseCol is the content column of the item the
+// fence opened inside (0 at the top level); the closing fence is
+// recognized relative to it, mirroring goldmark's container-relative
+// fence parsing. It returns the 0-based index of the block's last line.
+func (p *parser) consumeFence(open int, fence mdfence.Fence, baseCol int) int {
 	openLine := open + 1
 	if len(p.stack) > 0 {
 		top := &p.stack[len(p.stack)-1]
@@ -303,7 +306,8 @@ func (p *parser) consumeFence(open int, fence fenceInfo) int {
 		if i == len(p.lines)-1 && len(p.lines[i]) == 0 {
 			break
 		}
-		if closingFence(p.lines[i], fence) {
+		line := p.lines[i]
+		if mdfence.CloseIn(line, fence, 0, baseCol) {
 			return i
 		}
 		if len(p.stack) > 0 {
@@ -696,62 +700,6 @@ func atoiBytes(b []byte) int {
 		n = n*10 + int(c-'0')
 	}
 	return n
-}
-
-// fenceInfo describes a fenced-code opening fence.
-type fenceInfo struct {
-	char   byte
-	length int
-	// baseCol is the content column of the item the fence opened inside
-	// (0 at the top level). The closing fence is recognized relative to
-	// this column, mirroring goldmark's container-relative fence parsing.
-	baseCol int
-}
-
-// openingFenceRel parses line as a fenced-code opener relative to baseCol:
-// the fence run must sit no more than 3 columns past baseCol, be a run of
-// 3 or more identical “ ` “ or `~` characters, and (for backtick
-// fences) carry no backtick in the info string. It mirrors goldmark's
-// container-relative fence parsing so a fence nested inside a list item is
-// recognized at its indented position.
-func openingFenceRel(line []byte, indent, baseCol int) (fenceInfo, bool) {
-	if indent-baseCol >= 4 || indent >= len(line) {
-		return fenceInfo{}, false
-	}
-	ch := line[indent]
-	if ch != '`' && ch != '~' {
-		return fenceInfo{}, false
-	}
-	j := indent
-	for j < len(line) && line[j] == ch {
-		j++
-	}
-	length := j - indent
-	if length < 3 {
-		return fenceInfo{}, false
-	}
-	if ch == '`' && bytes.IndexByte(line[j:], '`') >= 0 {
-		return fenceInfo{}, false
-	}
-	return fenceInfo{char: ch, length: length, baseCol: baseCol}, true
-}
-
-// closingFence reports whether line closes a fence opened with fi: its
-// fence run sits no more than 3 columns past fi.baseCol, runs >= fi.length
-// identical fence characters, and is followed only by whitespace.
-func closingFence(line []byte, fi fenceInfo) bool {
-	indent := astutil.CountLeadingSpaces(line)
-	if indent-fi.baseCol >= 4 {
-		return false
-	}
-	j := indent
-	for j < len(line) && line[j] == fi.char {
-		j++
-	}
-	if j-indent < fi.length {
-		return false
-	}
-	return isBlankLine(line[j:])
 }
 
 // isThematicBreak reports whether line is a thematic break (3+ of a

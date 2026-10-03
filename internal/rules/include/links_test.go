@@ -228,3 +228,19 @@ func TestAdjustLinks_Skip(t *testing.T) {
 		})
 	}
 }
+
+func TestAdjustLinks_BacktickInInfoIsNotAFence(t *testing.T) {
+	// A backtick run whose info string holds a backtick is not a fence
+	// opener (CommonMark), so links after it must still be rewritten.
+	in := "```x``` is code.\n[a](b.md)\n"
+	got := adjustLinks(in, "sub/inc.md", "main.md")
+	assert.Equal(t, "```x``` is code.\n[a](sub/b.md)\n", got)
+}
+
+func TestAdjustLinks_CRLFFenceCloses(t *testing.T) {
+	// A CRLF closing fence must close the block so links after it
+	// are still rewritten.
+	in := "```\r\ncode\r\n```\r\n[a](b.md)\r\n"
+	got := adjustLinks(in, "sub/inc.md", "main.md")
+	assert.Equal(t, "```\r\ncode\r\n```\r\n[a](sub/b.md)\r\n", got)
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/fencepos"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -99,8 +100,13 @@ func hasClosingFence(f *lint.File, fcb *ast.FencedCodeBlock) bool {
 		return true
 	}
 
-	fenceChar := fencepos.CharAt(f.Source, openStart)
-	if fenceChar == 0 {
+	// The parser already placed the fence, so its line is read past its
+	// indentation: a fence nested in a list item sits at the item's
+	// content column, four or more columns in, and is still judged. A
+	// fence behind a list marker or quote prefix is no opener here, and
+	// is not judged.
+	open, ok := mdfence.Open(trimIndent(f.Source[openStart:openEnd]))
+	if !ok {
 		return true
 	}
 
@@ -115,9 +121,16 @@ func hasClosingFence(f *lint.File, fcb *ast.FencedCodeBlock) bool {
 	if closeStart == closeEnd {
 		return false
 	}
-	closingLine := bytes.TrimLeft(f.Source[closeStart:closeEnd], " ")
-	minFence := []byte{fenceChar, fenceChar, fenceChar}
-	return bytes.HasPrefix(closingLine, minFence)
+	// The line after the content closes the block only when mdfence
+	// reads it as the opener's closer; a container's end can also cut a
+	// fence short, leaving a non-closer there. Like the opener, it is
+	// read past its indentation, which sits at the container's column.
+	return mdfence.Close(trimIndent(f.Source[closeStart:closeEnd]), open)
+}
+
+// trimIndent drops line's leading spaces and tabs.
+func trimIndent(line []byte) []byte {
+	return bytes.TrimLeft(line, " \t")
 }
 
 // enteringKinds is the static node-kind interest CheckNode declares
