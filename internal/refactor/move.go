@@ -64,7 +64,8 @@ func (e SourceNotFoundError) Error() string {
 //     asymmetry with path links). Only a Markdown src with a non-empty
 //     stem is a stem target, and a dst no wikilink can name — no
 //     extension, an empty stem, a `#`, `|`, `[`, `]`, backtick, CR, or
-//     newline in the name, or a name that ends with a space — gets no
+//     newline in the name, a name that ends with a space, or a path
+//     under `.git` or `node_modules`, which the resolver skips — gets no
 //     rewrite. A name that starts with a space or reads as a drive path
 //     (`C:x.md`) is written behind `./`;
 //   - outbound destinations inside src, when it has a Markdown
@@ -128,7 +129,7 @@ func MoveWithStemEdits(ws Workspace, src, dst string) (Plan, map[string][]Edit, 
 	r := &destResolver{ws: ws, src: src}
 	appendReferrerEdits(changes, ws, p, r, src, dst)
 	stems := map[string][]Edit{}
-	appendWikilinkStemEdits(stems, ws, r, src, dst)
+	appendWikilinkStemEdits(stems, ws, src, dst)
 	for key, edits := range stems {
 		changes[key] = append(changes[key], edits...)
 	}
@@ -294,7 +295,7 @@ type destRef struct {
 
 // destResolver reads destinations for a move of src. It also holds the
 // workspace file list, read once per move and normalized, which the
-// referrer scan, the listed checks, and the wikilink holder count share.
+// referrer scan and the listed checks share.
 type destResolver struct {
 	ws    Workspace
 	src   string
@@ -778,7 +779,7 @@ func skipGap(src []byte, i int) int {
 // another stem, or a dst with a non-Markdown name. A move that keeps the
 // stem leaves wikilinks alone: a stem still resolves to the file at its
 // new path.
-func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destResolver, src, dst string) {
+func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, src, dst string) {
 	// Both ends are keyed the way NewWikilinkIndex keys files. Only a
 	// Markdown src has a stem key, so moving any other file retargets
 	// no `[[stem]]` link. An empty src key (`docs/.md`) matches no edge,
@@ -800,9 +801,11 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	}
 	// The rewritten token must parse back as a wikilink that resolves by
 	// dst's key; linkgraph.WikilinkReaches holds the list of names that
-	// cannot, and such a dst gets no rewrite.
+	// cannot, and such a dst gets no rewrite. Nor does a dst under `.git`
+	// or `node_modules`: the resolver never indexes it, so no spelling
+	// reaches it.
 	newSpelling, needsPrefix, ok := dstWikilinkSpelling(dst, dstIsMarkdown)
-	if !ok {
+	if !ok || !linkgraph.WikilinkIndexed(dst) {
 		return
 	}
 	// A wikilink resolves by basename stem, and the index keys these
@@ -814,10 +817,11 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	// docs/Guide.md and ref/Guide.md exist and only docs/Guide.md
 	// moves). Leave every such wikilink untouched in that case rather
 	// than break an unrelated reference — the moved file's own links
-	// stay resolvable by the sibling's stem. The source is counted even
-	// when ws.Files() omits it (a `files:` glob can exclude a file
-	// Resolve still reads): it holds oldStem either way, so one listed
-	// sibling already makes the link ambiguous.
+	// stay resolvable by the sibling's stem. The files are counted in
+	// ws.WikilinkIndex, the set the resolver reads, listed or not. The
+	// source is counted even when that index lacks it: it holds oldStem
+	// either way, so one indexed sibling already makes the link
+	// ambiguous.
 	//
 	// The destination stem must be unique too. dst does not exist in the
 	// workspace yet (Move rejected an existing destination), so any file
@@ -829,7 +833,8 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	// destination (`guide.mdx`) is addressed by exact file name.
 	//
 	// Most moves have no `[[oldStem]]` link at all, so the edges are
-	// fetched first and the scan over every workspace file is skipped.
+	// fetched first and the workspace walk that builds the index is
+	// skipped.
 	edges := ws.IncomingWikilinkEdges(oldStem)
 	if len(edges) == 0 {
 		return

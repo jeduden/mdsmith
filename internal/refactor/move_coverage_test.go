@@ -30,11 +30,11 @@ func (s stubWorkspace) IncomingPathEdges(string) []index.Edge           { return
 func (s stubWorkspace) IncomingWikilinkEdges(string) []index.Edge       { return s.wikilinkEdges }
 func (s stubWorkspace) Files() []string                                 { return s.files }
 func (s stubWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
-	fsys := fstest.MapFS{}
-	for _, f := range s.files {
-		fsys[index.NormalizePath(f)] = &fstest.MapFile{}
+	files := make([]string, len(s.files))
+	for i, f := range s.files {
+		files[i] = index.NormalizePath(f)
 	}
-	return linkgraph.NewWikilinkIndex(fsys)
+	return holderIndex(files...)
 }
 func (s stubWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
@@ -65,7 +65,8 @@ func TestRelFrom_ErrorFallsBackToTarget(t *testing.T) {
 }
 
 // holderIndex builds the wikilink index over files, as the resolver
-// would index a workspace holding exactly them.
+// would index a workspace holding exactly them. The test workspaces'
+// WikilinkIndex methods build theirs through it too.
 func holderIndex(files ...string) *linkgraph.WikilinkIndex {
 	fsys := fstest.MapFS{}
 	for _, f := range files {
@@ -363,7 +364,7 @@ func TestAppendWikilinkStemEdits_DefensiveBranches(t *testing.T) {
 	}
 	// Basename changes (api -> service) so the pass runs, but every edge
 	// hits a skip branch.
-	appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: "api.md"}, "api.md", "service.md")
+	appendWikilinkStemEdits(changes, ws, "api.md", "service.md")
 	assert.Empty(t, changes)
 }
 

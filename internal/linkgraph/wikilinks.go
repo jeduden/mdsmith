@@ -299,6 +299,19 @@ func (idx *WikilinkIndex) NamePaths(key string) []string {
 	return idx.names[key]
 }
 
+// WikilinkIndexed reports whether NewWikilinkIndex indexes the
+// workspace-relative file p: no directory on its path is one
+// skipHeavyDirs prunes (`.git`, `node_modules`). No wikilink reaches a
+// file the index skips, whatever its name.
+func WikilinkIndexed(p string) bool {
+	for d := path.Dir(p); d != "." && d != "/"; d = path.Dir(d) {
+		if skipHeavyDirs(d) != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // skipHeavyDirs returns fs.SkipDir for known-heavy subtrees that
 // never carry wikilink targets users want resolved (`.git`,
 // `node_modules`). Used as a fs.WalkDirFunc verdict for directory
@@ -391,9 +404,9 @@ func WikilinkBaseSpan(row []byte, bracketStart int) (start, end int, ok bool) {
 	if _, ok := normalizeTarget(string(raw)); !ok {
 		return 0, 0, false
 	}
-	trimmed := bytes.TrimRightFunc(bytes.TrimLeftFunc(raw, unicode.IsSpace), unicode.IsSpace)
-	lo := len(raw) - len(bytes.TrimLeftFunc(raw, unicode.IsSpace))
-	hi := lo + len(trimmed)
+	left := bytes.TrimLeftFunc(raw, unicode.IsSpace)
+	lo := len(raw) - len(left)
+	hi := lo + len(bytes.TrimRightFunc(left, unicode.IsSpace))
 	for hi > lo && (raw[hi-1] == '/' || raw[hi-1] == '\\') {
 		hi--
 	}

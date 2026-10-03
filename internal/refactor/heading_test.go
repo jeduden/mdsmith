@@ -2,8 +2,9 @@ package refactor
 
 import (
 	"errors"
+	"maps"
+	"slices"
 	"testing"
-	"testing/fstest"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
@@ -40,11 +41,7 @@ func newMemWorkspace(files map[string]string) *memWorkspace {
 }
 
 func (w *memWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
-	fsys := fstest.MapFS{}
-	for rel := range w.files {
-		fsys[rel] = &fstest.MapFile{}
-	}
-	return linkgraph.NewWikilinkIndex(fsys)
+	return holderIndex(slices.Collect(maps.Keys(w.files))...)
 }
 
 func (w *memWorkspace) Resolve(file string) (string, []byte, bool) {

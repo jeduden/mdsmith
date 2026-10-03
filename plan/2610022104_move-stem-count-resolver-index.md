@@ -58,10 +58,13 @@ out of plan 2610022044, which fixes the extension filter.
 2. Add a failing `Move` test for the over-count case:
    `node_modules/pkg/README.md` in the file list must not
    block the `[[readme]]` rewrite when `docs/readme.md` moves.
-3. Expose a stem and name count on `linkgraph.WikilinkIndex`
-   and have the move planner build or receive the index for
-   the workspace root, replacing `wikilinkKeyHolders`' walk
-   over `ws.Files()`.
+3. Expose the stem and name lookups on
+   `linkgraph.WikilinkIndex` (`StemPaths`, `NamePaths`; the
+   guard needs the paths, not only a count, to tell whether
+   the source is among them) and have the move planner receive
+   the index for the workspace root through
+   `Workspace.WikilinkIndex`, replacing `wikilinkKeyHolders`'
+   walk over `ws.Files()`.
 4. Keep the exact-name guard from plan 2610022044 on the same
    index (`names` map) so both checks read one file set.
    The holder count then reads the index instead of
@@ -90,6 +93,10 @@ out of plan 2610022044, which fixes the extension filter.
 9. `index.IncomingWikilinkEdges` keys its lookup with
    `strings.ToLower`. Use `linkgraph.FileNameKey`, which
    keys the stored edges.
+10. The resolver never indexes a file under `.git` or
+    `node_modules`, so a move there leaves `[[stem]]` as
+    written instead of retargeting it at a name no wikilink
+    reaches (`linkgraph.WikilinkIndexed`).
 
 PR #885 already retired `fileStem`: the move planner keys
 files with `linkgraph.FileStemKey`, the same function
@@ -105,6 +112,8 @@ files with `linkgraph.FileStemKey`, the same function
       `docs/logo.png`
 - [x] The move planner's stem counts come from the same index
       `[[stem]]` resolution reads
+- [x] A move into `node_modules` or `.git` leaves `[[stem]]`
+      as written
 - [x] The move planner reuses `linkgraph`'s base-segment
       span, Markdown test, and name key, with no copies
 - [x] All tests pass: `go test ./...`

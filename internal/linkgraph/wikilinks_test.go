@@ -3,6 +3,7 @@ package linkgraph
 import (
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 	"testing/fstest"
@@ -724,6 +725,27 @@ func TestWikilinkIndex_StemAndNamePaths(t *testing.T) {
 	assert.Empty(t, idx.StemPaths("license"), "an extensionless file has no stem key")
 	assert.Empty(t, idx.StemPaths("missing"))
 	assert.Empty(t, idx.NamePaths("missing"))
+}
+
+// TestWikilinkIndexed locks that WikilinkIndexed answers the walk's own
+// skip rule: a file under `.git` or `node_modules` at any depth is not
+// indexed, and a file merely named like one is.
+func TestWikilinkIndexed(t *testing.T) {
+	for p, want := range map[string]bool{
+		"guide.md":                  true,
+		"docs/guide.md":             true,
+		"node_modules":              true,
+		"docs/node_modules.md":      true,
+		"node_modules/pkg/guide.md": false,
+		"docs/node_modules/x.md":    false,
+		".git/guide.md":             false,
+		"a/b/.git/c/guide.md":       false,
+	} {
+		assert.Equal(t, want, WikilinkIndexed(p), p)
+		fsys := fstest.MapFS{p: {}}
+		assert.Equal(t, want, len(NewWikilinkIndex(fsys).NamePaths(FileNameKey(path.Base(p)))) == 1,
+			"%s: the walk agrees", p)
+	}
 }
 
 func TestWikilinkIndex_PathsNilReceiver(t *testing.T) {

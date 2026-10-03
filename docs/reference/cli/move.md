@@ -128,8 +128,10 @@ cross-directory move, check them by hand.
   files. So does a new name that a wikilink cannot spell: an
   empty stem such as `.md`, a `#`, `|`, `[`, or `]` as in `C#.md`,
   a backtick, a line break, or a name that ends with a space.
-  Those links break. A name that starts with a space, or reads as
-  a drive letter such as `C:x.md`, is written as `[[./C:x]]`.
+  So does a move into `.git` or `node_modules`, which a wikilink
+  never searches. Those links break. A name that starts with a
+  space, or reads as a drive letter such as `C:x.md`, is written
+  as `[[./C:x]]`.
 - **Footnote text that is a lone link.** mdsmith reads
   `[^1]: [z](a.md)` as a footnote definition and leaves its text
   as written, so the link inside it is not repointed. Longer
