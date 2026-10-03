@@ -28,9 +28,11 @@ import (
 )
 
 // funcOf and releaseFunc are js.FuncOf (through trackCallback) and
-// js.Func.Release behind seams so a test can count the funcs a
-// session's lifecycle registers (every Promise executor, plus the
-// shared method funcs on first use), which syscall/js keeps private.
+// js.Func.Release behind seams so a test can count the funcs the engine
+// registers and releases, which syscall/js keeps private. The engine
+// registers only load-time funcs (the API, the shared methods, and the
+// shared Promise executor) and releases none, so a test can show a
+// session's lifecycle adds no func and frees none.
 var (
 	funcOf      = trackedFuncOf
 	releaseFunc = js.Func.Release

@@ -405,16 +405,14 @@ runs the shared executor, and leaves the stack before it returns. Such
 a patch therefore strands nothing, and a `Reflect.apply` that only
 delegates leaves every method working.
 
-A script that keeps the executor and calls it after the call returned
-runs nothing. One that calls it during a call runs that call, as the
-`Promise` constructor could.
+A script that keeps the executor and calls it while no call is pending
+runs nothing. One that calls it during a call runs the innermost
+pending call, as the `Promise` constructor could, unless that call's
+executor has already returned.
 
 A `Reflect.get` or `Reflect.set` that throws while Go reads a
 callback's arguments or writes back its result still stops the Go
 runtime, as a throwing getter does: `wasm_exec.js` does not catch it.
-A `console.error` that throws when a released callback is called ends
-the program. The JS that made the call is then still on the
-WebAssembly stack, and Go cannot safely resume below it.
 TinyGo has no `recover()` on WebAssembly, so there the exception still
 ends the program.
 

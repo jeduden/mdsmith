@@ -36,14 +36,15 @@ import (
 // program: newPromise returns undefined instead, since Go cannot throw
 // to its caller. A constructor that returns without running the
 // executor, which a spec Promise runs during construction, gets the
-// same treatment, and a later call of the executor it kept runs nothing
-// (runPromiseCall). A constructor that passes the executor too few
-// arguments, or a reject that itself throws or is no function, would end
-// the program from inside the executor callback: a panic that leaves a
-// js.FuncOf callback unwinds into the Go frames below the JS that called
-// it. The callback swallows that failure, and the Promise stays as the
-// constructor left it, never settling. Any other panic is re-raised
-// (recoverJS).
+// same treatment, and a call of the executor it kept, made after
+// newPromise returned, never runs this call: runPromiseCall runs
+// whichever call is pending then, or nothing. A constructor that passes
+// the executor too few arguments, or a reject that itself throws or is
+// no function, would end the program from inside the executor callback:
+// a panic that leaves a js.FuncOf callback unwinds into the Go frames
+// below the JS that called it. The callback swallows that failure, and
+// the Promise stays as the constructor left it, never settling. Any
+// other panic is re-raised (recoverJS).
 func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
 	exec := sharedExecutor()
 	c := &promiseCall{executor: executor}
@@ -55,7 +56,7 @@ func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
 		n := len(promiseCalls) - 1
 		promiseCalls[n] = nil
 		promiseCalls = promiseCalls[:n]
-		if !c.ran {
+		if !c.done {
 			p = js.Undefined()
 		}
 	}()
@@ -63,12 +64,12 @@ func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
 	return js.Global().Get("Promise").New(exec)
 }
 
-// promiseCall is one pending newPromise call: its Go executor, whether
-// the Promise constructor ran it, how many of its runs are on the stack,
-// and whether its outermost run has returned.
+// promiseCall is one pending newPromise call: its Go executor, how many
+// of its runs are on the stack, and whether its outermost run has
+// returned. Every run is synchronous, so once the construction returns
+// done also tells whether the Promise constructor ran the call at all.
 type promiseCall struct {
 	executor func(resolve, reject func(any))
-	ran      bool
 	depth    int
 	done     bool
 }
@@ -113,7 +114,6 @@ func runPromiseCall(_ js.Value, pArgs []js.Value) any {
 	if c.done {
 		return js.Undefined()
 	}
-	c.ran = true
 	c.depth++
 	defer func() {
 		c.depth--

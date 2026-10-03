@@ -1335,7 +1335,7 @@ func TestCreateSession_ReentrantResolveThrowFreesItsOwnSession(t *testing.T) {
 
 // TestCreateSession_CtorThrowAfterReentrantExecutorFreesEverySession
 // replaces Promise with a constructor whose resolve runs the executor
-// again (the handler is released only after its outer run returns), so
+// again (the call stays pending until its outer run returns), so
 // two sessions are registered, and then throws. Neither session object
 // reaches the caller, so both must be freed, not only the last one.
 // Not parallel: it swaps globalThis.Promise.
@@ -1471,7 +1471,7 @@ func TestCreateSession_CtorThrowAfterExecutorRegistersNoSession(t *testing.T) {
 	assert.Equal(t, js.TypeObject, (*unregistered)[0].Type(), "with its token")
 }
 
-// TestPromiseCtorThrow_KeepsProgramAndReleasesFunc replaces Promise with
+// TestPromiseCtorThrow_KeepsProgramAndRegistersNoFunc replaces Promise with
 // a constructor that fails: one that throws before it calls the
 // executor, one that runs the executor and then throws, a Promise
 // that is no function at all (syscall/js raises that as a
@@ -1481,7 +1481,7 @@ func TestCreateSession_CtorThrowAfterExecutorRegistersNoSession(t *testing.T) {
 // instead of ending the program, registers and releases no func, and
 // leaves no call pending. Not parallel: it swaps Promise and the funcOf
 // and releaseFunc seams.
-func TestPromiseCtorThrow_KeepsProgramAndReleasesFunc(t *testing.T) {
+func TestPromiseCtorThrow_KeepsProgramAndRegistersNoFunc(t *testing.T) {
 	fn := js.Global().Get("Function")
 	for _, tt := range []struct {
 		name string
@@ -1932,7 +1932,6 @@ func TestCaptureGlobals_SurvivesThrowingCaptures(t *testing.T) {
 		const throwingBind = { bind() { throw new TypeError('bind'); } };
 		return {
 			Object: o,
-			Reflect,
 			Function: { prototype: { call: throwingBind, bind: Function.prototype.bind } },
 		};`).Invoke()
 	require.NotPanics(t, func() { captureGlobals(fake) }, "a throwing capture does not stop the load")
@@ -2134,13 +2133,42 @@ func TestNewPromise_SecondSequentialRunIsIgnored(t *testing.T) {
 	assert.Empty(t, promiseCalls, "no call is left pending")
 }
 
-// TestPromiseExecutor_NothingPending calls the shared executor func
+// TestRunPromiseCall_NothingPending calls the shared executor func
 // directly while no newPromise call is pending, as a script that kept it
 // could. It returns undefined and runs nothing.
-func TestPromiseExecutor_NothingPending(t *testing.T) {
+func TestRunPromiseCall_NothingPending(t *testing.T) {
 	sharedMethods()
 	require.Empty(t, promiseCalls)
 	noop := js.Global().Get("Function").New()
 	assert.True(t, promiseExecutor.Invoke(noop, noop).IsUndefined())
 	assert.True(t, promiseExecutor.Invoke().IsUndefined())
+}
+
+// TestSharedExecutor checks sharedExecutor returns the one executor
+// func, a JS function, on every call and registers it only once. Not
+// parallel: it swaps the funcOf seam.
+func TestSharedExecutor(t *testing.T) {
+	first := sharedExecutor()
+	made := recordFuncs(t)
+	assert.Equal(t, js.TypeFunction, first.Type(), "the executor is a JS function")
+	assert.True(t, sharedExecutor().Equal(first), "a later call returns the same func")
+	assert.True(t, promiseExecutor.Equal(first), "the one promiseExecutor")
+	assert.Empty(t, *made, "a later call registers no func")
+}
+
+// TestNewPromise_ClearsPoppedSlot checks newPromise clears its call's
+// slot in promiseCalls' backing array as it pops the call, so the array
+// does not keep the Go executor, and the Session it closes over,
+// reachable after the call returns. A nested call fills a second slot.
+// Not parallel: it reads promiseCalls.
+func TestNewPromise_ClearsPoppedSlot(t *testing.T) {
+	sharedMethods()
+	newPromise(func(_, _ func(any)) {
+		newPromise(func(_, _ func(any)) {})
+	})
+	require.Empty(t, promiseCalls, "no call is left pending")
+	require.GreaterOrEqual(t, cap(promiseCalls), 2, "the nested call grew the stack")
+	for i, c := range promiseCalls[:cap(promiseCalls)] {
+		assert.Nil(t, c, "slot %d is cleared", i)
+	}
 }
