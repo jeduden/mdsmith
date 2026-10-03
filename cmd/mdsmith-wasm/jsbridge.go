@@ -124,15 +124,22 @@ func toJS(v any) js.Value {
 // newPromise's executor callback swallows a failure this does not turn
 // into a rejection, which would leave the Promise pending forever.
 // wasm_exec.js caught the exception before Go panicked, so the runtime
-// is intact. Any other panic is re-raised unchanged. TinyGo does not
-// implement recover() on WebAssembly, so in a TinyGo build the exception
-// still ends the program.
+// is intact. Any other panic is re-raised unchanged, and so is a
+// JS-side failure that unwound out of a JS-to-Go callback, as in
+// recoverJS. TinyGo does not implement recover() on WebAssembly, so in
+// a TinyGo build the exception still ends the program.
 func rejectOnJSError(reject func(any)) {
 	switch r := recover().(type) {
 	case nil:
 	case js.Error:
+		if escapedCallback() {
+			panic(r)
+		}
 		reject(r.Value)
 	case *js.ValueError:
+		if escapedCallback() {
+			panic(r)
+		}
 		reject(jsError(r.Error()))
 	default:
 		panic(r)

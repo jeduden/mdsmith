@@ -127,3 +127,14 @@ session. A `Promise` that never runs its executor now
 yields `undefined` and frees the executor func. A
 create that fails late also cancels its finalizer
 entry.
+
+A JS-to-Go callback runs on the goroutine of the Go
+code that called JS. A panic from `syscall/js`'s own
+callback code, such as reading the event's arguments,
+could reach an outer `recoverJS`. Go would then resume
+while the calling JS was still on the WebAssembly
+stack. Every func the engine registers now counts
+itself while it runs. `recoverJS` and
+`rejectOnJSError` re-raise a JS failure when the
+stack holds more `syscall/js.handleEvent` frames than
+running callbacks.

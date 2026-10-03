@@ -355,6 +355,11 @@ settles, because the engine has no working callback left to settle
 it. A `resolve` that throws during
 `createSession`, or a `Promise` that throws after it ran the executor,
 disposes the new session, so none stays registered.
+
+A `Reflect.get` or `Reflect.set` patched so that Go cannot read a
+callback's arguments or write back its result still ends the program.
+The JS that made the call is then still on the WebAssembly stack, and
+Go cannot safely resume below it.
 TinyGo has no `recover()` on WebAssembly, so there the exception still
 ends the program.
 

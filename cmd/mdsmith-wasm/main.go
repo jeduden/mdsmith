@@ -27,14 +27,19 @@ import (
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
-// funcOf and releaseFunc are js.FuncOf and js.Func.Release behind seams
-// so a test can count the funcs a session's lifecycle registers (every
-// Promise executor, plus the shared method funcs on first use), which
-// syscall/js keeps private.
+// funcOf and releaseFunc are js.FuncOf (through trackCallback) and
+// js.Func.Release behind seams so a test can count the funcs a
+// session's lifecycle registers (every Promise executor, plus the
+// shared method funcs on first use), which syscall/js keeps private.
 var (
-	funcOf      = js.FuncOf
+	funcOf      = trackedFuncOf
 	releaseFunc = js.Func.Release
 )
+
+// trackedFuncOf is js.FuncOf for a callback trackCallback counts.
+func trackedFuncOf(fn func(js.Value, []js.Value) any) js.Func {
+	return js.FuncOf(trackCallback(fn))
+}
 
 // version is set via ldflags at build time (-X main.version=v1.0.0),
 // mirroring cmd/mdsmith. It falls back to the module build info.
@@ -71,7 +76,7 @@ var apiFuncs = map[string]func(js.Value, []js.Value) any{
 func exposeAPI() js.Value {
 	api := map[string]any{"version": resolveVersion()}
 	for name, fn := range apiFuncs {
-		api[name] = js.FuncOf(drainFirst(fn))
+		api[name] = trackedFuncOf(drainFirst(fn))
 	}
 	return js.ValueOf(api)
 }
@@ -619,11 +624,16 @@ func bindFinalizer(ctor js.Value) (f sessionFinalizer) {
 // JS exception from Call, Invoke, or New) or a *js.ValueError (a Value
 // method on the wrong type, such as Get on undefined). Any other panic
 // is re-raised unchanged, so a Go bug is not mistaken for a host
-// without the JS feature.
+// without the JS feature. So is a JS-side failure that unwound out of
+// a JS-to-Go callback (escapedCallback): Go cannot resume below a
+// callback whose JS caller is still on the wasm stack.
 func recoverJS(onJS func()) {
 	switch r := recover(); r.(type) {
 	case nil:
 	case js.Error, *js.ValueError:
+		if escapedCallback() {
+			panic(r)
+		}
 		onJS()
 	default:
 		panic(r)
