@@ -265,12 +265,15 @@ unreachable. A method taken off the object, such as
 `const { check } = session`, keeps its binding after the object is
 gone.
 
-A `FinalizationRegistry` holds the token. Once the object and
-every method taken off it are collected, the registry disposes the
-session's id, so a host that drops a session without `dispose()` still
-frees the Go session. That is a fallback: JS decides when to collect,
-so call `dispose()` when you are done with a session to free its
-caches and workspace at once.
+A `FinalizationRegistry` watches the token without keeping it alive.
+Once the object and every method taken off it are collected, the
+registry disposes the session's id, so a host that drops a session
+without `dispose()` still frees the Go session. That is a fallback:
+the Go and JS garbage collectors decide when it runs, so call
+`dispose()` when you are done with a session to free its caches and
+workspace at once. The TinyGo build never releases a JS value that Go
+has held, so there the token is never collected and only `dispose()`
+frees a session.
 
 `dispose()` drops the id and cancels the registry entry, so the
 disposed session's caches and workspace can be freed, and a
