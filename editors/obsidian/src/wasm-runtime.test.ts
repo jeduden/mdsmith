@@ -319,4 +319,48 @@ describe.skipIf(skip)("createRuntime", () => {
 
     rtB.dispose();
   });
+
+  test("a createSession that yields no session rejects with a clear error", async () => {
+    // A patched globalThis.Promise can make the engine's createSession
+    // return undefined (Go cannot throw to its caller). createRuntime
+    // must say so up front instead of wrapping undefined and failing on
+    // the first check() far from the cause.
+    const warm = await makeRuntime({}); // ensure the engine is loaded
+    warm.dispose();
+    const factory = (globalThis as unknown as {
+      mdsmith: { createSession: unknown };
+    }).mdsmith;
+    const original = factory.createSession;
+    factory.createSession = () => undefined;
+    let failure: Error | undefined;
+    try {
+      await makeRuntime({});
+    } catch (err) {
+      failure = err as Error;
+    } finally {
+      factory.createSession = original;
+    }
+    expect(failure?.message).toContain("createSession returned no session");
+  });
+
+  test("an async method whose Promise the engine cannot build rejects", async () => {
+    // A throwing globalThis.Promise makes the engine's check() return
+    // undefined. The facade must still hand back a Promise that rejects
+    // with a clear error, so `await rt.check(...)` never yields
+    // undefined where the type promises a diagnostic array.
+    const rt = await makeRuntime({});
+    const native = globalThis.Promise;
+    let result: Promise<Diagnostic[]> | undefined;
+    (globalThis as { Promise: unknown }).Promise = function () {
+      throw new TypeError("patched Promise");
+    };
+    try {
+      result = rt.check("a.md", "# A\n");
+    } finally {
+      globalThis.Promise = native;
+    }
+    expect(result).toBeInstanceOf(native);
+    await expect(result).rejects.toThrow("check returned no result");
+    rt.dispose();
+  });
 });
