@@ -358,9 +358,9 @@ disposes the new session, so none stays registered.
 TinyGo has no `recover()` on WebAssembly, so there the exception still
 ends the program.
 
-A synchronous method whose JS call throws returns its disposed value:
-`[]` for `capabilities()`, `undefined` for `invalidate()`. When
-building that value fails too, the method returns `undefined`.
+A synchronous method whose JS call throws returns `undefined`, not
+its disposed value. A failed `capabilities()` on a live session is
+therefore distinct from the `[]` it returns after `dispose()`.
 `dispose()` frees the session even when its own JS call throws.
 
 `createSession` rejects when `opts` is not a plain object. It also

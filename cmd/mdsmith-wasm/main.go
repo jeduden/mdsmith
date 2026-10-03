@@ -635,31 +635,18 @@ func recoverJS(onJS func()) {
 // after the bound id, and returns impl.disposed() when that
 // session is disposed or args[0] is no live id, so impl.call never
 // runs without a live session. sharedMethods registers it through
-// drainFirst.
+// drainFirst, which turns a JS-side failure in impl.call into
+// undefined: Go cannot throw to its caller, and the disposed value
+// would make a live session's failed call look like a disposed one.
+// An async method's call is newPromise, which recovers its own JS
+// failures.
 func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 	return func(_ js.Value, args []js.Value) any {
 		if _, sess, rest := boundSession(args); sess != nil {
-			return callOrDisposed(impl, sess, rest)
+			return impl.call(sess, rest)
 		}
 		return impl.disposed()
 	}
-}
-
-// callOrDisposed runs impl.call, and returns impl.disposed() when it
-// raised a JS-side failure (recoverJS). Go code cannot throw a JS
-// exception to its caller: an unrecovered panic in a js.FuncOf callback
-// ends the program, so a sync method cannot rethrow. It returns the
-// disposed value instead, so one failed call ends only that call. The
-// disposed value can fail the same way (a patched Reflect.construct
-// fails every array); drainFirst then returns undefined. Any other
-// panic is re-raised. An async method never takes this fallback: its
-// call is newPromise, which recovers its own JS failures and returns
-// undefined, so a live session never sees a "session disposed"
-// rejection. TinyGo does not implement recover() on
-// WebAssembly, so there the exception still ends the program.
-func callOrDisposed(impl methodImpl, sess *mdsmith.Session, args []js.Value) (v js.Value) {
-	defer recoverJS(func() { v = impl.disposed() })
-	return impl.call(sess, args)
 }
 
 // drainFinalized disposes each session whose token JS has collected

@@ -108,7 +108,7 @@ before it calls `unregister`.
 
 ## Review Round 2
 
-A second review found two gaps. The executor callback
+A second review found these gaps. The executor callback
 now swallows any JS failure, but `rejectOnJSError`
 turned only a `js.Error` into a rejection. A
 `*js.ValueError` in an executor left its Promise
@@ -118,3 +118,12 @@ A `Promise` that ran the `createSession` executor and
 then threw left the session registered, though the
 caller got `undefined`. `createSession` now disposes
 it. Each has a red/green test.
+
+The same round reversed the task 4 choice. A sync
+method whose JS call throws now returns `undefined`
+through `drainFirst`, not its disposed value: a failed
+`capabilities()` returned `[]`, the same as a disposed
+session. A `Promise` that never runs its executor now
+yields `undefined` and frees the executor func. A
+create that fails late also cancels its finalizer
+entry.

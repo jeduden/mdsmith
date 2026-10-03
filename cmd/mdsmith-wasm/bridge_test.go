@@ -1431,26 +1431,29 @@ func TestCapabilities_ConstructThrows(t *testing.T) {
 	assert.Positive(t, proxy.Call("capabilities").Length(), "the session still works")
 }
 
-// TestSyncMethodJSException_ReturnsDisposedValue makes the Go-to-JS
-// call a sync method performs throw. The method returns its disposed
-// value instead of ending the program. Not parallel: it registers a
+// TestSyncMethodJSException_ReturnsUndefined makes the Go-to-JS call a
+// sync method performs throw. The method, as registered through
+// drainFirst, returns undefined instead of ending the program, and not
+// its disposed value: a failed capabilities() on a live session must
+// not look like a disposed session's []. Not parallel: it registers a
 // session in the shared sessions map.
-func TestSyncMethodJSException_ReturnsDisposedValue(t *testing.T) {
+func TestSyncMethodJSException_ReturnsUndefined(t *testing.T) {
 	sharedMethods()
 	throwing := func(*mdsmith.Session, []js.Value) js.Value {
 		panic(js.Error{Value: js.Global().Get("TypeError").New("sync")})
 	}
 	_, id := newTestProxyWithID(t)
 	defer disposeSession(id)
-	list := sharedFunc(methodImpl{call: throwing, disposed: disposedEmptyList})
+	list := drainFirst(sharedFunc(methodImpl{call: throwing, disposed: disposedEmptyList}))
 	v := jsValue(t, list(js.Undefined(), []js.Value{js.ValueOf(id)}))
-	assert.Equal(t, 0, v.Length(), "capabilities-shaped method returns an empty list")
-	void := sharedFunc(methodImpl{call: throwing, disposed: disposedUndefined})
+	assert.True(t, v.IsUndefined(), "a capabilities-shaped method yields undefined, not []")
+	void := drainFirst(sharedFunc(methodImpl{call: throwing, disposed: disposedUndefined}))
 	assert.True(t, jsValue(t, void(js.Undefined(), []js.Value{js.ValueOf(id)})).IsUndefined())
+	assert.Contains(t, sessions, id, "the session stays live")
 	assert.PanicsWithValue(t, "go bug", func() {
-		sharedFunc(methodImpl{
+		drainFirst(sharedFunc(methodImpl{
 			call:     func(*mdsmith.Session, []js.Value) js.Value { panic("go bug") },
 			disposed: disposedUndefined,
-		})(js.Undefined(), []js.Value{js.ValueOf(id)})
+		}))(js.Undefined(), []js.Value{js.ValueOf(id)})
 	}, "a Go panic is re-raised")
 }
