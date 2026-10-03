@@ -742,9 +742,10 @@ jobs:
 
   smoke-test:
     # Wait until every channel is on the new version before checking
-    # — the npm and PyPI registries can take ~60s to surface a fresh
-    # publish, so the channel-specific install commands re-run if the
-    # registry briefly returns the previous version.
+    # — the npm and PyPI registries can take from ~60s to a few
+    # minutes to surface a fresh publish, so the channel-specific
+    # install commands re-run if the registry briefly returns the
+    # previous version.
     needs: [npm, pypi, release]
     strategy:
       fail-fast: false
@@ -766,9 +767,13 @@ jobs:
               # no binary (v0.56.0: @mdsmith/cli was readable ~2 min
               # before @mdsmith/linux-x64). Only count an attempt as
               # done once the installed shim actually runs.
+              # `--prefer-online` makes npm revalidate its cached
+              # package metadata on every attempt, so a retry cannot be
+              # answered from a stale copy fetched by an earlier one.
               ok=0
               for attempt in 1 2 3 4 5 6 7 8 9 10; do
-                if npm install -g --force "@mdsmith/cli@${VERSION#v}" &&
+                if npm install -g --force --prefer-online \
+                  "@mdsmith/cli@${VERSION#v}" &&
                   mdsmith version; then
                   ok=1; break
                 fi
@@ -798,7 +803,7 @@ jobs:
               fi
             run: mdsmith version
           - channel: mise
-            # The `-debian` variant: since 2026.10.1 `jdxcode/mise:latest`
+            # The `debian` tag: since 2026.10.1 `jdxcode/mise:latest`
             # is a minimal image with no `tail`, so the Actions runner
             # cannot start it as a job container (it runs
             # `tail -f /dev/null` as the entrypoint).
