@@ -1,4 +1,4 @@
-//go:build !js && !wasip1
+//go:build unix || windows || plan9
 
 package build
 
@@ -30,7 +30,8 @@ func TestRecipeOutput_FileWritersGoDirect(t *testing.T) {
 func TestRecipeOutput_AttachSecondPipeFailsClosesFirst(t *testing.T) {
 	skipOnPlan9(t)
 	// The first pipeFn call is the real os.Pipe, which js/wasm and
-	// wasip1 lack, so this test lives in the unix || windows file.
+	// wasip1 lack, so this test lives in the unix || windows || plan9
+	// file.
 	failPipeAfter(t, 1)
 	ro := &recipeOutput{}
 	err := ro.attach(&exec.Cmd{}, &strings.Builder{}, &strings.Builder{})

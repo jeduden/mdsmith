@@ -1,4 +1,4 @@
-//go:build !js && !wasip1
+//go:build unix || windows || plan9
 
 package build
 
@@ -145,10 +145,12 @@ func TestRunRecipe_CancellationReported(t *testing.T) {
 	assert.Contains(t, err.Error(), "cancelled")
 }
 
-// skipOnPlan9 skips a test that runs a `sh` recipe or opens a unix
-// pipe. These files carry `!js && !wasip1` so GOOS=plan9 go vet still
-// type-checks them (plan 2610030243), but plan9 has only `rc`; the
-// tests it runs live in exec_plan9_test.go.
+// skipOnPlan9 skips a process or pipe test on plan9. These files carry
+// `unix || windows || plan9`, the complement of exec_other.go's tag, so
+// GOOS=plan9 go vet still type-checks them (plan 2610030243). Their
+// tests assume POSIX tools such as `sh`, and plan9 has only `rc`; the
+// tests plan9 runs live in exec_plan9_test.go and
+// exec_plan9_proc_test.go.
 func skipOnPlan9(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "plan9" {

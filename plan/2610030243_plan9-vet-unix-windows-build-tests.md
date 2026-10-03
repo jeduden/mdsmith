@@ -43,10 +43,14 @@ errors only then.
    `runtime`. Option A needs no new CI step because the
    existing `GOOS=plan9 go vet ./...` step now covers
    the files. Option A:
-   change the tag to `!js && !wasip1` and skip each
+   change the tag to `unix || windows || plan9` and skip each
    `sh`-dependent test at run time on plan9. Option B:
    keep the tag and add a CI step that type-checks the
    files for plan9 with a build-constraint override.
+   The new tag is the exact complement of
+   `exec_other.go`'s `!unix && !windows && !plan9`, not
+   `!js && !wasip1`: a future port then compiles the
+   stub tests and not these, which would fail there.
 2. Write a failing check first: a plan9-only compile
    error placed in a `_proc_test.go` file must fail
    CI.

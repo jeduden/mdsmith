@@ -1,4 +1,4 @@
-//go:build !js && !wasip1
+//go:build unix || windows || plan9
 
 package build
 

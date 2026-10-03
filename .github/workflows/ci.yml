@@ -592,7 +592,9 @@ jobs:
         run: go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith
       - name: Run the whole internal/build package under Node
         # Plan 2610021028: a test that spawns a process or opens a pipe
-        # fails under GOOS=js unless its file is tagged unix || windows.
+        # fails under GOOS=js unless its file is tagged unix || windows
+        # (internal/build adds || plan9 so the plan9 vet covers it, plan
+        # 2610030243).
         # --all runs every test in the package, so a mistagged one fails,
         # and it fails a skip of a js/wasm-only test (exec_other.go's
         # stub tests), so this is the package's only js/wasm run.
