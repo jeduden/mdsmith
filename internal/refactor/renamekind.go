@@ -2,10 +2,13 @@ package refactor
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/jeduden/mdsmith/internal/mdtext"
 )
 
 // RenameKind names the symbol a rename targets. Its values are the
@@ -247,12 +250,63 @@ func renameLabel(fileKey string, source []byte, oldName, newName string) (Plan, 
 	return p, nil
 }
 
-// editsLeaveUnchanged reports whether applying edits to source yields
-// source byte for byte. A plan ApplyEdits rejects is not a no-op: the
+// editsLeaveUnchanged reports whether every edit replaces its range of
+// source with the bytes already there, so the plan rewrites nothing.
+// It compares each edit in place rather than splicing a copy of the
+// file. A plan ApplyEdits would reject (an edit off the file, across
+// lines, outside its row, or overlapping another) is not a no-op: the
 // host's own apply step reports it.
 func editsLeaveUnchanged(source []byte, edits []Edit) bool {
-	out, err := ApplyEdits(source, edits)
-	return err == nil && bytes.Equal(out, source)
+	es := slices.Clone(edits)
+	slices.SortStableFunc(es, func(a, b Edit) int {
+		if c := cmp.Compare(a.Range.Start.Line, b.Range.Start.Line); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Range.Start.Character, b.Range.Start.Character)
+	})
+	line, lineStart := 0, 0
+	for i, e := range es {
+		if e.Range.Start.Line < 0 || e.Range.End.Line != e.Range.Start.Line {
+			return false
+		}
+		if i > 0 && es[i-1].Range.Start.Line == e.Range.Start.Line &&
+			e.Range.Start.Character < es[i-1].Range.End.Character {
+			return false
+		}
+		for line < e.Range.Start.Line {
+			nl := bytes.IndexByte(source[lineStart:], '\n')
+			if nl < 0 {
+				return false
+			}
+			lineStart += nl + 1
+			line++
+		}
+		if !editKeepsRow(rowAt(source, lineStart), e) {
+			return false
+		}
+	}
+	return true
+}
+
+// rowAt returns the line of source starting at byte start, without its
+// `\n` or trailing `\r`.
+func rowAt(source []byte, start int) []byte {
+	row := source[start:]
+	if nl := bytes.IndexByte(row, '\n'); nl >= 0 {
+		row = row[:nl]
+	}
+	return bytes.TrimSuffix(row, []byte{'\r'})
+}
+
+// editKeepsRow reports whether e addresses a valid range of row and
+// its NewText equals the bytes in that range.
+func editKeepsRow(row []byte, e Edit) bool {
+	if checkEditRange(e, mdtext.UTF16FromByteOffset(row, len(row)), 0) != nil {
+		return false
+	}
+	cur := utf16Cursor{row: row}
+	start, end, err := cur.editBytes(e, 0)
+	return err == nil && string(row[start:end]) == e.NewText
 }
 
 // detectRenameKind decides whether oldName names a heading or a

@@ -1,6 +1,7 @@
 package refactor
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,6 +41,42 @@ func TestEditsLeaveUnchanged(t *testing.T) {
 	assert.True(t, editsLeaveUnchanged(src, []Edit{at(0, 2, 7, "Setup")}), "same text, CRLF kept")
 	assert.False(t, editsLeaveUnchanged(src, []Edit{at(0, 2, 7, "Install")}), "real edit")
 	assert.False(t, editsLeaveUnchanged(src, []Edit{at(9, 0, 0, "x")}), "rejected plan is not a no-op")
+	assert.False(t, editsLeaveUnchanged(src, []Edit{at(0, 2, 5, "Set"), at(0, 4, 7, "tup")}),
+		"overlapping edits are rejected by ApplyEdits, so not a no-op")
+	assert.False(t, editsLeaveUnchanged(src, []Edit{at(0, 3, 2, "")}), "inverted range")
+	assert.False(t, editsLeaveUnchanged(src, []Edit{at(0, 2, 99, "Setup")}), "past the row")
+	assert.False(t, editsLeaveUnchanged(src, []Edit{
+		{Range: Range{Start: Position{0, 2}, End: Position{2, 0}}, NewText: "x"},
+	}), "multi-line edit")
+	assert.True(t, editsLeaveUnchanged(src, []Edit{at(2, 0, 4, "body"), at(0, 2, 7, "Setup")}),
+		"several same-text edits in any order")
+
+	// The check compares each edit with the bytes it replaces rather
+	// than splicing a copy of the whole file.
+	big := []byte(strings.Repeat("filler line\n", 2000) + "# Setup\n")
+	edits := []Edit{at(2000, 2, 7, "Setup")}
+	allocs := testing.AllocsPerRun(10, func() { editsLeaveUnchanged(big, edits) })
+	assert.LessOrEqual(t, allocs, 2.0)
+}
+
+func TestRowAt(t *testing.T) {
+	src := []byte("ab\r\ncd\nef")
+	assert.Equal(t, "ab", string(rowAt(src, 0)), "CR dropped")
+	assert.Equal(t, "cd", string(rowAt(src, 4)))
+	assert.Equal(t, "ef", string(rowAt(src, 7)), "last line has no newline")
+	assert.Empty(t, rowAt([]byte("x\n"), 2), "empty final row")
+}
+
+func TestEditKeepsRow(t *testing.T) {
+	row := []byte("a😀b") // the emoji is two UTF-16 units
+	at := func(from, to int, text string) Edit {
+		return Edit{Range: Range{Start: Position{0, from}, End: Position{0, to}}, NewText: text}
+	}
+	assert.True(t, editKeepsRow(row, at(3, 4, "b")), "offsets count UTF-16 units")
+	assert.True(t, editKeepsRow(row, at(1, 3, "😀")))
+	assert.False(t, editKeepsRow(row, at(3, 4, "c")), "different text")
+	assert.False(t, editKeepsRow(row, at(2, 3, "")), "splits a surrogate pair")
+	assert.False(t, editKeepsRow(row, at(0, 9, "")), "past the row")
 }
 
 func TestOnlyUnchangedSelf(t *testing.T) {
