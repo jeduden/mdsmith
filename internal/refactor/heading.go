@@ -508,8 +508,9 @@ func appendAnchorEditsForHeading(
 	changes map[string][]Edit, ws Workspace,
 	headingFile, oldSlug, newSlug string,
 ) {
+	lines := edgeLines{ws: ws}
 	for _, e := range ws.IncomingAnchorEdges(headingFile, oldSlug) {
-		key, edit, ok := anchorEditForEdge(ws, e, oldSlug, newSlug)
+		key, edit, ok := anchorEditForEdge(&lines, e, oldSlug, newSlug)
 		if !ok {
 			continue
 		}
@@ -523,18 +524,11 @@ func appendAnchorEditsForHeading(
 // rename skips those rather than failing the whole request, since the
 // alternative would block a heading rename over an unrelated stale
 // edge.
-func anchorEditForEdge(ws Workspace, e index.Edge, oldSlug, newSlug string) (string, Edit, bool) {
-	key, source, ok := ws.Resolve(e.SourceFile)
+func anchorEditForEdge(lines *edgeLines, e index.Edge, oldSlug, newSlug string) (string, Edit, bool) {
+	key, row, ok := lines.row(e)
 	if !ok {
 		return "", Edit{}, false
 	}
-	lines := splitLines(source)
-	// The index can hold stale entries after a closed-buffer edit or
-	// an unprocessed watcher event. Indexing past EOF would panic.
-	if e.SourceLine < 1 || e.SourceLine > len(lines) {
-		return "", Edit{}, false
-	}
-	row := lines[e.SourceLine-1]
 	startByte, endByte, ok := anchorFragmentBytes(row, e.SourceCol-1, oldSlug)
 	if !ok {
 		return "", Edit{}, false

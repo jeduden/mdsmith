@@ -859,16 +859,12 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	if oldHolders > 1 || newHolders > 0 {
 		return
 	}
+	lines := edgeLines{ws: ws}
 	for _, e := range edges {
-		key, source, ok := ws.Resolve(e.SourceFile)
+		key, row, ok := lines.row(e)
 		if !ok {
 			continue
 		}
-		lines := splitLines(source)
-		if e.SourceLine < 1 || e.SourceLine > len(lines) {
-			continue
-		}
-		row := lines[e.SourceLine-1]
 		// An edge from a stale index can point at a column that now
 		// holds a link to another file; only a link still keyed by
 		// oldStem is rewritten.
