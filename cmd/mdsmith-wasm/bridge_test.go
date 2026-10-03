@@ -3,6 +3,8 @@
 package main
 
 import (
+	"crypto/aes"
+	"encoding/hex"
 	"errors"
 	"maps"
 	"reflect"
@@ -834,6 +836,24 @@ func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
 	assert.False(t, proxy.Call("hasOwnProperty", "missing").Bool())
 }
 
+// TestNewSessionProxy_BindThrowRegistersNoSession swaps in a bind that
+// throws, as a Function.prototype.bind patched before load would be
+// captured. createSession must reject without leaving the Session in
+// sessions, where no session object would ever reach dispose().
+// Not parallel: it swaps bindTo.
+func TestNewSessionProxy_BindThrowRegistersNoSession(t *testing.T) {
+	sharedMethods()
+	old := bindTo
+	t.Cleanup(func() { bindTo = old })
+	bindTo = js.Global().Get("Function").New("throw new TypeError('bind')")
+	before := maps.Clone(sessions)
+	opts := js.ValueOf(map[string]any{})
+	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
+	require.True(t, rejected, "createSession rejects when bind throws")
+	assert.True(t, v.InstanceOf(js.Global().Get("TypeError")), "rejects with the thrown TypeError")
+	assert.Equal(t, before, sessions, "no session is left registered")
+}
+
 // TestSharedFunc checks the dispatch every shared method func runs: a
 // live bound id calls impl.call with that session and the remaining
 // args, and a disposed id, an unknown id, or no id returns
@@ -1073,26 +1093,62 @@ func TestSharedFunc_GuessedIDsReachNoSession(t *testing.T) {
 	assert.Positive(t, other.Call("capabilities").Length())
 }
 
+// fipsKey is the FIPS-197 appendix C.1 AES-128 key 00 01 … 0f.
+var fipsKey = []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+
 // TestPermuteSessionID_IsBijection runs the Feistel permutation over
 // a 10-bit domain (5-bit halves) and checks every input maps to a
 // distinct output inside the domain, so counter values never collide.
 func TestPermuteSessionID_IsBijection(t *testing.T) {
-	keys := [sessionIDRounds]uint64{1, 0x9e3779b97f4a7c15, 42, 7}
+	blk := mustCipher(aes.NewCipher(fipsKey))
 	const half = 5
 	seen := make(map[uint64]bool, 1<<(2*half))
 	for x := uint64(0); x < 1<<(2*half); x++ {
-		y := permuteSessionID(x, &keys, half)
+		y := permuteSessionID(x, blk, half)
 		require.Less(t, y, uint64(1)<<(2*half), "permute(%d) left the domain", x)
 		require.False(t, seen[y], "permute(%d) = %d repeats", x, y)
 		seen[y] = true
 	}
 }
 
-// TestNewSessionID_NeverRepeats creates ids across many create and
-// dispose cycles and checks none repeats, so a method kept from a
-// disposed session never reaches a later one, each id is in [1,
-// maxSessionID], and the ids are not a counting sequence a script could
-// step through. Not parallel: it reads the shared counter.
+// TestRoundSessionID pins the Feistel round function: the low 64 bits,
+// little-endian, of AES-128 over the block holding the round index in
+// byte 0 and the half little-endian in bytes 1 to 8. The key is
+// FIPS-197's, whose C.1 vector checks the cipher itself.
+func TestRoundSessionID(t *testing.T) {
+	blk := mustCipher(aes.NewCipher(fipsKey))
+	var out [16]byte
+	pt, err := hex.DecodeString("00112233445566778899aabbccddeeff")
+	require.NoError(t, err)
+	blk.Encrypt(out[:], pt)
+	require.Equal(t, "69c4e0d86a7b0430d8cdb78070b4c55a", hex.EncodeToString(out[:]))
+	assert.Equal(t, uint64(0x825b8f87373ba1c6), roundSessionID(blk, 0, 0))
+	assert.Equal(t, uint64(0x574272ad725f2164), roundSessionID(blk, 3, 0x123456))
+	assert.Equal(t, uint64(0xb4a429fecc1ba37c), roundSessionID(blk, 9, 0x7ffffff))
+}
+
+// TestMustCipher checks mustCipher returns the block it is given and
+// panics on the error aes.NewCipher returns for a bad key length.
+func TestMustCipher(t *testing.T) {
+	blk, err := aes.NewCipher(fipsKey)
+	require.NoError(t, err)
+	assert.Same(t, blk, mustCipher(blk, nil))
+	assert.Panics(t, func() { mustCipher(aes.NewCipher(make([]byte, 3))) })
+}
+
+// TestSessionIDCipher_IsAES128 checks the load-time id cipher is an
+// AES block, the PRF the Feistel rounds rely on.
+func TestSessionIDCipher_IsAES128(t *testing.T) {
+	require.NotNil(t, sessionIDCipher)
+	assert.Equal(t, aes.BlockSize, sessionIDCipher.BlockSize())
+	assert.Equal(t, 10, sessionIDRounds)
+}
+
+// TestNewSessionID_NeverRepeats draws 4096 ids in a row and checks none
+// repeats, so a method kept from a disposed session never reaches a
+// later one, each id is in [1, maxSessionID], and the ids are not a
+// counting sequence a script could step through. Not parallel: it
+// advances the shared counter.
 func TestNewSessionID_NeverRepeats(t *testing.T) {
 	seen := make(map[int64]bool, 4096)
 	prev := int64(0)
@@ -1110,12 +1166,12 @@ func TestNewSessionID_NeverRepeats(t *testing.T) {
 // TestNewSessionID_SkipsOutOfRange sets the counter to a value whose
 // image is at or past maxSessionID and checks newSessionID moves on to
 // the next counter value rather than hand out an id past the range.
-// Not parallel: it moves the shared counter.
+// It only moves the counter forward and leaves it there: winding it
+// back would hand the same ids out again. Not parallel: it moves the
+// shared counter.
 func TestNewSessionID_SkipsOutOfRange(t *testing.T) {
-	old := sessionIDCounter
-	t.Cleanup(func() { sessionIDCounter = old })
-	image := func(c uint64) uint64 { return permuteSessionID(c, &sessionIDKeys, sessionIDHalfBits) }
-	c := old
+	image := func(c uint64) uint64 { return permuteSessionID(c, sessionIDCipher, sessionIDHalfBits) }
+	c := sessionIDCounter
 	for image(c) < maxSessionID {
 		c++
 	}
@@ -1133,7 +1189,8 @@ func TestNewSessionID_SkipsOutOfRange(t *testing.T) {
 // same 2^53 range as standard Go rather than a 2^31 − 1 one a script can sweep.
 // Plan 2610021439.
 func TestSessionID_Int64On32BitInt(t *testing.T) {
-	assert.Equal(t, reflect.Int64, reflect.TypeOf(newSessionID()).Kind())
+	// The func's result type, not a call, so no id is handed out.
+	assert.Equal(t, reflect.Int64, reflect.TypeOf(newSessionID).Out(0).Kind())
 	assert.Equal(t, reflect.Int64, reflect.TypeOf(sessions).Key().Kind())
 	assert.Equal(t, int64(1)<<53, int64(maxSessionID))
 }
