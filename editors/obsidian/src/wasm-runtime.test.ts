@@ -343,6 +343,35 @@ describe.skipIf(skip)("createRuntime", () => {
     expect(failure?.message).toContain("createSession returned no session");
   });
 
+  test("a throwing Object.prototype.then getter does not reject createRuntime", async () => {
+    // createRuntime is async, so its own resolve reads `then` on the
+    // SessionRuntime it returns. A page-defined throwing getter there
+    // would reject the call and strand the session the engine created.
+    // The runtime carries its own `then: undefined`, so the lookup ends
+    // before Object.prototype.
+    const warm = await makeRuntime({}); // ensure the engine is loaded
+    warm.dispose();
+    Object.defineProperty(Object.prototype, "then", {
+      configurable: true,
+      get() {
+        throw new Error("then getter");
+      },
+    });
+    let rt: MdsmithRuntime | undefined;
+    let failure: unknown;
+    try {
+      rt = await makeRuntime({});
+    } catch (err) {
+      failure = err;
+    } finally {
+      delete (Object.prototype as { then?: unknown }).then;
+    }
+    expect(failure).toBeUndefined();
+    expect(Object.hasOwn(rt as object, "then")).toBe(true);
+    expect(Object.keys(rt as object)).not.toContain("then");
+    rt?.dispose();
+  });
+
   test("an async method whose Promise the engine cannot build rejects", async () => {
     // A throwing globalThis.Promise makes the engine's check() return
     // undefined. The facade must still hand back a Promise that rejects

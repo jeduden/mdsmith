@@ -283,14 +283,30 @@ async function settle<T>(method: string, result: Promise<T> | undefined): Promis
   return await result;
 }
 
+// HIDDEN_THEN is the descriptor SessionRuntime defines its own `then`
+// with: `{value: undefined}` on a null prototype, so a page's
+// Object.prototype.get or .enumerable cannot reach defineProperty, and
+// frozen so nothing can change it between instances.
+const HIDDEN_THEN: PropertyDescriptor = Object.freeze(
+  Object.assign(Object.create(null) as PropertyDescriptor, { value: undefined }),
+);
+
 // SessionRuntime adapts a WasmSession to the MdsmithRuntime facade. It
 // is a thin pass-through — the engine does the work — plus a disposed
 // guard so a call after dispose() throws a clear error rather than
 // reaching into a torn-down session.
+//
+// Each instance carries its own non-enumerable, read-only
+// `then: undefined`, as the engine's session object does. createRuntime
+// is async, so its resolve reads `then` on the instance it returns; a
+// page-defined throwing Object.prototype.then getter would otherwise
+// reject the call and strand the session the engine created.
 class SessionRuntime implements MdsmithRuntime {
   private disposed = false;
 
-  constructor(private readonly session: WasmSession) {}
+  constructor(private readonly session: WasmSession) {
+    Object.defineProperty(this, "then", HIDDEN_THEN);
+  }
 
   private assertLive(): void {
     if (this.disposed) {
