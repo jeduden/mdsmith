@@ -105,3 +105,16 @@ call it replaced. Each now has a red/green test.
 resort, so every entry point is covered, not only the
 guarded call sites. `dispose()` drops the session
 before it calls `unregister`.
+
+## Review Round 2
+
+A second review found two gaps. The executor callback
+now swallows any JS failure, but `rejectOnJSError`
+turned only a `js.Error` into a rejection. A
+`*js.ValueError` in an executor left its Promise
+pending forever. It now rejects with an `Error`.
+
+A `Promise` that ran the `createSession` executor and
+then threw left the session registered, though the
+caller got `undefined`. `createSession` now disposes
+it. Each has a red/green test.

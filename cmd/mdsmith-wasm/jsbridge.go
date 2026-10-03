@@ -18,8 +18,8 @@ import (
 // synchronously during construction).
 //
 // A JS exception the executor raises (a js.Error panic) rejects the
-// Promise with that exception (see rejectOnJSError), so no executor
-// needs its own guard.
+// Promise with that exception, and a *js.ValueError rejects it with an
+// Error (see rejectOnJSError), so no executor needs its own guard.
 //
 // A patched Promise can fail around the executor too. A constructor
 // that throws, or a Promise that is no constructor, would end the
@@ -97,24 +97,29 @@ func toJS(v any) js.Value {
 }
 
 // rejectOnJSError, which newPromise defers around every executor, turns
-// a JS exception that a syscall/js Call, Invoke, or New raised as a
-// js.Error panic into a rejection with that exception. Inspecting a
-// caller's object can throw (a revoked Proxy, a Proxy trap that throws),
-// and an unrecovered panic in a js.FuncOf callback ends the Go program
-// and every session with it. wasm_exec.js caught the exception before Go
-// panicked, so the runtime is intact. Any other panic is re-raised
-// unchanged. TinyGo does not implement recover() on WebAssembly, so in a
-// TinyGo build the exception still ends the program.
+// a JS-side failure (the panics recoverJS recovers) into a rejection: a
+// JS exception that a syscall/js Call, Invoke, or New raised as a
+// js.Error panic rejects with that exception, and a *js.ValueError (a
+// Value method on the wrong type, such as Get on undefined) rejects with
+// an Error carrying its message. Inspecting a caller's object can throw
+// (a revoked Proxy, a Proxy trap that throws), and an unrecovered panic
+// in a js.FuncOf callback ends the Go program and every session with it.
+// newPromise's executor callback swallows a failure this does not turn
+// into a rejection, which would leave the Promise pending forever.
+// wasm_exec.js caught the exception before Go panicked, so the runtime
+// is intact. Any other panic is re-raised unchanged. TinyGo does not
+// implement recover() on WebAssembly, so in a TinyGo build the exception
+// still ends the program.
 func rejectOnJSError(reject func(any)) {
-	r := recover()
-	if r == nil {
-		return
+	switch r := recover().(type) {
+	case nil:
+	case js.Error:
+		reject(r.Value)
+	case *js.ValueError:
+		reject(jsError(r.Error()))
+	default:
+		panic(r)
 	}
-	if e, ok := r.(js.Error); ok {
-		reject(e.Value)
-		return
-	}
-	panic(r)
 }
 
 // typeUnknown is what jsType reports for a value syscall/js has no

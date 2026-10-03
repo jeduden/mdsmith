@@ -349,7 +349,8 @@ A script that replaces `Promise`, `Reflect.construct`, or
 throw to a caller, so one failed call ends only itself. A `Promise`
 that throws or is not a constructor makes `createSession` and each
 async method return `undefined`. A `resolve` that throws during
-`createSession` disposes the new session, so none stays registered.
+`createSession`, or a `Promise` that throws after it ran the executor,
+disposes the new session, so none stays registered.
 TinyGo has no `recover()` on WebAssembly, so there the exception still
 ends the program.
 

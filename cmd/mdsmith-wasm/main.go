@@ -121,7 +121,8 @@ func resolveVersion() string {
 // returning factory keeps the JS API ergonomic. exposeAPI registers it
 // through drainFirst.
 func createSession(_ js.Value, args []js.Value) any {
-	return newPromise(func(resolve, reject func(any)) {
+	var id int64 // the session the executor registered; ids start at 1
+	p := newPromise(func(resolve, reject func(any)) {
 		if len(args) < 1 || !isRecord(args[0]) {
 			reject(jsError("createSession requires an options object"))
 			return
@@ -156,7 +157,8 @@ func createSession(_ js.Value, args []js.Value) any {
 			reject(jsError(err.Error()))
 			return
 		}
-		proxy, id := registerSession(sess)
+		var proxy js.Value
+		proxy, id = registerSession(sess)
 		// A resolve that throws (a patched Promise) rejects the create
 		// through newPromise's guard; the proxy never reaches the caller,
 		// so free the session it registered before that guard runs.
@@ -169,6 +171,15 @@ func createSession(_ js.Value, args []js.Value) any {
 		resolve(proxy)
 		resolved = true
 	})
+	// A Promise constructor that ran the executor and then threw makes
+	// newPromise return undefined: the session object reached only the
+	// constructor's resolve, never the caller, so free the session too.
+	// id 0 is never handed out, so a create that registered nothing
+	// disposes nothing.
+	if p.IsUndefined() {
+		disposeSession(id)
+	}
+	return p
 }
 
 // workspaceFromJS converts a JS Record<string,string> into the
@@ -443,7 +454,8 @@ type methodImpl struct {
 // Error(err.Error()) — carrying mdsmith.ErrorCode(err) as its `code`
 // when the error has one — otherwise the Promise resolves to toJS(value). A
 // JS exception raised on the way (a js.Error panic) rejects with that
-// exception, as newPromise does for every executor. After dispose the
+// exception, and a *js.ValueError with an Error, as newPromise does for
+// every executor. After dispose the
 // Promise rejects with Error("session disposed").
 func asyncMethod(fn func(sess *mdsmith.Session, args []js.Value) (any, error)) methodImpl {
 	if fn == nil {

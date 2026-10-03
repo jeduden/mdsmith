@@ -748,9 +748,25 @@ func TestNewPromise_RejectsOnJSError(t *testing.T) {
 	assert.True(t, v.InstanceOf(js.Global().Get("SyntaxError")), "rejects with the thrown SyntaxError")
 }
 
+// TestNewPromise_RejectsOnValueError checks that a *js.ValueError the
+// executor raises (a Value method on the wrong type, such as Get on
+// undefined) rejects the Promise with an Error. The executor callback
+// swallows any JS-side failure that escapes rejectOnJSError, so one it
+// did not turn into a rejection would leave the Promise pending forever.
+func TestNewPromise_RejectsOnValueError(t *testing.T) {
+	p := newPromise(func(_, _ func(any)) {
+		js.Undefined().Get("x")
+	})
+	v, rejected := awaitPromise(t, p)
+	require.True(t, rejected)
+	assert.True(t, v.InstanceOf(js.Global().Get("Error")), "rejects with an Error")
+	assert.Contains(t, v.Get("message").String(), "Value.Get")
+}
+
 // TestRejectOnJSError checks that a deferred rejectOnJSError rejects
-// with the JS exception a js.Error panic carries, does nothing without
-// a panic, and re-raises any other panic.
+// with the JS exception a js.Error panic carries, and with an Error for
+// a *js.ValueError, does nothing without a panic, and re-raises any
+// other panic.
 func TestRejectOnJSError(t *testing.T) {
 	run := func(body func()) (rejected []any) {
 		defer rejectOnJSError(func(v any) { rejected = append(rejected, v) })
@@ -761,6 +777,9 @@ func TestRejectOnJSError(t *testing.T) {
 	got := run(func() { panic(js.Error{Value: jsErr}) })
 	require.Len(t, got, 1)
 	assert.True(t, jsValue(t, got[0]).Equal(jsErr), "rejects with the thrown JS value")
+	got = run(func() { js.Undefined().Get("x") })
+	require.Len(t, got, 1)
+	assert.True(t, jsValue(t, got[0]).InstanceOf(js.Global().Get("Error")), "a *js.ValueError rejects with an Error")
 	assert.Empty(t, run(func() {}), "no panic, no rejection")
 	assert.PanicsWithValue(t, "go bug", func() { run(func() { panic("go bug") }) })
 }
@@ -1234,6 +1253,23 @@ func TestCreateSession_ResolveThrowRegistersNoSession(t *testing.T) {
 	p := jsValue(t, createSession(js.Undefined(), []js.Value{opts}))
 	rej := p.Get("rejection")
 	require.True(t, rej.InstanceOf(js.Global().Get("TypeError")), "create rejects with the thrown TypeError")
+	assert.Equal(t, before, sessions, "no session is left registered")
+}
+
+// TestCreateSession_CtorThrowAfterExecutorRegistersNoSession replaces
+// Promise with a constructor that runs the executor, so the session is
+// registered and resolve returns, and then throws. createSession returns
+// undefined, so the session object never reaches the caller and the
+// session must not stay registered. Not parallel: it swaps
+// globalThis.Promise.
+func TestCreateSession_CtorThrowAfterExecutorRegistersNoSession(t *testing.T) {
+	sharedMethods()
+	swapPromise(t, js.Global().Get("Function").New(`executor`,
+		`executor(function () {}, function () {}); throw new TypeError("after");`))
+	before := maps.Clone(sessions)
+	opts := js.ValueOf(map[string]any{})
+	v := jsValue(t, createSession(js.Undefined(), []js.Value{opts}))
+	assert.True(t, v.IsUndefined(), "a failed Promise construction yields undefined")
 	assert.Equal(t, before, sessions, "no session is left registered")
 }
 
