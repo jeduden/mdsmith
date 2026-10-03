@@ -704,3 +704,30 @@ func TestCollectCodeSpanRanges_SortedDisjoint(t *testing.T) {
 		assert.LessOrEqual(t, spans[i-1].end, spans[i].start, "span %d overlaps or precedes span %d", i, i-1)
 	}
 }
+
+func TestWikilinkIndex_StemAndNamePaths(t *testing.T) {
+	idx := NewWikilinkIndex(fstest.MapFS{
+		"docs/Guide.md":                 {},
+		"archive/guide.md":              {},
+		"node_modules/pkg/guide.md":     {},
+		"img/logo.png":                  {},
+		"logo.png":                      {},
+		"a/guide.mdx":                   {},
+		"notes/license":                 {},
+		".git/hooks/guide.md":           {},
+		"docs/nested/deep/different.md": {},
+	})
+	require.NotNil(t, idx)
+	assert.Equal(t, []string{"archive/guide.md", "docs/Guide.md"}, idx.StemPaths("guide"))
+	assert.Equal(t, []string{"logo.png", "img/logo.png"}, idx.NamePaths("logo.png"))
+	assert.Equal(t, []string{"a/guide.mdx"}, idx.NamePaths("guide.mdx"))
+	assert.Empty(t, idx.StemPaths("license"), "an extensionless file has no stem key")
+	assert.Empty(t, idx.StemPaths("missing"))
+	assert.Empty(t, idx.NamePaths("missing"))
+}
+
+func TestWikilinkIndex_PathsNilReceiver(t *testing.T) {
+	var idx *WikilinkIndex
+	assert.Empty(t, idx.StemPaths("a"))
+	assert.Empty(t, idx.NamePaths("a.md"))
+}

@@ -1,7 +1,7 @@
 ---
 id: 2610022104
 title: Count wikilink stem siblings against the resolver's index on move
-status: "🔲"
+status: "🔳"
 summary: >-
   The move planner's `wikilinkKeyHolders` counts files from
   `ws.Files()`, but the wikilink resolver indexes every

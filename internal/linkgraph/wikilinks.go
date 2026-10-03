@@ -277,6 +277,27 @@ func (idx *WikilinkIndex) Resolve(target string) (string, bool) {
 	return "", false
 }
 
+// StemPaths returns the Markdown files the resolver reaches by the
+// stem key (as FileStemKey returns it), shallowest first. The slice is
+// the index's own: callers must not modify it. A nil index returns nil.
+func (idx *WikilinkIndex) StemPaths(key string) []string {
+	if idx == nil {
+		return nil
+	}
+	return idx.stems[key]
+}
+
+// NamePaths returns the files, of any extension, the resolver reaches
+// by the exact-name key (as FileNameKey returns it), shallowest first.
+// The slice is the index's own: callers must not modify it. A nil
+// index returns nil.
+func (idx *WikilinkIndex) NamePaths(key string) []string {
+	if idx == nil {
+		return nil
+	}
+	return idx.names[key]
+}
+
 // skipHeavyDirs returns fs.SkipDir for known-heavy subtrees that
 // never carry wikilink targets users want resolved (`.git`,
 // `node_modules`). Used as a fs.WalkDirFunc verdict for directory
