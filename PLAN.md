@@ -286,7 +286,7 @@ footer: |
 | 2610021028 | ✅     | sonnet | [Gate untagged internal/build tests under js/wasm in CI](plan/2610021028_js-wasm-portable-test-gate.md)                                                 |
 | 2610021237 | ✅     | sonnet | [Silence a stale wasm session dispose reference](plan/2610021237_wasm-stale-dispose-reference.md)                                                       |
 | 2610021439 | ✅     | sonnet | [Make wasm session method bindings unforgeable](plan/2610021439_wasm-unforgeable-session-binding.md)                                                    |
-| 2610021452 | 🔲     | sonnet | [Free wasm sessions dropped without dispose](plan/2610021452_wasm-collect-dropped-sessions.md)                                                          |
+| 2610021452 | ✅     | sonnet | [Free wasm sessions dropped without dispose](plan/2610021452_wasm-collect-dropped-sessions.md)                                                          |
 | 2610021556 | ✅     | sonnet | [Declare each wasm method's disposed result next to its impl](plan/2610021556_wasm-disposed-result-table.md)                                            |
 | 2610021800 | 🔲     | sonnet | [Contain wasm JS exceptions outside the executor guard](plan/2610021800_wasm-js-exception-outside-guard.md)                                             |
 | 2610021849 | 🔲     | sonnet | [Kill running build recipes when the CLI is interrupted](plan/2610021849_cancel-recipes-on-cli-interrupt.md)                                            |
@@ -296,4 +296,5 @@ footer: |
 | 2610030243 | 🔲     | sonnet | [Vet the internal/build spawn tests for plan9](plan/2610030243_plan9-vet-unix-windows-build-tests.md)                                                   |
 | 2610030244 | 🔲     | sonnet | [Run internal/build under js/wasm once in CI](plan/2610030244_dedupe-build-js-wasm-ci-run.md)                                                           |
 | 2610030438 | 🔲     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
+| 2610030846 | ✅     | sonnet | [Silence wasm session finalizers after the Go program exits](plan/2610030846_wasm-finalizer-after-exit.md)                                              |
 <?/catalog?>

@@ -261,13 +261,38 @@ No session registers a function of its own. The method functions
 are shared by all sessions and registered once. Each method on a
 session object is a `bind` of one of them with a session id, so the
 binding is collected once that method is unreachable. A method taken
-off the object, such as `const { check } = session`, keeps its binding
-after the object is gone. The Go session is not collected: it stays
-live until `dispose()`, so call `dispose()` before you drop a session.
+off the object, such as `const { check } = session`, keeps its
+binding after the object is gone.
 
-`dispose()` drops the id, so the disposed session's caches and
-workspace can be freed, and a create/dispose loop holds a fixed number
-of registered functions. Each method keeps its shape afterwards:
+Each session also has a token object. `dispose` is bound to it, and a
+private `WeakMap` maps every other method to it, so the token lives
+while any method does and no call but `dispose()` carries it. A
+`FinalizationRegistry` watches the token without keeping it alive.
+Once the object and every method taken off it are collected, the
+registry queues the session's id. The next engine call, to
+`createSession` or any session method, disposes each queued id. So a
+host that drops a session without `dispose()` still frees the Go
+session.
+
+That is a fallback: the Go and JS garbage collectors decide when it
+runs, so call `dispose()` when you are done with a session to free its
+caches and workspace at once. The queue is a native array push, not a
+Go function, so a garbage collection never calls into Go. After the Go
+program exits, a collected session raises no error in the host.
+
+Go holds the session's JS values until its own collector runs. On
+WebAssembly that happens only as the Go heap grows, so an engine that
+is no longer called can keep a dropped session for good. The TinyGo
+build never releases a JS value that Go has held, so there the token
+is never collected and only `dispose()` frees a session. A host with
+no `FinalizationRegistry`, or one the engine cannot build or bind,
+still loads the standard Go build. It has no fallback either, and only
+`dispose()` frees a session.
+
+`dispose()` drops the id and cancels the registry entry, so the
+disposed session's caches and workspace can be freed, and a
+create/dispose loop holds a fixed number of registered functions and
+registry entries. Each method keeps its shape afterwards:
 `check`, `fix`, `kinds`, `rename`, and `move` return a `Promise` that
 rejects with `Error("session disposed")`.
 `capabilities()` returns `[]`, and `invalidate()` and a second

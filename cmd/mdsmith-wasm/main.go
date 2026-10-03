@@ -54,14 +54,37 @@ func main() {
 	// later patch of bind or call never sees the unbound shared funcs.
 	// A later patch of Reflect.apply still does (see bindTo).
 	sharedMethods()
-	js.Global().Set("mdsmith", js.ValueOf(map[string]any{
-		"createSession": js.FuncOf(createSession),
-		"version":       resolveVersion(),
-	}))
+	js.Global().Set("mdsmith", exposeAPI())
 	// Block forever so the registered callbacks stay alive; a WASM
 	// main that returns tears down the Go runtime and the exported
 	// functions with it.
 	select {}
+}
+
+// apiFuncs are the functions exposeAPI publishes on the mdsmith global.
+var apiFuncs = map[string]func(js.Value, []js.Value) any{
+	"createSession": createSession,
+}
+
+// exposeAPI builds the mdsmith global: version, plus each of apiFuncs
+// registered through drainFirst. The funcs are never released.
+func exposeAPI() js.Value {
+	api := map[string]any{"version": resolveVersion()}
+	for name, fn := range apiFuncs {
+		api[name] = js.FuncOf(drainFirst(fn))
+	}
+	return js.ValueOf(api)
+}
+
+// drainFirst wraps an engine entry point so it first frees the sessions
+// JS has collected since the last call (drainFinalized). Every func
+// exposeAPI and sharedMethods register goes through it, so no entry
+// point can forget the drain.
+func drainFirst(fn func(js.Value, []js.Value) any) func(js.Value, []js.Value) any {
+	return func(this js.Value, args []js.Value) any {
+		drainFinalized()
+		return fn(this, args)
+	}
 }
 
 // resolveVersion mirrors cmd/mdsmith.printVersion's resolution so the
@@ -87,7 +110,8 @@ func resolveVersion() string {
 //
 // It returns a Promise because WebAssembly.instantiate is async on the
 // JS side; NewSession itself is synchronous, but a uniform Promise-
-// returning factory keeps the JS API ergonomic.
+// returning factory keeps the JS API ergonomic. exposeAPI registers it
+// through drainFirst.
 func createSession(_ js.Value, args []js.Value) any {
 	return newPromise(func(resolve, reject func(any)) {
 		if len(args) < 1 || !isRecord(args[0]) {
@@ -180,38 +204,63 @@ var objectToString js.Value
 //
 // The method funcs are shared by every session and registered once.
 // Each session gets a Function.prototype.bind of them with its id as
-// the first argument, so the binding lives in JS and is collected with
-// the session object, and a session registers no func of its own. The
-// Go Session stays in sessions until dispose, even once the session
-// object is collected.
+// the first argument, so the binding lives in JS and a session
+// registers no func of its own. A token object is registered with a
+// FinalizationRegistry that queues the id once the token is collected,
+// for the next engine call to dispose (drainFinalized). dispose is
+// bound to the token too, and every other method is a key of a WeakMap
+// whose value is the token (see bindMethods), so the token is collected
+// only when the session object and every method taken off it are, and
+// no call but dispose passes it. The session object itself is not
+// registered: a method taken off it outlives it. A host that drops a
+// session without dispose() therefore still frees the Go Session, on
+// the first engine call after JS collects it; dispose() stays the
+// prompt, deterministic path. Plan 2610021452.
 // dispose drops the id from sessions, so a call through any reference
 // (a stored `const d = session.dispose`, a frozen session object, a
 // read-only method) finds no session and takes the disposed path: it
 // never reaches a released func, so syscall/js logs nothing. See plan
-// 2610021237. The id is registered only after every method is bound:
-// a bind that throws (one patched before load) rejects createSession
-// without leaving a Session no session object can dispose. A resolve
-// that throws after this returns still leaves one; plan 2610021800
-// tracks that.
+// 2610021237. The id is put in sessions last, after every method is
+// bound and the token registered: a bind or register that throws (one
+// patched before load) rejects createSession without leaving a Session
+// no session object can dispose. A resolve that throws after this
+// returns still leaves one until JS collects the dropped session
+// object; plan 2610021800 tracks that.
 func newSessionProxy(sess *mdsmith.Session) js.Value {
 	shared := sharedMethods()
 	id := newSessionID()
 	proxy := js.Global().Get("Object").New()
-	bindMethods(proxy, sessionMethodNames(), shared, id)
+	token := js.Global().Get("Object").New()
+	bindMethods(proxy, sessionMethodNames(), shared, id, token)
+	if jsType(finalizer.register) == js.TypeFunction {
+		finalizer.register.Invoke(token, id, token)
+	}
 	sessions[id] = sess
 	return proxy
 }
 
 // bindMethods sets each named method on proxy to its shared func bound
-// to id, in names order rather than Go map order, so Object.keys(session)
-// is the same for every session. A name with no shared func (the names
-// list and sharedMethodImpls drifted) is left off rather than passed to
-// bind, which would throw on every createSession;
+// to id, in names order rather than Go map order, so
+// Object.keys(session) is the same for every session. dispose is also
+// bound to token, which it unregisters; every other method is passed
+// with token to finalizer.keep instead, so the token outlives each of
+// them while a call carries only the id. A name with no shared func
+// (the names list and sharedMethodImpls drifted) is left off rather
+// than passed to bind, which would throw on every createSession;
 // TestNewSessionProxy_KeysMatchSessionMethodNames reports the drift.
-func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int64) {
+func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int64, token js.Value) {
 	for _, name := range names {
-		if f, ok := shared[name]; ok {
-			proxy.Set(name, bindTo.Invoke(f, js.Undefined(), id))
+		f, ok := shared[name]
+		switch {
+		case !ok:
+		case name == "dispose":
+			proxy.Set(name, bindTo.Invoke(f, js.Undefined(), id, token))
+		default:
+			m := bindTo.Invoke(f, js.Undefined(), id)
+			if jsType(finalizer.keep) == js.TypeFunction {
+				finalizer.keep.Invoke(m, token)
+			}
+			proxy.Set(name, m)
 		}
 	}
 }
@@ -230,6 +279,27 @@ func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id 
 // A random id or token hides nothing from that script; it is a
 // documented limit (docs/background/concepts/engine-api.md).
 var bindTo js.Value
+
+// sessionFinalizer holds the JS values that free a session dropped
+// without dispose(). Every field is undefined on a host with no usable
+// FinalizationRegistry (see bindFinalizer).
+type sessionFinalizer struct {
+	// register(token, id, token) arranges for id to be pushed onto queue
+	// once token is collected; unregister(token) cancels that, the token
+	// being its own unregister token. Both are bound to the one
+	// FinalizationRegistry sharedMethods creates.
+	register, unregister js.Value
+	// keep(m, token) is WeakMap.prototype.set bound to one private
+	// WeakMap: while method m is reachable, so is token.
+	keep js.Value
+	// queue is the private array the registry's cleanup callback, a
+	// bound Array.prototype.push, appends each collected session's id
+	// to. drainFinalized disposes them on the next engine call.
+	queue js.Value
+}
+
+// finalizer is the one sessionFinalizer, set by sharedMethods.
+var finalizer sessionFinalizer
 
 // sessions maps a live session's id to its Session. js/wasm runs every
 // goroutine on one thread with no preemption, and nothing between a
@@ -451,31 +521,136 @@ var (
 // first use. main calls it before exposing the API; newSessionProxy
 // calls it too, for the tests, which never run main. The funcs are
 // never released, so every session reuses the same handler-table
-// entries. Each takes the session id as args[0].
+// entries. Each takes the session id as args[0]; dispose also takes
+// its token as args[1].
 func sharedMethods() map[string]js.Value {
 	sharedOnce.Do(func() {
 		proto := js.Global().Get("Function").Get("prototype")
 		bindTo = proto.Get("call").Call("bind", proto.Get("bind"))
 		sharedFuncs = make(map[string]js.Value, len(sharedMethodImpls)+1)
 		for name, impl := range sharedMethodImpls {
-			sharedFuncs[name] = funcOf(sharedFunc(impl)).Value
+			sharedFuncs[name] = funcOf(drainFirst(sharedFunc(impl))).Value
 		}
-		sharedFuncs["dispose"] = funcOf(proxyDispose).Value
+		sharedFuncs["dispose"] = funcOf(drainFirst(proxyDispose)).Value
+		finalizer = bindFinalizer(js.Global().Get("FinalizationRegistry"))
 	})
 	return sharedFuncs
 }
 
+// bindFinalizer creates the one FinalizationRegistry from ctor and
+// returns its register and unregister methods bound to it, the set
+// method of a new WeakMap bound to that map, and the queue the
+// registry's cleanup callback pushes onto. They are captured once, with
+// bindTo, so a later patch of FinalizationRegistry, WeakMap, or Array
+// never sees a token or an id.
+//
+// The cleanup callback is Array.prototype.push bound to queue, a native
+// function, not a Go func: the garbage collector never calls into Go,
+// so a session collected after the Go program has exited (a panic in a
+// js.FuncOf callback ends it) raises no "Go program has already exited"
+// error in a GC task, outside any caller's try. Building that guard as
+// a JS try/catch wrapper would need eval or Function, which a strict
+// Content Security Policy blocks. A collected session is therefore
+// freed on the next engine call rather than at collection time (see
+// drainFinalized). Plan 2610030846.
+//
+// When ctor is not a function (a host with no FinalizationRegistry),
+// or building the registry or the WeakMap or binding their methods
+// fails on the JS side (a ctor that is not a constructor, a stub with
+// no register or unregister, no WeakMap global), every field comes back
+// undefined: main calls this before it exposes the API, so a throw here
+// would stop the engine from loading. dispose() is then the only way to
+// free a session. Any other panic is a Go bug and is re-raised
+// (recoverJS). TinyGo does not implement recover() on WebAssembly, so
+// in a TinyGo build such a throw still ends the program.
+func bindFinalizer(ctor js.Value) (f sessionFinalizer) {
+	if jsType(ctor) != js.TypeFunction {
+		return sessionFinalizer{}
+	}
+	defer recoverJS(func() { f = sessionFinalizer{} })
+	g := js.Global()
+	queue := g.Get("Array").New()
+	registry := ctor.New(bindTo.Invoke(g.Get("Array").Get("prototype").Get("push"), queue))
+	weakMap := g.Get("WeakMap")
+	return sessionFinalizer{
+		register:   bindTo.Invoke(registry.Get("register"), registry),
+		unregister: bindTo.Invoke(registry.Get("unregister"), registry),
+		keep:       bindTo.Invoke(weakMap.Get("prototype").Get("set"), weakMap.New()),
+		queue:      queue,
+	}
+}
+
+// recoverJS, deferred, calls onJS when the function panicked with one
+// of the values syscall/js raises for a JS-side failure: a js.Error (a
+// JS exception from Call, Invoke, or New) or a *js.ValueError (a Value
+// method on the wrong type, such as Get on undefined). Any other panic
+// is re-raised unchanged, so a Go bug is not mistaken for a host
+// without the JS feature.
+func recoverJS(onJS func()) {
+	switch r := recover(); r.(type) {
+	case nil:
+	case js.Error, *js.ValueError:
+		onJS()
+	default:
+		panic(r)
+	}
+}
+
 // sharedFunc is the body of a forwarding method's shared func: it
-// calls impl.call with the live session bound as args[0] and the
-// remaining args, and returns impl.disposed() when that session is
-// disposed or args[0] is no live id, so impl.call never runs without a
-// live session.
+// calls impl.call with the live session bound as args[0] and the args
+// after the bound id, and returns impl.disposed() when that
+// session is disposed or args[0] is no live id, so impl.call never
+// runs without a live session. sharedMethods registers it through
+// drainFirst.
 func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 	return func(_ js.Value, args []js.Value) any {
 		if _, sess, rest := boundSession(args); sess != nil {
 			return impl.call(sess, rest)
 		}
 		return impl.disposed()
+	}
+}
+
+// drainFinalized disposes each session whose token JS has collected
+// since the last drain: the FinalizationRegistry pushed its id onto
+// finalizer.queue. Every engine entry point (createSession, each session
+// method, dispose) calls it first, through drainFirst, so a dropped session is freed on the
+// next call after its collection. A session is collected only once its
+// object and every method taken off it are, because each method keeps
+// the token alive. An id already disposed is skipped, and each entry is
+// read through boundSession, so a held value that is not an integer id
+// (only a FinalizationRegistry patched before load can push one)
+// disposes nothing rather than panicking in Value.Float. On a host with
+// no usable registry there is no queue and nothing to drain.
+//
+// With nothing queued the drain is one read of the queue's length:
+// about 0.3 µs under Node, about 1% of invalidate, the cheapest call
+// (BenchmarkDrainFinalizedEmpty, BenchmarkInvalidate). It runs on
+// session methods too, not only on createSession and dispose, so a host
+// that keeps one session and drops others still frees them.
+func drainFinalized() {
+	q := finalizer.queue
+	if jsType(q) != js.TypeObject {
+		return
+	}
+	n := q.Length()
+	if n == 0 {
+		return
+	}
+	for i := 0; i < n; i++ {
+		if id, sess, _ := boundSession([]js.Value{q.Index(i)}); sess != nil {
+			disposeSession(id)
+		}
+	}
+	q.Set("length", 0)
+}
+
+// disposeSession drops the session with the given id from sessions and
+// disposes it; an id with no live session is a no-op.
+func disposeSession(id int64) {
+	if sess := sessions[id]; sess != nil {
+		delete(sessions, id)
+		sess.Dispose()
 	}
 }
 
@@ -486,13 +661,13 @@ func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 // check.
 const maxSessionID = 1 << 53
 
-// boundSession splits the session id a shared func is bound to off
-// args and looks up its live Session. sess is nil once that session is
-// disposed, and also when args[0] is not an integer number (a string,
-// a fraction, NaN, Infinity, or past ±maxSessionID), which only a
-// direct call to a shared func (never one through a session object)
-// can pass; args then comes back whole, and no fraction is truncated
-// onto a live id.
+// boundSession splits the session id a shared func is bound to off args
+// and looks up its live Session. sess is nil once
+// that session is disposed, and also when args[0] is not an integer
+// number (a string, a fraction, NaN, Infinity, or past ±maxSessionID),
+// which only a direct call to a shared func (never one through a
+// session object) can pass; args then comes back whole, and no
+// fraction is truncated onto a live id.
 func boundSession(args []js.Value) (id int64, sess *mdsmith.Session, rest []js.Value) {
 	if len(args) == 0 || jsType(args[0]) != js.TypeNumber {
 		return 0, nil, args
@@ -603,11 +778,17 @@ func proxyInvalidate(sess *mdsmith.Session, args []js.Value) {
 // and disposes the Go session, so the Session and its workspace are
 // unreachable from Go. The session registered no func of its own, so
 // there is nothing to release. A second call finds no session and
-// does nothing.
+// does nothing. sharedMethods registers it through drainFirst.
 func proxyDispose(_ js.Value, args []js.Value) any {
-	if id, sess, _ := boundSession(args); sess != nil {
-		delete(sessions, id)
-		sess.Dispose()
+	if id, sess, rest := boundSession(args); sess != nil {
+		// Cancel the registered finalizer first, so the registry drops
+		// its entry with the session. A direct call with no token
+		// object, or a host with no FinalizationRegistry, has nothing
+		// to cancel.
+		if len(rest) > 0 && jsType(rest[0]) == js.TypeObject && jsType(finalizer.unregister) == js.TypeFunction {
+			finalizer.unregister.Invoke(rest[0])
+		}
+		disposeSession(id)
 	}
 	return js.Undefined()
 }
