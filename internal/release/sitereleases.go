@@ -50,7 +50,9 @@ const releaseHeadingShift = 2
 // BuildSiteReleases splits published releases into stable ones and
 // candidates by GitHub's prerelease flag, drops drafts, normalizes
 // each body, and sorts both lists newest first (tag descending on a
-// tie, so the output is stable).
+// tie, so the output is stable). Normalizing demotes and scopes the
+// body's headings and defuses Hugo shortcode syntax (see
+// defuseShortcodes).
 func BuildSiteReleases(rels []GitHubRelease) SiteReleases {
 	out := SiteReleases{Stable: []SiteRelease{}, Candidates: []SiteRelease{}}
 	for _, r := range rels {
@@ -62,12 +64,13 @@ func BuildSiteReleases(rels []GitHubRelease) SiteReleases {
 			name = r.TagName
 		}
 		body := strings.TrimSpace(strings.ReplaceAll(r.Body, "\r\n", "\n"))
+		body = rewriteHeadings(body, releaseHeadingShift, headingSlug(r.TagName))
 		sr := SiteRelease{
 			Tag:       r.TagName,
 			Name:      name,
 			URL:       r.HTMLURL,
 			Published: r.PublishedAt,
-			Body:      rewriteHeadings(body, releaseHeadingShift, headingSlug(r.TagName)),
+			Body:      defuseShortcodes(body),
 		}
 		if r.Prerelease {
 			out.Candidates = append(out.Candidates, sr)
@@ -81,6 +84,22 @@ func BuildSiteReleases(rels []GitHubRelease) SiteReleases {
 		out.Candidates = candidatesAfter(out.Candidates, out.Stable[0].Published)
 	}
 	return out
+}
+
+// shortcodeDefuser puts a zero-width space between the braces of
+// every Hugo shortcode opener.
+var shortcodeDefuser = strings.NewReplacer("{{<", "{\u200b{<", "{{%", "{\u200b{%")
+
+// defuseShortcodes keeps Hugo from reading shortcodes in a release
+// body. The page renders each body through RenderString, which
+// expands shortcodes, so a PR title quoting "{{< x >}}" would fail
+// the site build on an unknown name. The content-file escape
+// "{{</* x */>}}" (escapeHugoShortcodes) does not help: RenderString
+// prints it verbatim, comment markers and all. The zero-width space
+// splits the "{{<" and "{{%" delimiters Hugo's lexer matches, and
+// the text still reads "{{< x >}}" in prose and in code alike.
+func defuseShortcodes(body string) string {
+	return shortcodeDefuser.Replace(body)
 }
 
 // candidatesAfter keeps the candidates published after cut, the
@@ -119,7 +138,9 @@ func sortNewestFirst(rs []SiteRelease) {
 // ids. ATX headings inside block quotes and list items ("> ## A",
 // "- ## A") are rewritten too. Lines inside fenced code blocks,
 // lines indented four or more spaces, and "#123"-style text are
-// left alone.
+// left alone. A fence opened inside a block quote or list item
+// closes at that container's content indent, or ends with the
+// container.
 func rewriteHeadings(body string, shift int, idPrefix string) string {
 	w := headingRewriter{
 		lines:     strings.Split(body, "\n"),
@@ -140,9 +161,12 @@ type headingRewriter struct {
 	shift int
 	ids   headingIDs
 	// fenceChar and fenceLen describe the open fenced code block's
-	// opening run; fenceChar is 0 outside one.
+	// opening run; fenceChar is 0 outside one. fenceIn lists the
+	// block quotes and list items the fence was opened in,
+	// outermost first; it is empty for a top-level fence.
 	fenceChar byte
 	fenceLen  int
+	fenceIn   []fenceContainer
 	// paraStart is the first line of the open plain paragraph (one a
 	// setext underline can turn into a heading), or -1. canStart
 	// reports whether the next plain line opens a new paragraph rather
@@ -154,10 +178,16 @@ type headingRewriter struct {
 func (w *headingRewriter) visit(i int) {
 	line := w.lines[i]
 	if w.fenceChar != 0 {
-		if w.closesFence(line) {
-			w.fenceChar, w.canStart = 0, true
+		if rest, inside := stripContainers(line, w.fenceIn); inside {
+			if w.isCloser(rest) {
+				w.fenceChar, w.fenceIn, w.canStart = 0, nil, true
+			}
+			return
 		}
-		return
+		// The line ends a block quote or list item the fence was
+		// opened in, and the fence with it: fenced code has no lazy
+		// continuation. The line itself is an ordinary one.
+		w.fenceChar, w.fenceIn, w.canStart = 0, nil, true
 	}
 	trimmed := strings.TrimLeft(line, " ")
 	indent := len(line) - len(trimmed)
@@ -165,28 +195,85 @@ func (w *headingRewriter) visit(i int) {
 	case strings.TrimSpace(line) == "":
 		w.paraStart, w.canStart = -1, true
 	case indent > 3:
-		if w.paraStart < 0 {
-			w.canStart = true
-		}
+		// Indented code, or a continuation of the open paragraph,
+		// list item, or block quote. Neither opens a paragraph nor
+		// changes whether the next plain line may open one.
 	default:
 		w.block(i, line[:indent], trimmed)
 	}
 }
 
-// closesFence reports whether line closes the open fenced code
-// block: the same fence character, a run at least as long as the
-// opener's, and nothing but whitespace after it. A fence opened
-// inside a block quote closes behind the same "> " markers.
-func (w *headingRewriter) closesFence(line string) bool {
-	if w.isCloser(line) {
-		return true
+// fenceContainer is a block quote or list item a fenced code block
+// was opened in. width is a list item's content indent: the spaces a
+// line needs to stay inside the item.
+type fenceContainer struct {
+	quote bool
+	width int
+}
+
+// fenceContainers lists the containers markers opens, outermost
+// first; markers is the run containerPrefix measured. lead is the
+// indent before the first marker and pad the spaces between the last
+// marker and the fence; each widens the list item it borders.
+func fenceContainers(lead int, markers string, pad int) []fenceContainer {
+	var cs []fenceContainer
+	for p := 0; p < len(markers); lead = 0 {
+		if markers[p] == '>' {
+			p++
+			if p < len(markers) && (markers[p] == ' ' || markers[p] == '\t') {
+				p++
+			}
+			cs = append(cs, fenceContainer{quote: true})
+			continue
+		}
+		n := listMarkerLen(markers[p:])
+		cs = append(cs, fenceContainer{width: lead + n})
+		p += n
 	}
-	trimmed := strings.TrimLeft(line, " ")
-	if len(line)-len(trimmed) > 3 || !strings.HasPrefix(trimmed, ">") {
-		return false
+	if last := &cs[len(cs)-1]; !last.quote {
+		last.width += pad
 	}
-	rest := strings.TrimLeft(trimmed, "> \t")
-	return w.isCloser(rest)
+	return cs
+}
+
+// stripContainers removes the block-quote markers and list-item
+// indents of cs from line, outermost first, and reports whether line
+// stays inside every one. A blank line stays inside a list item but
+// ends a block quote, as in CommonMark.
+func stripContainers(line string, cs []fenceContainer) (string, bool) {
+	for _, c := range cs {
+		trimmed := strings.TrimLeft(line, " ")
+		indent := len(line) - len(trimmed)
+		switch {
+		case c.quote:
+			if indent > 3 || !strings.HasPrefix(trimmed, ">") {
+				return "", false
+			}
+			line = trimmed[1:]
+			if line != "" && (line[0] == ' ' || line[0] == '\t') {
+				line = line[1:]
+			}
+		case strings.TrimSpace(line) == "":
+			line = ""
+		case indent < c.width:
+			return "", false
+		default:
+			line = line[c.width:]
+		}
+	}
+	return line, true
+}
+
+// openingFence returns the fence character and run length when s
+// (indent removed) opens a fenced code block, or (0, 0). A backtick
+// fence's info string cannot hold a backtick, so "```go``` text" is
+// inline code in a paragraph, not a fence.
+func openingFence(s string) (byte, int) {
+	c, n := fenceMarker([]byte(s))
+	if c == '`' && strings.IndexByte(s[n:], '`') >= 0 {
+		return 0, 0
+	}
+	return c, n
 }
 
 func (w *headingRewriter) isCloser(line string) bool {
@@ -197,7 +284,7 @@ func (w *headingRewriter) isCloser(line string) bool {
 // block handles a non-blank line indented at most three spaces;
 // indent is its leading spaces and trimmed the rest.
 func (w *headingRewriter) block(i int, indent, trimmed string) {
-	if c, n := fenceMarker([]byte(trimmed)); c != 0 {
+	if c, n := openingFence(trimmed); c != 0 {
 		w.fenceChar, w.fenceLen, w.paraStart = c, n, -1
 		return
 	}
@@ -210,6 +297,10 @@ func (w *headingRewriter) block(i int, indent, trimmed string) {
 		if w.paraStart >= 0 {
 			rewriteSetext(w.lines, w.paraStart, i, w.hashes(level), &w.ids)
 		}
+		w.paraStart, w.canStart = -1, true
+		return
+	}
+	if isThematicBreak(trimmed) {
 		w.paraStart, w.canStart = -1, true
 		return
 	}
@@ -236,10 +327,12 @@ func (w *headingRewriter) containedATX(i int, indent, trimmed string) {
 	if p == 0 || pad > 3 {
 		return
 	}
-	if c, n := fenceMarker([]byte(inner)); c != 0 {
+	if c, n := openingFence(inner); c != 0 {
 		// A fence opened behind the markers ("- ```sh"): its lines
-		// are code, not headings, until the matching closer.
+		// are code, not headings, until the matching closer at the
+		// containers' content indent, or until a container ends.
 		w.fenceChar, w.fenceLen = c, n
+		w.fenceIn = fenceContainers(len(indent), trimmed[:p], pad)
 		return
 	}
 	if level := atxLevel(inner); level > 0 {
@@ -301,14 +394,17 @@ func (w *headingRewriter) hashes(level int) string {
 // rewriteSetext replaces the setext heading whose paragraph spans
 // lines[start:underline] and whose underline is lines[underline] with
 // one ATX heading line, blanking the lines it absorbs so the line
-// count stays the same.
+// count stays the same. The heading keeps its first line's indent,
+// so one inside a list item stays inside it.
 func rewriteSetext(lines []string, start, underline int, hashes string, ids *headingIDs) {
 	parts := make([]string, 0, underline-start)
 	for _, l := range lines[start:underline] {
 		parts = append(parts, strings.TrimSpace(l))
 	}
 	text, _ := ids.scoped(strings.Join(parts, " "))
-	lines[start] = hashes + " " + text
+	first := lines[start]
+	indent := first[:len(first)-len(strings.TrimLeft(first, " "))]
+	lines[start] = indent + hashes + " " + text
 	for j := start + 1; j <= underline; j++ {
 		lines[j] = ""
 	}
@@ -425,6 +521,27 @@ func setextLevel(s string) int {
 		return 2
 	}
 	return 0
+}
+
+// isThematicBreak reports whether s (indent removed, not blank) is a
+// thematic break: three or more of one of "*", "-", or "_", with only
+// spaces or tabs between them.
+func isThematicBreak(s string) bool {
+	c := s[0]
+	if c != '*' && c != '-' && c != '_' {
+		return false
+	}
+	n := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case c:
+			n++
+		case ' ', '\t':
+		default:
+			return false
+		}
+	}
+	return n >= 3
 }
 
 // opensNonParagraphBlock reports whether s (indent removed) opens a

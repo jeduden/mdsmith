@@ -52,6 +52,27 @@ func TestRewriteHeadingsDemotes(t *testing.T) {
 			"- ```sh\n  # install\n  ```\n# after", "- ```sh\n  # install\n  ```\n### after"},
 		{"fence opened in a block quote kept",
 			"> ```sh\n> # install\n> ```\n# after", "> ```sh\n> # install\n> ```\n### after"},
+		{"fence in a nested list item closes at its content indent",
+			"  - ```sh\n    # install\n    ```\n# after", "  - ```sh\n    # install\n    ```\n### after"},
+		{"fence in a wide ordered item closes at its content indent",
+			"10. ```sh\n    # install\n    ```\n# after", "10. ```sh\n    # install\n    ```\n### after"},
+		{"fence ends with its list item",
+			"- ```\n  # code\n- next\n# after", "- ```\n  # code\n- next\n### after"},
+		{"fence ends with its block quote",
+			"> ```\n> # code\n\n# after", "> ```\n> # code\n\n### after"},
+		{"quoted closer does not close a top-level fence",
+			"```md\n> ```\n# code\n> ```\n```\n# after", "```md\n> ```\n# code\n> ```\n```\n### after"},
+		{"backticks in the info string make no fence",
+			"```go``` is inline code\n# after", "```go``` is inline code\n### after"},
+		{"inline backticks behind a list marker make no fence",
+			"* ```x``` fix\n# after", "* ```x``` fix\n### after"},
+		{"lazy line after an indented item continuation is no setext",
+			"- item\n    more\nText\n---", "- item\n    more\nText\n---"},
+		{"star break is not absorbed into a setext heading",
+			"***\nText\n---", "***\n#### Text\n"},
+		{"setext after a spaced break becomes atx", "* * *\nText\n---", "* * *\n#### Text\n"},
+		{"setext in a list item keeps its indent",
+			"- item\n\n  Sub\n  ---", "- item\n\n  #### Sub\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -147,6 +168,32 @@ func TestBuildSiteReleases(t *testing.T) {
 	require.Len(t, got.Candidates, 2, "draft dropped")
 	assert.Equal(t, "v0.56.0-rc.2", got.Candidates[0].Tag, "newest candidate first")
 	assert.Equal(t, "v0.56.0-rc.1", got.Candidates[1].Name, "empty name falls back to the tag")
+}
+
+func TestBuildSiteReleasesDefusesHugoShortcodes(t *testing.T) {
+	got := BuildSiteReleases([]GitHubRelease{{
+		TagName: "v1.0.0",
+		Body:    "* quote {{< callout >}} and `{{% note %}}`",
+	}})
+	require.Len(t, got.Stable, 1)
+	assert.Equal(t, "* quote {\u200b{< callout >}} and `{\u200b{% note %}}`",
+		got.Stable[0].Body, "RenderString would expand a shortcode and fail on an unknown one")
+}
+
+func TestDefuseShortcodes(t *testing.T) {
+	cases := map[string]string{
+		"{{< x >}}":         "{\u200b{< x >}}",
+		"{{% x %}}":         "{\u200b{% x %}}",
+		"{{</* x */>}}":     "{\u200b{</* x */>}}",
+		"a {{< x >}} {{<y":  "a {\u200b{< x >}} {\u200b{<y",
+		"{{ .Title }} {<{":  "{{ .Title }} {<{",
+		"no shortcode here": "no shortcode here",
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			assert.Equal(t, want, defuseShortcodes(in))
+		})
+	}
 }
 
 func TestBuildSiteReleasesKeepsOnlyCandidatesAfterLatestStable(t *testing.T) {
@@ -430,18 +477,104 @@ func TestHeadingIDsATX(t *testing.T) {
 	assert.Equal(t, "###\t!!!", ids.atx("###", "\t!!!"))
 }
 
-func TestHeadingRewriterClosesFence(t *testing.T) {
-	w := headingRewriter{fenceChar: '`', fenceLen: 3}
-	assert.True(t, w.closesFence("```"))
-	assert.True(t, w.closesFence("  ````  "))
-	assert.False(t, w.closesFence("``"))
-	assert.False(t, w.closesFence("```go"))
-	assert.False(t, w.closesFence("~~~"))
-	assert.False(t, w.closesFence("    ```"))
-	assert.True(t, w.closesFence("> ```"))
-	assert.True(t, w.closesFence("  > >  ```"))
-	assert.False(t, w.closesFence("> ```go"))
-	assert.False(t, w.closesFence("    > ```"))
+func TestFenceContainers(t *testing.T) {
+	quote := fenceContainer{quote: true}
+	cases := []struct {
+		name    string
+		lead    int
+		markers string
+		pad     int
+		want    []fenceContainer
+	}{
+		{"bullet", 0, "- ", 0, []fenceContainer{{width: 2}}},
+		{"indented bullet", 2, "- ", 0, []fenceContainer{{width: 4}}},
+		{"padded bullet", 0, "- ", 2, []fenceContainer{{width: 4}}},
+		{"wide ordered item", 0, "10. ", 0, []fenceContainer{{width: 4}}},
+		{"nested bullets", 0, "- - ", 0, []fenceContainer{{width: 2}, {width: 2}}},
+		{"quote", 1, "> ", 1, []fenceContainer{quote}},
+		{"quote without space", 0, ">", 0, []fenceContainer{quote}},
+		{"quoted bullet", 1, "> * ", 1, []fenceContainer{quote, {width: 3}}},
+		{"quote in a bullet", 0, "- > ", 0, []fenceContainer{{width: 2}, quote}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, fenceContainers(tc.lead, tc.markers, tc.pad))
+		})
+	}
+}
+
+func TestStripContainers(t *testing.T) {
+	quote := fenceContainer{quote: true}
+	item := fenceContainer{width: 4}
+	cases := []struct {
+		name   string
+		line   string
+		cs     []fenceContainer
+		want   string
+		inside bool
+	}{
+		{"top level keeps the line", "  ```", nil, "  ```", true},
+		{"quote marker and space", "> ```", []fenceContainer{quote}, "```", true},
+		{"quote marker alone", ">", []fenceContainer{quote}, "", true},
+		{"indented quote marker", "   >```", []fenceContainer{quote}, "```", true},
+		{"nested quotes", "  > >  ```", []fenceContainer{quote, quote}, " ```", true},
+		{"missing quote marker", "```", []fenceContainer{quote}, "", false},
+		{"blank line ends a quote", "", []fenceContainer{quote}, "", false},
+		{"four-space quote marker", "    > ```", []fenceContainer{quote}, "", false},
+		{"item content indent", "    ```", []fenceContainer{item}, "```", true},
+		{"deeper than the item", "      x", []fenceContainer{item}, "  x", true},
+		{"blank line stays in an item", "  \t", []fenceContainer{item}, "", true},
+		{"blank line ends a quote inside an item", "", []fenceContainer{item, quote}, "", false},
+		{"shallower line ends an item", "  ```", []fenceContainer{item}, "", false},
+		{"quoted item", ">     x", []fenceContainer{quote, item}, "x", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, inside := stripContainers(tc.line, tc.cs)
+			assert.Equal(t, tc.inside, inside)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestOpeningFence(t *testing.T) {
+	cases := []struct {
+		in   string
+		char byte
+		n    int
+	}{
+		{"```", '`', 3},
+		{"````go", '`', 4},
+		{"~~~ `x`", '~', 3},
+		{"```go``` inline", 0, 0},
+		{"``x", 0, 0},
+		{"text", 0, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			c, n := openingFence(tc.in)
+			assert.Equal(t, tc.char, c)
+			assert.Equal(t, tc.n, n)
+		})
+	}
+}
+
+func TestIsThematicBreak(t *testing.T) {
+	cases := map[string]bool{
+		"***":     true,
+		"___":     true,
+		"- - -":   true,
+		"*\t*\t*": true,
+		"**":      false,
+		"*-*":     false,
+		"__init":  false,
+		"text":    false,
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			assert.Equal(t, want, isThematicBreak(in))
+		})
+	}
 }
 
 func TestHeadingRewriterHashes(t *testing.T) {
@@ -464,6 +597,21 @@ func TestHeadingRewriterVisit(t *testing.T) {
 	// The indented line lazily continues the paragraph, so the
 	// underline turns both lines into one heading.
 	assert.Equal(t, []string{"#### Para indented", "", ""}, w.lines)
+
+	w = headingRewriter{
+		lines:     []string{"- ```", "  # code", "# after"},
+		shift:     2,
+		ids:       headingIDs{seen: map[string]bool{}},
+		paraStart: -1,
+		canStart:  true,
+	}
+	for i := range w.lines {
+		w.visit(i)
+	}
+	assert.Equal(t, []string{"- ```", "  # code", "### after"}, w.lines,
+		"a line outside the item ends the fence and is handled as ordinary")
+	assert.Zero(t, w.fenceChar)
+	assert.Nil(t, w.fenceIn)
 }
 
 func TestHeadingRewriterBlock(t *testing.T) {
@@ -491,6 +639,10 @@ func TestRewriteSetext(t *testing.T) {
 	lines = []string{"Title", "==="}
 	rewriteSetext(lines, 0, 1, "###", &noID)
 	assert.Equal(t, []string{"### Title", ""}, lines)
+
+	lines = []string{"  Sub", "  ---"}
+	rewriteSetext(lines, 0, 1, "####", &noID)
+	assert.Equal(t, []string{"  #### Sub", ""}, lines, "the first line's indent is kept")
 }
 
 func TestATXLevel(t *testing.T) {
@@ -573,5 +725,5 @@ func TestHeadingRewriterIsCloser(t *testing.T) {
 	assert.False(t, w.isCloser("``"), "shorter run")
 	assert.False(t, w.isCloser("~~~"), "other fence char")
 	assert.False(t, w.isCloser("``` x"), "text after the run")
-	assert.False(t, w.isCloser("> ```"), "markers are closesFence's job")
+	assert.False(t, w.isCloser("> ```"), "markers are stripContainers' job")
 }
