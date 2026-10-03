@@ -1529,8 +1529,10 @@ var (
 // fenceOpenRun reports the marker character and run length when a
 // body line opens a fenced code block the way the block parser would:
 // at most three spaces of indentation and a run of at least three
-// backticks or tildes. n is 0 when the line opens no fence. (The same
-// open/close contract as include.rewriteSkippingCode.)
+// backticks or tildes. A backtick run must not be followed by another
+// backtick: CommonMark forbids backticks in a backtick fence's info
+// string, so "```a`b" is paragraph text. n is 0 when the line opens no
+// fence. (The same open/close contract as include.rewriteSkippingCode.)
 func fenceOpenRun(raw, lineB []byte) (byte, int) {
 	if len(lineB) == 0 || (lineB[0] != '`' && lineB[0] != '~') {
 		return 0, 0
@@ -1540,6 +1542,9 @@ func fenceOpenRun(raw, lineB []byte) (byte, int) {
 	}
 	n := fenceRun(lineB, lineB[0])
 	if n < 3 {
+		return 0, 0
+	}
+	if lineB[0] == '`' && bytes.IndexByte(lineB[n:], '`') >= 0 {
 		return 0, 0
 	}
 	return lineB[0], n
