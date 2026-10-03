@@ -48,6 +48,10 @@ func TestRewriteHeadingsDemotes(t *testing.T) {
 		{"dash under a list item is a break", "- item\n---", "- item\n---"},
 		{"underline under a fence is not setext", "```\nx\n```\n---", "```\nx\n```\n---"},
 		{"underline under a heading is not setext", "# H\n---", "### H\n---"},
+		{"fence opened in a list item kept",
+			"- ```sh\n  # install\n  ```\n# after", "- ```sh\n  # install\n  ```\n### after"},
+		{"fence opened in a block quote kept",
+			"> ```sh\n> # install\n> ```\n# after", "> ```sh\n> # install\n> ```\n### after"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -434,6 +438,10 @@ func TestHeadingRewriterClosesFence(t *testing.T) {
 	assert.False(t, w.closesFence("```go"))
 	assert.False(t, w.closesFence("~~~"))
 	assert.False(t, w.closesFence("    ```"))
+	assert.True(t, w.closesFence("> ```"))
+	assert.True(t, w.closesFence("  > >  ```"))
+	assert.False(t, w.closesFence("> ```go"))
+	assert.False(t, w.closesFence("    > ```"))
 }
 
 func TestHeadingRewriterHashes(t *testing.T) {
@@ -556,4 +564,14 @@ func TestHeadingRewriterContainedATX(t *testing.T) {
 			assert.Equal(t, tc.want, w.lines[0])
 		})
 	}
+}
+
+func TestHeadingRewriterIsCloser(t *testing.T) {
+	w := headingRewriter{fenceChar: '`', fenceLen: 3}
+	assert.True(t, w.isCloser("```"))
+	assert.True(t, w.isCloser("````  "))
+	assert.False(t, w.isCloser("``"), "shorter run")
+	assert.False(t, w.isCloser("~~~"), "other fence char")
+	assert.False(t, w.isCloser("``` x"), "text after the run")
+	assert.False(t, w.isCloser("> ```"), "markers are closesFence's job")
 }

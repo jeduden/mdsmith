@@ -175,8 +175,21 @@ func (w *headingRewriter) visit(i int) {
 
 // closesFence reports whether line closes the open fenced code
 // block: the same fence character, a run at least as long as the
-// opener's, and nothing but whitespace after it.
+// opener's, and nothing but whitespace after it. A fence opened
+// inside a block quote closes behind the same "> " markers.
 func (w *headingRewriter) closesFence(line string) bool {
+	if w.isCloser(line) {
+		return true
+	}
+	trimmed := strings.TrimLeft(line, " ")
+	if len(line)-len(trimmed) > 3 || !strings.HasPrefix(trimmed, ">") {
+		return false
+	}
+	rest := strings.TrimLeft(trimmed, "> \t")
+	return w.isCloser(rest)
+}
+
+func (w *headingRewriter) isCloser(line string) bool {
 	c, n := fenceMarker([]byte(line))
 	return c == w.fenceChar && n >= w.fenceLen && fenceLineEmptyAfter([]byte(line), n)
 }
@@ -213,13 +226,20 @@ func (w *headingRewriter) block(i int, indent, trimmed string) {
 
 // containedATX rewrites an ATX heading that sits behind block-quote
 // or list-item markers ("> ## A", "1. # A") on line i, keeping the
-// markers. Other lines are left alone.
+// markers, and enters fence mode for a fence opened behind them.
+// Other lines are left alone.
 func (w *headingRewriter) containedATX(i int, indent, trimmed string) {
 	p := containerPrefix(trimmed)
 	rest := trimmed[p:]
 	inner := strings.TrimLeft(rest, " ")
 	pad := len(rest) - len(inner)
 	if p == 0 || pad > 3 {
+		return
+	}
+	if c, n := fenceMarker([]byte(inner)); c != 0 {
+		// A fence opened behind the markers ("- ```sh"): its lines
+		// are code, not headings, until the matching closer.
+		w.fenceChar, w.fenceLen = c, n
 		return
 	}
 	if level := atxLevel(inner); level > 0 {
