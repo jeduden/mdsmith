@@ -1,7 +1,7 @@
 ---
 id: 2610021452
 title: Free wasm sessions dropped without dispose
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   The wasm engine keeps each Go Session in a
