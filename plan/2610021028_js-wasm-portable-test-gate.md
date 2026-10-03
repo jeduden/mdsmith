@@ -50,7 +50,9 @@ still fails about 25 tests that start real processes
    starts, so the gate cannot catch them.
 5. [x] Make `test-js-wasm --all` fail when no test
    passed, so an empty or fully skipped package does
-   not pass the gate.
+   not pass the gate. Make it also require `<pkg>` to
+   match exactly one package, so one package's passes
+   cannot hide another's empty run.
 
 Follow-ups from review: plan
 [2610030243](2610030243_plan9-vet-unix-windows-build-tests.md)
