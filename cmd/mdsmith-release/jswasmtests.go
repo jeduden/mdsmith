@@ -38,6 +38,10 @@ func runTestJSWasm(root string, args []string) int {
 		fs.Usage()
 		return 2
 	}
+	if *requireJSOnly && !*all {
+		fmt.Fprintln(os.Stderr, "mdsmith-release: test-js-wasm: --require-js-only needs --all")
+		return 2
+	}
 	if *all {
 		return reportError(release.RunJSWasmPackage(root, fs.Arg(0), *requireJSOnly, os.Stdout))
 	}

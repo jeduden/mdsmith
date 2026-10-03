@@ -28,7 +28,7 @@
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
 //	mdsmith-release merge-coverage -o <out> <profile>...
 //	mdsmith-release test-summary
-//	mdsmith-release test-js-wasm [--all] <pkg>
+//	mdsmith-release test-js-wasm [--all [--require-js-only]] <pkg>
 //	mdsmith-release select-audit-sarifs <dir>
 //	mdsmith-release bench [workdir]
 //	mdsmith-release render-bench-page <out-path>

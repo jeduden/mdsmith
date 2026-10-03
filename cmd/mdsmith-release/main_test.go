@@ -1025,3 +1025,14 @@ func TestRunTestJSWasmAllRequireJSOnly(t *testing.T) {
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr, "mdsmith-release: no js/wasm-only Test functions in .")
 }
+
+// TestRunTestJSWasmRequireJSOnlyNeedsAll rejects --require-js-only
+// without --all as a usage error instead of silently ignoring it.
+func TestRunTestJSWasmRequireJSOnlyNeedsAll(t *testing.T) {
+	var code int
+	stderr := captureStderr(t, func() {
+		code = run([]string{"test-js-wasm", "--require-js-only", "."})
+	})
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr, "mdsmith-release: test-js-wasm: --require-js-only needs --all")
+}
