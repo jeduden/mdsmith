@@ -62,7 +62,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // the same unordered lists goldmark would, with the same depth and item
 // marker lines, so each item's marker verdict is byte-identical.
 func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
-	lists, _ := listscan.Parse(f.Lines)
+	lists := listscan.ParseLists(f.Lines)
 	var diags []lint.Diagnostic
 	for _, l := range lists {
 		if l.Ordered {
