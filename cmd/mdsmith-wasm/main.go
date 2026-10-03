@@ -179,11 +179,16 @@ var objectToString js.Value
 // the proxy's keys equal sessionMethodNames.
 //
 // The method funcs are shared by every session and registered once.
-// Each session gets a Function.prototype.bind of them with its id as
-// the first argument, so the binding lives in JS and is collected with
-// the session object, and a session registers no func of its own. The
-// Go Session stays in sessions until dispose, even once the session
-// object is collected.
+// Each session gets a Function.prototype.bind of them with its id and a
+// token object as the first two arguments, so the binding lives in JS
+// and a session registers no func of its own. The token is registered
+// with a FinalizationRegistry that disposes the id once the token is
+// collected, which happens only when the session object and every
+// method taken off it are. The session object itself is not registered:
+// a method taken off it outlives it. A host that drops a session
+// without dispose() therefore still frees the Go Session, once JS
+// collects it; dispose() stays the prompt, deterministic path. Plan
+// 2610021452.
 // dispose drops the id from sessions, so a call through any reference
 // (a stored `const d = session.dispose`, a frozen session object, a
 // read-only method) finds no session and takes the disposed path: it
@@ -197,21 +202,23 @@ func newSessionProxy(sess *mdsmith.Session) js.Value {
 	shared := sharedMethods()
 	id := newSessionID()
 	proxy := js.Global().Get("Object").New()
-	bindMethods(proxy, sessionMethodNames(), shared, id)
+	token := js.Global().Get("Object").New()
+	bindMethods(proxy, sessionMethodNames(), shared, id, token)
 	sessions[id] = sess
+	registerFinalizer.Invoke(token, id, token)
 	return proxy
 }
 
 // bindMethods sets each named method on proxy to its shared func bound
-// to id, in names order rather than Go map order, so Object.keys(session)
+// to id and token, in names order rather than Go map order, so Object.keys(session)
 // is the same for every session. A name with no shared func (the names
 // list and sharedMethodImpls drifted) is left off rather than passed to
 // bind, which would throw on every createSession;
 // TestNewSessionProxy_KeysMatchSessionMethodNames reports the drift.
-func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int64) {
+func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int64, token js.Value) {
 	for _, name := range names {
 		if f, ok := shared[name]; ok {
-			proxy.Set(name, bindTo.Invoke(f, js.Undefined(), id))
+			proxy.Set(name, bindTo.Invoke(f, js.Undefined(), id, token))
 		}
 	}
 }
@@ -230,6 +237,12 @@ func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id 
 // A random id or token hides nothing from that script; it is a
 // documented limit (docs/background/concepts/engine-api.md).
 var bindTo js.Value
+
+// registerFinalizer and unregisterFinalizer are the FinalizationRegistry
+// methods bound to the one registry sharedMethods creates.
+// registerFinalizer(token, id, token) arranges for finalizeSession(id) to run
+// once token is collected; unregisterFinalizer(token) cancels that, the unregister token being the target itself.
+var registerFinalizer, unregisterFinalizer js.Value
 
 // sessions maps a live session's id to its Session. js/wasm runs every
 // goroutine on one thread with no preemption, and nothing between a
@@ -461,6 +474,13 @@ func sharedMethods() map[string]js.Value {
 			sharedFuncs[name] = funcOf(sharedFunc(impl)).Value
 		}
 		sharedFuncs["dispose"] = funcOf(proxyDispose).Value
+		// The registry and its two methods are captured here, with
+		// bindTo, so a later patch of FinalizationRegistry never sees
+		// a token. The finalizer func is never released, like the
+		// shared funcs.
+		registry := js.Global().Get("FinalizationRegistry").New(funcOf(finalizeSession))
+		registerFinalizer = bindTo.Invoke(registry.Get("register"), registry)
+		unregisterFinalizer = bindTo.Invoke(registry.Get("unregister"), registry)
 	})
 	return sharedFuncs
 }
@@ -476,6 +496,26 @@ func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 			return impl.call(sess, rest)
 		}
 		return impl.disposed()
+	}
+}
+
+// finalizeSession is the FinalizationRegistry callback: it disposes the
+// session whose token JS collected. A session is collected only once its
+// object and every method taken off it are, because each method is bound
+// to the token. It does nothing for an id already disposed.
+func finalizeSession(_ js.Value, args []js.Value) any {
+	if len(args) > 0 {
+		disposeSession(int64(args[0].Float()))
+	}
+	return js.Undefined()
+}
+
+// disposeSession drops the session with the given id from sessions and
+// disposes it; an id with no live session is a no-op.
+func disposeSession(id int64) {
+	if sess := sessions[id]; sess != nil {
+		delete(sessions, id)
+		sess.Dispose()
 	}
 }
 
@@ -504,7 +544,17 @@ func boundSession(args []js.Value) (id int64, sess *mdsmith.Session, rest []js.V
 		return 0, nil, args
 	}
 	id = int64(f)
-	return id, sessions[id], args[1:]
+	return id, sessions[id], boundRest(args)
+}
+
+// boundRest drops the bound id and token from the front of args. A
+// direct call that passes the id alone has no token, and its rest is
+// empty.
+func boundRest(args []js.Value) []js.Value {
+	if len(args) < 2 {
+		return nil
+	}
+	return args[2:]
 }
 
 // The async proxies reject bad arguments with these errors, built once
@@ -606,8 +656,13 @@ func proxyInvalidate(sess *mdsmith.Session, args []js.Value) {
 // does nothing.
 func proxyDispose(_ js.Value, args []js.Value) any {
 	if id, sess, _ := boundSession(args); sess != nil {
-		delete(sessions, id)
-		sess.Dispose()
+		// Cancel the registered finalizer first, so the registry drops
+		// its entry with the session. A direct call with no token
+		// object has nothing to cancel.
+		if len(args) > 1 && jsType(args[1]) == js.TypeObject {
+			unregisterFinalizer.Invoke(args[1])
+		}
+		disposeSession(id)
 	}
 	return js.Undefined()
 }

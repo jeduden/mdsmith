@@ -691,6 +691,7 @@ func TestBoundSession(t *testing.T) {
 	defer proxy.Call("dispose")
 	require.NotNil(t, sessions[liveID], "newTestProxyWithID returned a live id")
 	src := js.ValueOf("a.md")
+	tok := js.Global().Get("Object").New()
 	// Random ids can exceed 2^52, where float64 has no .5, so the
 	// fraction targets a small id registered by hand.
 	const smallID int64 = 7
@@ -711,8 +712,9 @@ func TestBoundSession(t *testing.T) {
 	}{
 		{"no args", nil, 0, false, nil},
 		{"string first arg", []js.Value{src}, 0, false, []js.Value{src}},
-		{"unknown id", []js.Value{js.ValueOf(-1), src}, -1, false, []js.Value{src}},
-		{"live id", []js.Value{js.ValueOf(liveID), src}, liveID, true, []js.Value{src}},
+		{"unknown id", []js.Value{js.ValueOf(-1), tok, src}, -1, false, []js.Value{src}},
+		{"live id", []js.Value{js.ValueOf(liveID), tok, src}, liveID, true, []js.Value{src}},
+		{"live id, no token", []js.Value{js.ValueOf(liveID)}, liveID, true, nil},
 		{"fractional live id", []js.Value{frac, src}, 0, false, []js.Value{frac, src}},
 		{"NaN", []js.Value{nan, src}, 0, false, []js.Value{nan, src}},
 		{"beyond safe integer", []js.Value{huge, src}, 0, false, []js.Value{huge, src}},
@@ -830,7 +832,7 @@ func TestBigIntArgs(t *testing.T) {
 func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
 	proxy := js.Global().Get("Object").New()
 	require.NotPanics(t, func() {
-		bindMethods(proxy, []string{"check", "missing"}, sharedMethods(), -1)
+		bindMethods(proxy, []string{"check", "missing"}, sharedMethods(), -1, js.Undefined())
 	})
 	assert.Equal(t, js.TypeFunction, proxy.Get("check").Type())
 	assert.False(t, proxy.Call("hasOwnProperty", "missing").Bool())
@@ -880,7 +882,8 @@ func TestSharedFunc(t *testing.T) {
 		},
 	})
 
-	got := jsValue(t, f(js.Undefined(), []js.Value{js.ValueOf(liveID), js.ValueOf("a.md")}))
+	tok := js.Global().Get("Object").New()
+	got := jsValue(t, f(js.Undefined(), []js.Value{js.ValueOf(liveID), tok, js.ValueOf("a.md")}))
 	assert.Equal(t, "live", got.String())
 	require.Len(t, calls, 1)
 	assert.Same(t, live, calls[0])
@@ -889,7 +892,7 @@ func TestSharedFunc(t *testing.T) {
 
 	proxy.Call("dispose")
 	for _, args := range [][]js.Value{
-		{js.ValueOf(liveID), js.ValueOf("a.md")},
+		{js.ValueOf(liveID), tok, js.ValueOf("a.md")},
 		{js.ValueOf(-1)},
 		nil,
 	} {
