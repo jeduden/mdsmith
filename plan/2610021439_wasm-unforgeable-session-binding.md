@@ -1,7 +1,7 @@
 ---
 id: 2610021439
 title: Make wasm session method bindings unforgeable
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Wasm session methods are shared funcs bound to a
@@ -51,27 +51,30 @@ for the stale-dispose fix.
 
 ## Tasks
 
-1. Pick an approach: random 53-bit ids drawn with
+1. [x] Pick an approach: random 53-bit ids drawn with
    `math/rand/v2` and retried on collision, or a
    per-session JS token object compared with
    `js.Value.Equal`. Weigh the WASM size budget in
    [engine-api.md](../docs/background/concepts/engine-api.md).
    Decide whether to also capture `Reflect` at load in
    the shipped `wasm_exec.js`.
-2. Write a failing js/wasm test that calls a raw shared
+   Decision: random 53-bit ids (no extra js.Value per
+   session, no size cost beyond `math/rand/v2`). `Reflect`
+   is not captured; the limit is documented in engine-api.md.
+2. [x] Write a failing js/wasm test that calls a raw shared
    func with every id from 0 to `nextSessionID` and
    reaches a live session.
-3. Implement the chosen approach and make the test pass.
-4. Update the engine-api page if the binding contract
+3. [x] Implement the chosen approach and make the test pass.
+4. [x] Update the engine-api page if the binding contract
    changes.
 
 ## Acceptance Criteria
 
-- [ ] Calling a raw shared func with a guessed id does
+- [x] Calling a raw shared func with a guessed id does
       not reach a live session
-- [ ] A create/dispose loop still holds a fixed number
+- [x] A create/dispose loop still holds a fixed number
       of registered funcs and registry entries
-- [ ] All tests pass: `go test ./...` and
+- [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
-- [ ] `go tool golangci-lint run` reports no issues,
+- [x] `go tool golangci-lint run` reports no issues,
       on the host and with `GOOS=js GOARCH=wasm`

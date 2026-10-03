@@ -15,6 +15,7 @@ package main
 import (
 	"errors"
 	"math"
+	"math/rand/v2"
 	"runtime/debug"
 	"sync"
 	"syscall/js"
@@ -187,8 +188,7 @@ var objectToString js.Value
 // 2610021237.
 func newSessionProxy(sess *mdsmith.Session) js.Value {
 	shared := sharedMethods()
-	id := nextSessionID
-	nextSessionID++
+	id := newSessionID()
 	sessions[id] = sess
 	proxy := js.Global().Get("Object").New()
 	bindMethods(proxy, sessionMethodNames(), shared, id)
@@ -217,16 +217,30 @@ func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id 
 // session id. It does not cover Reflect.apply: wasm_exec.js looks that
 // up on every Go-to-JS call, so a Reflect.apply replaced at any time
 // sees each raw shared func and id here, and every session object the
-// engine resolves. Plan 2610021439 tracks that gap.
+// engine resolves. A random id or token hides nothing from that
+// script; it is a documented limit (docs/background/concepts/engine-api.md).
 var bindTo js.Value
 
 // sessions maps a live session's id to its Session. js/wasm runs every
 // goroutine on one thread with no preemption, and nothing between a
 // read and a write here blocks, so it needs no lock.
-var (
-	sessions      = map[int]*mdsmith.Session{}
-	nextSessionID int
-)
+var sessions = map[int]*mdsmith.Session{}
+
+// newSessionID draws an unused id uniformly from [1, maxSessionID], so
+// a script that holds a raw shared func cannot reach a session by
+// counting up from 0. The range is 2^53 under standard Go and
+// math.MaxInt under TinyGo; a collision with a live id redraws. The
+// ids are not cryptographic: math/rand/v2's global source is seeded
+// from the OS, which on js/wasm is crypto.getRandomValues. Plan
+// 2610021439.
+func newSessionID() int {
+	for {
+		id := 1 + rand.IntN(maxSessionID)
+		if _, taken := sessions[id]; !taken {
+			return id
+		}
+	}
+}
 
 // methodImpl pairs a forwarding session method's implementation with
 // the result it returns once its session is disposed. Build one with

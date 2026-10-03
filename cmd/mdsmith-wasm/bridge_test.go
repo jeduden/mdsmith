@@ -310,10 +310,28 @@ func TestCreateSession_RejectsThrowingObjects(t *testing.T) {
 // returns the session proxy.
 func newTestProxy(t *testing.T) js.Value {
 	t.Helper()
+	v, _ := newTestProxyWithID(t)
+	return v
+}
+
+// newTestProxyWithID is newTestProxy plus the id the new session was
+// registered under, found as the one key sessions gained.
+func newTestProxyWithID(t *testing.T) (js.Value, int) {
+	t.Helper()
+	before := make(map[int]bool, len(sessions))
+	for id := range sessions {
+		before[id] = true
+	}
 	opts := js.ValueOf(map[string]any{})
 	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
 	require.False(t, rejected, "promise must resolve: %v", v)
-	return v
+	for id := range sessions {
+		if !before[id] {
+			return v, id
+		}
+	}
+	require.Fail(t, "createSession registered no new session")
+	return v, 0
 }
 
 // TestNewSessionProxy_KeysMatchSessionMethodNames ties the proxy's real
@@ -669,12 +687,16 @@ func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
 // or truncate a fraction, NaN, Infinity, or an id past 2^53 onto a
 // live id.
 func TestBoundSession(t *testing.T) {
-	proxy := newTestProxy(t)
+	proxy, liveID := newTestProxyWithID(t)
 	defer proxy.Call("dispose")
-	liveID := nextSessionID - 1
 	require.NotNil(t, sessions[liveID], "newTestProxy registered the newest id")
 	src := js.ValueOf("a.md")
-	frac := js.ValueOf(float64(liveID) + 0.5)
+	// Random ids can exceed 2^52, where float64 has no .5, so the
+	// fraction targets a small id registered by hand.
+	const smallID = 7
+	sessions[smallID] = sessions[liveID]
+	defer delete(sessions, smallID)
+	frac := js.ValueOf(smallID + 0.5)
 	nan := js.Global().Get("NaN")
 	inf := js.Global().Get("Infinity")
 	huge := js.ValueOf(0x1p64)
@@ -818,11 +840,10 @@ func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
 // args, and a disposed id, an unknown id, or no id returns
 // impl.disposed() without ever calling impl.call.
 func TestSharedFunc(t *testing.T) {
-	proxy := newTestProxy(t)
+	proxy, liveID := newTestProxyWithID(t)
 	// Disposed mid-test too; a second dispose is a no-op, and the defer
 	// frees the session if a require stops the test before that.
 	defer proxy.Call("dispose")
-	liveID := nextSessionID - 1
 	live := sessions[liveID]
 	require.NotNil(t, live)
 	var calls []*mdsmith.Session
@@ -1015,4 +1036,20 @@ func TestJSErrorFor(t *testing.T) {
 
 	e = jsErrorFor(mdsmith.ErrNothingToRename)
 	assert.Equal(t, mdsmith.ErrorCodeNothingToRename, e.Get("code").String())
+}
+
+// TestSharedFunc_GuessedIDsReachNoSession calls a raw shared func with
+// every small integer id, as a script that captured one could, and
+// requires none to reach the live session: ids are drawn at random from
+// a 53-bit range, so counting up from 0 finds nothing. Plan 2610021439.
+func TestSharedFunc_GuessedIDsReachNoSession(t *testing.T) {
+	proxy := newTestProxy(t)
+	defer proxy.Call("dispose")
+	raw := sharedMethods()["capabilities"]
+	for id := -1; id <= 4096; id++ {
+		got := raw.Invoke(id)
+		assert.Equal(t, 0, got.Length(), "guessed id %d reached a live session", id)
+	}
+	// The session's own method still works.
+	assert.Positive(t, proxy.Call("capabilities").Length())
 }
