@@ -576,18 +576,26 @@ func TestRunJSWasmTestsWithErrors(t *testing.T) {
 		f := x.fake("", nil)
 		f.jsList = "#pkg example.com/p\n" + x.native + "\n"
 		err := runJSWasmTestsWith(x.deps(f, &bytes.Buffer{}), "./p")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no js/wasm-only test files")
+		require.EqualError(t, err, "no js/wasm-only test files in ./p")
+	})
+
+	t.Run("pattern matching two packages", func(t *testing.T) {
+		// Pass checks match bare test names, so a pattern that spans
+		// packages could count another package's same-named test.
+		f := x.fake("", nil)
+		f.jsList = "#pkg example.com/a\n/a/x_test.go\n#pkg example.com/b\n/b/x_test.go\n"
+		err := runJSWasmTestsWith(x.deps(f, &bytes.Buffer{}), "./...")
+		require.EqualError(t, err, "test-js-wasm needs exactly one package; ./... matches 2")
 	})
 
 	t.Run("js-only files without tests", func(t *testing.T) {
 		emptyDir, _ := newJSWasmFixture(t, map[string]string{
 			"helper_test.go": "//go:build js && wasm\npackage p\n",
 		})
-		f := &fakeGo{goroot: "/go", jsList: "#pkg example.com/p\n" + filepath.Join(emptyDir, "helper_test.go") + "\n"}
+		helper := filepath.Join(emptyDir, "helper_test.go")
+		f := &fakeGo{goroot: "/go", jsList: "#pkg example.com/p\n" + helper + "\n"}
 		err := runJSWasmTestsWith(x.deps(f, &bytes.Buffer{}), "./p")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no Test functions")
+		require.EqualError(t, err, "no Test functions in js/wasm-only files "+helper)
 	})
 
 	for _, step := range []string{"env", "jslist", "nativelist"} {
@@ -670,37 +678,6 @@ func TestRunJSWasmTests(t *testing.T) {
 	assert.Contains(t, err.Error(), "no js/wasm-only test files")
 }
 
-func TestJSOnlyFilesOf(t *testing.T) {
-	f := &fakeGo{
-		jsList:     "#pkg example.com/p\n/p/a_test.go\n/p/b_test.go\n",
-		nativeList: "#pkg example.com/p\n/p/b_test.go\n",
-	}
-	got, err := jsOnlyFilesOf(jsWasmDeps{run: f.run}, "./p")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"/p/a_test.go"}, got)
-
-	f = &fakeGo{jsList: "#pkg example.com/p\n/p/b_test.go\n", nativeList: "#pkg example.com/p\n/p/b_test.go\n"}
-	_, err = jsOnlyFilesOf(jsWasmDeps{run: f.run}, "./p")
-	assert.ErrorContains(t, err, "no js/wasm-only test files in ./p")
-
-	// Pass checks match bare test names, so a pattern that spans
-	// packages could count another package's same-named test.
-	f = &fakeGo{jsList: "#pkg example.com/a\n/a/x_test.go\n#pkg example.com/b\n/b/x_test.go\n"}
-	_, err = jsOnlyFilesOf(jsWasmDeps{run: f.run}, "./...")
-	assert.EqualError(t, err, "test-js-wasm needs exactly one package; ./... matches 2")
-
-	f = &fakeGo{jsList: ""}
-	_, err = jsOnlyFilesOf(jsWasmDeps{run: f.run}, "./none")
-	assert.EqualError(t, err, "test-js-wasm needs exactly one package; ./none matches 0")
-}
-
-// TestNativeListEnv pins the native go list to one host-independent
-// target with cgo off, as js/wasm always has it: a host's cgo or OS
-// tags must not change which test files count as js/wasm-only.
-func TestNativeListEnv(t *testing.T) {
-	assert.Equal(t, []string{"GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0"}, nativeListEnv)
-}
-
 // TestListJSOnlyFilesHostIndependent runs the real go list on a module
 // with cgo, !cgo and !linux test files beside a js-tagged one. Whatever
 // the host's CGO_ENABLED or OS, both lists run with cgo off, so the cgo
@@ -776,19 +753,6 @@ func TestSplitListOutput(t *testing.T) {
 	assert.Nil(t, files)
 }
 
-func TestTestsInFiles(t *testing.T) {
-	read := func(name string) ([]byte, error) {
-		return []byte("package p\nimport \"testing\"\nfunc Test" + name + "(t *testing.T) {}\n"), nil
-	}
-	got, err := testsInFiles(jsWasmDeps{readFile: read}, []string{"B", "A"})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"TestB", "TestA"}, got)
-
-	none := func(string) ([]byte, error) { return []byte("package p\n"), nil }
-	_, err = testsInFiles(jsWasmDeps{readFile: none}, []string{"x_test.go"})
-	assert.ErrorContains(t, err, "no Test functions in js/wasm-only files x_test.go")
-}
-
 func TestTestFuncsIn(t *testing.T) {
 	read := func(name string) ([]byte, error) {
 		return []byte("package p\nimport \"testing\"\nfunc Test" + name + "(t *testing.T) {}\n"), nil
@@ -797,7 +761,7 @@ func TestTestFuncsIn(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"TestB", "TestA"}, got)
 
-	// No Test function is not an error here, unlike testsInFiles.
+	// No Test function is not an error here; the default mode checks.
 	none := func(string) ([]byte, error) { return []byte("package p\n"), nil }
 	got, err = testFuncsIn(jsWasmDeps{readFile: none}, []string{"x_test.go"})
 	require.NoError(t, err)

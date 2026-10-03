@@ -227,13 +227,24 @@ func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
 	if err != nil {
 		return err
 	}
-	files, err := jsOnlyFilesOf(d, pkg)
+	// pkg must match exactly one package: the pass check matches bare
+	// test names, so across packages a same-named test that passed
+	// elsewhere could stand in for a skipped one. No js/wasm-only file
+	// or Test function is an error, so a broken lookup cannot pass
+	// vacuously.
+	files, err := listJSOnlyFiles(d, "test-js-wasm", pkg)
 	if err != nil {
 		return err
 	}
-	names, err := testsInFiles(d, files)
+	if len(files) == 0 {
+		return fmt.Errorf("no js/wasm-only test files in %s", pkg)
+	}
+	names, err := testFuncsIn(d, files)
 	if err != nil {
 		return err
+	}
+	if len(names) == 0 {
+		return fmt.Errorf("no Test functions in js/wasm-only files %s", strings.Join(files, ", "))
 	}
 	passed, err := d.goTestNamed(pkg, execFlag, names)
 	if err != nil {
@@ -242,25 +253,9 @@ func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
 	return checkAllPassed(names, passed)
 }
 
-// jsOnlyFilesOf lists pkg's test files that only a js/wasm build
-// compiles, erroring when there are none so a broken lookup cannot
-// pass vacuously. pkg must match exactly one package: the pass check
-// matches bare test names, so across packages a same-named test that
-// passed elsewhere could stand in for a skipped one.
-func jsOnlyFilesOf(d jsWasmDeps, pkg string) ([]string, error) {
-	files, err := listJSOnlyFiles(d, "test-js-wasm", pkg)
-	if err != nil {
-		return nil, err
-	}
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no js/wasm-only test files in %s", pkg)
-	}
-	return files, nil
-}
-
-// listJSOnlyFiles is jsOnlyFilesOf without the empty-list error, for
-// both modes: --all also runs a package that has no js/wasm-only test
-// files. mode names the command in the one-package error; listFlags go
+// listJSOnlyFiles lists pkg's test files that only a js/wasm build
+// compiles, for both modes; an empty list is the caller's call, as
+// --all also runs a package that has none. mode names the command in the one-package error; listFlags go
 // to the js/wasm `go list`. --all passes -e, unless requireJSOnly, so a
 // missing package still lists once and go test reports why.
 func listJSOnlyFiles(d jsWasmDeps, mode, pkg string, listFlags ...string) ([]string, error) {
@@ -284,21 +279,9 @@ func listJSOnlyFiles(d jsWasmDeps, mode, pkg string, listFlags ...string) ([]str
 	return JSOnlyTestFiles(jsFiles, nativeFiles), nil
 }
 
-// testsInFiles collects the Test functions declared across files, in
-// file then source order, erroring when there are none.
-func testsInFiles(d jsWasmDeps, files []string) ([]string, error) {
-	names, err := testFuncsIn(d, files)
-	if err != nil {
-		return nil, err
-	}
-	if len(names) == 0 {
-		return nil, fmt.Errorf("no Test functions in js/wasm-only files %s", strings.Join(files, ", "))
-	}
-	return names, nil
-}
-
-// testFuncsIn is testsInFiles without the empty-list error, for --all:
-// a js/wasm-only file may hold only helpers or a TestMain.
+// testFuncsIn collects the Test functions declared across files, in
+// file then source order. None is not an error here: under --all a
+// js/wasm-only file may hold only helpers or a TestMain.
 func testFuncsIn(d jsWasmDeps, files []string) ([]string, error) {
 	var names []string
 	for _, f := range files {
