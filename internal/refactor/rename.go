@@ -108,9 +108,10 @@ func LinkRef(fileKey string, source []byte, oldLabel, newName string) (Plan, err
 
 // HasLinkRef reports whether source defines a reference definition
 // whose normalized label matches label (CommonMark link-label
-// normalization). The `rename` CLI uses it to auto-detect a link-ref
-// rename when `--as` is omitted. Def-shaped lines inside code blocks
-// or paragraph continuations are excluded, matching LinkRef.
+// normalization). DetectRenameKind uses it to auto-detect a link-ref
+// rename when the host passes no explicit kind. Def-shaped lines
+// inside code blocks or paragraph continuations are excluded,
+// matching LinkRef.
 func HasLinkRef(source []byte, label string) bool {
 	want := NormalizedLabel([]byte(label))
 	body, _ := bodyAndFMOffset(source)
@@ -122,11 +123,19 @@ func HasLinkRef(source []byte, label string) bool {
 	return false
 }
 
+// The rename kinds DetectRenameKind reports. They are also the values
+// the hosts' explicit kind selector (`--as`, Session.Rename's `as`)
+// accepts, so every surface dispatches on the same strings.
+const (
+	KindHeading = "heading"
+	KindLabel   = "label"
+)
+
 // DetectRenameKind auto-detects whether oldName names a heading or a
-// link-ref label in source. kind is "heading" or "label" when exactly
-// one matches. When both match, ambiguous is true and kind is empty.
-// found is true when at least one matches. It carries no message text
-// or exit code; each host formats its own error.
+// link-ref label in source. kind is KindHeading or KindLabel when
+// exactly one matches. When both match, ambiguous is true and kind is
+// empty. found is true when at least one matches. It carries no
+// message text or exit code; each host formats its own error.
 func DetectRenameKind(source []byte, oldName string) (kind string, ambiguous, found bool) {
 	_, isHeading := FindHeadingLine(source, oldName)
 	isLabel := HasLinkRef(source, oldName)
@@ -134,9 +143,9 @@ func DetectRenameKind(source []byte, oldName string) (kind string, ambiguous, fo
 	case isHeading && isLabel:
 		return "", true, true
 	case isHeading:
-		return "heading", false, true
+		return KindHeading, false, true
 	case isLabel:
-		return "label", false, true
+		return KindLabel, false, true
 	}
 	return "", false, false
 }

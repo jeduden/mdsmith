@@ -171,7 +171,7 @@ func runRename(args []string) int {
 			return code
 		}
 	}
-	if opts.as != "" && opts.as != "heading" && opts.as != "label" {
+	if opts.as != "" && opts.as != refactor.KindHeading && opts.as != refactor.KindLabel {
 		fmt.Fprintf(os.Stderr, "mdsmith: --as must be heading or label, got %q\n", opts.as)
 		return 2
 	}
@@ -265,7 +265,7 @@ func computeRenamePlan(
 		}
 		mode = m
 	}
-	if mode == "heading" {
+	if mode == refactor.KindHeading {
 		return headingPlan(ws, target, src, oldName, newName)
 	}
 	return linkRefPlan(target, src, oldName, newName)

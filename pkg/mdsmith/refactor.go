@@ -62,7 +62,7 @@ func (s *Session) Rename(uri string, source []byte, as, oldName, newName string)
 		mode = m
 	}
 	switch mode {
-	case "heading":
+	case refactor.KindHeading:
 		line, ok := refactor.FindHeadingLine(source, oldName)
 		if !ok {
 			return RefactorPlan{}, fmt.Errorf("no heading %q in %s", oldName, uri)
@@ -72,14 +72,14 @@ func (s *Session) Rename(uri string, source []byte, as, oldName, newName string)
 			return RefactorPlan{}, err
 		}
 		return toRefactorPlan(p), nil
-	case "label":
+	case refactor.KindLabel:
 		p, err := refactor.LinkRef(key, source, oldName, newName)
 		if err != nil {
 			return RefactorPlan{}, err
 		}
 		return toRefactorPlan(p), nil
 	default:
-		return RefactorPlan{}, fmt.Errorf("rename: as must be \"heading\" or \"label\", got %q", as)
+		return RefactorPlan{}, fmt.Errorf("rename: as must be \"heading\" or \"label\", got %q", mode)
 	}
 }
 

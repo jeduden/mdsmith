@@ -555,6 +555,8 @@ func TestDetectRenameKind(t *testing.T) {
 		{"label only", "# Setup\n\nSee [docs].\n\n[docs]: u\n", "docs", "label", false, true},
 		{"both match", "# docs\n\nSee [docs].\n\n[docs]: u\n", "docs", "", true, true},
 		{"neither match", "# Setup\n\nSee [docs].\n\n[docs]: u\n", "ghost", "", false, false},
+		{"label match is case-insensitive", "# Setup\n\nSee [docs].\n\n[docs]: u\n", "DOCS", "label", false, true},
+		{"fenced def is not a label", "# Setup\n\n```\n[docs]: u\n```\n", "docs", "", false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

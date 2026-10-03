@@ -136,9 +136,11 @@ func Heading(
 
 // FindHeadingLine returns the 1-based source line of the first
 // heading whose visible text equals headingText, or ok=false when no
-// heading matches. The CLI uses it to turn `--heading "Old"` into the
-// line coordinate the rename engine expects; it parses the same way
-// the engine does so the line it finds is the line Heading rewrites.
+// heading matches. DetectRenameKind uses it to auto-detect a heading
+// rename, and the CLI and Session.Rename use it to turn the heading
+// text into the line coordinate the rename engine expects; it parses
+// the same way the engine does so the line it finds is the line
+// Heading rewrites.
 func FindHeadingLine(source []byte, headingText string) (int, bool) {
 	body, fmOffset := bodyAndFMOffset(source)
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
