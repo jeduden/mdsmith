@@ -1,6 +1,7 @@
 package refactor
 
 import (
+	"path"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -133,13 +134,21 @@ func TestWikilinkKeyHolders_UnindexedSourceCounts(t *testing.T) {
 	assert.Equal(t, 1, oldN, "a nil index holds only the source")
 }
 
+// spellDst calls dstWikilinkSpelling the way the planner does, passing
+// FileStemKey's answer for dst's basename.
+func spellDst(dst string) (spelling string, needsPrefix, ok bool) {
+	_, isMarkdown := linkgraph.FileStemKey(path.Base(dst))
+	return dstWikilinkSpelling(dst, isMarkdown)
+}
+
 func TestDstWikilinkSpelling_NonMarkdownKeepsBase(t *testing.T) {
 	for dst, want := range map[string]string{
 		"docs/Service.md": "Service",
 		"img/diagram.png": "diagram.png",
 	} {
-		got, ok := dstWikilinkSpelling(dst)
+		got, needsPrefix, ok := spellDst(dst)
 		assert.True(t, ok, dst)
+		assert.False(t, needsPrefix, dst)
 		assert.Equal(t, want, got, dst)
 	}
 }
@@ -147,22 +156,27 @@ func TestDstWikilinkSpelling_NonMarkdownKeepsBase(t *testing.T) {
 // TestDstWikilinkSpelling_FallsBackToBase locks that the whole basename
 // is written whenever the bare stem would not reach dst: a dotted stem
 // reads as a typed extension, and a stem ending in a space loses it to
-// the target trim.
+// the target trim. A name the resolver refuses as a drive path or trims
+// bare is returned without its `./` and flagged needsPrefix.
 func TestDstWikilinkSpelling_FallsBackToBase(t *testing.T) {
-	for dst, want := range map[string]string{
-		"docs/v1.3.md":     "v1.3.md",
-		"docs/guide.md.md": "guide.md.md",
-		"docs/guide .md":   "guide .md",
-		"docs/C:x.md":      "./C:x",
-		"img/C:x.png":      "./C:x.png",
-		"docs/ notes.md":   "./ notes",
+	for dst, want := range map[string]struct {
+		spelling    string
+		needsPrefix bool
+	}{
+		"docs/v1.3.md":     {"v1.3.md", false},
+		"docs/guide.md.md": {"guide.md.md", false},
+		"docs/guide .md":   {"guide .md", false},
+		"docs/C:x.md":      {"C:x", true},
+		"img/C:x.png":      {"C:x.png", true},
+		"docs/ notes.md":   {" notes", true},
 	} {
-		got, ok := dstWikilinkSpelling(dst)
+		got, needsPrefix, ok := spellDst(dst)
 		assert.True(t, ok, dst)
-		assert.Equal(t, want, got, dst)
+		assert.Equal(t, want.spelling, got, dst)
+		assert.Equal(t, want.needsPrefix, needsPrefix, dst)
 	}
 	for _, dst := range []string{"docs/.md", "docs/COPYING", "docs/guide.md ", "docs/C#.md"} {
-		_, ok := dstWikilinkSpelling(dst)
+		_, _, ok := spellDst(dst)
 		assert.False(t, ok, dst)
 	}
 }
