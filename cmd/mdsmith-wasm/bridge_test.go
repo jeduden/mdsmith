@@ -1238,6 +1238,47 @@ func swapPromise(t *testing.T, ctor js.Value) {
 	g.Set("Promise", ctor)
 }
 
+// recordUnregister replaces finalizer.unregister for the rest of t with
+// a func that records each token it is called with. A caller must not
+// run in parallel.
+func recordUnregister(t *testing.T) *[]js.Value {
+	t.Helper()
+	sharedMethods()
+	old := finalizer
+	got := new([]js.Value)
+	rec := js.FuncOf(func(_ js.Value, args []js.Value) any {
+		if len(args) > 0 {
+			*got = append(*got, args[0])
+		}
+		return nil
+	})
+	t.Cleanup(rec.Release)
+	// Registered after rec.Release, so the seam is restored before the
+	// recording func is released.
+	t.Cleanup(func() { finalizer = old })
+	finalizer.unregister = rec.Value
+	return got
+}
+
+// TestReleaseSession checks releaseSession disposes the session and
+// cancels its finalizer entry with the token, and with a token that is
+// no object still disposes it but calls no unregister. Not parallel: it
+// swaps finalizer.unregister.
+func TestReleaseSession(t *testing.T) {
+	_, id := newTestProxyWithID(t)
+	unregistered := recordUnregister(t)
+	tok := js.Global().Get("Object").New()
+	releaseSession(id, tok)
+	assert.NotContains(t, sessions, id, "the session is disposed")
+	require.Len(t, *unregistered, 1)
+	assert.True(t, (*unregistered)[0].Equal(tok), "unregister gets the token")
+
+	_, id = newTestProxyWithID(t)
+	releaseSession(id, js.Undefined())
+	assert.NotContains(t, sessions, id, "disposed without a token too")
+	assert.Len(t, *unregistered, 1, "no token, no unregister")
+}
+
 // TestCreateSession_ResolveThrowRegistersNoSession replaces Promise with
 // a constructor whose resolve throws. The create is rejected, and the
 // session registerSession registered is released with it: no proxy
@@ -1246,6 +1287,7 @@ func TestCreateSession_ResolveThrowRegistersNoSession(t *testing.T) {
 	sharedMethods()
 	released := recordReleases(t)
 	made := recordFuncs(t)
+	unregistered := recordUnregister(t)
 	swapPromise(t, js.Global().Get("Function").New(`executor`,
 		`var self = this;
 		executor(function () { throw new TypeError("resolve"); },
@@ -1259,6 +1301,8 @@ func TestCreateSession_ResolveThrowRegistersNoSession(t *testing.T) {
 	require.Len(t, *made, 1, "the executor func was registered")
 	require.Len(t, *released, 1, "and released once")
 	assert.True(t, (*released)[0].Equal((*made)[0].Value), "the executor func is the one released")
+	require.Len(t, *unregistered, 1, "the session's finalizer entry is cancelled")
+	assert.Equal(t, js.TypeObject, (*unregistered)[0].Type(), "with its token")
 }
 
 // TestCreateSession_CtorThrowAfterExecutorRegistersNoSession replaces
@@ -1269,6 +1313,7 @@ func TestCreateSession_ResolveThrowRegistersNoSession(t *testing.T) {
 // globalThis.Promise.
 func TestCreateSession_CtorThrowAfterExecutorRegistersNoSession(t *testing.T) {
 	sharedMethods()
+	unregistered := recordUnregister(t)
 	swapPromise(t, js.Global().Get("Function").New(`executor`,
 		`executor(function () {}, function () {}); throw new TypeError("after");`))
 	before := maps.Clone(sessions)
@@ -1276,6 +1321,8 @@ func TestCreateSession_CtorThrowAfterExecutorRegistersNoSession(t *testing.T) {
 	v := jsValue(t, createSession(js.Undefined(), []js.Value{opts}))
 	assert.True(t, v.IsUndefined(), "a failed Promise construction yields undefined")
 	assert.Equal(t, before, sessions, "no session is left registered")
+	require.Len(t, *unregistered, 1, "the session's finalizer entry is cancelled")
+	assert.Equal(t, js.TypeObject, (*unregistered)[0].Type(), "with its token")
 }
 
 // TestPromiseCtorThrow_KeepsProgramAndReleasesFunc replaces Promise with

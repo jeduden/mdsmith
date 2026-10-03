@@ -121,7 +121,10 @@ func resolveVersion() string {
 // returning factory keeps the JS API ergonomic. exposeAPI registers it
 // through drainFirst.
 func createSession(_ js.Value, args []js.Value) any {
-	var id int64 // the session the executor registered; ids start at 1
+	// The session the executor registered: ids start at 1, and token is
+	// undefined until then.
+	var id int64
+	var token js.Value
 	p := newPromise(func(resolve, reject func(any)) {
 		if len(args) < 1 || !isRecord(args[0]) {
 			reject(jsError("createSession requires an options object"))
@@ -158,14 +161,14 @@ func createSession(_ js.Value, args []js.Value) any {
 			return
 		}
 		var proxy js.Value
-		proxy, id = registerSession(sess)
+		proxy, id, token = registerSession(sess)
 		// A resolve that throws (a patched Promise) rejects the create
 		// through newPromise's guard; the proxy never reaches the caller,
 		// so free the session it registered before that guard runs.
 		resolved := false
 		defer func() {
 			if !resolved {
-				disposeSession(id)
+				releaseSession(id, token)
 			}
 		}()
 		resolve(proxy)
@@ -177,7 +180,7 @@ func createSession(_ js.Value, args []js.Value) any {
 	// id 0 is never handed out, so a create that registered nothing
 	// disposes nothing.
 	if p.IsUndefined() {
-		disposeSession(id)
+		releaseSession(id, token)
 	}
 	return p
 }
@@ -254,19 +257,19 @@ var objectToString js.Value
 // bound and the token registered: a bind or register that throws (one
 // patched before load) rejects createSession without leaving a Session
 // no session object can dispose. A resolve that throws after this
-// returns is handled by createSession, which disposes the session by the
-// id this returns beside the proxy.
-func registerSession(sess *mdsmith.Session) (js.Value, int64) {
+// returns is handled by createSession, which releases the session by the
+// id and finalizer token this returns beside the proxy.
+func registerSession(sess *mdsmith.Session) (proxy js.Value, id int64, token js.Value) {
 	shared := sharedMethods()
-	id := newSessionID()
-	proxy := js.Global().Get("Object").New()
-	token := js.Global().Get("Object").New()
+	id = newSessionID()
+	proxy = js.Global().Get("Object").New()
+	token = js.Global().Get("Object").New()
 	bindMethods(proxy, sessionMethodNames(), shared, id, token)
 	if jsType(finalizer.register) == js.TypeFunction {
 		finalizer.register.Invoke(token, id, token)
 	}
 	sessions[id] = sess
-	return proxy, id
+	return proxy, id, token
 }
 
 // bindMethods sets each named method on proxy to its shared func bound
@@ -829,18 +832,27 @@ func proxyInvalidate(sess *mdsmith.Session, args []js.Value) {
 // does nothing. sharedMethods registers it through drainFirst.
 func proxyDispose(_ js.Value, args []js.Value) any {
 	if id, sess, rest := boundSession(args); sess != nil {
-		// Dispose before the JS call below, so an unregister that throws
-		// (a patched Reflect.apply; drainFirst turns it into undefined)
-		// cannot keep the session alive.
-		disposeSession(id)
-		// Cancel the registered finalizer, so the registry drops its
-		// entry with the session. A direct call with no token object, or
-		// a host with no FinalizationRegistry, has nothing to cancel.
-		if len(rest) > 0 && jsType(rest[0]) == js.TypeObject && jsType(finalizer.unregister) == js.TypeFunction {
-			finalizer.unregister.Invoke(rest[0])
+		var token js.Value // undefined for a direct call with no token
+		if len(rest) > 0 {
+			token = rest[0]
 		}
+		releaseSession(id, token)
 	}
 	return js.Undefined()
+}
+
+// releaseSession disposes the session with the given id and cancels
+// the finalizer registered for token, so the registry drops its entry
+// with the session. It disposes before the JS call, so an unregister
+// that throws (a patched Reflect.apply; the caller's guard turns it into
+// a rejection or undefined) cannot keep the session alive. A token that
+// is no object, or a host with no FinalizationRegistry, has nothing to
+// cancel.
+func releaseSession(id int64, token js.Value) {
+	disposeSession(id)
+	if jsType(token) == js.TypeObject && jsType(finalizer.unregister) == js.TypeFunction {
+		finalizer.unregister.Invoke(token)
+	}
 }
 
 // disposedAsyncReason is the message of a disposed async method's
