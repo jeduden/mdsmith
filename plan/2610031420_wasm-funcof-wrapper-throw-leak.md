@@ -73,10 +73,23 @@ load still leaked. And a benign delegating `Reflect.apply` silently
 turned off every async method. The shared executor needs no global
 identity check, so all of these go away.
 
-A late call of an executor that a patched constructor kept runs
-nothing. A nested run from inside `resolve` still runs, as it did when
-each call had its own func. A second run after the outermost one
-returned runs nothing, as a released func would not.
+Review round 2 found a hole in the one shared executor. A script that
+kept it could run another call. Called during a later call's
+construction (a Node `async_hooks` init hook fires before the
+executor), it ran that call with the script's own `resolve`.
+
+So `newPromise` now hands the constructor the shared executor bound,
+through the `bindTo` captured at load, to the call's sequence number.
+`runPromiseCall` runs only the call on top of the stack whose number
+matches. A bound function is plain JS and registers no Go func. When
+that bind fails, the call falls back to the unbound executor, so its
+Promise still settles.
+
+A call of an executor that a patched constructor kept runs nothing
+once its own call is no longer on top. A nested run from inside
+`resolve` still runs, as it did when each call had its own func. A
+second run after the outermost one returned runs nothing, as a
+released func would not.
 
 ## Tasks
 
@@ -101,6 +114,8 @@ returned runs nothing, as a released func would not.
       registered after the call
 - [x] The session the call ran against is collectable
       after `dispose()`
+- [x] An executor a script kept from one call runs
+      nothing when called during another call
 - [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
 - [x] `go tool -modfile=tools/go.mod golangci-lint run`

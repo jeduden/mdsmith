@@ -405,10 +405,14 @@ runs the shared executor, and leaves the stack before it returns. Such
 a patch therefore strands nothing, and a `Reflect.apply` that only
 delegates leaves every method working.
 
-A script that keeps the executor and calls it while no call is pending
-runs nothing. One that calls it during a call runs the innermost
-pending call, as the `Promise` constructor could, unless that call's
-executor has already returned.
+Each call hands the constructor the shared executor bound to that
+call's number, through the `bind` captured at load. A bound function
+registers no callback. A script that keeps one call's executor and
+calls it later runs nothing: not after the call returned, and not
+during another call, nested or not. Only that call's own constructor,
+while it builds that call's `Promise`, can run it. A `Reflect.apply`
+patched after load still sees the unbound executor and every number,
+as it sees every session id.
 
 A `Reflect.get` or `Reflect.set` that throws while Go reads a
 callback's arguments or writes back its result still stops the Go

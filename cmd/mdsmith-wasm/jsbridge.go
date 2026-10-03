@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"math"
 	"sync"
 	"syscall/js"
 
@@ -19,8 +20,9 @@ import (
 // and the call's Go executor waits on promiseCalls, a Go-side stack, for
 // the constructor to run it: a spec Promise runs its executor
 // synchronously during construction, so the shared func runs the call
-// on top of the stack. newPromise pops its call before it returns, so
-// nothing outlives the call. js.FuncOf stores a handler in syscall/js's
+// on top of the stack whose number its bound executor carries.
+// newPromise pops its call before it returns, so nothing outlives the
+// call. js.FuncOf stores a handler in syscall/js's
 // private func table before it builds the handler's JS wrapper through
 // Reflect.apply, and a patched one that throws there would strand the
 // entry, with its closure over the Session, for good; building no
@@ -36,9 +38,10 @@ import (
 // program: newPromise returns undefined instead, since Go cannot throw
 // to its caller. A constructor that returns without running the
 // executor, which a spec Promise runs during construction, gets the
-// same treatment, and a call of the executor it kept, made after
-// newPromise returned, never runs this call: runPromiseCall runs
-// whichever call is pending then, or nothing. A constructor that passes
+// same treatment. The executor each call hands the constructor is the
+// shared func bound to the call's number (callExecutor), so a script
+// that kept it runs nothing once that call is no longer on top: not
+// after newPromise returned, and not during another call. A constructor that passes
 // the executor too few arguments, or a reject that itself throws or is
 // no function, would end the program from inside the executor callback:
 // a panic that leaves a js.FuncOf callback unwinds into the Go frames
@@ -46,8 +49,9 @@ import (
 // the Promise stays as the constructor left it, never settling. Any
 // other panic is re-raised (recoverJS).
 func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
-	exec := sharedExecutor()
-	c := &promiseCall{executor: executor}
+	shared := sharedExecutor()
+	promiseSeq++
+	c := &promiseCall{executor: executor, seq: promiseSeq}
 	promiseCalls = append(promiseCalls, c)
 	// Pop c whatever happens, and clear its slot so the stack's backing
 	// array does not keep the executor, and the Session it closes over,
@@ -61,7 +65,29 @@ func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
 		}
 	}()
 	defer recoverJS(func() { p = js.Undefined() })
-	return js.Global().Get("Promise").New(exec)
+	return js.Global().Get("Promise").New(callExecutor(shared, c))
+}
+
+// callExecutor returns the executor newPromise hands the Promise
+// constructor for c: the shared func bound, through the bindTo captured
+// at load, to c's sequence number, so a script that kept it can run c
+// and no later call (runPromiseCall checks the number). bind builds a
+// JS bound function and registers no Go func. When the bind fails
+// (bindTo's capture failed because Function.prototype.bind or call was
+// patched to throw before load, or a Reflect.apply patched after load
+// throws on the call) it returns the shared func unbound and marks c
+// unbound (seq 0), which an unbound run alone can execute, so the
+// Promise still settles (a create still rejects). A script able to
+// make that bind throw already sees every call through Reflect.apply.
+func callExecutor(shared js.Value, c *promiseCall) js.Value {
+	bound := tryJS(func() js.Value {
+		return bindTo.Invoke(shared, js.Undefined(), float64(c.seq))
+	})
+	if jsType(bound) != js.TypeFunction {
+		c.seq = 0
+		return shared
+	}
+	return bound
 }
 
 // promiseCall is one pending newPromise call: its Go executor, how many
@@ -70,9 +96,15 @@ func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
 // done also tells whether the Promise constructor ran the call at all.
 type promiseCall struct {
 	executor func(resolve, reject func(any))
+	seq      int64 // the number its executor is bound to; 0 when unbound
 	depth    int
 	done     bool
 }
+
+// promiseSeq numbers newPromise calls from 1, so each call's bound
+// executor names that call alone. A float64 holds it exactly until
+// 2^53 calls.
+var promiseSeq int64
 
 // promiseCalls is the stack of pending newPromise calls, innermost last.
 // js/wasm runs every goroutine on one thread, and a call is pushed and
@@ -99,9 +131,10 @@ func sharedExecutor() js.Value {
 
 // runPromiseCall is the shared Promise executor. It runs the Go executor
 // of the newPromise call on top of promiseCalls with the resolve and
-// reject the constructor passed. With no call pending (a constructor or
-// script that kept the executor and calls it after newPromise returned)
-// it runs nothing. A constructor can run the executor again from inside
+// reject the constructor passed, after the call number callExecutor
+// bound (splitSeq). With no call pending, or a number that is not the
+// top call's (a script that kept another call's executor), it runs
+// nothing. A constructor can run the executor again from inside
 // resolve; that nested run executes the body too, as it did when each
 // call had its own func. Once the outermost run has returned the call is
 // done, and a further run (a constructor that runs the executor twice in
@@ -110,8 +143,9 @@ func runPromiseCall(_ js.Value, pArgs []js.Value) any {
 	if len(promiseCalls) == 0 {
 		return js.Undefined()
 	}
+	seq, pArgs := splitSeq(pArgs)
 	c := promiseCalls[len(promiseCalls)-1]
-	if c.done {
+	if c.done || seq != c.seq {
 		return js.Undefined()
 	}
 	c.depth++
@@ -134,6 +168,22 @@ func runPromiseCall(_ js.Value, pArgs []js.Value) any {
 	defer rejectOnJSError(reject)
 	c.executor(resolve, reject)
 	return js.Undefined()
+}
+
+// splitSeq splits the call sequence number callExecutor bound off the
+// executor's arguments. A first argument that is not a number (an
+// unbound run, whose first argument is resolve) yields 0 and leaves the
+// arguments whole. A number that is not a positive integer below 2^53
+// yields -1, which matches no call.
+func splitSeq(args []js.Value) (int64, []js.Value) {
+	if len(args) == 0 || jsType(args[0]) != js.TypeNumber {
+		return 0, args
+	}
+	f := args[0].Float()
+	if f < 1 || f >= 1<<53 || f != math.Trunc(f) {
+		return -1, args[1:]
+	}
+	return int64(f), args[1:]
 }
 
 // jsError constructs a JavaScript Error with the given message, the

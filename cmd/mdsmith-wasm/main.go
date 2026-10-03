@@ -27,16 +27,13 @@ import (
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
-// funcOf and releaseFunc are js.FuncOf (through trackCallback) and
-// js.Func.Release behind seams so a test can count the funcs the engine
-// registers and releases, which syscall/js keeps private. The engine
-// registers only load-time funcs (the API, the shared methods, and the
-// shared Promise executor) and releases none, so a test can show a
-// session's lifecycle adds no func and frees none.
-var (
-	funcOf      = trackedFuncOf
-	releaseFunc = js.Func.Release
-)
+// funcOf is js.FuncOf (through trackCallback) behind a seam so a test
+// can count the funcs the engine registers, which syscall/js keeps
+// private. The engine registers only load-time funcs (the API, the
+// shared methods, and the shared Promise executor) and releases none
+// (TestEngineReleasesNoFunc), so a test can show a session's lifecycle
+// adds no func.
+var funcOf = trackedFuncOf
 
 // trackedFuncOf is js.FuncOf for a callback trackCallback counts.
 func trackedFuncOf(fn func(js.Value, []js.Value) any) js.Func {
