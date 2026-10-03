@@ -63,12 +63,12 @@ func (e SourceNotFoundError) Error() string {
 //     wikilinks alone because a stem still resolves (a documented
 //     asymmetry with path links). Only a Markdown src with a non-empty
 //     stem, outside `.git` and `node_modules`, is a stem target, and a
-//     dst no wikilink can name — no
-//     extension, an empty stem, a `#`, `|`, `[`, `]`, backtick, CR, or
-//     newline in the name, a name that ends with a space, or a path
-//     under `.git` or `node_modules`, which the resolver skips — gets no
-//     rewrite. A name that starts with a space or reads as a drive path
-//     (`C:x.md`) is written behind `./`;
+//     dst no wikilink can name — no extension, an empty stem, a `#`,
+//     `|`, `[`, `]`, backtick, CR, or newline in the name, a name that
+//     ends with a space, or a path under `.git` or `node_modules`,
+//     which the resolver skips — gets no rewrite. A name that starts
+//     with a space or reads as a drive path (`C:x.md`) is written
+//     behind `./`;
 //   - outbound destinations inside src, when it has a Markdown
 //     extension or the workspace lists it (an `.mdx` file that
 //     `files:` matches) — every `[t](path)`, `![a](path)` and

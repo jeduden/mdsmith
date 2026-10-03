@@ -524,10 +524,10 @@ func (i *Index) IncomingPathEdges(file string) []Edge {
 
 // IncomingWikilinkEdges returns every `[[stem]]` edge whose target
 // basename stem matches stem, compared case-insensitively (the same
-// key the wikilink resolver files stems under, linkgraph.FileNameKey). A file move keys these
-// by the moved file's basename stem, since a wikilink names a file by
-// stem rather than by path. The result is freshly allocated and sorted
-// by (SourceFile, SourceLine, SourceCol).
+// key the wikilink resolver files stems under, linkgraph.FileNameKey).
+// A file move keys these by the moved file's basename stem, since a
+// wikilink names a file by stem rather than by path. The result is
+// freshly allocated and sorted by (SourceFile, SourceLine, SourceCol).
 func (i *Index) IncomingWikilinkEdges(stem string) []Edge {
 	if i == nil {
 		return nil
