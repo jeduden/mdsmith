@@ -115,6 +115,12 @@ this duplication:
     `refactor.RenameKindList(verb)` renders it, so every
     host message names a new kind without an edit. The
     rendered text is unchanged.
+13. [x] Review round 2: `Session.Rename` walked and indexed
+    the whole workspace before `refactor.Rename` ran, even
+    for a label rename or a failed detection, which never
+    consult it. It now passes a `lazyRefactorWorkspace`
+    that builds the index on first use, so only a heading
+    rename pays for the walk.
 
 ## Acceptance Criteria
 

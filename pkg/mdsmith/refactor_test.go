@@ -211,8 +211,14 @@ func TestRenameError(t *testing.T) {
 			`"docs" matches both a heading and a link-ref label; pass as="heading" or as="label"`,
 		},
 		{refactor.ErrNoRenameTarget, `no heading or link-ref label "docs"`},
-		{refactor.NothingToRenameError{Kind: refactor.KindHeading, Name: "docs"}, `nothing to rename for heading "docs"`},
-		{refactor.NothingToRenameError{Kind: refactor.KindLabel, Name: "docs"}, `nothing to rename for label "docs"`},
+		{
+			refactor.NothingToRenameError{Kind: refactor.KindHeading, Name: "docs"},
+			`nothing to rename for heading "docs"`,
+		},
+		{
+			refactor.NothingToRenameError{Kind: refactor.KindLabel, Name: "docs"},
+			`nothing to rename for label "docs"`,
+		},
 		{refactor.MissingSymbolError{Kind: refactor.KindHeading, Name: "docs"}, `no heading "docs" in a.md`},
 		{refactor.MissingSymbolError{Kind: refactor.KindLabel, Name: "docs"}, `no link reference "docs" in a.md`},
 		{refactor.ErrEmptyLabel, refactor.ErrEmptyLabel.Error()},
@@ -293,4 +299,64 @@ func TestSession_BuildRefactorWorkspace(t *testing.T) {
 	overlay := s.buildRefactorWorkspace("a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
 	assert.Len(t, overlay.IncomingAnchorEdges("sub/b.md", "b"), 1)
 	assert.Empty(t, plain.IncomingAnchorEdges("sub/b.md", "b"))
+}
+
+// countingWorkspace counts ReadFile calls so a test can tell whether
+// Session.Rename indexed the workspace.
+type countingWorkspace struct {
+	*MemWorkspace
+	reads int
+}
+
+func (w *countingWorkspace) ReadFile(p string) ([]byte, error) {
+	w.reads++
+	return w.MemWorkspace.ReadFile(p)
+}
+
+// A label rename and a failed detection touch only the target's own
+// bytes, so Session.Rename must not walk and index the workspace for
+// them; a heading rename still does, to find incoming anchors.
+func TestSession_Rename_IndexesWorkspaceOnlyForHeadings(t *testing.T) {
+	src := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
+	ws := &countingWorkspace{MemWorkspace: NewMemWorkspace(map[string][]byte{
+		"a.md": src,
+		"b.md": []byte("See [go](a.md#setup).\n"),
+	})}
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+
+	ws.reads = 0
+	_, err = s.Rename("a.md", src, "", "docs", "rfc")
+	require.NoError(t, err)
+	assert.Zero(t, ws.reads, "a label rename reads no workspace file")
+
+	_, err = s.Rename("a.md", src, "", "ghost", "x")
+	require.Error(t, err)
+	assert.Zero(t, ws.reads, "a failed detection reads no workspace file")
+
+	p, err := s.Rename("a.md", src, "", "Setup", "Install")
+	require.NoError(t, err)
+	assert.Contains(t, p.Edits, "b.md")
+	assert.NotZero(t, ws.reads, "a heading rename indexes the workspace")
+}
+
+func TestLazyRefactorWorkspace_BuildsOnce(t *testing.T) {
+	src := []byte("# Setup\n")
+	s := newRefactorSession(t, map[string][]byte{"a.md": src})
+	builds := 0
+	lw := &lazyRefactorWorkspace{build: func() *sessionRefactorWorkspace {
+		builds++
+		return s.buildRefactorWorkspace("a.md", src)
+	}}
+	assert.Zero(t, builds, "nothing is built up front")
+	assert.Equal(t, []string{"a.md"}, lw.Files())
+	assert.Empty(t, lw.IncomingAnchorEdges("a.md", "setup"))
+	assert.Empty(t, lw.IncomingPathEdges("a.md"))
+	assert.Empty(t, lw.IncomingWikilinkEdges("a"))
+	key, got, ok := lw.Resolve("a.md")
+	assert.True(t, ok)
+	assert.Equal(t, "a.md", key)
+	assert.Equal(t, src, got)
+	assert.Equal(t, 1, builds, "every method shares one build")
 }
