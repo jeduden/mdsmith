@@ -264,3 +264,31 @@ func TestHasClosingFence_ContainerEndIsNoCloser(t *testing.T) {
 	}
 	assert.Equal(t, []int{3, 5}, lines)
 }
+
+// TestHasClosingFence_NestedListItem pins that a fence inside a list
+// item whose content column puts the fence run four or more columns in
+// is still judged: the parser opened it relative to the item, so an
+// unclosed one is reported and a closed one is not.
+func TestHasClosingFence_NestedListItem(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+		want []int
+	}{
+		{"nested bullet unclosed", "# T\n\n- a\n  - b\n\n    ```sh\n    make\n", []int{6}},
+		{"nested bullet closed", "# T\n\n- a\n  - b\n\n    ```sh\n    make\n    ```\n", []int{}},
+		{"wide ordered unclosed", "# T\n\n10. a\n\n    ```sh\n    make\n", []int{5}},
+		{"wide ordered closed", "# T\n\n10. a\n\n    ```sh\n    make\n    ```\n", []int{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := lint.NewFile("test.md", []byte(tc.src))
+			require.NoError(t, err)
+			diags := (&Rule{}).Check(f)
+			lines := make([]int, 0, len(diags))
+			for _, d := range diags {
+				lines = append(lines, d.Line)
+			}
+			assert.Equal(t, tc.want, lines)
+		})
+	}
+}
