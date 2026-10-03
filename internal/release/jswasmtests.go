@@ -100,10 +100,13 @@ func (d jsWasmDeps) output(env []string, args ...string) ([]byte, error) {
 // under Node, untagged ones included, and fails on any go test failure
 // or when no test passes. pkg must match exactly one package.
 // Unlike RunJSWasmTests it does not require every test to pass: a skip
-// of a native-only test is fine as long as some test passed. A skip of
-// a test from the js/wasm-only files still fails, by name.
-func RunJSWasmPackage(root, pkg string, out io.Writer) error {
-	return runJSWasmPackageWith(osJSWasmDeps(root, out), pkg)
+// of a test the native build shares is fine as long as some test
+// passed. A skip of a test from the js/wasm-only files still fails, by
+// name. requireJSOnly also fails, before go test, when pkg has no
+// js/wasm-only Test function, so a lost stub test file cannot pass the
+// gate vacuously.
+func RunJSWasmPackage(root, pkg string, requireJSOnly bool, out io.Writer) error {
+	return runJSWasmPackageWith(osJSWasmDeps(root, out), pkg, requireJSOnly)
 }
 
 // osJSWasmDeps is the production jsWasmDeps: go run from root, files
@@ -117,22 +120,24 @@ func osJSWasmDeps(root string, out io.Writer) jsWasmDeps {
 	}
 }
 
-func runJSWasmPackageWith(d jsWasmDeps, pkg string) error {
+func runJSWasmPackageWith(d jsWasmDeps, pkg string, requireJSOnly bool) error {
 	execFlag, err := d.execFlag()
 	if err != nil {
 		return err
 	}
 	// The js/wasm-only tests must pass by name, as in the default mode;
-	// a skip elsewhere in the package (a native-only test) stays fine.
+	// a skip of a test the native build shares stays fine. Unlike the
+	// default mode, a package may have no such files or tests.
 	files, err := listJSOnlyFiles(d, "test-js-wasm --all", pkg, "-e")
 	if err != nil {
 		return err
 	}
-	var names []string
-	if len(files) > 0 {
-		if names, err = testsInFiles(d, files); err != nil {
-			return err
-		}
+	names, err := testFuncsIn(d, files)
+	if err != nil {
+		return err
+	}
+	if requireJSOnly && len(names) == 0 {
+		return fmt.Errorf("no js/wasm-only Test functions in %s", pkg)
 	}
 	passed, err := d.goTest(pkg, execFlag)
 	if err != nil {
@@ -265,6 +270,19 @@ func listJSOnlyFiles(d jsWasmDeps, mode, pkg string, listFlags ...string) ([]str
 // testsInFiles collects the Test functions declared across files, in
 // file then source order, erroring when there are none.
 func testsInFiles(d jsWasmDeps, files []string) ([]string, error) {
+	names, err := testFuncsIn(d, files)
+	if err != nil {
+		return nil, err
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no Test functions in js/wasm-only files %s", strings.Join(files, ", "))
+	}
+	return names, nil
+}
+
+// testFuncsIn is testsInFiles without the empty-list error, for --all:
+// a js/wasm-only file may hold only helpers or a TestMain.
+func testFuncsIn(d jsWasmDeps, files []string) ([]string, error) {
 	var names []string
 	for _, f := range files {
 		src, err := d.readFile(f)
@@ -276,9 +294,6 @@ func testsInFiles(d jsWasmDeps, files []string) ([]string, error) {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
 		names = append(names, got...)
-	}
-	if len(names) == 0 {
-		return nil, fmt.Errorf("no Test functions in js/wasm-only files %s", strings.Join(files, ", "))
 	}
 	return names, nil
 }
@@ -295,7 +310,7 @@ func checkAllPassed(want, passed []string) error {
 	if len(missing) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%d of %d js/wasm tests passed; not passed: %s",
+	return fmt.Errorf("%d of %d js/wasm-only tests passed; not passed: %s",
 		len(want)-len(missing), len(want), strings.Join(missing, ", "))
 }
 

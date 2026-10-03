@@ -1013,3 +1013,15 @@ func TestRunTestJSWasmAll(t *testing.T) {
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr, "mdsmith-release: go test ./internal/does-not-exist under js/wasm")
 }
+
+// TestRunTestJSWasmAllRequireJSOnly dispatches `test-js-wasm --all
+// --require-js-only` at this package, which has no js/wasm-only test
+// files: it fails after go list and before go test, so no Node.
+func TestRunTestJSWasmAllRequireJSOnly(t *testing.T) {
+	var code int
+	stderr := captureStderr(t, func() {
+		code = run([]string{"test-js-wasm", "--all", "--require-js-only", "."})
+	})
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "mdsmith-release: no js/wasm-only Test functions in .")
+}

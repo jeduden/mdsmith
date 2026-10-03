@@ -28,7 +28,7 @@ added `mdsmith-release test-js-wasm --all
 ./internal/build`. The earlier stubs step runs the
 tests that only a js/wasm build compiles and fails when
 one of them skips. `--all` allows skips, because
-native-only tests skip under Node. So the stubs step
+tests the native build shares can skip under Node. So the stubs step
 cannot be dropped as it stands. Each CI run pays for an
 extra js/wasm compile and Node run of the package.
 
@@ -42,6 +42,9 @@ extra js/wasm compile and Node run of the package.
    set. Reuse the default mode's test listing.
 3. Drop `internal/build` from the stubs step in
    [ci.yml](../.github/workflows/ci.yml).
+4. Add `--require-js-only` to `--all` so CI keeps the
+   stubs step's guard: the run fails, before go test,
+   when the package has no js/wasm-only Test function.
 
 ## Acceptance Criteria
 
@@ -49,5 +52,7 @@ extra js/wasm compile and Node run of the package.
       a js/wasm-only test skips.
 - [x] The wasm CI job runs `internal/build` under Node
       once.
+- [x] `test-js-wasm --all --require-js-only` fails when
+      the package has no js/wasm-only Test function.
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues

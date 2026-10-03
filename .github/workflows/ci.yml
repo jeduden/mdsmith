@@ -541,8 +541,9 @@ jobs:
   # parity (methods_test.go). Earlier steps build the whole module for
   # js/wasm, vet it (tests included) for js/wasm, wasip1, and plan9,
   # and run the js/wasm-only unit tests (bridge_test.go and the
-  # internal/build and cmd/mdsmith stubs) under Node, then the whole
-  # internal/build package under Node.
+  # cmd/mdsmith stubs) under Node, then the whole internal/build
+  # package under Node, which also runs its exec_other.go stub tests
+  # and fails if one skips.
   # tinygo is built in the separate tinygo-wasm
   # job below, which is now enforcing (plan 247).
   wasm:
@@ -595,7 +596,9 @@ jobs:
         # --all runs every test in the package, so a mistagged one fails,
         # and it fails a skip of a js/wasm-only test (exec_other.go's
         # stub tests), so this is the package's only js/wasm run.
-        run: go run ./cmd/mdsmith-release test-js-wasm --all ./internal/build
+        # --require-js-only keeps the default mode's guard: losing or
+        # renaming exec_other_test.go fails instead of passing vacuously.
+        run: go run ./cmd/mdsmith-release test-js-wasm --all --require-js-only ./internal/build
       - name: WASM smoke test, size budget, and method-set parity
         run: go test ./cmd/mdsmith-wasm/...
 
