@@ -713,6 +713,7 @@ func TestBoundSession(t *testing.T) {
 		{"string first arg", []js.Value{src}, 0, false, []js.Value{src}},
 		{"unknown id", []js.Value{js.ValueOf(-1), src}, -1, false, []js.Value{src}},
 		{"live id", []js.Value{js.ValueOf(liveID), src}, liveID, true, []js.Value{src}},
+		{"live id alone", []js.Value{js.ValueOf(liveID)}, liveID, true, nil},
 		{"fractional live id", []js.Value{frac, src}, 0, false, []js.Value{frac, src}},
 		{"NaN", []js.Value{nan, src}, 0, false, []js.Value{nan, src}},
 		{"beyond safe integer", []js.Value{huge, src}, 0, false, []js.Value{huge, src}},
@@ -830,7 +831,7 @@ func TestBigIntArgs(t *testing.T) {
 func TestBindMethods_SkipsNameWithoutSharedFunc(t *testing.T) {
 	proxy := js.Global().Get("Object").New()
 	require.NotPanics(t, func() {
-		bindMethods(proxy, []string{"check", "missing"}, sharedMethods(), -1)
+		bindMethods(proxy, []string{"check", "missing"}, sharedMethods(), -1, js.Undefined())
 	})
 	assert.Equal(t, js.TypeFunction, proxy.Get("check").Type())
 	assert.False(t, proxy.Call("hasOwnProperty", "missing").Bool())
