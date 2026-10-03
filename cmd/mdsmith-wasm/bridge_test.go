@@ -1040,9 +1040,9 @@ func TestJSErrorFor(t *testing.T) {
 // TestSharedFunc_GuessedIDsReachNoSession calls a raw shared func as a
 // script that captured one could: with every small integer id, and with
 // every id within 4096 of one it learned (its own session's). None may
-// reach the other live session: ids are drawn at random from a 53-bit
-// range, so neither counting up from 0 nor stepping from a known id
-// finds it. Plan 2610021439.
+// reach the other live session: ids are a keyed permutation of a
+// counter over a 53-bit range, so neither counting up from 0 nor
+// stepping from a known id finds it. Plan 2610021439.
 func TestSharedFunc_GuessedIDsReachNoSession(t *testing.T) {
 	own, ownID := newTestProxyWithID(t)
 	defer own.Call("dispose")
@@ -1073,30 +1073,64 @@ func TestSharedFunc_GuessedIDsReachNoSession(t *testing.T) {
 	assert.Positive(t, other.Call("capabilities").Length())
 }
 
-// TestNewSessionID_RedrawsLiveID forces the draw onto an id a live
-// session holds and checks newSessionID draws again rather than hand
-// that id out, each draw from [0, maxSessionID) shifted to start at 1.
-// Not parallel: it swaps the drawSessionID seam.
-func TestNewSessionID_RedrawsLiveID(t *testing.T) {
-	oldDraw := drawSessionID
-	t.Cleanup(func() { drawSessionID = oldDraw })
-	const liveID int64 = 7
-	require.NotContains(t, sessions, liveID, "precondition: id 7 is free")
-	sessions[liveID] = nil
-	defer delete(sessions, liveID)
-	draws := []int64{liveID - 1, liveID - 1, 41}
-	var gotN []int64
-	drawSessionID = func(n int64) int64 {
-		gotN = append(gotN, n)
-		return draws[min(len(gotN), len(draws))-1]
+// TestPermuteSessionID_IsBijection runs the Feistel permutation over
+// a 10-bit domain (5-bit halves) and checks every input maps to a
+// distinct output inside the domain, so counter values never collide.
+func TestPermuteSessionID_IsBijection(t *testing.T) {
+	keys := [sessionIDRounds]uint64{1, 0x9e3779b97f4a7c15, 42, 7}
+	const half = 5
+	seen := make(map[uint64]bool, 1<<(2*half))
+	for x := uint64(0); x < 1<<(2*half); x++ {
+		y := permuteSessionID(x, &keys, half)
+		require.Less(t, y, uint64(1)<<(2*half), "permute(%d) left the domain", x)
+		require.False(t, seen[y], "permute(%d) = %d repeats", x, y)
+		seen[y] = true
 	}
-	assert.Equal(t, int64(42), newSessionID())
-	assert.Equal(t, []int64{maxSessionID, maxSessionID, maxSessionID}, gotN)
+}
+
+// TestNewSessionID_NeverRepeats creates ids across many create and
+// dispose cycles and checks none repeats, so a method kept from a
+// disposed session never reaches a later one, each id is in [1,
+// maxSessionID], and the ids are not a counting sequence a script could
+// step through. Not parallel: it reads the shared counter.
+func TestNewSessionID_NeverRepeats(t *testing.T) {
+	seen := make(map[int64]bool, 4096)
+	prev := int64(0)
+	for range 4096 {
+		id := newSessionID()
+		require.GreaterOrEqual(t, id, int64(1))
+		require.LessOrEqual(t, id, int64(maxSessionID))
+		require.False(t, seen[id], "id %d repeats", id)
+		assert.NotEqual(t, prev+1, id, "ids count up")
+		seen[id] = true
+		prev = id
+	}
+}
+
+// TestNewSessionID_SkipsOutOfRange sets the counter to a value whose
+// image is at or past maxSessionID and checks newSessionID moves on to
+// the next counter value rather than hand out an id past the range.
+// Not parallel: it moves the shared counter.
+func TestNewSessionID_SkipsOutOfRange(t *testing.T) {
+	old := sessionIDCounter
+	t.Cleanup(func() { sessionIDCounter = old })
+	image := func(c uint64) uint64 { return permuteSessionID(c, &sessionIDKeys, sessionIDHalfBits) }
+	c := old
+	for image(c) < maxSessionID {
+		c++
+	}
+	next := c + 1
+	for image(next) >= maxSessionID {
+		next++
+	}
+	sessionIDCounter = c
+	assert.Equal(t, int64(image(next))+1, newSessionID())
+	assert.Equal(t, next+1, sessionIDCounter)
 }
 
 // TestSessionID_Int64On32BitInt pins the session id to int64, so the
-// TinyGo build, whose int is 32 bits on wasm, draws from the same 2^53
-// range as standard Go rather than a 2^31 − 1 one a script can sweep.
+// TinyGo build, whose int is 32 bits on wasm, hands ids out from the
+// same 2^53 range as standard Go rather than a 2^31 − 1 one a script can sweep.
 // Plan 2610021439.
 func TestSessionID_Int64On32BitInt(t *testing.T) {
 	assert.Equal(t, reflect.Int64, reflect.TypeOf(newSessionID()).Kind())

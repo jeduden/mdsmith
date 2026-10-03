@@ -63,10 +63,10 @@ red/green.
    held in Go pins it, so it is never collected.
    `proxyDispose` gets the bound id and the token, and
    calls `unregister(token)` on the registry before it
-   drops the id. Ids are random and a disposed id can be
-   drawn again (plan 2610021439), so a callback that
-   still fired after an explicit dispose could reach a
-   newer session holding the same id.
+   drops the id. Ids never repeat (plan 2610021439), so a
+   callback that still fired after an explicit dispose
+   would find no session; unregister anyway so the
+   registry drops the entry with the session.
 4. Check the WASM size budgets with
    [size_test.go](../cmd/mdsmith-wasm/size_test.go), and
    update the engine-api page to describe the fallback.

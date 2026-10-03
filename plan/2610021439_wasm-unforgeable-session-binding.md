@@ -64,7 +64,11 @@ for the stale-dispose fix.
    Decide whether to also capture `Reflect` at load in
    the shipped `wasm_exec.js`.
    Decision: random 53-bit ids (no extra js.Value per
-   session, no size cost beyond `math/rand/v2`). `Reflect`
+   session, no size cost beyond `math/rand/v2`). Review
+   round 2 replaced the random draw and its redraw loop
+   with a keyed Feistel permutation of a counter, so no id
+   repeats after dispose, and made the id an int64 so the
+   TinyGo build also spans 2^53. `Reflect`
    is not captured; the limit is documented in engine-api.md.
 2. [x] Write a failing js/wasm test that calls a raw shared
    func with every id from -1 to 4096, and with every id

@@ -282,12 +282,13 @@ method made read-only with
 `Object.defineProperty(session, "check", { writable: false })`. None
 of them logs "call to released function".
 
-The id is drawn at random from 2^53 values in both the standard Go
-and the TinyGo build. A draw that a live session holds is redrawn. So
-a script that reaches a raw shared function cannot find a session by
-trying 0, 1, 2, and so on. A disposed session's id is not retired, so
-a new session can draw it again, at odds of one in 2^53. A method
-kept from the disposed session would then reach the new one.
+Each id is a counter passed through a permutation keyed at random
+when the engine loads, over 2^53 values in both the standard Go and
+the TinyGo build. So a script that reaches a raw shared function
+cannot find a session by trying 0, 1, 2, and so on, or by stepping
+from an id it knows. The permutation never maps two counter values to
+the same id, so no id is handed out twice. A method kept from a
+disposed session never reaches a later one.
 
 The engine also binds through a `bind` captured at load, so a later
 patch of `Function.prototype.bind` or `call` never sees a raw shared
@@ -299,7 +300,7 @@ for each session created while the patch is in place, and every
 session object the engine resolves.
 
 A random id or a token object crosses those calls too, so the engine
-does not try to hide it. The random id shields only the sessions
+does not try to hide it. The keyed id shields only the sessions
 created while no such patch is in place.
 
 An argument of the wrong type, a `BigInt` included, makes an async

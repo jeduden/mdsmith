@@ -226,29 +226,65 @@ var bindTo js.Value
 // read and a write here blocks, so it needs no lock.
 var sessions = map[int64]*mdsmith.Session{}
 
-// newSessionID draws an id no live session holds, uniformly from
-// [1, maxSessionID], so a script that holds a raw shared func cannot
-// reach a session by counting up from 0. The id is an int64, not an
-// int, so the range is 2^53 under TinyGo too, whose int is 32 bits on
-// wasm. A collision with a live id redraws. A disposed session's id is not retired (a retired set would
-// grow with every create/dispose), so it can be drawn again, at odds of
-// one in maxSessionID per draw; a stale method of the disposed session
-// would then reach the new one. The ids are not cryptographic: under
-// standard Go, math/rand/v2's global source is seeded from the OS,
-// which on js/wasm is crypto.getRandomValues; TinyGo routes it through
-// its own runtime generator instead. Plan 2610021439.
+// newSessionID hands out the next id: a keyed Feistel permutation of a
+// counter, shifted to start at 1. The permutation is a bijection and
+// the counter never repeats, so no id is handed out twice, live or
+// disposed, and a method kept from a disposed session can never reach
+// a later one. The keys are drawn at load, so the ids are not a
+// counting sequence: a script that holds a raw shared func cannot find
+// a session by counting up from 0 or stepping from an id it knows. The
+// permutation spans 2^54 values; a counter value whose image is at or
+// past maxSessionID is skipped, which happens about half the time, so
+// every id is in [1, maxSessionID]. The id is an int64, not an int, so
+// TinyGo, whose int is 32 bits on wasm, gets the same range. The ids
+// are not cryptographic: under standard Go, math/rand/v2's global
+// source (which draws the keys) is seeded from the OS, which on
+// js/wasm is crypto.getRandomValues; TinyGo routes it through its own
+// runtime generator instead. Plan 2610021439.
 func newSessionID() int64 {
 	for {
-		id := 1 + drawSessionID(maxSessionID)
-		if _, taken := sessions[id]; !taken {
-			return id
+		x := permuteSessionID(sessionIDCounter, &sessionIDKeys, sessionIDHalfBits)
+		sessionIDCounter++
+		if x < maxSessionID {
+			return int64(x) + 1
 		}
 	}
 }
 
-// drawSessionID is rand.IntN behind a seam so a test can force the
-// collision with a live id that newSessionID redraws on.
-var drawSessionID = rand.Int64N
+// sessionIDHalfBits is the width of each Feistel half: two halves of
+// 27 bits span 2^54 values, the smallest even width that covers [0,
+// maxSessionID).
+const sessionIDHalfBits = 27
+
+// sessionIDRounds is the number of Feistel rounds.
+const sessionIDRounds = 4
+
+// sessionIDKeys are the per-load round keys of the id permutation.
+var sessionIDKeys = [sessionIDRounds]uint64{rand.Uint64(), rand.Uint64(), rand.Uint64(), rand.Uint64()}
+
+// sessionIDCounter is the next counter value newSessionID permutes. At
+// one id per microsecond it would take over 500 years to wrap.
+var sessionIDCounter uint64
+
+// permuteSessionID maps x in [0, 2^(2*half)) to a distinct value in
+// the same range with a balanced Feistel network over keys. Each round
+// XORs one half with a mix of the other, which is invertible whatever
+// the mix, so the whole is a bijection.
+func permuteSessionID(x uint64, keys *[sessionIDRounds]uint64, half uint) uint64 {
+	mask := uint64(1)<<half - 1
+	l, r := x>>half&mask, x&mask
+	for _, k := range keys {
+		l, r = r, l^(mixSessionID(r^k)&mask)
+	}
+	return l<<half | r
+}
+
+// mixSessionID is the SplitMix64 finalizer, the Feistel round function.
+func mixSessionID(z uint64) uint64 {
+	z = (z ^ z>>30) * 0xbf58476d1ce4e5b9
+	z = (z ^ z>>27) * 0x94d049bb133111eb
+	return z ^ z>>31
+}
 
 // methodImpl pairs a forwarding session method's implementation with
 // the result it returns once its session is disposed. Build one with
@@ -398,8 +434,8 @@ func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 // maxSessionID bounds a bound id before its int64 conversion, so
 // int64(f) is in range and exact: 2^53 is the largest float64 below
 // which every integer is exact. It is also the top of the range
-// newSessionID draws from, so every id it hands out passes
-// boundSession's check.
+// newSessionID hands ids out from, so every id passes boundSession's
+// check.
 const maxSessionID = 1 << 53
 
 // boundSession splits the session id a shared func is bound to off
