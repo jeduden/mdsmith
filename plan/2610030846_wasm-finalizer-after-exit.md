@@ -65,6 +65,15 @@ stays in `sessions` until the host calls the engine
 again; a Go func callback would have freed it at
 collection time.
 
+Every session method drains too, not only
+`createSession` and `dispose`. A host that keeps one
+session and drops others then still frees them. An
+empty drain is one read of the queue's length: about
+0.3 µs under Node, about 1% of `invalidate`, the
+cheapest call (`BenchmarkDrainFinalizedEmpty`,
+`BenchmarkInvalidate` in
+[drain_bench_test.go](../cmd/mdsmith-wasm/drain_bench_test.go)).
+
 ## Tasks
 
 1. [x] Write a failing js/wasm or Node harness test that

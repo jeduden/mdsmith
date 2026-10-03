@@ -622,6 +622,12 @@ func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 // (only a FinalizationRegistry patched before load can push one)
 // disposes nothing rather than panicking in Value.Float. On a host with
 // no usable registry there is no queue and nothing to drain.
+//
+// With nothing queued the drain is one read of the queue's length:
+// about 0.3 µs under Node, about 1% of invalidate, the cheapest call
+// (BenchmarkDrainFinalizedEmpty, BenchmarkInvalidate). It runs on
+// session methods too, not only on createSession and dispose, so a host
+// that keeps one session and drops others still frees them.
 func drainFinalized() {
 	q := finalizer.queue
 	if jsType(q) != js.TypeObject {
