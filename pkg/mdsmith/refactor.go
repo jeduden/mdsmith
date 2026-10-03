@@ -102,19 +102,15 @@ func (s *Session) Move(src, dst string) (RefactorPlan, error) {
 // errors when both or neither match — the same auto-detect the CLI's
 // rename runs.
 func detectRenameKind(source []byte, oldName string) (string, error) {
-	_, isHeading := refactor.FindHeadingLine(source, oldName)
-	isLabel := refactor.HasLinkRef(source, oldName)
+	kind, ambiguous, found := refactor.DetectRenameKind(source, oldName)
 	switch {
-	case isHeading && isLabel:
+	case ambiguous:
 		return "", fmt.Errorf(
 			"%q matches both a heading and a link-ref label; pass as=\"heading\" or as=\"label\"", oldName)
-	case isHeading:
-		return "heading", nil
-	case isLabel:
-		return "label", nil
-	default:
+	case !found:
 		return "", fmt.Errorf("no heading or link-ref label %q", oldName)
 	}
+	return kind, nil
 }
 
 // toRefactorPlan converts the internal refactor.Plan to the public

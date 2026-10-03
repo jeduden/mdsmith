@@ -277,18 +277,15 @@ func computeRenamePlan(
 // or absent (neither) — steering a path-shaped request to `mdsmith
 // move`.
 func detectRenameMode(target string, src []byte, oldName, newName string) (string, int) {
-	_, isHeading := refactor.FindHeadingLine(src, oldName)
-	isLabel := refactor.HasLinkRef(src, oldName)
+	kind, ambiguous, found := refactor.DetectRenameKind(src, oldName)
 	switch {
-	case isHeading && isLabel:
+	case ambiguous:
 		fmt.Fprintf(os.Stderr,
 			"mdsmith: %q matches both a heading and a link-ref label in %s; pass --as heading or --as label\n",
 			oldName, target)
 		return "", 2
-	case isHeading:
-		return "heading", -1
-	case isLabel:
-		return "label", -1
+	case found:
+		return kind, -1
 	}
 	if looksLikePath(oldName) || looksLikePath(newName) {
 		fmt.Fprintf(os.Stderr,
