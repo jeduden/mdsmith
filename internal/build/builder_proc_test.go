@@ -37,7 +37,7 @@ func TestBuild_SingleOutputCp(t *testing.T) {
 }
 
 func TestBuild_MultiOutputTee(t *testing.T) {
-	skipWithoutPOSIXTools(t, "tee/sh")
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	bindir := t.TempDir()
 	// Script writes "payload" to every argument (each staged output).
@@ -88,7 +88,7 @@ func TestBuild_ParamSubstitutionNoShell(t *testing.T) {
 }
 
 func TestBuild_InputGlobResolves(t *testing.T) {
-	skipWithoutPOSIXTools(t, "cat")
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "src"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "src/a.txt"), []byte("A"), 0o644))
@@ -251,7 +251,7 @@ func TestBuild_FailingRecipePreservesExistingOutput(t *testing.T) {
 }
 
 func TestBuild_Timeout(t *testing.T) {
-	skipWithoutPOSIXTools(t, "sleep")
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	bindir := t.TempDir()
 	script := writeScript(t, bindir, "slow.sh", `sleep 5`)

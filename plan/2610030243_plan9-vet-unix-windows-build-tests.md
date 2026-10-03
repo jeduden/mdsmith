@@ -81,14 +81,17 @@ errors only then.
    when a test, fuzz target, or benchmark in a file
    that builds on plan9 but not on js reaches `sh`
    before a top-level plan9 skip. Reaching `sh` means
-   a string whose first word is `sh` or ends in
-   `/sh`, such as an `sh` argv, an `sh -c` recipe, or
-   `writeScript`'s `#!/bin/sh`. A function, method, or
-   func-valued var that builds on plan9 counts the
-   same, whether called or passed by name, in any
-   declaration order. A skip is a helper that skips
-   first, or an `if` or `switch` on `runtime.GOOS`
-   that calls `Skip` for `"plan9"`, so the guard
+   a string whose first word, after any `#!` or `env`,
+   is `sh` or ends in `/sh`, such as an `sh` argv, an
+   `sh -c` recipe, or `writeScript`'s `#!/bin/sh`. A
+   function, method, or package-level const or var
+   that builds on plan9 counts the same, whether
+   called, passed, or read by name, in any
+   declaration order. Methods that share a name reach
+   `sh` if any of them does. A skip is a `Skip` call,
+   a helper that skips first, or an `if` or `switch`
+   on `runtime.GOOS` that calls `Skip` for `"plan9"`,
+   alone or under `||`, so the guard
    needs no package-specific helper names. A `cp`
    recipe is not an `sh` use: the guard leaves it to
    `skipWithoutPOSIXTools`, which the test still
@@ -140,10 +143,10 @@ a contract of its own. Two more gaps remain:
 - About 28 untagged tests in `internal/release` and
   `cmd/mdsmith-release` write fake `#!/bin/sh` tools. They
   have no plan9 skip. No js/wasm gate runs those packages.
-- The `cp` and `cat` recipe tests skip on plan9 through
+- The two `cp` recipe tests skip on plan9 through
   `skipWithoutPOSIXTools`. Recipes run argv with no shell,
-  and plan9 has both tools. CI has no plan9 runner to show
-  which of these tests could run there.
+  and plan9 has `cp`. CI has no plan9 runner to show
+  whether these tests could run there.
 
 Follow-up tasks:
 
@@ -156,4 +159,4 @@ Follow-up tasks:
    the sh check to cover them.
 4. Find out whether a plan9 runner, such as a 9front VM in
    CI, is practical. If so, split `skipWithoutPOSIXTools` so
-   the `cp` and `cat` tests run there.
+   the `cp` tests run there.
