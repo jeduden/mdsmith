@@ -35,7 +35,7 @@ exercised only indirectly through a caller's scenario test:
   `WordFrequencyInto` directly across repeated
   accumulate/clear cycles — the exact zero-alloc-reuse
   behavior it exists for.
-- [internal/directivefiles/directivefiles.go][directivefiles]:192,222,174 —
+- [internal/directivefiles/directivefiles.go][directivefiles]:194,227,174 —
   `openingFence`, `isClosingFence`, and `isIndentedCodeBlock`,
   the fence-tracking helpers `hasDirectiveMarker` uses to skip
   directive-marker matches inside code blocks. Covered only

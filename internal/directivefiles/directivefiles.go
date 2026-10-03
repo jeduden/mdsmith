@@ -129,11 +129,11 @@ func DiscoverFilesForInstall(repoRoot string, maxBytes int64) []string {
 // are also ignored; mdsmith's own parser only honors processing-
 // instructions at the document root.
 //
-// The same indentation gate applied by internal/lint.pi_parser is
-// used here: a line that begins with a tab or with more than three
-// spaces is an indented code block per CommonMark and cannot host a
-// processing-instruction, so any directive-looking text on such a
-// line is ignored.
+// The PI block parser in pkg/markdown (pi_parser.go) applies the
+// same indentation gate: a line that begins with a tab or with more
+// than three spaces is an indented code block per CommonMark and
+// cannot host a processing-instruction, so any directive-looking
+// text on such a line is ignored.
 func hasDirectiveMarker(content []byte, names []string) bool {
 	var fenceChar byte
 	var fenceLen int
@@ -169,8 +169,8 @@ func hasDirectiveMarker(content []byte, names []string) bool {
 // isIndentedCodeBlock reports whether line begins an indented code
 // block per CommonMark: four or more spaces of indentation, or a tab
 // character within the first four columns (optionally preceded by
-// up to three spaces). internal/lint.pi_parser uses the same rule,
-// so this keeps discovery aligned with the actual mdsmith parser.
+// up to three spaces). pkg/markdown's PI block parser uses the same
+// rule, so this keeps discovery aligned with the actual mdsmith parser.
 func isIndentedCodeBlock(line []byte) bool {
 	if len(line) == 0 {
 		return false
