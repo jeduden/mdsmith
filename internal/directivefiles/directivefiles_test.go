@@ -271,10 +271,9 @@ func TestHasDirectiveMarker_ClosingFenceWithTrailingWhitespace(t *testing.T) {
 	assert.True(t, hasDirectiveMarker(content, []string{"catalog"}))
 }
 
-// TestOpeningFence verifies that openingFence correctly identifies fenced code
-// block openers: lines beginning with 0–3 spaces followed by 3+ backticks or
-// tildes, and rejects lines with too few fence characters or wrong characters.
-func TestOpeningFence(t *testing.T) {
+// TestOpeningFence_ValidFences verifies openingFence correctly identifies valid
+// fenced code block openers: 3+ backticks or tildes, optionally indented 0–3 spaces.
+func TestOpeningFence_ValidFences(t *testing.T) {
 	tests := []struct {
 		name     string
 		line     []byte
@@ -317,6 +316,26 @@ func TestOpeningFence(t *testing.T) {
 			wantChar: '`',
 			wantLen:  3,
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotChar, gotLen := openingFence(tt.line)
+			assert.Equal(t, tt.wantChar, gotChar)
+			assert.Equal(t, tt.wantLen, gotLen)
+		})
+	}
+}
+
+// TestOpeningFence_InvalidFences verifies openingFence rejects invalid fence
+// openers: too few characters, wrong indentation, wrong characters, or empty lines.
+func TestOpeningFence_InvalidFences(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     []byte
+		wantChar byte
+		wantLen  int
+	}{
 		{
 			name:     "four spaces indent (code block) then backticks",
 			line:     []byte("    ```"),
@@ -364,16 +383,15 @@ func TestOpeningFence(t *testing.T) {
 	}
 }
 
-// TestIsClosingFence verifies that isClosingFence correctly identifies lines
-// that close a fenced code block: same fence character, at least as many as
-// the opener, optionally preceded by 0–3 spaces, and only followed by whitespace.
-func TestIsClosingFence(t *testing.T) {
+// TestIsClosingFence_MatchingLength verifies isClosingFence correctly handles
+// matching fence lengths and characters.
+func TestIsClosingFence_MatchingLength(t *testing.T) {
 	tests := []struct {
-		name   string
-		line   []byte
-		ch     byte
+		name    string
+		line    []byte
+		ch      byte
 		openLen int
-		want   bool
+		want    bool
 	}{
 		{
 			name:    "exact match backtick",
@@ -390,19 +408,32 @@ func TestIsClosingFence(t *testing.T) {
 			want:    true,
 		},
 		{
-			name:    "fewer backticks than opener",
-			line:    []byte("``"),
-			ch:      '`',
-			openLen: 3,
-			want:    false,
-		},
-		{
-			name:    "wrong fence character",
+			name:    "tildes exact match",
 			line:    []byte("~~~"),
-			ch:      '`',
+			ch:      '~',
 			openLen: 3,
-			want:    false,
+			want:    true,
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isClosingFence(tt.line, tt.ch, tt.openLen)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestIsClosingFence_IndentAndWhitespace verifies isClosingFence correctly
+// handles indentation and trailing whitespace on valid closing fences.
+func TestIsClosingFence_IndentAndWhitespace(t *testing.T) {
+	tests := []struct {
+		name    string
+		line    []byte
+		ch      byte
+		openLen int
+		want    bool
+	}{
 		{
 			name:    "one space indent then backticks",
 			line:    []byte(" ```"),
@@ -416,13 +447,6 @@ func TestIsClosingFence(t *testing.T) {
 			ch:      '`',
 			openLen: 3,
 			want:    true,
-		},
-		{
-			name:    "four spaces indent (too much)",
-			line:    []byte("    ```"),
-			ch:      '`',
-			openLen: 3,
-			want:    false,
 		},
 		{
 			name:    "backticks with trailing spaces",
@@ -445,19 +469,54 @@ func TestIsClosingFence(t *testing.T) {
 			openLen: 3,
 			want:    true,
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isClosingFence(tt.line, tt.ch, tt.openLen)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestIsClosingFence_InvalidClosers verifies isClosingFence rejects invalid
+// closing fences: mismatched character, too few characters, too much indentation,
+// or non-whitespace content after the fence.
+func TestIsClosingFence_InvalidClosers(t *testing.T) {
+	tests := []struct {
+		name    string
+		line    []byte
+		ch      byte
+		openLen int
+		want    bool
+	}{
+		{
+			name:    "fewer backticks than opener",
+			line:    []byte("``"),
+			ch:      '`',
+			openLen: 3,
+			want:    false,
+		},
+		{
+			name:    "wrong fence character",
+			line:    []byte("~~~"),
+			ch:      '`',
+			openLen: 3,
+			want:    false,
+		},
+		{
+			name:    "four spaces indent (too much)",
+			line:    []byte("    ```"),
+			ch:      '`',
+			openLen: 3,
+			want:    false,
+		},
 		{
 			name:    "backticks with trailing non-whitespace",
 			line:    []byte("```a"),
 			ch:      '`',
 			openLen: 3,
 			want:    false,
-		},
-		{
-			name:    "tildes exact match",
-			line:    []byte("~~~"),
-			ch:      '~',
-			openLen: 3,
-			want:    true,
 		},
 		{
 			name:    "empty line",
@@ -483,10 +542,10 @@ func TestIsClosingFence(t *testing.T) {
 	}
 }
 
-// TestIsIndentedCodeBlock verifies that isIndentedCodeBlock correctly identifies
-// CommonMark indented code blocks: lines with 4+ spaces of indentation or a tab
-// character within the first 4 columns (optionally preceded by 0–3 spaces).
-func TestIsIndentedCodeBlock(t *testing.T) {
+// TestIsIndentedCodeBlock_WithValidIndent verifies isIndentedCodeBlock correctly
+// identifies lines with valid indented code block markers: 4+ spaces or a tab
+// within the first 4 columns (optionally preceded by 0–3 spaces).
+func TestIsIndentedCodeBlock_WithValidIndent(t *testing.T) {
 	tests := []struct {
 		name string
 		line []byte
@@ -523,6 +582,29 @@ func TestIsIndentedCodeBlock(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "only spaces (4+)",
+			line: []byte("    "),
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isIndentedCodeBlock(tt.line)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestIsIndentedCodeBlock_WithoutValidIndent verifies isIndentedCodeBlock
+// correctly rejects lines that are not indented code blocks.
+func TestIsIndentedCodeBlock_WithoutValidIndent(t *testing.T) {
+	tests := []struct {
+		name string
+		line []byte
+		want bool
+	}{
+		{
 			name: "three spaces no tab",
 			line: []byte("   code"),
 			want: false,
@@ -541,11 +623,6 @@ func TestIsIndentedCodeBlock(t *testing.T) {
 			name: "empty line",
 			line: []byte(""),
 			want: false,
-		},
-		{
-			name: "only spaces",
-			line: []byte("    "),
-			want: true,
 		},
 		{
 			name: "only three spaces",
