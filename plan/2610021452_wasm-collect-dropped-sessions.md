@@ -51,7 +51,12 @@ red/green.
    `globalThis.gc()`, if the test runner allows it),
    then assert the id has left `sessions`. If forced GC
    is not available, test the callback directly with a
-   live id instead.
+   live id instead. As built: `go_js_wasm_exec` passes
+   no `--expose-gc`, so the test turns the flag on at
+   run time with `v8.setFlagsFromString` and reads `gc`
+   out of `vm.runInNewContext`. A GC test skips when
+   neither works, and `test-js-wasm` fails a skipped
+   test by name.
 3. In `newSessionProxy`, create one token object per
    session, bind it into every method after the id, and
    register the token with its id. Do not register the
@@ -70,6 +75,12 @@ red/green.
 4. Check the WASM size budgets with
    [size_test.go](../cmd/mdsmith-wasm/size_test.go), and
    update the engine-api page to describe the fallback.
+5. Added during review: a host with no usable
+   `FinalizationRegistry` (none, a ctor that is not a
+   constructor, or a stub with no `register` or
+   `unregister`) still loads the engine. Register and
+   unregister come back undefined, and only `dispose()`
+   frees a session there.
 
 ## Acceptance Criteria
 
