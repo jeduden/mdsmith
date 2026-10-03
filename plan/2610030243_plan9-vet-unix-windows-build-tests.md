@@ -78,9 +78,24 @@ errors only then.
    tags with `go/build`, so release tags and file-name
    suffixes count. A spawn file that also builds on
    wasip1 or on a future port fails too. It also fails
-   when a test in such a file calls `writeScript`,
-   `recipeCmd`, or passes an `sh` argv, directly or
-   through a helper, before a top-level plan9 skip.
+   when a test, fuzz target, or benchmark in a file
+   that builds on plan9 but not on js reaches `sh`
+   before a top-level plan9 skip. Reaching `sh` means
+   a string whose first word is `sh` or ends in
+   `/sh`, such as an `sh` argv, an `sh -c` recipe, or
+   `writeScript`'s `#!/bin/sh`. A function, method, or
+   func-valued var that builds on plan9 counts the
+   same, whether called or passed by name, in any
+   declaration order. A skip is a helper that skips
+   first, or an `if` or `switch` on `runtime.GOOS`
+   that calls `Skip` for `"plan9"`, so the guard
+   needs no package-specific helper names. A `cp`
+   recipe is not an `sh` use: the guard leaves it to
+   `skipWithoutPOSIXTools`, which the test still
+   needs for Windows. Untagged files build on js, so
+   the js/wasm gate covers them instead.
+   [Plan 2610031920](2610031920_module-wide-plan9-spawn-guard.md)
+   takes the guard module-wide.
 
 ## Acceptance Criteria
 
