@@ -4,11 +4,12 @@ title: Share one CommonMark fence scanner across packages
 status: "🔲"
 model: sonnet
 summary: >-
-  Five packages carry their own fenced-code opener and
-  closer scanners, and they have drifted: directivefiles
-  missed the backtick-in-info-string rule that
-  internal/lint already had. Move one scanner into a
-  shared leaf package and point every caller at it.
+  Eight packages carry their own fenced-code opener and
+  closer scanners, and they drifted: five of them missed
+  the backtick-in-info-string rule that internal/lint
+  already had, and PR #895 patched each copy by hand. Move
+  one scanner into a shared leaf package and point every
+  caller at it.
 ---
 # Share one CommonMark fence scanner across packages
 
@@ -27,14 +28,36 @@ fixed in place, but the copies remain:
 
 - [internal/lint/layer0_fence.go][layer0] —
   `openingFence` / `closingFence`
+- [internal/lint/lineclass_scan.go][lineclass] —
+  `detectFenceOpen` / `isFenceClose`, a second copy in the
+  same package
 - [internal/directivefiles/directivefiles.go][directivefiles]
   — `openingFence` / `isClosingFence`
 - [internal/rules/listscan/listscan.go][listscan] —
   `openingFenceRel` / `closingFence`
+- [internal/rules/requiredstructure/rule.go][reqstruct] —
+  `fenceOpenRun` / `fenceClose`
 - [internal/rules/include/headings.go][headings] —
-  `isClosingFence`
+  the `codeFenceRe` opener regex / `isClosingFence`
+- [internal/rules/include/links.go][links] —
+  `countFenceRun`, the `rewriteSkippingCode` opener
+- [internal/rules/slidevstructure/rule.go][slidev] —
+  `isCodeFence`, a prefix-only open/close toggle
+- [internal/rules/fencepos/fencepos.go][fencepos] —
+  `isFenceOpenLine`, the empty-block fallback scan in
+  `OpenLineRange`
 - [internal/release/sitereleases.go][sitereleases] —
   `openingFence` (string-based)
+
+Review round 2 found the same bug in five more copies and
+patched each one by hand: `fenceOpenRun`, `codeFenceRe`,
+`countFenceRun`, `isCodeFence`, and the fencepos fallback
+scan all took "```a`b" as an opener. Each fix duplicated
+the backtick check again, which is the drift this plan
+removes. Other differences remain. `isCodeFence` toggles
+on any run without matching the closer's character or
+length. The include scanners strip any amount of leading
+whitespace, while the others allow at most three spaces.
 
 ## Tasks
 
@@ -57,8 +80,9 @@ fixed in place, but the copies remain:
 ## Acceptance Criteria
 
 - [ ] Only the shared package defines fence opener or
-      closer logic; `grep -rn "func openingFence"` finds
-      only that package
+      closer logic: every function and regex named in
+      Background is deleted, and a search for each name
+      finds no definition outside the shared package
 - [ ] The contract test passes, and its cases include
       "```a`b" (not an opener) and "~~~a`b" (an opener)
 - [ ] `internal/lint` benchmarks show no regression
@@ -67,7 +91,12 @@ fixed in place, but the copies remain:
       reports no issues
 
 [layer0]: ../internal/lint/layer0_fence.go
+[lineclass]: ../internal/lint/lineclass_scan.go
 [directivefiles]: ../internal/directivefiles/directivefiles.go
 [listscan]: ../internal/rules/listscan/listscan.go
+[reqstruct]: ../internal/rules/requiredstructure/rule.go
 [headings]: ../internal/rules/include/headings.go
+[slidev]: ../internal/rules/slidevstructure/rule.go
+[links]: ../internal/rules/include/links.go
+[fencepos]: ../internal/rules/fencepos/fencepos.go
 [sitereleases]: ../internal/release/sitereleases.go

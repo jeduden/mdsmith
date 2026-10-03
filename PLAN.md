@@ -295,4 +295,5 @@ footer: ""
 | 2610030438 | 🔲     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
 | 2610030846 | ✅     | sonnet | [Silence wasm session finalizers after the Go program exits](plan/2610030846_wasm-finalizer-after-exit.md)                                              |
 | 2610031436 | 🔲     | sonnet | [Share one CommonMark fence scanner across packages](plan/2610031436_shared-fence-scanner.md)                                                           |
+| 2610031451 | 🔲     | sonnet | [Keep PLAN.md under its file-length budget](plan/2610031451_plan-index-line-budget.md)                                                                  |
 <?/catalog?>
