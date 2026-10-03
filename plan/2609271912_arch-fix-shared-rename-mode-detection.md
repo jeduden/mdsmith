@@ -153,6 +153,16 @@ this duplication:
       binding sets `code: "nothing-to-rename"` on the
       rejected `Error`.
 
+16. [x] Review round 4: a heading renamed to its own
+    source spelling still rewrote anchors when that spelling
+    slugs apart from its visible text. `# [Setup](x.md)`
+    renamed to `[Setup](x.md)` moved every `#setup` link to
+    `#setupxmd`. `renameHeadingAt` now checks the heading's
+    own bytes before `Heading` runs. `Heading` now slugs the
+    text the renamed heading renders as, so
+    `[Install](x.md)` anchors as `#install`. A zero-value
+    CLI workspace answers edge queries with nothing.
+
 ## Acceptance Criteria
 
 - [x] The `isHeading`/`isLabel` detection switch exists in

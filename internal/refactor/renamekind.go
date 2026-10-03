@@ -82,12 +82,8 @@ func RenameKindList(verb string) string {
 	for i, k := range renameKinds {
 		parts[i] = fmt.Sprintf(verb, string(k))
 	}
-	return joinOr(parts)
+	return joinList(parts, "or")
 }
-
-// joinOr joins parts as an English disjunction: "a", "a or b",
-// "a, b, or c".
-func joinOr(parts []string) string { return joinList(parts, "or") }
 
 // joinList joins parts as an English list with conj: "a", "a conj b",
 // "a, b, conj c".
@@ -126,8 +122,10 @@ func (e InvalidRenameKindError) Error() string {
 }
 
 // NothingToRenameError reports that renaming the Kind symbol Name
-// leaves the file byte-identical: a heading renamed to its own text,
-// or a label renamed to the spelling every occurrence already has.
+// has no effect: a heading renamed to its own source text or to the
+// visible text it already renders as (`# **Setup**` renamed Setup →
+// Setup keeps its emphasis), or a label renamed to the spelling every
+// occurrence already has.
 // errors.Is matches it against ErrNothingToRename.
 type NothingToRenameError struct {
 	Kind RenameKind
@@ -212,28 +210,25 @@ func Rename(ws Workspace, fileKey string, source []byte, kind RenameKind, oldNam
 }
 
 // renameHeadingAt runs the heading rename for the heading on the
-// 1-based source line, turning a no-op plan into a
-// NothingToRenameError: Heading's empty plan for a same-text rename,
-// and a plan whose only edits rewrite fileKey to the bytes it already
-// has (`# *Setup*` renamed Setup → *Setup*). Unchanged heading bytes
-// shift no slug, so such a plan touches no other file.
+// 1-based source line, reporting a NothingToRenameError when the
+// heading's text already reads newName byte for byte (`# *Setup*`
+// renamed Setup → *Setup*) or when Heading plans nothing for a
+// same-text rename. The byte check runs before Heading so a rename
+// whose edits rewrite nothing (`# [Setup](x.md)` renamed
+// Setup → [Setup](x.md)) reports as nothing to rename instead of
+// returning a plan of identity edits.
 func renameHeadingAt(ws Workspace, fileKey string, source []byte, line int, oldName, newName string) (Plan, error) {
+	if e, ok := headingTextEdit(source, line, newName); ok && editsLeaveUnchanged(source, []Edit{e}) {
+		return Plan{}, NothingToRenameError{Kind: KindHeading, Name: oldName}
+	}
 	p, err := Heading(ws, fileKey, fileKey, source, line, oldName, newName)
 	if err != nil {
 		return Plan{}, err
 	}
-	if len(p.Edits) == 0 || onlyUnchangedSelf(p, fileKey, source) {
+	if len(p.Edits) == 0 {
 		return Plan{}, NothingToRenameError{Kind: KindHeading, Name: oldName}
 	}
 	return p, nil
-}
-
-// onlyUnchangedSelf reports whether p edits fileKey alone and those
-// edits leave source byte-identical. A plan that edits some other file
-// is a real rename even when fileKey's own bytes do not change.
-func onlyUnchangedSelf(p Plan, fileKey string, source []byte) bool {
-	own, ok := p.Edits[fileKey]
-	return ok && len(p.Edits) == 1 && editsLeaveUnchanged(source, own)
 }
 
 // renameLabel runs the link-ref rename for a label Rename has already
@@ -312,7 +307,7 @@ func editKeepsRow(row []byte, e Edit) bool {
 
 // detectRenameKind decides whether oldName names a heading or a
 // link-ref label in source. For a heading it also returns the 1-based
-// line findHeadingLine found, so Rename does not search for the
+// line findHeadingLineIn found, so Rename does not search for the
 // heading a second time. Both matching is ErrAmbiguousRename; neither
 // is ErrNoRenameTarget.
 func detectRenameKind(ps *parsedSource, oldName string) (RenameKind, int, error) {

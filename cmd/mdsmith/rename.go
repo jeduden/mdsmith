@@ -92,24 +92,33 @@ type cliRenameWorkspace struct {
 	maxBytes int64
 }
 
+// index returns the lazily built index, or nil for a workspace built
+// without one, whose nil-receiver edge queries then answer nothing.
+func (w cliRenameWorkspace) index() *index.Index {
+	if w.idx == nil {
+		return nil
+	}
+	return w.idx()
+}
+
 // Trivial index pass-through; no dedicated test by design (covered
 // by the heading-rename behavioral tests via the engine).
 func (w cliRenameWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
-	return w.idx().IncomingEdges(file, slug)
+	return w.index().IncomingEdges(file, slug)
 }
 
 // Trivial index pass-through; no dedicated test by design.
 func (w cliRenameWorkspace) IncomingPathEdges(file string) []index.Edge {
-	return w.idx().IncomingPathEdges(file)
+	return w.index().IncomingPathEdges(file)
 }
 
 // Trivial index pass-through; no dedicated test by design.
 func (w cliRenameWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
-	return w.idx().IncomingWikilinkEdges(stem)
+	return w.index().IncomingWikilinkEdges(stem)
 }
 
 // Trivial index pass-through; no dedicated test by design.
-func (w cliRenameWorkspace) Files() []string { return w.idx().Files() }
+func (w cliRenameWorkspace) Files() []string { return w.index().Files() }
 
 func (w cliRenameWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
@@ -152,7 +161,7 @@ func parseRenameFlags(args []string) (renameOptions, []string, error) {
 			"To relocate a file, use mdsmith move.\n\n"+
 			"  mdsmith rename docs/a.md \"Old Title\" \"New Title\"\n"+
 			"  mdsmith rename docs/a.md --as label oldlabel newlabel\n\n"+
-			"Exit codes: 0 rewritten, 1 no match, 2 error or conflict\n\nFlags:\n")
+			"Exit codes: 0 rewritten, 1 no match or nothing to rename, 2 error or conflict\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 
@@ -262,7 +271,7 @@ func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 // computeRenamePlan runs the shared refactor.Rename dispatch — kind
 // from --as, or "" to auto-detect from src — and maps its outcome to
 // the CLI exit contract: 1 when an explicit kind finds nothing or the
-// rename changes no byte, 2 on a conflict, invalid input, an ambiguous
+// rename has no effect, 2 on a conflict, invalid input, an ambiguous
 // or absent auto-detect, or a request that looks like a file move.
 func computeRenamePlan(
 	ws cliRenameWorkspace, target string, src []byte,

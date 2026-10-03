@@ -27,6 +27,19 @@ func TestLazyWorkspace_BuildsOnceOnFirstUse(t *testing.T) {
 	assert.Equal(t, 1, builds, "every method shares one build")
 }
 
+// The build runs once even when it returns a nil Workspace, so a
+// failed build is not repeated (a full walk and index) on every call.
+func TestLazyWorkspace_Get(t *testing.T) {
+	builds := 0
+	lw := NewLazyWorkspace(func() Workspace {
+		builds++
+		return nil
+	})
+	assert.Nil(t, lw.get())
+	assert.Nil(t, lw.get())
+	assert.Equal(t, 1, builds)
+}
+
 // A label rename never consults the workspace, so a lazy one is never
 // built.
 func TestRename_LabelNeverBuildsLazyWorkspace(t *testing.T) {

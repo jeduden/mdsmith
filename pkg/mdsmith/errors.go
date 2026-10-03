@@ -7,11 +7,13 @@ import (
 )
 
 // ErrNothingToRename is matched (errors.Is) by the error Session.Rename
-// returns when the heading or label exists but renaming it would change
-// no byte — a heading or label renamed to its own text. It is a
+// returns when the heading or label exists but renaming it has no
+// effect — a heading or label renamed to its own text, or a heading
+// renamed to the visible text it already renders as. It is a
 // harmless outcome a host may ignore, unlike a missing symbol or a
-// conflict; the CLI exits 1 for it.
-var ErrNothingToRename = errors.New("nothing to rename")
+// conflict; the CLI exits 1 for it. It is the engine's own sentinel,
+// so the error Session.Rename returns matches it unwrapped.
+var ErrNothingToRename = refactor.ErrNothingToRename
 
 // ErrorCodeNothingToRename is ErrorCode's value for an error matching
 // ErrNothingToRename. The WASM binding sets it as the rejected Error's
@@ -26,26 +28,4 @@ func ErrorCode(err error) string {
 		return ErrorCodeNothingToRename
 	}
 	return ""
-}
-
-// nothingToRenameError carries refactor's no-op rename outcome across
-// the public API: its message is the engine's ("nothing to rename for
-// heading \"Setup\""), and it matches the public ErrNothingToRename.
-type nothingToRenameError struct{ err error }
-
-func (e nothingToRenameError) Error() string { return e.err.Error() }
-
-// Is makes errors.Is(err, ErrNothingToRename) hold.
-func (e nothingToRenameError) Is(target error) bool { return target == ErrNothingToRename }
-
-// Unwrap exposes the engine's NothingToRenameError.
-func (e nothingToRenameError) Unwrap() error { return e.err }
-
-// publicNothingToRename wraps err in nothingToRenameError when it is
-// refactor's no-op outcome, and returns it unchanged otherwise.
-func publicNothingToRename(err error) error {
-	if errors.Is(err, refactor.ErrNothingToRename) {
-		return nothingToRenameError{err: err}
-	}
-	return err
 }

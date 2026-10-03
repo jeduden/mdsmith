@@ -51,10 +51,11 @@ type RefactorPlan struct {
 // normalizing to oldName; ambiguous or absent is an error). It also
 // errors, rather than returning an empty plan, when an explicit kind
 // finds no heading or label named oldName, or when the rename would
-// change no byte (a heading or label renamed to its own text); that
+// have no effect (a heading or label renamed to its own text, or a
+// heading renamed to the visible text it already renders as); that
 // last error matches ErrNothingToRename, so a host can treat it as the
-// harmless no-op it is. The
-// plan carries only edits: a symbol rename never moves a file.
+// harmless no-op it is. The plan carries only edits: a symbol rename
+// never moves a file.
 func (s *Session) Rename(uri string, source []byte, as, oldName, newName string) (RefactorPlan, error) {
 	kind, err := refactor.ParseRenameKind(as)
 	if err != nil {
@@ -90,9 +91,9 @@ func (s *Session) Move(src, dst string) (RefactorPlan, error) {
 }
 
 // renameError rewords refactor.Rename's sentinel outcomes into the
-// engine API's error text; engine conflicts pass through unchanged,
-// and a NothingToRenameError (whose text already names the kind) keeps
-// its text but matches the public ErrNothingToRename.
+// engine API's error text. Engine conflicts and a NothingToRenameError
+// (whose text already names the kind, and which matches
+// ErrNothingToRename) pass through unchanged.
 // Each case mirrors a CLI exit path (see cmd/mdsmith/rename.go).
 func renameError(err error, uri, oldName string) error {
 	var missing refactor.MissingSymbolError
@@ -106,7 +107,7 @@ func renameError(err error, uri, oldName string) error {
 	case errors.As(err, &missing):
 		return fmt.Errorf("%w in %s", missing, uri)
 	}
-	return publicNothingToRename(err)
+	return err
 }
 
 // toRefactorPlan converts the internal refactor.Plan to the public

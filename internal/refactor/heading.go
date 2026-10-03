@@ -113,10 +113,13 @@ func Heading(
 	if r := firstControlRune(newName); r != 0 {
 		return Plan{}, InvalidHeadingRuneError{Rune: r}
 	}
-	if mdtext.Slugify(newName) == "" {
+	// Slug the text the renamed heading renders as, not the raw
+	// newName: `[Install](x.md)` anchors as #install, not #installxmd.
+	rendered := renderedHeadingText(source, line, newName)
+	if mdtext.Slugify(rendered) == "" {
 		return Plan{}, ErrEmptyHeadingSlug
 	}
-	oldSlugs, newSlugs, conflict := computeSlugRemap(source, line, newName)
+	oldSlugs, newSlugs, conflict := computeSlugRemap(source, line, rendered)
 	if conflict != "" {
 		return Plan{}, HeadingCollisionError{Conflict: conflict}
 	}
@@ -134,17 +137,35 @@ func Heading(
 	return Plan{Edits: changes}, nil
 }
 
-// findHeadingLine returns the 1-based source line of the first
-// heading whose visible text equals headingText, or ok=false when no
-// heading matches. Rename uses it to locate (or auto-detect) a heading
-// and turn its text into the line coordinate Heading expects; it
-// parses the same way the engine does so the line it finds is the
-// line Heading rewrites.
-func findHeadingLine(source []byte, headingText string) (int, bool) {
-	return findHeadingLineIn(parseSource(source), headingText)
+// renderedHeadingText returns the visible text the heading on the
+// 1-based source line renders as once its text is replaced by newName.
+// It re-parses the edited file rather than newName alone, so inline
+// markup and reference links resolve against the file's own ref-defs.
+// It falls back to newName when line is not a heading.
+func renderedHeadingText(source []byte, line int, newName string) string {
+	e, ok := headingTextEdit(source, line, newName)
+	if !ok {
+		return newName
+	}
+	// headingTextEdit yields one in-range single-line edit, so
+	// ApplyEdits cannot fail here.
+	edited, _ := ApplyEdits(source, []Edit{e})
+	body, fmOffset := bodyAndFMOffset(edited)
+	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
+	for _, h := range walkAllHeadings(root, body) {
+		if h.bodyLine == line-fmOffset {
+			return h.text
+		}
+	}
+	return newName
 }
 
-// findHeadingLineIn is findHeadingLine over a shared parsedSource.
+// findHeadingLineIn returns the 1-based source line of the first
+// heading in ps whose visible text equals headingText, or ok=false
+// when no heading matches. Rename uses it to locate (or auto-detect) a
+// heading and turn its text into the line coordinate Heading expects;
+// ps parses the same way the engine does so the line it finds is the
+// line Heading rewrites.
 func findHeadingLineIn(ps *parsedSource, headingText string) (int, bool) {
 	for _, h := range walkAllHeadings(ps.root(), ps.body) {
 		if h.text == headingText {

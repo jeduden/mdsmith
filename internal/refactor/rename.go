@@ -100,7 +100,7 @@ func linkRefPlan(fileKey string, ps *parsedSource, oldLabel, newName string) (Pl
 	}
 	// A rename that keeps the same normalized label (e.g. "docs api"
 	// → "Docs API") is allowed — it refreshes casing/spacing across
-	// the def and every use. labelConflict matches on the normalized
+	// the def and every use. labelConflictIn matches on the normalized
 	// form so such a rename never collides with itself.
 	newLabel := NormalizedLabel([]byte(newName))
 	if conflict := labelConflictIn(ps, oldLabel, newLabel); conflict != "" {
@@ -110,17 +110,12 @@ func linkRefPlan(fileKey string, ps *parsedSource, oldLabel, newName string) (Pl
 	return Plan{Edits: map[string][]Edit{fileKey: edits}}, nil
 }
 
-// hasLinkRef reports whether source defines a reference definition
+// hasLinkRefIn reports whether ps defines a reference definition
 // whose normalized label matches label (CommonMark link-label
 // normalization). detectRenameKind uses it to auto-detect a link-ref
 // rename when the host passes no explicit kind. Def-shaped lines
 // inside code blocks or paragraph continuations are excluded,
 // matching LinkRef.
-func hasLinkRef(source []byte, label string) bool {
-	return hasLinkRefIn(parseSource(source), label)
-}
-
-// hasLinkRefIn is hasLinkRef over a shared parsedSource.
 func hasLinkRefIn(ps *parsedSource, label string) bool {
 	want := NormalizedLabel([]byte(label))
 	for _, m := range ps.refDefs() {
@@ -181,17 +176,12 @@ func NormalizedLabel(b []byte) string {
 	return string(util.ToLinkReference(b))
 }
 
-// labelConflict returns the conflicting label's original casing when
-// newLabel matches a reference definition other than the one being
-// renamed, or "" when there is no conflict. The scan filters regex
-// matches through goldmark's parser context so a `[label]: url`-
+// labelConflictIn returns the conflicting label's original casing when
+// newLabel matches a reference definition in ps other than the one
+// being renamed, or "" when there is no conflict. The scan filters
+// regex matches through goldmark's parser context so a `[label]: url`-
 // shaped line inside a fenced code block or PI body never counts as
 // a real def.
-func labelConflict(source []byte, oldLabel, newLabel string) string {
-	return labelConflictIn(parseSource(source), oldLabel, newLabel)
-}
-
-// labelConflictIn is labelConflict over a shared parsedSource.
 func labelConflictIn(ps *parsedSource, oldLabel, newLabel string) string {
 	for _, m := range ps.refDefs() {
 		if m.normLabel == oldLabel {
@@ -275,14 +265,8 @@ func contentBlockLines(root ast.Node, body []byte) map[int]struct{} {
 	return out
 }
 
-// linkRefEdits walks the source for the def line and every
-// reference-style use of oldLabel (full and shortcut), returning one
-// Edit per match.
-func linkRefEdits(source []byte, oldLabel, newName string) []Edit {
-	return linkRefEditsIn(parseSource(source), oldLabel, newName)
-}
-
-// linkRefEditsIn is linkRefEdits over a shared parsedSource.
+// linkRefEditsIn walks ps for the def line and every reference-style
+// use of oldLabel (full and shortcut), returning one Edit per match.
 func linkRefEditsIn(ps *parsedSource, oldLabel, newName string) []Edit {
 	lines := splitLines(ps.source)
 	out := make([]Edit, 0, 8)

@@ -80,17 +80,6 @@ func TestEditKeepsRow(t *testing.T) {
 	assert.False(t, editKeepsRow(row, at(0, 9, "")), "past the row")
 }
 
-func TestOnlyUnchangedSelf(t *testing.T) {
-	src := []byte("# Setup\n")
-	same := Edit{Range: Range{End: Position{0, 7}}, NewText: "# Setup"}
-	other := Edit{Range: Range{}, NewText: "x"}
-	assert.True(t, onlyUnchangedSelf(Plan{Edits: map[string][]Edit{"a.md": {same}}}, "a.md", src))
-	assert.False(t, onlyUnchangedSelf(Plan{Edits: map[string][]Edit{"b.md": {other}}}, "a.md", src),
-		"an edit to another file only is a real rename")
-	assert.False(t, onlyUnchangedSelf(Plan{Edits: map[string][]Edit{"a.md": {same}, "b.md": {other}}}, "a.md", src),
-		"an incoming-link edit makes it real")
-}
-
 func TestRenameKindList(t *testing.T) {
 	assert.Equal(t, "heading or label", RenameKindList("%s"))
 	assert.Equal(t, `"heading" or "label"`, RenameKindList("%q"))
@@ -124,13 +113,6 @@ func TestJoinList(t *testing.T) {
 	assert.Equal(t, "a", joinList([]string{"a"}, "and"))
 	assert.Equal(t, "a and b", joinList([]string{"a", "b"}, "and"))
 	assert.Equal(t, "a, b, and c", joinList([]string{"a", "b", "c"}, "and"))
-}
-
-func TestJoinOr(t *testing.T) {
-	assert.Equal(t, "", joinOr(nil))
-	assert.Equal(t, "a", joinOr([]string{"a"}))
-	assert.Equal(t, "a or b", joinOr([]string{"a", "b"}))
-	assert.Equal(t, "a, b, or c", joinOr([]string{"a", "b", "c"}))
 }
 
 func TestDetectRenameKind(t *testing.T) {
@@ -327,6 +309,19 @@ func TestRenameHeadingAt(t *testing.T) {
 	p, err = renameHeadingAt(ws, "a.md", emph, 1, "Setup", "**Setup**")
 	require.NoError(t, err, "a respelled heading is a real edit")
 	assert.Len(t, p.Edits["a.md"], 1)
+
+	// The raw spelling `[Setup](x.md)` slugifies to "setupxmd", but
+	// the unchanged heading still renders as Setup with slug "setup".
+	// Rewriting b.md's #setup (or a same-file #setup) would break it.
+	linked := "# [Setup](x.md)\n\nBack to [top](#setup).\n"
+	lws := newMemWorkspace(map[string]string{
+		"a.md": linked,
+		"b.md": "See [go](a.md#setup).\n",
+	})
+	p, err = renameHeadingAt(lws, "a.md", []byte(linked), 1, "Setup", "[Setup](x.md)")
+	assert.Equal(t, NothingToRenameError{Kind: KindHeading, Name: "Setup"}, err,
+		"a heading whose bytes stay the same shifts no anchor")
+	assert.Empty(t, p.Edits)
 }
 
 func TestRenameLabel(t *testing.T) {
