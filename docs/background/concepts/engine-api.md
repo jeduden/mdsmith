@@ -249,17 +249,67 @@ becomes a Go `ConfigSource` exactly as the `-c` flag's text does.
 is async, and any Go method returning `(T, error)` maps to a
 `Promise<T>` that rejects with `new Error(msg)`.
 
+Some outcomes are not failures. A rename to the symbol's own text,
+or to the text a heading already renders as, has no effect. In Go,
+`Session.Rename` then returns an error that matches
+`mdsmith.ErrNothingToRename` under `errors.Is`. In JS, the
+rejected `Error` has `code` set to `"nothing-to-rename"`, the value of
+`mdsmith.ErrorCode(err)`. A host can check the code and ignore the
+no-op without reading the message. Other errors leave `code` unset.
+
 No session registers a function of its own. The method functions
 are shared by all sessions and registered once. Each method on a
 session object is a `bind` of one of them with a session id, so the
 binding is collected once that method is unreachable. A method taken
-off the object, such as `const { check } = session`, keeps its binding
-after the object is gone. The Go session is not collected: it stays
-live until `dispose()`, so call `dispose()` before you drop a session.
+off the object, such as `const { check } = session`, keeps its
+binding after the object is gone.
 
-`dispose()` drops the id, so the disposed session's caches and
-workspace can be freed, and a create/dispose loop holds a fixed number
-of registered functions. Each method keeps its shape afterwards:
+The session object also has a non-enumerable, read-only own `then`
+property set to `undefined`. It is not in `Object.keys`, and it cannot
+be reassigned or deleted. It stops the Promise resolve in
+`createSession` from reading a `then` that a page defined on
+`Object.prototype`, which would reject the create and strand the
+session. The `mdsmith` global has the same `then`, so a host whose
+async engine load returns it, as the Obsidian plugin's does, never
+rejects that load and starts a second Go runtime. The Obsidian plugin's
+runtime object, which its async `createRuntime` returns, carries the
+same `then` for the same reason. The plugin adds it through an
+`Object.defineProperty` captured when its module loads.
+
+The engine adds each method with `Object.defineProperty`, not by
+assignment. So an accessor or a read-only value of the same name on
+`Object.prototype` neither receives the method nor leaves the session
+without it. Each method stays writable, enumerable, and configurable.
+
+Each session also has a token object. `dispose` is bound to it, and a
+private `WeakMap` maps every other method to it, so the token lives
+while any method does and no call but `dispose()` carries it. A
+`FinalizationRegistry` watches the token without keeping it alive.
+Once the object and every method taken off it are collected, the
+registry queues the session's id. The next engine call, to
+`createSession` or any session method, disposes each queued id. So a
+host that drops a session without `dispose()` still frees the Go
+session.
+
+That is a fallback: the Go and JS garbage collectors decide when it
+runs, so call `dispose()` when you are done with a session to free its
+caches and workspace at once. The queue is a native array push, not a
+Go function, so a garbage collection never calls into Go. After the Go
+program exits, a collected session raises no error in the host.
+
+Go holds the session's JS values until its own collector runs. On
+WebAssembly that happens only as the Go heap grows, so an engine that
+is no longer called can keep a dropped session for good. The TinyGo
+build never releases a JS value that Go has held, so there the token
+is never collected and only `dispose()` frees a session. A host with
+no `FinalizationRegistry`, or one the engine cannot build or bind,
+still loads the standard Go build. It has no fallback either, and only
+`dispose()` frees a session.
+
+`dispose()` drops the id and cancels the registry entry, so the
+disposed session's caches and workspace can be freed, and a
+create/dispose loop holds a fixed number of registered functions and
+registry entries. Each method keeps its shape afterwards:
 `check`, `fix`, `kinds`, `rename`, and `move` return a `Promise` that
 rejects with `Error("session disposed")`.
 `capabilities()` returns `[]`, and `invalidate()` and a second
@@ -274,14 +324,50 @@ method made read-only with
 `Object.defineProperty(session, "check", { writable: false })`. None
 of them logs "call to released function".
 
-The id is a small sequential integer, not a secret. A script in the
-same page that reaches a raw shared function can call it with any
-live id. The engine binds through a `bind` captured at load, so a
-later patch of `Function.prototype.bind` or `call` never sees one.
-`wasm_exec.js` looks up `Reflect.apply` on every Go-to-JS call, though,
-so a patched `Reflect.apply` does. Plan
-[2610021439](../../../plan/2610021439_wasm-unforgeable-session-binding.md)
-tracks closing that gap.
+Each id is a counter passed through a 10-round Feistel permutation
+whose round function is AES-128 under a key drawn at random when the
+engine loads. The ids span 2^53 values in both the standard Go and
+the TinyGo build. So a script that reaches a raw shared function
+cannot find a session by trying 0, 1, 2, and so on, or by stepping
+from an id it knows. Ids it sees after a `Reflect.apply` patch do not
+predict the ids handed out before it, short of breaking AES. The
+permutation never maps two counter values to the same id, so no id
+is handed out twice. A method kept from a disposed session never
+reaches a later one.
+
+The engine also binds through a `bind` captured at load, so a later
+patch of `Function.prototype.bind` or `call` never sees a raw shared
+function. It adds the session's own `then` through an
+`Object.defineProperty` captured at load as well, with a frozen
+descriptor. It builds the session object from an `Object` captured
+at load. A later patch of `Object.defineProperty` or of the global
+`Object` neither skips that property nor sees the session object. The
+workspace check and its key listing use `Object.keys` and
+`Object.prototype.toString` captured at load too, so a later patch of
+either never sees the workspace. A capture that throws at load, such
+as one through an `Object.freeze` patched to throw, does not stop the
+engine from loading: every `createSession` then rejects, and no
+session is left registered.
+
+All of this is hardening, not a privilege boundary. A `bind` or
+`call` patched before the engine loads sees each raw shared function
+and the id of every session. An `Object` or `Object.defineProperty`
+patched before load sees every session object, and such an `Object`
+builds each session object and token, so it can hand back one whose
+`then` throws. `wasm_exec.js` looks up `Reflect.apply` on every
+Go-to-JS call, so a patched `Reflect.apply` sees the same for each
+session created while the patch is in place, and every session object
+the engine resolves. It looks up `Reflect.construct`
+on every object Go builds, so a patched `Reflect.construct` sees or
+replaces each session object created while the patch is in place.
+
+Go also reads the arguments of each call into a method through
+`Reflect.get`, the bound id first. So a patched `Reflect.get` sees the
+id of each session whose method is called while the patch is in place.
+
+A random id or a token object crosses those calls too, so the engine
+does not try to hide it. The keyed id shields only a session that is
+neither created nor called while such a patch is in place.
 
 An argument of the wrong type, a `BigInt` included, makes an async
 method reject and `invalidate()` do nothing. So does an options object
@@ -292,6 +378,40 @@ getter or `Proxy` `get` trap on the options object that throws, because
 `wasm_exec.js` does not catch an exception from a property read. The
 other is a `BigInt` passed to the TinyGo build, because TinyGo does not
 implement `recover()` on WebAssembly.
+
+A script that replaces `Promise`, `Reflect.construct`, or
+`Reflect.apply` can make the engine's own JS calls throw. Go cannot
+throw to a caller, so one failed call ends only itself. A `Promise`
+that throws, is not a constructor, or returns without running its
+executor makes `createSession` and each async method return
+`undefined`. A `Promise` that passes the executor no `reject`, or a
+`reject` that throws, returns an object that never settles when the
+call fails, because the engine has no working callback left to settle
+it. A missing or throwing `resolve` turns a success into a rejection.
+
+A `resolve` that throws during `createSession` disposes the session
+it was passed, and the create rejects with that error. A `Promise`
+that throws after it ran the executor disposes every session the
+create registered, so none stays registered.
+
+A patched `Reflect.apply` that throws while the engine builds a
+callback's JS wrapper leaks that callback. `syscall/js` stores it in
+the Go runtime's func table first, then drops its id on the panic.
+Plan 2610031420 tracks that leak.
+
+A `Reflect.get` or `Reflect.set` that throws while Go reads a
+callback's arguments or writes back its result still stops the Go
+runtime, as a throwing getter does: `wasm_exec.js` does not catch it.
+A `console.error` that throws when a released callback is called ends
+the program. The JS that made the call is then still on the
+WebAssembly stack, and Go cannot safely resume below it.
+TinyGo has no `recover()` on WebAssembly, so there the exception still
+ends the program.
+
+A synchronous method whose JS call throws returns `undefined`, not
+its disposed value. A failed `capabilities()` on a live session is
+therefore distinct from the `[]` it returns after `dispose()`.
+`dispose()` frees the session even when its own JS call throws.
 
 `createSession` rejects when `opts` is not a plain object. It also
 rejects when `opts.workspace` is present but is not a plain object of

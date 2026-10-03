@@ -1688,6 +1688,61 @@ a.docs-side-title:hover, a.docs-side-title.is-active { color: var(--accent); tex
 }
 .docs-side-nested { padding-left: 18px; font-size: 13px; color: var(--steel-500); }
 
+/* ========== RELEASE NOTES ========== */
+
+.releases-page { padding-top: 32px; padding-bottom: 80px; }
+.release {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  margin: 0 0 12px;
+  /* Clear the sticky top nav when a #tag link scrolls here. */
+  scroll-margin-top: 80px;
+}
+/* Own disclosure chevron inside the card: the native marker sits
+   outside the border once the summary holds a block heading. */
+.release > summary {
+  cursor: pointer;
+  padding: 12px 16px;
+  list-style: none;
+  display: flex; align-items: center; gap: 12px;
+}
+.release > summary::-webkit-details-marker { display: none; }
+.release > summary::before {
+  content: "";
+  flex: none;
+  width: 7px; height: 7px;
+  border-right: 2px solid var(--steel-500);
+  border-bottom: 2px solid var(--steel-500);
+  transform: rotate(-45deg);
+}
+.release[open] > summary::before { transform: rotate(45deg); }
+@media (prefers-reduced-motion: no-preference) {
+  .release > summary::before { transition: transform var(--dur-base) var(--ease-out); }
+}
+.release-body [id] { scroll-margin-top: 80px; }
+/* The wrapped two-row nav below 560px is taller. */
+@media (max-width: 560px) {
+  .release, .release-body [id] { scroll-margin-top: 130px; }
+}
+.release > summary:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-md); }
+.docs-prose .release-title {
+  display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px;
+  margin: 0; font-size: 17px;
+}
+.release-name { font-family: var(--font-mono); }
+.release-date { font-size: 13px; font-weight: 400; color: var(--fg-muted); }
+.release-body {
+  padding: 4px 16px 8px;
+  border-top: 1px solid var(--border-subtle);
+  overflow-wrap: anywhere;
+}
+.docs-prose .release-body h4 { font-size: 15px; font-weight: 600; margin: 16px 0 6px; }
+.docs-prose .release-body li { font-size: 14px; }
+.docs-prose .release-body p { font-size: 14px; }
+.docs-prose .release-link { font-size: 13px; }
+.releases-more { margin-top: 28px; }
+
 /* ========== RULE PAGES ========== */
 
 .rule-meta {

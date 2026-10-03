@@ -225,6 +225,10 @@ jobs:
     needs: [version, build, vscode, obsidian]
     if: *rc_repo_ok
     runs-on: ubuntu-latest
+    outputs:
+      # 'true' when check-rc found the candidate current and the
+      # publish step ran; the pages job below deploys only then.
+      published: ${{ steps.fresh.outputs.current }}
     permissions:
       contents: write
       id-token: write
@@ -266,8 +270,10 @@ jobs:
             --bundle checksums.txt.bundle \
             checksums.txt
       - name: Generate release notes
-        # Notes span from the last stable tag, so each candidate lists
-        # everything the next stable release would ship.
+        # Notes start at the previous candidate of the same version
+        # (the last stable tag for the first one), so each candidate
+        # lists only the merges it adds. The stable release's notes
+        # still span every merge since the previous stable release.
         env:
           RELEASE_TAG: ${{ needs.version.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -307,3 +313,35 @@ jobs:
           RELEASE_TAG: ${{ needs.version.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: go run ./cmd/mdsmith-release publish-release
+
+  # Redeploy mdsmith.dev so its /releases/ page lists this candidate
+  # and its notes (pages.yml fetches the release list at build time).
+  # A plain docs-only deploy would not pick the candidate up: a merge
+  # that touches no docs or website path never triggers pages.yml.
+  #
+  # Dispatch pages.yml on main rather than calling it here: a called
+  # workflow builds this run's commit, which can be older than a docs
+  # merge pages.yml's push trigger already deployed, and redeploying
+  # it would roll that docs change back. A dispatch on main always
+  # builds the newest commit, and this run frees the release-candidate
+  # concurrency slot without waiting for the site build. A
+  # workflow_dispatch event from GITHUB_TOKEN does start a run.
+  # pages.yml's version fallback keeps the latest stable version.
+  # Skipped when check-rc discarded a stale candidate: nothing new
+  # was published, and the stable release that made it stale already
+  # redeployed the site through release.yml's own pages job.
+  pages:
+    needs: [release]
+    if: >-
+      github.repository == 'jeduden/mdsmith' &&
+      github.ref == 'refs/heads/main' &&
+      needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch the site deploy on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run pages.yml --ref main

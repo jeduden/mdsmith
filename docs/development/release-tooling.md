@@ -70,11 +70,12 @@ setup step.
 | `record-rotation <t> <d>`    | `record-secret-rotation.yml`                                      |
 | `merge-coverage -o <o> <p>`  | `ci.yml` test job                                                 |
 | `test-summary`               | `ci.yml` test job                                                 |
-| `test-js-wasm <pkg>`         | `ci.yml` wasm job                                                 |
+| `test-js-wasm [flags] <pkg>` | `ci.yml` wasm job                                                 |
 | `bench [workdir]`            | `benchmark.yml` record; `release.yml` benchmark-publish; `run.sh` |
 | `bench-check <base> <fresh>` | `release.yml` benchmark-publish + bench-regression-gate           |
 | `render-bench-page <out>`    | `release.yml` benchmark-publish                                   |
 | `pull-site-assets`           | `pages.yml` deploy job                                            |
+| `sync-releases [--out <p>]`  | `pages.yml` build-content + deploy jobs                           |
 | `sync-messaging [--check]`   | `ci.yml` messaging-drift; local sync                              |
 | `sync-channels [--check]`    | `ci.yml` channels-drift; local sync                               |
 

@@ -28,13 +28,14 @@
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
 //	mdsmith-release merge-coverage -o <out> <profile>...
 //	mdsmith-release test-summary
-//	mdsmith-release test-js-wasm <pkg>
+//	mdsmith-release test-js-wasm [--all [--require-js-only]] <pkg>
 //	mdsmith-release select-audit-sarifs <dir>
 //	mdsmith-release bench [workdir]
 //	mdsmith-release render-bench-page <out-path>
 //	mdsmith-release pgo [workdir]
 //	mdsmith-release pull-site-assets
 //	mdsmith-release sync-messaging [--check]
+//	mdsmith-release sync-releases [--out <path>]
 //	mdsmith-release render-scoop-manifest <version> <checksums-file>
 //	mdsmith-release render-winget-manifest --out <dir> <version> <checksums-file>
 //
@@ -77,14 +78,19 @@ Commands:
                                   Check the rendered install picker matches the channel docs.
   publish-release                 Flip the tag's draft release to published.
   rc-version                      Print the next release-candidate version (vX.Y+1.0-rc.N).
-  release-notes <out-path>        Write GitHub release notes for RELEASE_TAG since the last stable tag.
+  release-notes <out-path>        Write GitHub release notes for RELEASE_TAG (stable: since the last
+                                  stable tag; candidate: since the previous candidate).
   check-rc [--discard-draft]      Report whether RELEASE_TAG is still the next release candidate.
   sbom <out-path>                 Emit a CycloneDX SBOM of the Go module to <out-path>.
   check-secret-rotations          Open GitHub issues for secrets due for rotation.
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
   merge-coverage -o <out> <p>...  Merge coverage profiles by summing hit counts.
   test-summary                    Tally unit/integration/e2e tests from a go test -json stream on stdin.
-  test-js-wasm <pkg>              Run <pkg>'s js/wasm-only tests under Node; fail unless all pass.
+  test-js-wasm [--all [--require-js-only]] <pkg>
+                                  Run <pkg>'s js/wasm-only tests under Node; fail unless all pass.
+                                  --all runs every test and fails on any failure, no pass,
+                                  or a js/wasm-only test that skips; --require-js-only
+                                  also fails when <pkg> has no js/wasm-only test.
   select-audit-sarifs <dir>       Print the newest audit date's directories under <dir> (those with a
                                   findings.sarif) as a JSON array, for the security-audit-sarif matrix.
   bench [workdir]                 Run the pinned cross-tool benchmark; promote JSON + fragments.
@@ -97,6 +103,8 @@ Commands:
                                   (or check drift).
   sync-channels [--check]         Regenerate website/data/channels.yaml from the channel files
                                   (or check drift).
+  sync-releases [--out <path>]    Write every published GitHub release's notes to
+                                  website/data/releases.json for the /releases/ page.
   render-scoop-manifest <ver> <checksums>
                                   Emit the Scoop bucket/mdsmith.json manifest to stdout.
   render-winget-manifest --out <dir> <ver> <checksums>
@@ -202,6 +210,8 @@ func dispatchGenerators(cmd, root string, rest []string) int {
 		return runSyncParityRules(root, rest)
 	case "sync-channels":
 		return runSyncChannels(root, rest)
+	case "sync-releases":
+		return runSyncReleases(root, rest)
 	case "render-scoop-manifest":
 		return runRenderScoopManifest(root, rest)
 	case "render-winget-manifest":

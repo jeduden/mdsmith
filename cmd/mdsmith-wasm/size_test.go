@@ -47,16 +47,8 @@ const (
 // toolchain (no node), so it gates on every host that runs the wasm
 // job — and in the main test job's `go test ./...` too.
 func TestWASMArtifactSizeBudget(t *testing.T) {
-	out := filepath.Join(t.TempDir(), "mdsmith.wasm")
-	// Mirror build.sh's `go` target: -trimpath for reproducibility,
-	// -ldflags="-s -w" to strip the symbol table and DWARF.
-	cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", out, ".")
-	cmd.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
-	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("building wasm artifact: %v\n%s", err, b)
-	}
-
-	data, err := os.ReadFile(out)
+	// buildWASM mirrors build.sh's `go` target.
+	data, err := os.ReadFile(buildWASM(t))
 	if err != nil {
 		t.Fatalf("reading wasm artifact: %v", err)
 	}

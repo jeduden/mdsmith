@@ -1,13 +1,13 @@
 ---
 id: 2610021800
 title: Contain wasm JS exceptions outside the executor guard
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   `rejectOnJSError` covers only the Promise executor
   body. A JS exception thrown by `Promise.New` in
   `newPromise`, by a synchronous session method, or
-  after `newSessionProxy` registers a session still
+  after `registerSession` registers a session still
   panics. The panic ends the Go program or leaves a
   session in `sessions` that no proxy can dispose.
   Decide what each path does on a JS exception, and
@@ -37,11 +37,15 @@ on every Go-to-JS call. Plan
 covers what such a script can reach. This plan covers
 what its exceptions break.
 
-- `newSessionProxy` stores the session in `sessions`
-  before `bindMethods` and the create Promise's resolve
-  run. If either throws, `rejectOnJSError` rejects the
-  create, but the session stays registered with no
-  proxy to dispose it.
+- `registerSession` (then named `newSessionProxy`)
+  stores the session in `sessions`
+  before the create Promise's resolve runs. If resolve
+  throws, `rejectOnJSError` rejects the create, but the
+  session stays registered with no proxy to dispose it.
+  Plan 2610021439 already moved the store after
+  `bindMethods`, and
+  `TestRegisterSession_BindThrowRegistersNoSession`
+  covers a `bindTo` that throws.
 - `newPromise` calls `Promise.New(handler)` outside the
   guard. A throwing `Promise` constructor panics inside
   the shared func and ends the program. If the
@@ -52,8 +56,8 @@ what its exceptions break.
 
 ## Tasks
 
-1. Write a failing js/wasm test that makes `bindTo`
-   throw during create, then asserts that `sessions`
+1. Write a failing js/wasm test that makes the create
+   Promise's resolve throw, then asserts that `sessions`
    is back to its size before the create.
 2. Remove the session from `sessions` when create
    fails after it was registered.
@@ -71,13 +75,85 @@ what its exceptions break.
 
 ## Acceptance Criteria
 
-- [ ] A JS exception during create leaves `sessions`
-      the same size as before the create
-- [ ] A throwing `Promise` constructor or a throwing
+- [x] A JS exception during create leaves `sessions`
+      the same size as before the create (a throwing
+      `then` getter rejects without throwing to Go;
+      plan
+      [2610031253](2610031253_wasm-create-then-getter-leak.md)
+      covers that path)
+- [x] A throwing `Promise` constructor or a throwing
       sync-path call does not end the Go program
-- [ ] No func stays registered after either failure
-- [ ] All tests pass: `go test ./...` and
+- [x] No func stays registered after either failure
+- [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues, natively and with
       `GOOS=js GOARCH=wasm`
+
+## Review Round 1
+
+Code review of PR #894 found five more ways a JS
+failure could end the program. A `Promise` that is no
+constructor raised a `*js.ValueError` that only
+`recoverJS` catches. A `Promise` passed the executor
+too few arguments, or a `reject` that threw. A
+`finalizer.unregister` call in `dispose()` threw. A
+disposed-value fallback failed the same way as the
+call it replaced. Each now has a red/green test.
+
+`drainFirst` recovers any JS failure as a last
+resort, so every entry point is covered, not only the
+guarded call sites. `dispose()` drops the session
+before it calls `unregister`.
+
+## Review Round 2
+
+A second review found these gaps. The executor callback
+now swallows any JS failure, but `rejectOnJSError`
+turned only a `js.Error` into a rejection. A
+`*js.ValueError` in an executor left its Promise
+pending forever. It now rejects with an `Error`.
+
+A `Promise` that ran the `createSession` executor and
+then threw left the session registered, though the
+caller got `undefined`. `createSession` now disposes
+it. Each has a red/green test.
+
+The same round reversed the task 4 choice. A sync
+method whose JS call throws now returns `undefined`
+through `drainFirst`, not its disposed value: a failed
+`capabilities()` returned `[]`, the same as a disposed
+session. A `Promise` that never runs its executor now
+yields `undefined` and frees the executor func. A
+create that fails late also cancels its finalizer
+entry.
+
+A JS-to-Go callback runs on the goroutine of the Go
+code that called JS. A panic from `syscall/js`'s own
+callback code, such as reading the event's arguments,
+could reach an outer `recoverJS`. Go would then resume
+while the calling JS was still on the WebAssembly
+stack. Every func the engine registers now counts
+itself while it runs. `recoverJS` and
+`rejectOnJSError` re-raise a JS failure when the
+stack holds more `syscall/js.handleEvent` frames than
+running callbacks.
+
+## Review Round 3
+
+A third review found that a `Promise` whose `resolve`
+ran the `createSession` executor again could free the
+wrong session. The executor's own defer freed the shared
+last id, and a constructor that threw afterwards freed
+only the last session it registered. Each executor run
+now frees its own session, and the late release frees
+every session the create registered.
+
+`recoverJS` and `rejectOnJSError` now classify a
+recovered panic through one helper, `repanicUnlessJS`,
+so the two guards cannot drift. `js.FuncOf` stores a
+handler before it builds the JS wrapper, so a throwing
+`Reflect.apply` there leaks the entry where this
+package cannot release it. Plan
+[2610031420](2610031420_wasm-funcof-wrapper-throw-leak.md)
+covers that path.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -220,4 +221,222 @@ func TestDidRenameFilesSwapsIndexPath(t *testing.T) {
 	var alpha []symbolInformation
 	require.NoError(t, json.Unmarshal(raw, &alpha))
 	assert.Empty(t, alpha, "old path dropped from the index")
+}
+
+// TestWillRenameFilesBatchDropsConflictingEdits locks that a batch
+// moving two files which link to each other never returns two edits
+// over the same range: each per-file refactor.Move plans against the
+// pre-batch snapshot, so a.md's link to b.md gets one rewrite from
+// a.md's own move and a different one from b.md's move. Clients reject
+// a WorkspaceEdit with overlapping ranges, which would drop every
+// rewrite in the batch, so the conflicting pair is withheld instead.
+func TestWillRenameFilesBatchDropsConflictingEdits(t *testing.T) {
+	t.Parallel()
+	srcA := "# Alpha\n\n[b](b.md)\n"
+	srcB := "# Beta\n"
+	srcC := "# Gamma\n\n[a](a.md)\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"a.md": srcA, "b.md": srcB, "c.md": srcC,
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/a.md", NewURI: rootURI + "/x/a.md"},
+			{OldURI: rootURI + "/b.md", NewURI: rootURI + "/x/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	for uri, edits := range edit.Changes {
+		for i := range edits {
+			for j := i + 1; j < len(edits); j++ {
+				assert.False(t, rangesOverlap(edits[i].Range, edits[j].Range),
+					"%s: edits %d and %d overlap", uri, i, j)
+			}
+		}
+	}
+	// a.md's link to b.md is left alone (both still land in x/), and
+	// c.md's unconflicted incoming link still follows a.md.
+	assert.NotContains(t, edit.Changes, rootURI+"/a.md")
+	require.Contains(t, edit.Changes, rootURI+"/c.md")
+	assert.Equal(t, "x/a.md", edit.Changes[rootURI+"/c.md"][0].NewText)
+}
+
+// TestWillRenameFilesBatchDropsAgreeingConflicts locks that two moves
+// whose rewrites of one link happen to agree are still withheld. Moving
+// docs/a.md to a.md spells its `../b.md` as `b.md`, and so does moving
+// b.md to docs/b.md — but each assumes the other file stayed put, so
+// `b.md` names a file that no longer exists; the right text is
+// `docs/b.md`.
+func TestWillRenameFilesBatchDropsAgreeingConflicts(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\n[b](../b.md)\n",
+		"b.md":      "# Beta\n",
+		"c.md":      "# Gamma\n\n[a](docs/a.md)\n",
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/a.md"},
+			{OldURI: rootURI + "/b.md", NewURI: rootURI + "/docs/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	assert.NotContains(t, edit.Changes, rootURI+"/docs/a.md")
+	// The reply is not empty: c.md's unconflicted link still follows
+	// docs/a.md to the root.
+	require.Len(t, edit.Changes[rootURI+"/c.md"], 1)
+	assert.Equal(t, "a.md", edit.Changes[rootURI+"/c.md"][0].NewText)
+}
+
+// TestWillRenameFilesBatchWithholdsOneSidedCrossEdit locks that an
+// edit one move plans inside another file the batch moves to a new
+// directory is withheld even when nothing overlaps it. Moving
+// docs/a.md to other/a.md leaves its `../docs/b.md` alone (the token
+// still resolves from other/), while moving docs/b.md to
+// docs/sub/b.md spells the link `sub/b.md` from docs/ — wrong once a.md
+// sits in other/, where the right text is `../docs/sub/b.md`. A link
+// in a file the batch leaves in place is still rewritten.
+func TestWillRenameFilesBatchWithholdsOneSidedCrossEdit(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\n[b](../docs/b.md)\n",
+		"docs/b.md": "# Beta\n",
+		"c.md":      "# Gamma\n\n[b](docs/b.md)\n",
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/other/a.md"},
+			{OldURI: rootURI + "/docs/b.md", NewURI: rootURI + "/docs/sub/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	assert.NotContains(t, edit.Changes, rootURI+"/docs/a.md")
+	require.Len(t, edit.Changes[rootURI+"/c.md"], 1)
+	assert.Equal(t, "docs/sub/b.md", edit.Changes[rootURI+"/c.md"][0].NewText)
+}
+
+// TestWillRenameFilesBatchWithholdsEditInsideUnplannedMove locks that
+// a batch member whose own move cannot be planned still counts as a
+// moved file. refactor.Move refuses docs/a.md because x/y/a.md exists
+// (the editor still moves it, overwriting), yet moving docs/b.md to
+// x/y/b.md would spell docs/a.md's `b.md` as `../x/y/b.md` from docs/,
+// which names x/x/y/b.md once a.md sits in x/y/ — where `b.md`, left
+// alone, is already right.
+func TestWillRenameFilesBatchWithholdsEditInsideUnplannedMove(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\n[b](b.md)\n",
+		"docs/b.md": "# Beta\n",
+		"x/y/a.md":  "# Old\n",
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/x/y/a.md"},
+			{OldURI: rootURI + "/docs/b.md", NewURI: rootURI + "/x/y/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	assert.NotContains(t, edit.Changes, rootURI+"/docs/a.md")
+}
+
+// TestWillRenameFilesBatchKeepsCrossEditInSameDirectoryRename locks
+// that a file renamed within its directory still receives another
+// move's rewrite: the edit is spelled from that directory, which the
+// rename does not change, so it stays correct.
+func TestWillRenameFilesBatchKeepsCrossEditInSameDirectoryRename(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\n[b](b.md)\n",
+		"docs/b.md": "# Beta\n",
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/docs/a2.md"},
+			{OldURI: rootURI + "/docs/b.md", NewURI: rootURI + "/docs/sub/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	require.Len(t, edit.Changes[rootURI+"/docs/a.md"], 1)
+	assert.Equal(t, "sub/b.md", edit.Changes[rootURI+"/docs/a.md"][0].NewText)
+}
+
+// TestWillRenameFilesBatchKeepsStemRewriteInMovedFile locks that a
+// `[[stem]]` rewrite another move plans inside a file the batch moves
+// to a new directory is kept: it names the target by stem, not by a
+// path from the holder's directory, so the holder's move cannot make
+// it wrong. Withholding it would leave `[[b]]` naming a stem no file
+// carries once docs/b.md becomes docs/c.md.
+func TestWillRenameFilesBatchKeepsStemRewriteInMovedFile(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\nSee [[b]].\n",
+		"docs/b.md": "# Beta\n",
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/other/a.md"},
+			{OldURI: rootURI + "/docs/b.md", NewURI: rootURI + "/docs/c.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	require.Len(t, edit.Changes[rootURI+"/docs/a.md"], 1)
+	assert.Equal(t, "c", edit.Changes[rootURI+"/docs/a.md"][0].NewText)
+}
+
+// TestWillRenameFilesBatchLogsWithheldEdits locks that withholding a
+// rewrite is not silent: the server sends a window/logMessage warning
+// naming how many link rewrites it left out.
+func TestWillRenameFilesBatchLogsWithheldEdits(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\n[b](../b.md)\n",
+		"b.md":      "# Beta\n",
+	})
+	_, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/a.md"},
+			{OldURI: rootURI + "/b.md", NewURI: rootURI + "/docs/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	for {
+		var p logMessageParams
+		require.NoError(t, json.Unmarshal(h.awaitNotification("window/logMessage", 5*time.Second), &p))
+		if strings.Contains(p.Message, "withheld") {
+			assert.Equal(t, messageTypeWarning, p.Type)
+			assert.Contains(t, p.Message, "2 link rewrite")
+			return
+		}
+	}
+}
+
+// TestWillRenameFilesRepeatedPairPlannedOnce locks that a rename pair
+// listed twice is planned once, so its edits do not collide with their
+// own copies and get withheld.
+func TestWillRenameFilesRepeatedPairPlannedOnce(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"a.md": "# Alpha\n",
+		"c.md": "# Gamma\n\n[a](a.md)\n",
+	})
+	pair := fileRename{OldURI: rootURI + "/a.md", NewURI: rootURI + "/x/a.md"}
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{pair, pair},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	require.Len(t, edit.Changes[rootURI+"/c.md"], 1)
+	assert.Equal(t, "x/a.md", edit.Changes[rootURI+"/c.md"][0].NewText)
 }

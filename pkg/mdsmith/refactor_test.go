@@ -1,6 +1,8 @@
 package mdsmith
 
 import (
+	"errors"
+	"fmt"
 	"io/fs"
 	"testing"
 
@@ -16,7 +18,7 @@ type failFS struct{}
 func (failFS) Open(string) (fs.File, error) { return nil, fs.ErrPermission }
 
 // failFSWorkspace reads files normally but hands the refactor walk a
-// failing FS, exercising buildRefactorWorkspace's walk-error branch.
+// failing FS, exercising indexRefactorWorkspace's walk-error branch.
 type failFSWorkspace struct{ *MemWorkspace }
 
 func (failFSWorkspace) FS() fs.FS { return failFS{} }
@@ -93,7 +95,7 @@ func TestSession_Rename_InvalidAs(t *testing.T) {
 	s := newRefactorSession(t, map[string][]byte{"a.md": src})
 	_, err := s.Rename("a.md", src, "bogus", "Setup", "Install")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "heading")
+	assert.Equal(t, `rename: as must be "heading" or "label", got "bogus"`, err.Error())
 }
 
 func TestSession_Rename_HeadingNotFound(t *testing.T) {
@@ -110,6 +112,68 @@ func TestSession_Rename_AutoDetectNeither(t *testing.T) {
 	_, err := s.Rename("a.md", src, "", "nothing-here", "x")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no heading or link-ref label")
+}
+
+// A heading renamed to its own text yields no edits. The CLI exits 1
+// with "nothing to rename"; Session.Rename must error too rather than
+// return an empty plan, so the two surfaces mirror each other.
+func TestSession_Rename_SameNameHeadingErrors(t *testing.T) {
+	src := []byte("# Setup\n")
+	s := newRefactorSession(t, map[string][]byte{"a.md": src})
+	_, err := s.Rename("a.md", src, "", "Setup", "Setup")
+	require.Error(t, err)
+	assert.Equal(t, `nothing to rename for heading "Setup"`, err.Error())
+}
+
+// A label renamed to its own spelling everywhere yields no edits and
+// errors like the heading case.
+func TestSession_Rename_SameNameLabelErrors(t *testing.T) {
+	src := []byte("# T\n\nSee [docs].\n\n[docs]: u\n")
+	s := newRefactorSession(t, map[string][]byte{"a.md": src})
+	_, err := s.Rename("a.md", src, "label", "docs", "docs")
+	require.Error(t, err)
+	assert.Equal(t, `nothing to rename for label "docs"`, err.Error())
+}
+
+// A host must tell a harmless no-op rename from a real failure without
+// matching message text: the error matches ErrNothingToRename and
+// ErrorCode names it; any other rename error does neither.
+func TestSession_Rename_NothingToRenameIsTyped(t *testing.T) {
+	src := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
+	s := newRefactorSession(t, map[string][]byte{"a.md": src})
+	for _, c := range [][3]string{{"", "Setup", "Setup"}, {"label", "docs", "docs"}} {
+		_, err := s.Rename("a.md", src, c[0], c[1], c[2])
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrNothingToRename, c[1])
+		assert.Equal(t, ErrorCodeNothingToRename, ErrorCode(err), c[1])
+	}
+	_, err := s.Rename("a.md", src, "label", "ghost", "x")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrNothingToRename)
+	assert.Empty(t, ErrorCode(err))
+}
+
+func TestErrorCode(t *testing.T) {
+	assert.Empty(t, ErrorCode(nil))
+	assert.Empty(t, ErrorCode(errors.New("boom")))
+	assert.Equal(t, ErrorCodeNothingToRename, ErrorCode(ErrNothingToRename))
+	assert.Equal(t, ErrorCodeNothingToRename, ErrorCode(fmt.Errorf("wrapped: %w", ErrNothingToRename)))
+}
+
+// An explicit label that is not defined errors, matching the CLI's
+// exit-1 "no link reference" outcome.
+func TestSession_Rename_LabelNotFound(t *testing.T) {
+	src := []byte("# T\n\nSee [docs].\n\n[docs]: u\n")
+	s := newRefactorSession(t, map[string][]byte{"a.md": src})
+	_, err := s.Rename("a.md", src, "label", "ghost", "x")
+	require.Error(t, err)
+	assert.Equal(t, `no link reference "ghost" in a.md`, err.Error())
+
+	// The missing label is reported, not a collision with the existing
+	// [docs] it was asked to be renamed to.
+	_, err = s.Rename("a.md", src, "label", "ghost", "docs")
+	require.Error(t, err)
+	assert.Equal(t, `no link reference "ghost" in a.md`, err.Error())
 }
 
 func TestSession_Rename_HeadingCollisionErrors(t *testing.T) {
@@ -170,23 +234,31 @@ func TestSession_CapabilitiesIncludeRenameAndMove(t *testing.T) {
 	assert.Contains(t, caps, "move")
 }
 
-func TestDetectRenameKind(t *testing.T) {
-	src := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
-	kind, err := detectRenameKind(src, "Setup")
-	require.NoError(t, err)
-	assert.Equal(t, "heading", kind)
-
-	kind, err = detectRenameKind(src, "docs")
-	require.NoError(t, err)
-	assert.Equal(t, "label", kind)
-
-	_, err = detectRenameKind([]byte("# docs\n\nSee [docs].\n\n[docs]: u\n"), "docs")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "matches both")
-
-	_, err = detectRenameKind(src, "ghost")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no heading or link-ref label")
+func TestRenameError(t *testing.T) {
+	cases := []struct {
+		in   error
+		want string
+	}{
+		{
+			refactor.ErrAmbiguousRename,
+			`"docs" matches both a heading and a link-ref label; pass as="heading" or as="label"`,
+		},
+		{refactor.ErrNoRenameTarget, `no heading or link-ref label "docs"`},
+		{
+			refactor.NothingToRenameError{Kind: refactor.KindHeading, Name: "docs"},
+			`nothing to rename for heading "docs"`,
+		},
+		{
+			refactor.NothingToRenameError{Kind: refactor.KindLabel, Name: "docs"},
+			`nothing to rename for label "docs"`,
+		},
+		{refactor.MissingSymbolError{Kind: refactor.KindHeading, Name: "docs"}, `no heading "docs" in a.md`},
+		{refactor.MissingSymbolError{Kind: refactor.KindLabel, Name: "docs"}, `no link reference "docs" in a.md`},
+		{refactor.ErrEmptyLabel, refactor.ErrEmptyLabel.Error()},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, renameError(c.in, "a.md", "docs").Error())
+	}
 }
 
 func TestToRefactorPlan(t *testing.T) {
@@ -260,4 +332,93 @@ func TestSession_BuildRefactorWorkspace(t *testing.T) {
 	overlay := s.buildRefactorWorkspace("a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
 	assert.Len(t, overlay.IncomingAnchorEdges("sub/b.md", "b"), 1)
 	assert.Empty(t, plain.IncomingAnchorEdges("sub/b.md", "b"))
+}
+
+// indexRefactorWorkspace indexes every Markdown file in the session's
+// workspace, skipping other extensions, and reads the overlay buffer in
+// place of the overlay file's saved bytes.
+func TestSession_IndexRefactorWorkspace(t *testing.T) {
+	s := newRefactorSession(t, map[string][]byte{
+		"a.md":      []byte("# A\n"),
+		"sub/b.md":  []byte("# B\n"),
+		"notes.txt": []byte("[b](sub/b.md#b)\n"),
+	})
+	t.Run("indexes only Markdown files", func(t *testing.T) {
+		idx := s.indexRefactorWorkspace("", nil)
+		assert.ElementsMatch(t, []string{"a.md", "sub/b.md"}, idx.Files())
+		assert.Empty(t, idx.IncomingEdges("sub/b.md", "b"))
+	})
+	t.Run("overlay replaces the saved bytes", func(t *testing.T) {
+		idx := s.indexRefactorWorkspace("./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
+		edges := idx.IncomingEdges("sub/b.md", "b")
+		require.Len(t, edges, 1)
+		assert.Equal(t, "a.md", edges[0].SourceFile)
+	})
+}
+
+// countingWorkspace counts ReadFile calls so a test can tell whether
+// Session.Rename indexed the workspace.
+type countingWorkspace struct {
+	*MemWorkspace
+	reads int
+}
+
+func (w *countingWorkspace) ReadFile(p string) ([]byte, error) {
+	w.reads++
+	return w.MemWorkspace.ReadFile(p)
+}
+
+// buildRefactorWorkspace defers its walk and index to the first edge
+// or Files query, so Resolve alone reads only the file it names, and
+// every later query reuses the one index.
+func TestBuildRefactorWorkspace_IndexesOnFirstQuery(t *testing.T) {
+	ws := &countingWorkspace{MemWorkspace: NewMemWorkspace(map[string][]byte{
+		"a.md": []byte("# Setup\n"),
+		"b.md": []byte("See [go](a.md#setup).\n"),
+	})}
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+
+	ws.reads = 0
+	w := s.buildRefactorWorkspace("", nil)
+	assert.Zero(t, ws.reads, "building reads no workspace file")
+
+	_, _, ok := w.Resolve("b.md")
+	require.True(t, ok)
+	assert.Equal(t, 1, ws.reads, "Resolve reads only the named file")
+
+	assert.Len(t, w.IncomingAnchorEdges("a.md", "setup"), 1)
+	indexed := ws.reads
+	assert.Greater(t, indexed, 1, "the first edge query indexes")
+	assert.ElementsMatch(t, []string{"a.md", "b.md"}, w.Files())
+	assert.Equal(t, indexed, ws.reads, "later queries reuse the index")
+}
+
+// A label rename and a failed detection touch only the target's own
+// bytes, so Session.Rename must not walk and index the workspace for
+// them; a heading rename still does, to find incoming anchors.
+func TestSession_Rename_IndexesWorkspaceOnlyForHeadings(t *testing.T) {
+	src := []byte("# Setup\n\nSee [docs].\n\n[docs]: u\n")
+	ws := &countingWorkspace{MemWorkspace: NewMemWorkspace(map[string][]byte{
+		"a.md": src,
+		"b.md": []byte("See [go](a.md#setup).\n"),
+	})}
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+
+	ws.reads = 0
+	_, err = s.Rename("a.md", src, "", "docs", "rfc")
+	require.NoError(t, err)
+	assert.Zero(t, ws.reads, "a label rename reads no workspace file")
+
+	_, err = s.Rename("a.md", src, "", "ghost", "x")
+	require.Error(t, err)
+	assert.Zero(t, ws.reads, "a failed detection reads no workspace file")
+
+	p, err := s.Rename("a.md", src, "", "Setup", "Install")
+	require.NoError(t, err)
+	assert.Contains(t, p.Edits, "b.md")
+	assert.NotZero(t, ws.reads, "a heading rename indexes the workspace")
 }

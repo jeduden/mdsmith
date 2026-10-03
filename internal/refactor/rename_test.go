@@ -4,10 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
-	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
-	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,15 +22,46 @@ func TestLinkRef_DefAndShortcutUse(t *testing.T) {
 	}
 }
 
-func TestHasLinkRef(t *testing.T) {
-	src := []byte("# T\n\nSee [the spec][Spec].\n\n[Spec]: u\n")
+func TestHasLinkRefIn(t *testing.T) {
+	ps := parseSource([]byte("# T\n\nSee [the spec][Spec].\n\n[Spec]: u\n"))
 	// Matches case-insensitively via CommonMark label normalization.
-	assert.True(t, HasLinkRef(src, "spec"))
-	assert.True(t, HasLinkRef(src, "SPEC"))
-	assert.False(t, HasLinkRef(src, "ghost"))
+	assert.True(t, hasLinkRefIn(ps, "spec"))
+	assert.True(t, hasLinkRefIn(ps, "SPEC"))
+	assert.False(t, hasLinkRefIn(ps, "ghost"))
 	// A def-shaped line inside a code fence is not a real definition.
-	fenced := []byte("# T\n\n```\n[fake]: u\n```\n")
-	assert.False(t, HasLinkRef(fenced, "fake"))
+	fenced := parseSource([]byte("# T\n\n```\n[fake]: u\n```\n"))
+	assert.False(t, hasLinkRefIn(fenced, "fake"))
+}
+
+func TestLinkRefPlan(t *testing.T) {
+	ps := parseSource([]byte("See [a][Spec].\n\n[Spec]: u\n[Other]: v\n"))
+	// The old label is normalized, so a differently-cased spelling
+	// still finds the def and its use.
+	p, err := linkRefPlan("k.md", ps, "SPEC", "Doc")
+	require.NoError(t, err)
+	assert.Nil(t, p.FileOp)
+	require.Len(t, p.Edits["k.md"], 2)
+	for _, e := range p.Edits["k.md"] {
+		assert.Equal(t, "Doc", e.NewText)
+	}
+
+	_, err = linkRefPlan("k.md", ps, "spec", "  ")
+	assert.ErrorIs(t, err, ErrEmptyLabel)
+	_, err = linkRefPlan("k.md", ps, "spec", "a]b")
+	assert.ErrorAs(t, err, new(InvalidLabelRuneError))
+	_, err = linkRefPlan("k.md", ps, "spec", "other")
+	assert.Equal(t, LabelConflictError{Conflict: "Other"}, err)
+}
+
+func TestRefDefMatchesIn(t *testing.T) {
+	body := []byte("[Spec]: u\n\n```\n[fake]: v\n```\n")
+	got := refDefMatchesIn(body, parseBody(body))
+	// The fenced def-shaped line is consumed by the code block.
+	require.Len(t, got, 1)
+	assert.Equal(t, 1, got[0].bodyLine) // 1-based
+	assert.Equal(t, "Spec", got[0].rawLabel)
+	assert.Equal(t, "spec", got[0].normLabel)
+	assert.Nil(t, refDefMatchesIn([]byte("no defs\n"), parseBody([]byte("no defs\n"))))
 }
 
 func TestLinkRef_PlanKeysUnderFileKeyNoFileOp(t *testing.T) {
@@ -190,23 +218,23 @@ func TestInvalidLinkRefRune(t *testing.T) {
 	assert.Equal(t, '[', invalidLinkRefRune("x[y]"))
 }
 
-func TestLabelConflict(t *testing.T) {
-	src := []byte("[a]: u1\n[Beta]: u2\n")
-	assert.Equal(t, "Beta", labelConflict(src, "a", "beta"))
-	assert.Equal(t, "", labelConflict(src, "a", "gamma"))
+func TestLabelConflictIn(t *testing.T) {
+	ps := parseSource([]byte("[a]: u1\n[Beta]: u2\n"))
+	assert.Equal(t, "Beta", labelConflictIn(ps, "a", "beta"))
+	assert.Equal(t, "", labelConflictIn(ps, "a", "gamma"))
 	// Renaming a label to itself is not a conflict.
-	assert.Equal(t, "", labelConflict(src, "a", "a"))
+	assert.Equal(t, "", labelConflictIn(ps, "a", "a"))
 	// A def-shaped line inside a fence is not a real definition.
-	fenced := []byte("[a]: u1\n\n```\n[beta]: u2\n```\n")
-	assert.Equal(t, "", labelConflict(fenced, "a", "beta"))
+	fenced := parseSource([]byte("[a]: u1\n\n```\n[beta]: u2\n```\n"))
+	assert.Equal(t, "", labelConflictIn(fenced, "a", "beta"))
 	// Front matter does not confuse the scan.
-	fm := []byte("---\ntitle: t\n---\n[a]: u1\n[beta]: u2\n")
-	assert.Equal(t, "beta", labelConflict(fm, "a", "beta"))
+	fm := parseSource([]byte("---\ntitle: t\n---\n[a]: u1\n[beta]: u2\n"))
+	assert.Equal(t, "beta", labelConflictIn(fm, "a", "beta"))
 }
 
-func TestLinkRefEdits(t *testing.T) {
-	src := []byte("# T\n\nSee [spec], [the spec][spec], and [other][x].\n\n[spec]: u\n[x]: v\n")
-	edits := linkRefEdits(src, "spec", "rfc")
+func TestLinkRefEditsIn(t *testing.T) {
+	ps := parseSource([]byte("# T\n\nSee [spec], [the spec][spec], and [other][x].\n\n[spec]: u\n[x]: v\n"))
+	edits := linkRefEditsIn(ps, "spec", "rfc")
 	// One def edit plus a shortcut use and a full use.
 	require.Len(t, edits, 3)
 	for _, e := range edits {
@@ -222,12 +250,7 @@ func TestLinkRefEdits(t *testing.T) {
 		assert.Equal(t, want[0], e.Range.Start.Character)
 		assert.Equal(t, want[1], e.Range.End.Character)
 	}
-	assert.Empty(t, linkRefEdits(src, "ghost", "rfc"))
-}
-
-// parseBody parses body with the lint parser, as linkRefEdits does.
-func parseBody(body []byte) ast.Node {
-	return lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
+	assert.Empty(t, linkRefEditsIn(ps, "ghost", "rfc"))
 }
 
 func firstLink(t *testing.T, root ast.Node) *ast.Link {

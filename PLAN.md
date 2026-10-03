@@ -1,17 +1,11 @@
 # Plans
 
 <?catalog
-glob:
-  - "plan/*.md"
-  - "!plan/proto.md"
+glob: ["plan/*.md", "!plan/proto.md"]
 sort: numeric:id
-header: |
-
-  | ID  | Status | Model | Title |
-  |-----|--------|-------|-------|
+header: "\n| ID  | Status | Model | Title |\n|-----|--------|-------|-------|\n"
 row: "| {id} | {status} | {model} | [{title}]({filename}) |"
-footer: |
-
+footer: ""
 ?>
 
 | ID         | Status | Model  | Title                                                                                                                                                   |
@@ -272,10 +266,10 @@ footer: |
 | 2608301919 | ✅     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
 | 2609032052 | 🔲     | opus   | [Resolve config from `pyproject.toml` under `[tool.mdsmith]`](plan/2609032052_pyproject-config-source.md)                                               |
 | 2609061915 | ✅     | sonnet | [Add unit tests for the untested rename/move helpers](plan/2609061915_arch-fix-touched-set-unit-tests-0906.md)                                          |
-| 2609131911 | 🔲     | sonnet | [Share the refactor Workspace adapter between CLI and Session](plan/2609131911_arch-fix-refactor-workspace-duplication.md)                              |
+| 2609131911 | ✅     | sonnet | [Share the refactor Workspace adapter between CLI, Session, and LSP](plan/2609131911_arch-fix-refactor-workspace-duplication.md)                        |
 | 2609131913 | ✅     | sonnet | [Add unit tests for untested move.go helper functions](plan/2609131913_arch-fix-move-helper-unit-tests.md)                                              |
 | 2609201914 | ✅     | sonnet | [Add dedicated unit tests for AdvancePastLine and the WASM bridge helpers](plan/2609201914_arch-fix-missing-unit-tests-0920.md)                         |
-| 2609271912 | 🔲     | sonnet | [Share rename-mode detection between the CLI and the engine](plan/2609271912_arch-fix-shared-rename-mode-detection.md)                                  |
+| 2609271912 | ✅     | sonnet | [Share rename-mode detection between the CLI and the engine](plan/2609271912_arch-fix-shared-rename-mode-detection.md)                                  |
 | 2609271913 | ✅     | haiku  | [Remove dead front-matter parse helpers in internal/index](plan/2609271913_arch-fix-remove-dead-frontmatter-helpers.md)                                 |
 | 2610020045 | ✅     | sonnet | [Move the WASM bridge test-runner shell into mdsmith-release](plan/2610020045_wasm-js-test-runner-subcommand.md)                                        |
 | 2610020046 | ✅     | sonnet | [Harden WASM bridge workspace input and version lookup](plan/2610020046_wasm-bridge-input-hardening.md)                                                 |
@@ -285,14 +279,22 @@ footer: |
 | 2610020946 | 🔳     | sonnet | [Kill a timed-out recipe's whole note group on plan9](plan/2610020946_plan9-recipe-note-group-kill.md)                                                  |
 | 2610021026 | 🔲     | opus   | [Replace runRecipe's hand-rolled pipe reaping with Cmd.WaitDelay](plan/2610021026_recipe-exec-waitdelay.md)                                             |
 | 2610021027 | ✅     | sonnet | [Release a disposed wasm session's dispose func](plan/2610021027_wasm-dispose-func-release.md)                                                          |
-| 2610021028 | 🔲     | sonnet | [Gate untagged internal/build tests under js/wasm in CI](plan/2610021028_js-wasm-portable-test-gate.md)                                                 |
+| 2610021028 | ✅     | sonnet | [Gate untagged internal/build tests under js/wasm in CI](plan/2610021028_js-wasm-portable-test-gate.md)                                                 |
 | 2610021237 | ✅     | sonnet | [Silence a stale wasm session dispose reference](plan/2610021237_wasm-stale-dispose-reference.md)                                                       |
-| 2610021439 | 🔲     | sonnet | [Make wasm session method bindings unforgeable](plan/2610021439_wasm-unforgeable-session-binding.md)                                                    |
-| 2610021452 | 🔲     | sonnet | [Free wasm sessions dropped without dispose](plan/2610021452_wasm-collect-dropped-sessions.md)                                                          |
+| 2610021439 | ✅     | sonnet | [Make wasm session method bindings unforgeable](plan/2610021439_wasm-unforgeable-session-binding.md)                                                    |
+| 2610021452 | ✅     | sonnet | [Free wasm sessions dropped without dispose](plan/2610021452_wasm-collect-dropped-sessions.md)                                                          |
 | 2610021556 | ✅     | sonnet | [Declare each wasm method's disposed result next to its impl](plan/2610021556_wasm-disposed-result-table.md)                                            |
-| 2610021800 | 🔲     | sonnet | [Contain wasm JS exceptions outside the executor guard](plan/2610021800_wasm-js-exception-outside-guard.md)                                             |
+| 2610021800 | ✅     | sonnet | [Contain wasm JS exceptions outside the executor guard](plan/2610021800_wasm-js-exception-outside-guard.md)                                             |
 | 2610021849 | 🔲     | sonnet | [Kill running build recipes when the CLI is interrupted](plan/2610021849_cancel-recipes-on-cli-interrupt.md)                                            |
 | 2610021917 | 🔲     | sonnet | [Replace the per-platform kill maps with a per-recipe group killer](plan/2610021917_per-recipe-group-killer.md)                                         |
 | 2610022044 | ✅     | sonnet | [Count only Markdown files as wikilink stem siblings on move](plan/2610022044_move-stem-count-markdown-only.md)                                         |
 | 2610022104 | 🔲     | sonnet | [Count wikilink stem siblings against the resolver's index on move](plan/2610022104_move-stem-count-resolver-index.md)                                  |
+| 2610030015 | ✅     | sonnet | [Publish release notes on mdsmith.dev](plan/2610030015_website-release-notes.md)                                                                        |
+| 2610030243 | 🔲     | sonnet | [Vet the internal/build spawn tests for plan9](plan/2610030243_plan9-vet-unix-windows-build-tests.md)                                                   |
+| 2610030244 | ✅     | sonnet | [Run internal/build under js/wasm once in CI](plan/2610030244_dedupe-build-js-wasm-ci-run.md)                                                           |
+| 2610030438 | 🔲     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
+| 2610030846 | ✅     | sonnet | [Silence wasm session finalizers after the Go program exits](plan/2610030846_wasm-finalizer-after-exit.md)                                              |
+| 2610031253 | ✅     | sonnet | [Free the session when a then getter rejects the create](plan/2610031253_wasm-create-then-getter-leak.md)                                               |
+| 2610031420 | 🔲     | sonnet | [Free the func when js.FuncOf's wrapper call throws](plan/2610031420_wasm-funcof-wrapper-throw-leak.md)                                                 |
+| 2610031831 | ✅     | sonnet | [List only a candidate's own changes in its release notes](plan/2610031831_candidate-notes-since-previous-candidate.md)                                 |
 <?/catalog?>

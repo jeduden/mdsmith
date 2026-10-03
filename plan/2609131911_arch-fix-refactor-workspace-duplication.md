@@ -1,16 +1,17 @@
 ---
 id: 2609131911
 title: >-
-  Share the refactor Workspace adapter between CLI and Session
-status: "🔲"
+  Share the refactor Workspace adapter between CLI, Session, and LSP
+status: "✅"
 model: sonnet
 summary: >-
-  cmd/mdsmith/rename.go's cliRenameWorkspace and
-  pkg/mdsmith/refactor.go's sessionRefactorWorkspace both
-  implement internal/refactor.Workspace over a transient
-  internal/index.Index; their Incoming*Edges/Files
-  pass-throughs have the same bodies, though Resolve does
-  not. Flagged by the 2026-09-13 audit as tax.
+  cmd/mdsmith/rename.go's cliRenameWorkspace,
+  pkg/mdsmith/refactor.go's sessionRefactorWorkspace, and
+  internal/lsp/rename.go's lspRenameWorkspace all implement
+  internal/refactor.Workspace over an internal/index.Index;
+  their Incoming*Edges/Files pass-throughs have the same
+  bodies, though Resolve does not. Flagged by the 2026-09-13
+  audit as tax.
 ---
 # Share the matching Workspace pass-through methods
 
@@ -18,8 +19,9 @@ summary: >-
 
 Replace the duplicated `IncomingAnchorEdges`,
 `IncomingPathEdges`, `IncomingWikilinkEdges`, and `Files`
-pass-throughs in `cliRenameWorkspace` and
-`sessionRefactorWorkspace` with one shared implementation.
+pass-throughs in `cliRenameWorkspace`,
+`sessionRefactorWorkspace`, and `lspRenameWorkspace` with one
+shared implementation.
 
 `Resolve` stays local to each type: they read from genuinely
 different sources.
@@ -28,11 +30,13 @@ different sources.
 
 The 2026-09-13 audit (see [the audit log][audit-log]) found:
 
-- [cmd/mdsmith/rename.go][cli-rename]'s `cliRenameWorkspace`
-  and [pkg/mdsmith/refactor.go][pkg-refactor]'s
-  `sessionRefactorWorkspace` both wrap an
-  [internal/index.Index][index] to implement
-  `internal/refactor.Workspace`.
+- [cmd/mdsmith/rename.go][cli-rename]'s `cliRenameWorkspace`,
+  [pkg/mdsmith/refactor.go][pkg-refactor]'s
+  `sessionRefactorWorkspace`, and
+  [internal/lsp/rename.go][lsp-rename]'s `lspRenameWorkspace`
+  all wrap an [internal/index.Index][index] to implement
+  `internal/refactor.Workspace`. The CLI holds the index as a
+  lazily built getter; the session and LSP hold a ready one.
 - Their `IncomingAnchorEdges`, `IncomingPathEdges`,
   `IncomingWikilinkEdges`, and `Files` methods have the same
   bodies: each just forwards to the matching `Index` method.
@@ -63,21 +67,34 @@ The 2026-09-13 audit (see [the audit log][audit-log]) found:
 
 ## Tasks
 
-1. Read [cliRenameWorkspace][cli-rename] and
-   `sessionRefactorWorkspace` in [pkg/mdsmith/refactor.go][pkg-refactor]
+1. Read [cliRenameWorkspace][cli-rename],
+   `sessionRefactorWorkspace` in [pkg/mdsmith/refactor.go][pkg-refactor],
+   and `lspRenameWorkspace` in [internal/lsp/rename.go][lsp-rename]
    side by side to confirm the four pass-through bodies still
    match and `Resolve` stays the only divergent one.
-2. Add a small embeddable type in `internal/refactor`, next to
-   the `Workspace` interface it helps implement, that wraps an
-   `*index.Index` and provides `IncomingAnchorEdges`,
-   `IncomingPathEdges`, `IncomingWikilinkEdges`, and `Files`.
-   Give it value receivers: `cliRenameWorkspace` is used by
-   value, so a pointer-receiver helper embedded in it would not
-   satisfy `refactor.Workspace`. `internal/refactor` already
-   imports `internal/index`, so no new edge appears.
-3. Update both types to embed the helper instead of
+2. Add `IndexEdges` in `internal/refactor`, next to the
+   `Workspace` interface it helps implement. It wraps an index
+   getter (an unexported `func() *index.Index`) and provides
+   `IncomingAnchorEdges`, `IncomingPathEdges`,
+   `IncomingWikilinkEdges`, and `Files`. A getter keeps the
+   CLI's lazy build; a nil getter or nil index answers nothing,
+   as the CLI does today. `NewIndexEdges(idx)` is the eager
+   constructor for a ready index; `NewLazyIndexEdges(build)`
+   builds on the first query and reuses the result, so the
+   memoizing lives in the helper, not in each lazy host.
+   Give it value receivers:
+   `cliRenameWorkspace` and `lspRenameWorkspace` are used by
+   value, so a pointer-receiver helper embedded in them would
+   not satisfy `refactor.Workspace`. `internal/refactor`
+   already imports `internal/index`, so no new edge appears.
+   Ship it with its own unit test.
+3. Update all three types to embed the helper instead of
    hand-writing the four pass-throughs; keep each type's own
-   `Resolve` method unchanged.
+   `Resolve` method unchanged. `sessionRefactorWorkspace`
+   takes `NewLazyIndexEdges`, so its walk and index wait for
+   the first edge or `Files` query. That retires
+   `refactor.LazyWorkspace`, the second lazy wrapper that
+   `Session.Rename` used, and leaves one lazy mechanism.
 4. `go build ./...` passes.
 5. `go test ./...` passes, including
    [cmd/mdsmith/rename_unit_test.go][cli-rename-test] and
@@ -87,22 +104,23 @@ The 2026-09-13 audit (see [the audit log][audit-log]) found:
 
 ## Acceptance Criteria
 
-- [ ] `IncomingAnchorEdges`, `IncomingPathEdges`,
+- [x] `IncomingAnchorEdges`, `IncomingPathEdges`,
       `IncomingWikilinkEdges`, and `Files` are implemented
-      once and shared by both `cliRenameWorkspace` and
-      `sessionRefactorWorkspace`.
-- [ ] `Resolve` stays a distinct method on each type; neither
-      is asked to read the other's source.
-- [ ] No behavior change: `mdsmith rename` and
+      once and shared by `cliRenameWorkspace`,
+      `sessionRefactorWorkspace`, and `lspRenameWorkspace`.
+- [x] `Resolve` stays a distinct method on each type; none
+      is asked to read another's source.
+- [x] No behavior change: `mdsmith rename` and
       `Session.Rename`/`Session.Move` produce identical results
       before and after.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [go]: ../docs/development/architecture/go.md
 [cli-rename]: ../cmd/mdsmith/rename.go
 [cli-rename-test]: ../cmd/mdsmith/rename_unit_test.go
 [pkg-refactor]: ../pkg/mdsmith/refactor.go
+[lsp-rename]: ../internal/lsp/rename.go
 [pkg-refactor-test]: ../pkg/mdsmith/refactor_test.go
 [index]: ../internal/index/index.go

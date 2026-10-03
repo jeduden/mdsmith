@@ -5,6 +5,8 @@ package main
 import (
 	"encoding/json"
 	"syscall/js"
+
+	"github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
 // newPromise wraps a Go executor in a JavaScript Promise. The executor
@@ -16,31 +18,96 @@ import (
 // synchronously during construction).
 //
 // A JS exception the executor raises (a js.Error panic) rejects the
-// Promise with that exception (see rejectOnJSError), so no executor
-// needs its own guard.
-func newPromise(executor func(resolve, reject func(any))) js.Value {
-	var handler js.Func
-	handler = funcOf(func(_ js.Value, pArgs []js.Value) any {
-		resolveFn := pArgs[0]
-		rejectFn := pArgs[1]
+// Promise with that exception, and a *js.ValueError rejects it with an
+// Error (see rejectOnJSError), so no executor needs its own guard.
+//
+// A patched Promise can fail around the executor too. A constructor
+// that throws, or a Promise that is no constructor, would end the
+// program, and a handler it never ran would stay registered: newPromise
+// releases that handler and returns undefined instead, since Go cannot
+// throw to its caller. A constructor that returns without running the
+// executor, which a spec Promise runs during construction, gets the
+// same treatment: its handler would otherwise stay registered for good,
+// and a later call to the released handler only logs an error. A
+// constructor that passes the executor too few arguments, or a reject
+// that itself throws or is no function, would end the program from
+// inside the handler callback: a panic that leaves a js.FuncOf callback
+// unwinds into the Go frames below the JS that called it. The handler
+// swallows that failure, and the Promise stays as the constructor left
+// it, never settling. Any other panic is re-raised (recoverJS).
+func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
+	// One heap object for the handler and its flags: the escaping
+	// callback captures it.
+	st := new(promiseHandler)
+	st.f = funcOf(func(_ js.Value, pArgs []js.Value) any {
+		st.ran = true
+		// Free this handler once the executor body returns; the executor
+		// runs to completion synchronously within Promise construction
+		// for our synchronous engine calls. A patched constructor can run
+		// it again from inside resolve; release is once-only, so the
+		// nested run's return does not release the func a second time.
+		defer st.release()
+		defer recoverJS(func() {})
+		var resolveFn, rejectFn js.Value // undefined unless passed
+		if len(pArgs) > 0 {
+			resolveFn = pArgs[0]
+		}
+		if len(pArgs) > 1 {
+			rejectFn = pArgs[1]
+		}
 		resolve := func(v any) { resolveFn.Invoke(v) }
 		reject := func(v any) { rejectFn.Invoke(v) }
-		// Free this handler now that the executor body has captured
-		// the resolve/reject functions; the executor runs to
-		// completion synchronously within Promise construction for
-		// our synchronous engine calls.
-		defer releaseFunc(handler)
 		defer rejectOnJSError(reject)
 		executor(resolve, reject)
 		return js.Undefined()
 	})
-	return js.Global().Get("Promise").New(handler)
+	// A handler the constructor never ran is released here, whether the
+	// constructor threw or returned; one it ran released itself.
+	defer func() {
+		if !st.ran {
+			st.release()
+			p = js.Undefined()
+		}
+	}()
+	defer recoverJS(func() { p = js.Undefined() })
+	return js.Global().Get("Promise").New(st.f)
+}
+
+// promiseHandler is newPromise's executor func, whether the Promise
+// constructor ran it, and whether the func is released.
+type promiseHandler struct {
+	f        js.Func
+	ran      bool
+	released bool
+}
+
+// release frees the handler func the first time it is called and does
+// nothing after that.
+func (h *promiseHandler) release() {
+	if h.released {
+		return
+	}
+	h.released = true
+	releaseFunc(h.f)
 }
 
 // jsError constructs a JavaScript Error with the given message, the
 // rejection value the design contract specifies for failed methods.
 func jsError(msg string) js.Value {
 	return js.Global().Get("Error").New(msg)
+}
+
+// jsErrorFor builds a JS Error from a Go engine error: its message is
+// err.Error(), and a non-empty mdsmith.ErrorCode(err) is set as the
+// Error's `code` property (as Node does for system errors), so a host
+// can branch on a harmless outcome such as "nothing-to-rename" without
+// matching message text.
+func jsErrorFor(err error) js.Value {
+	e := jsError(err.Error())
+	if code := mdsmith.ErrorCode(err); code != "" {
+		e.Set("code", code)
+	}
+	return e
 }
 
 // toJS marshals a Go value to JSON and parses it back into a native JS
@@ -57,24 +124,32 @@ func toJS(v any) js.Value {
 }
 
 // rejectOnJSError, which newPromise defers around every executor, turns
-// a JS exception that a syscall/js Call, Invoke, or New raised as a
-// js.Error panic into a rejection with that exception. Inspecting a
-// caller's object can throw (a revoked Proxy, a Proxy trap that throws),
-// and an unrecovered panic in a js.FuncOf callback ends the Go program
-// and every session with it. wasm_exec.js caught the exception before Go
-// panicked, so the runtime is intact. Any other panic is re-raised
-// unchanged. TinyGo does not implement recover() on WebAssembly, so in a
-// TinyGo build the exception still ends the program.
+// a JS-side failure (the panics recoverJS recovers) into a rejection: a
+// JS exception that a syscall/js Call, Invoke, or New raised as a
+// js.Error panic rejects with that exception, and a *js.ValueError (a
+// Value method on the wrong type, such as Get on undefined) rejects with
+// an Error carrying its message. Inspecting a caller's object can throw
+// (a revoked Proxy, a Proxy trap that throws), and an unrecovered panic
+// in a js.FuncOf callback ends the Go program and every session with it.
+// newPromise's executor callback swallows a failure this does not turn
+// into a rejection, which would leave the Promise pending forever.
+// wasm_exec.js caught the exception before Go panicked, so the runtime
+// is intact. Any other panic is re-raised unchanged, and so is a
+// JS-side failure that unwound out of a JS-to-Go callback, as in
+// recoverJS. TinyGo does not implement recover() on WebAssembly, so in
+// a TinyGo build the exception still ends the program.
 func rejectOnJSError(reject func(any)) {
 	r := recover()
 	if r == nil {
 		return
 	}
-	if e, ok := r.(js.Error); ok {
+	repanicUnlessJS(r)
+	switch e := r.(type) {
+	case js.Error:
 		reject(e.Value)
-		return
+	case *js.ValueError:
+		reject(jsError(e.Error()))
 	}
-	panic(r)
 }
 
 // typeUnknown is what jsType reports for a value syscall/js has no

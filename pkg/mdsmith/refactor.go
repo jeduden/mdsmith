@@ -1,6 +1,7 @@
 package mdsmith
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"path"
@@ -47,40 +48,30 @@ type RefactorPlan struct {
 // source) and rewrites every dependent reference across the workspace.
 // as selects the kind — "heading" or "label" — or "" to auto-detect
 // from source (a heading whose visible text is oldName, or a label
-// normalizing to oldName; ambiguous or absent is an error). The plan
-// carries only edits: a symbol rename never moves a file.
+// normalizing to oldName; ambiguous or absent is an error). It also
+// errors, rather than returning an empty plan, when an explicit kind
+// finds no heading or label named oldName, or when the rename would
+// have no effect (a heading or label renamed to its own text, or a
+// heading renamed to the visible text it already renders as); that
+// last error matches ErrNothingToRename, so a host can treat it as the
+// harmless no-op it is. The plan carries only edits: a symbol rename
+// never moves a file.
 func (s *Session) Rename(uri string, source []byte, as, oldName, newName string) (RefactorPlan, error) {
+	kind, err := refactor.ParseRenameKind(as)
+	if err != nil {
+		return RefactorPlan{}, fmt.Errorf("rename: as must be %s, got %q",
+			refactor.RenameKindList("%q"), as)
+	}
+	// The workspace indexes lazily: only a heading rename queries
+	// incoming edges, so a label rename or a failed detection never
+	// walks a large WASM vault.
 	ws := s.buildRefactorWorkspace(uri, source)
 	key := index.NormalizePath(uri)
-
-	mode := as
-	if mode == "" {
-		m, err := detectRenameKind(source, oldName)
-		if err != nil {
-			return RefactorPlan{}, err
-		}
-		mode = m
+	p, err := refactor.Rename(ws, key, source, kind, oldName, newName)
+	if err != nil {
+		return RefactorPlan{}, renameError(err, uri, oldName)
 	}
-	switch mode {
-	case "heading":
-		line, ok := refactor.FindHeadingLine(source, oldName)
-		if !ok {
-			return RefactorPlan{}, fmt.Errorf("no heading %q in %s", oldName, uri)
-		}
-		p, err := refactor.Heading(ws, key, key, source, line, oldName, newName)
-		if err != nil {
-			return RefactorPlan{}, err
-		}
-		return toRefactorPlan(p), nil
-	case "label":
-		p, err := refactor.LinkRef(key, source, oldName, newName)
-		if err != nil {
-			return RefactorPlan{}, err
-		}
-		return toRefactorPlan(p), nil
-	default:
-		return RefactorPlan{}, fmt.Errorf("rename: as must be \"heading\" or \"label\", got %q", as)
-	}
+	return toRefactorPlan(p), nil
 }
 
 // Move computes a RefactorPlan that relocates the workspace file src to
@@ -98,23 +89,24 @@ func (s *Session) Move(src, dst string) (RefactorPlan, error) {
 	return toRefactorPlan(p), nil
 }
 
-// detectRenameKind picks "heading" or "label" for oldName in source, or
-// errors when both or neither match — the same auto-detect the CLI's
-// rename runs.
-func detectRenameKind(source []byte, oldName string) (string, error) {
-	_, isHeading := refactor.FindHeadingLine(source, oldName)
-	isLabel := refactor.HasLinkRef(source, oldName)
+// renameError rewords refactor.Rename's sentinel outcomes into the
+// engine API's error text. Engine conflicts and a NothingToRenameError
+// (whose text already names the kind, and which matches
+// ErrNothingToRename) pass through unchanged.
+// Each case mirrors a CLI exit path (see cmd/mdsmith/rename.go).
+func renameError(err error, uri, oldName string) error {
+	var missing refactor.MissingSymbolError
 	switch {
-	case isHeading && isLabel:
-		return "", fmt.Errorf(
-			"%q matches both a heading and a link-ref label; pass as=\"heading\" or as=\"label\"", oldName)
-	case isHeading:
-		return "heading", nil
-	case isLabel:
-		return "label", nil
-	default:
-		return "", fmt.Errorf("no heading or link-ref label %q", oldName)
+	case errors.Is(err, refactor.ErrAmbiguousRename):
+		return fmt.Errorf(
+			"%q matches both %s; pass %s",
+			oldName, refactor.RenameSymbolList("and", true), refactor.RenameKindList("as=%q"))
+	case errors.Is(err, refactor.ErrNoRenameTarget):
+		return fmt.Errorf("no %s %q", refactor.RenameSymbolList("or", false), oldName)
+	case errors.As(err, &missing):
+		return fmt.Errorf("%w in %s", missing, uri)
 	}
+	return err
 }
 
 // toRefactorPlan converts the internal refactor.Plan to the public
@@ -145,25 +137,11 @@ func toRefactorPlan(p refactor.Plan) RefactorPlan {
 // workspace, read through the session's Workspace (with the edited
 // buffer overlaid when a rename supplies one).
 type sessionRefactorWorkspace struct {
+	refactor.IndexEdges
 	s             *Session
-	idx           *index.Index
 	overlayURI    string
 	overlaySource []byte
 }
-
-func (w *sessionRefactorWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
-	return w.idx.IncomingEdges(file, slug)
-}
-
-func (w *sessionRefactorWorkspace) IncomingPathEdges(file string) []index.Edge {
-	return w.idx.IncomingPathEdges(file)
-}
-
-func (w *sessionRefactorWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
-	return w.idx.IncomingWikilinkEdges(stem)
-}
-
-func (w *sessionRefactorWorkspace) Files() []string { return w.idx.Files() }
 
 func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
@@ -177,11 +155,29 @@ func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 	return rel, src, true
 }
 
-// buildRefactorWorkspace walks the session's workspace for Markdown
-// files and builds a transient index over them. overlayURI, when set,
-// substitutes overlaySource for that file's bytes so a rename computes
-// against the caller's current buffer rather than the last-saved file.
+// buildRefactorWorkspace returns a Workspace whose edge and Files
+// queries walk the session's workspace for Markdown files and build a
+// transient index over them on the first such query, reusing it after
+// that; Resolve alone reads only the file it names, so a label rename
+// or a failed detection never walks a large WASM vault. overlayURI,
+// when set, substitutes overlaySource for that file's bytes so a
+// rename computes against the caller's current buffer rather than the
+// last-saved file.
 func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte) *sessionRefactorWorkspace {
+	return &sessionRefactorWorkspace{
+		IndexEdges: refactor.NewLazyIndexEdges(func() *index.Index {
+			return s.indexRefactorWorkspace(overlayURI, overlaySource)
+		}),
+		s:             s,
+		overlayURI:    overlayURI,
+		overlaySource: overlaySource,
+	}
+}
+
+// indexRefactorWorkspace walks the session's workspace for Markdown
+// files and indexes them, reading overlaySource in place of
+// overlayURI's bytes when overlayURI is set.
+func (s *Session) indexRefactorWorkspace(overlayURI string, overlaySource []byte) *index.Index {
 	fsys := s.ws.FS()
 	var rels []string
 	// The walk callback swallows per-entry errors, so WalkDir's own return
@@ -206,10 +202,5 @@ func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte
 		}
 		return s.ws.ReadFile(rel)
 	})
-	return &sessionRefactorWorkspace{
-		s:             s,
-		idx:           idx,
-		overlayURI:    overlayURI,
-		overlaySource: overlaySource,
-	}
+	return idx
 }

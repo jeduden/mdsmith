@@ -119,17 +119,19 @@ interface MdsmithFactory {
   createSession(opts: {
     workspace: Record<string, string>;
     configYAML: string;
-  }): Promise<WasmSession>;
+  }): Promise<WasmSession | undefined> | undefined;
   version: string;
 }
 
 // WasmSession is the JS proxy the factory returns. Method names match
 // the Go Session exactly (see cmd/mdsmith-wasm/methods.go).
+// An async method yields undefined instead of a Promise when a patched
+// globalThis.Promise breaks its Promise construction.
 interface WasmSession {
-  check(uri: string, source: string): Promise<Diagnostic[]>;
-  fix(uri: string, source: string): Promise<FixResult>;
-  rename(uri: string, source: string, as: string, oldName: string, newName: string): Promise<RefactorPlan>;
-  move(src: string, dst: string): Promise<RefactorPlan>;
+  check(uri: string, source: string): Promise<Diagnostic[]> | undefined;
+  fix(uri: string, source: string): Promise<FixResult> | undefined;
+  rename(uri: string, source: string, as: string, oldName: string, newName: string): Promise<RefactorPlan> | undefined;
+  move(src: string, dst: string): Promise<RefactorPlan> | undefined;
   capabilities(): string[];
   invalidate(uri: string, content?: string): void;
   dispose(): void;
@@ -247,6 +249,18 @@ export async function createRuntime(
     workspace: opts.workspace,
     configYAML: opts.configYAML ?? "",
   });
+  // The engine yields undefined instead of a session when a patched
+  // globalThis.Promise breaks its Promise construction, since Go cannot
+  // throw to its caller. Fail here, not on the first check(). Anything
+  // the engine did return is disposed first: nothing else holds it.
+  if (!session || typeof session.check !== "function") {
+    if (session && typeof session.dispose === "function") {
+      session.dispose();
+    }
+    throw new Error(
+      "mdsmith: createSession returned no session (is globalThis.Promise patched?)",
+    );
+  }
   return new SessionRuntime(session);
 }
 
@@ -259,14 +273,51 @@ export function __resetEngineForTests(): void {
   enginePromise = undefined;
 }
 
+// settle turns an engine async method's result into a Promise that
+// rejects with a clear error when the engine returned undefined (a
+// patched globalThis.Promise broke its Promise construction). It is an
+// async function, so the Promise it returns is the intrinsic one even
+// while globalThis.Promise is patched.
+async function settle<T>(method: string, result: Promise<T> | undefined): Promise<T> {
+  if (result === undefined) {
+    throw new Error(
+      `mdsmith: ${method} returned no result (is globalThis.Promise patched?)`,
+    );
+  }
+  return await result;
+}
+
+// HIDDEN_THEN is the descriptor SessionRuntime defines its own `then`
+// with: `{value: undefined}` on a null prototype, so a page's
+// Object.prototype.get or .enumerable cannot reach defineProperty, and
+// frozen so nothing can change it between instances.
+const HIDDEN_THEN: PropertyDescriptor = Object.freeze(
+  Object.assign(Object.create(null) as PropertyDescriptor, { value: undefined }),
+);
+
+// defineProperty is Object.defineProperty as this module loads, as the
+// engine captures its own at load. A replacement another script installs
+// later neither receives a SessionRuntime, which holds the engine
+// session, nor throws from its constructor, which would reject
+// createRuntime and leave that session undisposed.
+const defineProperty = Object.defineProperty;
+
 // SessionRuntime adapts a WasmSession to the MdsmithRuntime facade. It
 // is a thin pass-through — the engine does the work — plus a disposed
 // guard so a call after dispose() throws a clear error rather than
 // reaching into a torn-down session.
+//
+// Each instance carries its own non-enumerable, read-only
+// `then: undefined`, as the engine's session object does. createRuntime
+// is async, so its resolve reads `then` on the instance it returns; a
+// page-defined throwing Object.prototype.then getter would otherwise
+// reject the call and strand the session the engine created.
 class SessionRuntime implements MdsmithRuntime {
   private disposed = false;
 
-  constructor(private readonly session: WasmSession) {}
+  constructor(private readonly session: WasmSession) {
+    defineProperty(this, "then", HIDDEN_THEN);
+  }
 
   private assertLive(): void {
     if (this.disposed) {
@@ -276,22 +327,22 @@ class SessionRuntime implements MdsmithRuntime {
 
   check(uri: string, source: string): Promise<Diagnostic[]> {
     this.assertLive();
-    return this.session.check(uri, source);
+    return settle("check", this.session.check(uri, source));
   }
 
   fix(uri: string, source: string): Promise<FixResult> {
     this.assertLive();
-    return this.session.fix(uri, source);
+    return settle("fix", this.session.fix(uri, source));
   }
 
   rename(uri: string, source: string, as: string, oldName: string, newName: string): Promise<RefactorPlan> {
     this.assertLive();
-    return this.session.rename(uri, source, as, oldName, newName);
+    return settle("rename", this.session.rename(uri, source, as, oldName, newName));
   }
 
   move(src: string, dst: string): Promise<RefactorPlan> {
     this.assertLive();
-    return this.session.move(src, dst);
+    return settle("move", this.session.move(src, dst));
   }
 
   invalidate(uri: string, content?: string): void {

@@ -5,11 +5,19 @@
 // A native `go test` never compiles a file that only a js/wasm build
 // selects, so those tests need their own run. The runner finds them by
 // diffing the test files `go list` reports under GOOS=js GOARCH=wasm
-// against a native `go list`, parses each file with go/parser to list
-// its TestXxx(*testing.T) functions, runs exactly those under Node with
+// against a linux/amd64 `go list`, both with cgo off, parses each file
+// with go/parser to list its TestXxx(*testing.T) functions, runs
+// exactly those under Node with
 // `go test -json`, and fails unless every one of them reports a "pass"
 // event. A skipped test therefore fails the step by name; a
 // commented-out one is not listed.
+//
+// With --all (RunJSWasmPackage) it instead runs every test a js/wasm
+// build compiles under Node, untagged ones included, and fails on any
+// go test failure, when no test passes, or when a test from the
+// js/wasm-only files skips, so an untagged test that fails without a
+// real process or pipe fails CI and one run covers both guarantees.
+// Both modes need <pkg> to match exactly one package.
 package release
 
 import (
@@ -27,17 +35,31 @@ import (
 )
 
 // jsWasmEnv is the extra environment for the js/wasm `go list` and
-// `go test` calls.
-var jsWasmEnv = []string{"GOOS=js", "GOARCH=wasm"}
+// `go test` calls. CGO_ENABLED=0: an inherited CGO_ENABLED=1 would set
+// the cgo build tag even for js/wasm, which has no cgo, and change the
+// files the js/wasm list reports.
+var jsWasmEnv = []string{"GOOS=js", "GOARCH=wasm", "CGO_ENABLED=0"}
+
+// nativeListEnv is the extra environment for the native `go list` the
+// js/wasm one is diffed against. It pins one target, the linux/amd64 CI
+// runner, with cgo off as js/wasm always has it, so the host's OS, arch
+// and cgo tags cannot change which test files count as js/wasm-only: a
+// //go:build !cgo file is shared everywhere, a !linux one js/wasm-only
+// everywhere.
+var nativeListEnv = []string{"GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0"}
 
 // pkgLinePrefix starts the line testFilesTemplate prints for each
 // package matched, ahead of that package's test files.
 const pkgLinePrefix = "#pkg "
 
+// pkgLineTemplate makes `go list` print one pkgLinePrefix line with
+// the import path of each package matched.
+const pkgLineTemplate = pkgLinePrefix + `{{.ImportPath}}{{"\n"}}`
+
 // testFilesTemplate makes `go list` print, per package, a
 // pkgLinePrefix line with its import path, then one absolute path per
 // test file, internal (TestGoFiles) and external (XTestGoFiles) alike.
-const testFilesTemplate = pkgLinePrefix + `{{.ImportPath}}{{"\n"}}` +
+const testFilesTemplate = pkgLineTemplate +
 	`{{range .TestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}` +
 	`{{range .XTestGoFiles}}{{$.Dir}}/{{.}}{{"\n"}}{{end}}`
 
@@ -46,8 +68,9 @@ const testFilesTemplate = pkgLinePrefix + `{{.ImportPath}}{{"\n"}}` +
 // is the caller's.
 type goRunFunc func(stdout io.Writer, env []string, args ...string) error
 
-// jsWasmDeps are the side effects runJSWasmTestsWith needs, injectable so
-// a test can drive every branch without Go or Node.
+// jsWasmDeps are the side effects runJSWasmTestsWith and
+// runJSWasmPackageWith need, injectable so a test can drive every
+// branch without Go or Node.
 type jsWasmDeps struct {
 	run      goRunFunc
 	readFile func(string) ([]byte, error)
@@ -60,12 +83,7 @@ type jsWasmDeps struct {
 // (the -v text, rebuilt from the -json stream) is streamed to out as
 // each line arrives, so a hung test still shows its progress.
 func RunJSWasmTests(root, pkg string, out io.Writer) error {
-	return runJSWasmTestsWith(jsWasmDeps{
-		run:      osGoRunner(root),
-		readFile: os.ReadFile,
-		path:     os.Getenv("PATH"),
-		out:      out,
-	}, pkg)
+	return runJSWasmTestsWith(osJSWasmDeps(root, out), pkg)
 }
 
 // osGoRunner is the production goRunFunc: it runs go in dir with
@@ -89,74 +107,180 @@ func (d jsWasmDeps) output(env []string, args ...string) ([]byte, error) {
 	return b.Bytes(), err
 }
 
-func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
-	gorootOut, err := d.output(nil, "env", "GOROOT")
-	if err != nil {
-		return fmt.Errorf("go env GOROOT: %w", err)
-	}
-	goroot := strings.TrimSpace(string(gorootOut))
-	if goroot == "" {
-		return errors.New("go env GOROOT: empty output")
-	}
-	files, err := jsOnlyFilesOf(d, pkg)
-	if err != nil {
-		return err
-	}
-	names, err := testsInFiles(d, files)
-	if err != nil {
-		return err
-	}
-	execFlag, err := jsWasmExecFlag(d.path, goroot)
-	if err != nil {
-		return err
-	}
-	// env -i in -exec: wasm_exec.js caps args plus environment at
-	// ~8 KB. It wraps only the Node runtime, so the go command keeps
-	// the full Go and proxy environment. -json, not -v: test2json frames
-	// each result, so a test whose output lacks a trailing newline still
-	// reports its own pass event instead of a glued `x--- PASS` line.
-	w := &testJSONWriter{out: d.out}
-	runErr := d.run(w, jsWasmEnv, "test", "-json", "-exec="+execFlag,
-		"-run", "^("+strings.Join(names, "|")+")$", pkg)
-	w.Flush()
-	if runErr != nil {
-		return fmt.Errorf("go test %s under js/wasm: %w", pkg, runErr)
-	}
-	return checkAllPassed(names, w.passed)
+// RunJSWasmPackage runs every test of pkg that a js/wasm build compiles
+// under Node, untagged ones included, and fails on any go test failure
+// or when no test passes. pkg must match exactly one package.
+// Unlike RunJSWasmTests it does not require every test to pass: a skip
+// of a test the native build shares is fine as long as some test
+// passed. A skip of a test from the js/wasm-only files still fails, by
+// name. requireJSOnly also fails, before go test, when pkg has no
+// js/wasm-only Test function, so a lost stub test file cannot pass the
+// gate vacuously.
+func RunJSWasmPackage(root, pkg string, requireJSOnly bool, out io.Writer) error {
+	return runJSWasmPackageWith(osJSWasmDeps(root, out), pkg, requireJSOnly)
 }
 
-// jsOnlyFilesOf lists pkg's test files that only a js/wasm build
-// compiles, erroring when there are none so a broken lookup cannot
-// pass vacuously. pkg must match exactly one package: the pass check
-// matches bare test names, so across packages a same-named test that
-// passed elsewhere could stand in for a skipped one.
-func jsOnlyFilesOf(d jsWasmDeps, pkg string) ([]string, error) {
+// osJSWasmDeps is the production jsWasmDeps: go run from root, files
+// read from disk, and the process PATH handed to Node.
+func osJSWasmDeps(root string, out io.Writer) jsWasmDeps {
+	return jsWasmDeps{
+		run:      osGoRunner(root),
+		readFile: os.ReadFile,
+		path:     os.Getenv("PATH"),
+		out:      out,
+	}
+}
+
+func runJSWasmPackageWith(d jsWasmDeps, pkg string, requireJSOnly bool) error {
+	execFlag, err := d.execFlag()
+	if err != nil {
+		return err
+	}
+	// The js/wasm-only tests must pass by name, as in the default mode;
+	// a skip of a test the native build shares stays fine. Unlike the
+	// default mode, a package may have no such files or tests. A
+	// missing package fails at go list, before go test. pkg must match
+	// one package: the no-pass check sums passes across the whole run,
+	// so one package with no pass would hide behind another's passes.
+	files, err := listJSOnlyFiles(d, "test-js-wasm --all", pkg)
+	if err != nil {
+		return err
+	}
+	names, err := testFuncsIn(d, files)
+	if err != nil {
+		return err
+	}
+	if requireJSOnly && len(names) == 0 {
+		return fmt.Errorf("no js/wasm-only Test functions in %s", pkg)
+	}
+	passed, err := d.goTest(pkg, execFlag)
+	if err != nil {
+		return err
+	}
+	// go test exits 0 on a package with no test files, or whose every
+	// test skipped, so a gate with no pass would pass vacuously.
+	if len(passed) == 0 {
+		return fmt.Errorf("no test passed in %s under js/wasm", pkg)
+	}
+	return checkAllPassed(names, passed)
+}
+
+// execFlag returns the go test -exec value for d.path and the
+// go_js_wasm_exec under `go env GOROOT`, erroring when go env fails or
+// prints nothing, or when the flag cannot be quoted.
+func (d jsWasmDeps) execFlag() (string, error) {
+	out, err := d.output(nil, "env", "GOROOT")
+	if err != nil {
+		return "", fmt.Errorf("go env GOROOT: %w", err)
+	}
+	goroot := strings.TrimSpace(string(out))
+	if goroot == "" {
+		return "", errors.New("go env GOROOT: empty output")
+	}
+	return jsWasmExecFlag(d.path, goroot)
+}
+
+// requireOnePackage errors unless pkgs, the import paths pkg matched,
+// holds exactly one. mode names the command in the error.
+func requireOnePackage(mode, pkg string, pkgs []string) error {
+	if len(pkgs) != 1 {
+		return fmt.Errorf("%s needs exactly one package; %s matches %d", mode, pkg, len(pkgs))
+	}
+	return nil
+}
+
+// goTestNamed runs exactly the tests in names under Node; see goTest.
+// It errors on an empty names rather than run the whole package, which
+// would let checkAllPassed pass on an empty want list.
+func (d jsWasmDeps) goTestNamed(pkg, execFlag string, names []string) ([]string, error) {
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no test names to run in %s under js/wasm", pkg)
+	}
+	return d.goTest(pkg, execFlag, "-run", "^("+strings.Join(names, "|")+")$")
+}
+
+// goTest runs `go test -json` with extra args on pkg under Node,
+// streaming the console log to d.out, and returns the names that
+// reported a pass and no skip (see testJSONWriter.unmasked).
+//
+// env -i in execFlag: wasm_exec.js caps args plus environment at
+// ~8 KB. It wraps only the Node runtime, so the go command keeps the
+// full Go and proxy environment. -json, not -v: test2json frames each
+// result, so a test whose output lacks a trailing newline still
+// reports its own pass event instead of a glued `x--- PASS` line.
+func (d jsWasmDeps) goTest(pkg, execFlag string, extra ...string) ([]string, error) {
+	args := append([]string{"test", "-json", "-exec=" + execFlag}, extra...)
+	w := &testJSONWriter{out: d.out}
+	runErr := d.run(w, jsWasmEnv, append(args, pkg)...)
+	w.Flush()
+	if runErr != nil {
+		return nil, fmt.Errorf("go test %s under js/wasm: %w", pkg, runErr)
+	}
+	return w.unmasked(), nil
+}
+
+func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
+	execFlag, err := d.execFlag()
+	if err != nil {
+		return err
+	}
+	// pkg must match exactly one package: the pass check matches bare
+	// test names, so across packages a same-named test that passed
+	// elsewhere could stand in for a skipped one. No js/wasm-only file
+	// or Test function is an error, so a broken lookup cannot pass
+	// vacuously.
+	files, err := listJSOnlyFiles(d, "test-js-wasm", pkg)
+	if err != nil {
+		return err
+	}
+	if len(files) == 0 {
+		return fmt.Errorf("no js/wasm-only test files in %s", pkg)
+	}
+	names, err := testFuncsIn(d, files)
+	if err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		return fmt.Errorf("no Test functions in js/wasm-only files %s", strings.Join(files, ", "))
+	}
+	passed, err := d.goTestNamed(pkg, execFlag, names)
+	if err != nil {
+		return err
+	}
+	return checkAllPassed(names, passed)
+}
+
+// listJSOnlyFiles lists pkg's test files that only a js/wasm build
+// compiles, for both modes; an empty list is the caller's call, as
+// --all also runs a package that has none. mode names the command in
+// the one-package error. The js/wasm `go list` goes without -e, so it
+// reports a missing package's load error itself.
+func listJSOnlyFiles(d jsWasmDeps, mode, pkg string) ([]string, error) {
 	jsOut, err := d.output(jsWasmEnv, "list", "-f", testFilesTemplate, pkg)
 	if err != nil {
 		return nil, fmt.Errorf("go list (js/wasm) %s: %w", pkg, err)
 	}
 	pkgs, jsFiles := splitListOutput(jsOut)
-	if len(pkgs) != 1 {
-		return nil, fmt.Errorf("test-js-wasm needs exactly one package; %s matches %d", pkg, len(pkgs))
+	if err := requireOnePackage(mode, pkg, pkgs); err != nil {
+		return nil, err
 	}
 	// -e: a package whose non-test files are all js/wasm-only has no
 	// native build, and plain `go list` exits 1 on it. Every one of its
 	// test files is then js/wasm-only.
-	nativeOut, err := d.output(nil, "list", "-e", "-f", testFilesTemplate, pkg)
+	nativeOut, err := d.output(nativeListEnv, "list", "-e", "-f", testFilesTemplate, pkg)
 	if err != nil {
 		return nil, fmt.Errorf("go list (native) %s: %w", pkg, err)
 	}
 	_, nativeFiles := splitListOutput(nativeOut)
-	files := JSOnlyTestFiles(jsFiles, nativeFiles)
-	if len(files) == 0 {
-		return nil, fmt.Errorf("no js/wasm-only test files in %s", pkg)
-	}
-	return files, nil
+	return JSOnlyTestFiles(jsFiles, nativeFiles), nil
 }
 
-// testsInFiles collects the Test functions declared across files, in
-// file then source order, erroring when there are none.
-func testsInFiles(d jsWasmDeps, files []string) ([]string, error) {
+// testFuncsIn collects the Test functions declared across files, in
+// file then source order, each name once: an internal and an external
+// test file may both declare TestX, and go test reports both under the
+// one name. None is not an error here: under --all a js/wasm-only file
+// may hold only helpers or a TestMain.
+func testFuncsIn(d jsWasmDeps, files []string) ([]string, error) {
 	var names []string
 	for _, f := range files {
 		src, err := d.readFile(f)
@@ -167,10 +291,11 @@ func testsInFiles(d jsWasmDeps, files []string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
-		names = append(names, got...)
-	}
-	if len(names) == 0 {
-		return nil, fmt.Errorf("no Test functions in js/wasm-only files %s", strings.Join(files, ", "))
+		for _, n := range got {
+			if !slices.Contains(names, n) {
+				names = append(names, n)
+			}
+		}
 	}
 	return names, nil
 }
@@ -187,7 +312,7 @@ func checkAllPassed(want, passed []string) error {
 	if len(missing) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%d of %d js/wasm tests passed; not passed: %s",
+	return fmt.Errorf("%d of %d js/wasm-only tests passed; not passed: %s",
 		len(want)-len(missing), len(want), strings.Join(missing, ", "))
 }
 
@@ -283,13 +408,31 @@ func takesTestingT(fn *ast.FuncDecl, pkgName string) bool {
 // testJSONWriter decodes a `go test -json` stream as it is written.
 // Each complete line's Output (the `go test -v` text) goes to out at
 // once, and the top-level tests that report a "pass" event collect in
-// passed, in stream order. A line that is not a JSON event, such as a
-// `go: downloading` notice, passes through to out unchanged; a
-// mangled `{`-led event is dropped (see echoNonEvent).
+// passed, and those that report "skip" in skipped, in stream order. A
+// line that is not a JSON event, such as a `go: downloading` notice,
+// passes through to out unchanged; a mangled `{`-led event is dropped
+// (see echoNonEvent).
 type testJSONWriter struct {
 	out     io.Writer
 	partial []byte // bytes after the last newline, awaiting the rest
 	passed  []string
+	skipped []string
+}
+
+// unmasked returns passed without the names that also skipped. go test
+// reports a TestX of the internal and of the external test package
+// under the same name, so one's pass must not hide the other's skip.
+// The stream cannot tell the two apart, so a shared test's skip also
+// drops a same-named js/wasm-only test's pass: the gate errs toward
+// failing.
+func (w *testJSONWriter) unmasked() []string {
+	var out []string
+	for _, n := range w.passed {
+		if !slices.Contains(w.skipped, n) {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // Write buffers p and decodes every line it completes. It never fails:
@@ -320,7 +463,7 @@ func (w *testJSONWriter) Flush() {
 
 // line decodes one stream line: blank lines are dropped, a line that
 // is not an event goes through echoNonEvent, and an event's Output is
-// echoed with a top-level "pass" recorded.
+// echoed with a top-level "pass" or "skip" recorded.
 func (w *testJSONWriter) line(b []byte) {
 	if len(bytes.TrimSpace(b)) == 0 {
 		return
@@ -331,8 +474,14 @@ func (w *testJSONWriter) line(b []byte) {
 		return
 	}
 	_, _ = io.WriteString(w.out, ev.Output)
-	if ev.Action == "pass" && ev.Test != "" && !strings.Contains(ev.Test, "/") {
+	if ev.Test == "" || strings.Contains(ev.Test, "/") {
+		return
+	}
+	switch ev.Action {
+	case "pass":
 		w.passed = append(w.passed, ev.Test)
+	case "skip":
+		w.skipped = append(w.skipped, ev.Test)
 	}
 }
 
