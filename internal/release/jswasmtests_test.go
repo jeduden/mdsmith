@@ -692,14 +692,21 @@ func TestListJSOnlyFilesHostIndependent(t *testing.T) {
 		"notlnx_test.go": "//go:build !linux\npackage p\n",
 		"js_test.go":     "//go:build js && wasm\npackage p\n",
 	})
-	want := []string{filepath.Join(dir, "js_test.go"), filepath.Join(dir, "notlnx_test.go")}
+	// Base names: go list reports its own view of the directory, which
+	// can differ from t.TempDir() (macOS's /var is a symlink to
+	// /private/var; Windows joins with a "/" and may shorten names).
+	want := []string{"js_test.go", "notlnx_test.go"}
 	// "" leaves cgo at the host default: on with a C compiler.
 	for _, cgo := range []string{"", "0", "1"} {
 		t.Run("CGO_ENABLED="+cgo, func(t *testing.T) {
 			t.Setenv("CGO_ENABLED", cgo)
 			got, err := listJSOnlyFiles(osJSWasmDeps(dir, io.Discard), "m", ".")
 			require.NoError(t, err)
-			assert.Equal(t, want, got)
+			names := make([]string, len(got))
+			for i, f := range got {
+				names[i] = filepath.Base(f)
+			}
+			assert.Equal(t, want, names)
 		})
 	}
 }
