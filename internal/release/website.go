@@ -545,7 +545,7 @@ func applyOutsideFences(src []byte, fn func([]byte) []byte) []byte {
 		thisChar, thisLen := fenceMarker(line)
 		var transition bool
 		if !inFence {
-			if thisLen >= 3 {
+			if opensFence(line, thisChar, thisLen) {
 				inFence = true
 				fenceChar = thisChar
 				fenceLen = thisLen
@@ -628,6 +628,21 @@ func fenceMarker(line []byte) (byte, int) {
 		return 0, 0
 	}
 	return c, count
+}
+
+// opensFence reports whether line, read by fenceMarker as a run of
+// runLen ch characters, opens a fenced code block. A backtick
+// fence's info string cannot hold a backtick, so "```a`b" is
+// paragraph text, not an opener (the same rule as openingFence).
+func opensFence(line []byte, ch byte, runLen int) bool {
+	if runLen < 3 {
+		return false
+	}
+	if ch != '`' {
+		return true
+	}
+	afterRun := bytes.IndexByte(line, '`') + runLen
+	return bytes.IndexByte(line[afterRun:], '`') < 0
 }
 
 // fenceLineEmptyAfter reports whether the part of line that

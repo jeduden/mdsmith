@@ -864,3 +864,34 @@ func TestRulePageTransforms_NoLeftoverRelativeNonMDSLinks(t *testing.T) {
 		})
 	}
 }
+
+// TestOpensFence pins the opener rule applyOutsideFences uses: a run of
+// three or more after at most three spaces, where a backtick fence's
+// info string may not hold a backtick.
+func TestOpensFence(t *testing.T) {
+	for _, tc := range []struct {
+		line string
+		want bool
+	}{
+		{"```", true},
+		{"```go", true},
+		{"  ````sh", true},
+		{"~~~a`b", true},
+		{"```a`b", false},
+		{" ```a`b", false},
+		{"``x", false},
+		{"text", false},
+	} {
+		c, n := fenceMarker([]byte(tc.line))
+		assert.Equal(t, tc.want, opensFence([]byte(tc.line), c, n), tc.line)
+	}
+}
+
+// TestApplyOutsideFences_BacktickInfoStringIsNotFence checks that a
+// "```a`b" line opens no fence, so the lines after it are rewritten.
+func TestApplyOutsideFences_BacktickInfoStringIsNotFence(t *testing.T) {
+	got := applyOutsideFences([]byte("```a`b\nlink\n"), func(b []byte) []byte {
+		return []byte(strings.ToUpper(string(b)))
+	})
+	assert.Equal(t, "```A`B\nLINK\n", string(got))
+}
