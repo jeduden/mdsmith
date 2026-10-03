@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -151,7 +152,7 @@ func TestDetectRenameKind(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			kind, line, err := detectRenameKind([]byte(tt.src), tt.old)
+			kind, line, err := detectRenameKind(parseSource([]byte(tt.src)), tt.old)
 			assert.Equal(t, tt.kind, kind)
 			assert.Equal(t, tt.line, line)
 			assert.ErrorIs(t, err, tt.err)
@@ -331,19 +332,55 @@ func TestRenameHeadingAt(t *testing.T) {
 func TestRenameLabel(t *testing.T) {
 	src := []byte(dispatchSrc)
 
-	p, err := renameLabel("a.md", src, "docs", "rfc")
+	p, err := renameLabel("a.md", parseSource(src), "docs", "rfc")
 	require.NoError(t, err)
 	assert.Len(t, p.Edits["a.md"], 2, "the def and the shortcut use")
 
-	_, err = renameLabel("a.md", src, "docs", " ")
+	_, err = renameLabel("a.md", parseSource(src), "docs", " ")
 	assert.ErrorIs(t, err, ErrEmptyLabel, "engine errors pass through")
 
-	_, err = renameLabel("a.md", src, "docs", "docs")
+	_, err = renameLabel("a.md", parseSource(src), "docs", "docs")
 	assert.Equal(t, NothingToRenameError{Kind: KindLabel, Name: "docs"}, err,
 		"a rename that leaves every occurrence byte-identical has nothing to do")
 
 	mixed := []byte("See [docs] and [x][DOCS].\n\n[docs]: u\n")
-	p, err = renameLabel("a.md", mixed, "docs", "docs")
+	p, err = renameLabel("a.md", parseSource(mixed), "docs", "docs")
 	require.NoError(t, err, "respelling [DOCS] to [docs] is a real edit")
 	assert.NotEmpty(t, p.Edits["a.md"])
+}
+
+// countParses swaps parseBody for a counting wrapper for the rest of
+// t and returns the counter.
+func countParses(t *testing.T) *int {
+	t.Helper()
+	n := 0
+	orig := parseBody
+	parseBody = func(body []byte) ast.Node {
+		n++
+		return orig(body)
+	}
+	t.Cleanup(func() { parseBody = orig })
+	return &n
+}
+
+// TestRename_LabelParsesOnce pins that the label path — detection,
+// existence check, conflict scan, and edit planning — shares one parse
+// of the source instead of re-parsing it per question.
+func TestRename_LabelParsesOnce(t *testing.T) {
+	ws := newDispatchWorkspace()
+	src := []byte(dispatchSrc)
+	for _, kind := range []RenameKind{"", KindLabel} {
+		n := countParses(t)
+		p, err := Rename(ws, "a.md", src, kind, "docs", "guide")
+		require.NoError(t, err, kind)
+		assert.Len(t, p.Edits["a.md"], 2, kind)
+		assert.Equal(t, 1, *n, "kind %q", kind)
+	}
+}
+
+func TestDetectRenameKind_ParsesOnce(t *testing.T) {
+	n := countParses(t)
+	_, _, err := detectRenameKind(parseSource([]byte(dispatchSrc)), "Setup")
+	require.NoError(t, err)
+	assert.Equal(t, 1, *n)
 }

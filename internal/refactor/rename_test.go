@@ -4,10 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
-	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
-	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -223,11 +220,6 @@ func TestLinkRefEdits(t *testing.T) {
 		assert.Equal(t, want[1], e.Range.End.Character)
 	}
 	assert.Empty(t, linkRefEdits(src, "ghost", "rfc"))
-}
-
-// parseBody parses body with the lint parser, as linkRefEdits does.
-func parseBody(body []byte) ast.Node {
-	return lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
 }
 
 func firstLink(t *testing.T, root ast.Node) *ast.Link {

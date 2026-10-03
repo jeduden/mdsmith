@@ -181,15 +181,16 @@ func ParseRenameKind(s string) (RenameKind, error) {
 // directly, which takes the two separately.
 func Rename(ws Workspace, fileKey string, source []byte, kind RenameKind, oldName, newName string) (Plan, error) {
 	line := 0
+	ps := parseSource(source)
 	switch kind {
 	case "":
-		k, l, err := detectRenameKind(source, oldName)
+		k, l, err := detectRenameKind(ps, oldName)
 		if err != nil {
 			return Plan{}, err
 		}
 		kind, line = k, l
 	case KindHeading:
-		l, ok := findHeadingLine(source, oldName)
+		l, ok := findHeadingLineIn(ps, oldName)
 		if !ok {
 			return Plan{}, MissingSymbolError{Kind: KindHeading, Name: oldName}
 		}
@@ -198,7 +199,7 @@ func Rename(ws Workspace, fileKey string, source []byte, kind RenameKind, oldNam
 		// Checked before LinkRef validates newName, as the heading
 		// branch does, so a missing label reports as missing rather
 		// than as a collision with (or a bad spelling of) newName.
-		if !hasLinkRef(source, oldName) {
+		if !hasLinkRefIn(ps, oldName) {
 			return Plan{}, MissingSymbolError{Kind: KindLabel, Name: oldName}
 		}
 	default:
@@ -207,7 +208,7 @@ func Rename(ws Workspace, fileKey string, source []byte, kind RenameKind, oldNam
 	if kind == KindHeading {
 		return renameHeadingAt(ws, fileKey, source, line, oldName, newName)
 	}
-	return renameLabel(fileKey, source, oldName, newName)
+	return renameLabel(fileKey, ps, oldName, newName)
 }
 
 // renameHeadingAt runs the heading rename for the heading on the
@@ -239,12 +240,12 @@ func onlyUnchangedSelf(p Plan, fileKey string, source []byte) bool {
 // found defined in source, turning a plan whose edits leave source
 // byte-identical into a NothingToRenameError, so a same-name label
 // rename reports like a same-name heading rename.
-func renameLabel(fileKey string, source []byte, oldName, newName string) (Plan, error) {
-	p, err := LinkRef(fileKey, source, oldName, newName)
+func renameLabel(fileKey string, ps *parsedSource, oldName, newName string) (Plan, error) {
+	p, err := linkRefPlan(fileKey, ps, oldName, newName)
 	if err != nil {
 		return Plan{}, err
 	}
-	if editsLeaveUnchanged(source, p.Edits[fileKey]) {
+	if editsLeaveUnchanged(ps.source, p.Edits[fileKey]) {
 		return Plan{}, NothingToRenameError{Kind: KindLabel, Name: oldName}
 	}
 	return p, nil
@@ -314,9 +315,9 @@ func editKeepsRow(row []byte, e Edit) bool {
 // line findHeadingLine found, so Rename does not search for the
 // heading a second time. Both matching is ErrAmbiguousRename; neither
 // is ErrNoRenameTarget.
-func detectRenameKind(source []byte, oldName string) (RenameKind, int, error) {
-	line, isHeading := findHeadingLine(source, oldName)
-	isLabel := hasLinkRef(source, oldName)
+func detectRenameKind(ps *parsedSource, oldName string) (RenameKind, int, error) {
+	line, isHeading := findHeadingLineIn(ps, oldName)
+	isLabel := hasLinkRefIn(ps, oldName)
 	switch {
 	case isHeading && isLabel:
 		return "", 0, ErrAmbiguousRename

@@ -141,11 +141,14 @@ func Heading(
 // parses the same way the engine does so the line it finds is the
 // line Heading rewrites.
 func findHeadingLine(source []byte, headingText string) (int, bool) {
-	body, fmOffset := bodyAndFMOffset(source)
-	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	for _, h := range walkAllHeadings(root, body) {
+	return findHeadingLineIn(parseSource(source), headingText)
+}
+
+// findHeadingLineIn is findHeadingLine over a shared parsedSource.
+func findHeadingLineIn(ps *parsedSource, headingText string) (int, bool) {
+	for _, h := range walkAllHeadings(ps.root(), ps.body) {
 		if h.text == headingText {
-			return h.bodyLine + fmOffset, true
+			return h.bodyLine + ps.fmOffset, true
 		}
 	}
 	return 0, false

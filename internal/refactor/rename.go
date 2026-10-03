@@ -25,8 +25,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
-	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
-	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
@@ -87,6 +85,12 @@ func (e LabelConflictError) Error() string {
 // LabelConflictError with a zero Plan and no edit when the rename is
 // unsafe, so callers can surface the failure before applying.
 func LinkRef(fileKey string, source []byte, oldLabel, newName string) (Plan, error) {
+	return linkRefPlan(fileKey, parseSource(source), oldLabel, newName)
+}
+
+// linkRefPlan is LinkRef over an already-wrapped source, so a caller
+// that has parsed it (Rename's detection) shares that parse.
+func linkRefPlan(fileKey string, ps *parsedSource, oldLabel, newName string) (Plan, error) {
 	oldLabel = NormalizedLabel([]byte(oldLabel))
 	if strings.TrimSpace(newName) == "" {
 		return Plan{}, ErrEmptyLabel
@@ -99,10 +103,10 @@ func LinkRef(fileKey string, source []byte, oldLabel, newName string) (Plan, err
 	// the def and every use. labelConflict matches on the normalized
 	// form so such a rename never collides with itself.
 	newLabel := NormalizedLabel([]byte(newName))
-	if conflict := labelConflict(source, oldLabel, newLabel); conflict != "" {
+	if conflict := labelConflictIn(ps, oldLabel, newLabel); conflict != "" {
 		return Plan{}, LabelConflictError{Conflict: conflict}
 	}
-	edits := linkRefEdits(source, oldLabel, newName)
+	edits := linkRefEditsIn(ps, oldLabel, newName)
 	return Plan{Edits: map[string][]Edit{fileKey: edits}}, nil
 }
 
@@ -113,9 +117,13 @@ func LinkRef(fileKey string, source []byte, oldLabel, newName string) (Plan, err
 // inside code blocks or paragraph continuations are excluded,
 // matching LinkRef.
 func hasLinkRef(source []byte, label string) bool {
+	return hasLinkRefIn(parseSource(source), label)
+}
+
+// hasLinkRefIn is hasLinkRef over a shared parsedSource.
+func hasLinkRefIn(ps *parsedSource, label string) bool {
 	want := NormalizedLabel([]byte(label))
-	body, _ := bodyAndFMOffset(source)
-	for _, m := range validRefDefMatches(body) {
+	for _, m := range ps.refDefs() {
 		if m.normLabel == want {
 			return true
 		}
@@ -180,8 +188,12 @@ func NormalizedLabel(b []byte) string {
 // shaped line inside a fenced code block or PI body never counts as
 // a real def.
 func labelConflict(source []byte, oldLabel, newLabel string) string {
-	body, _ := bodyAndFMOffset(source)
-	for _, m := range validRefDefMatches(body) {
+	return labelConflictIn(parseSource(source), oldLabel, newLabel)
+}
+
+// labelConflictIn is labelConflict over a shared parsedSource.
+func labelConflictIn(ps *parsedSource, oldLabel, newLabel string) string {
+	for _, m := range ps.refDefs() {
 		if m.normLabel == oldLabel {
 			continue
 		}
@@ -209,10 +221,12 @@ type validRefDefMatch struct {
 // def. This drops paragraph-continuation lookalikes, code-block
 // content, and PI bodies in one pass.
 func validRefDefMatches(body []byte) []validRefDefMatch {
-	if !bytes.Contains(body, []byte("]:")) {
-		return nil
-	}
-	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
+	return (&parsedSource{body: body}).refDefs()
+}
+
+// refDefMatchesIn is validRefDefMatches over body's already-parsed
+// root.
+func refDefMatchesIn(body []byte, root ast.Node) []validRefDefMatch {
 	consumed := contentBlockLines(root, body)
 	var out []validRefDefMatch
 	for _, m := range index.RefDefRegexpMatches(body) {
@@ -265,12 +279,15 @@ func contentBlockLines(root ast.Node, body []byte) map[int]struct{} {
 // reference-style use of oldLabel (full and shortcut), returning one
 // Edit per match.
 func linkRefEdits(source []byte, oldLabel, newName string) []Edit {
-	body, fmOffset := bodyAndFMOffset(source)
-	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	lines := splitLines(source)
+	return linkRefEditsIn(parseSource(source), oldLabel, newName)
+}
+
+// linkRefEditsIn is linkRefEdits over a shared parsedSource.
+func linkRefEditsIn(ps *parsedSource, oldLabel, newName string) []Edit {
+	lines := splitLines(ps.source)
 	out := make([]Edit, 0, 8)
-	out = append(out, refDefEditsInBody(body, lines, fmOffset, oldLabel, newName)...)
-	out = append(out, refUseEditsInBody(root, body, lines, fmOffset, oldLabel, newName)...)
+	out = append(out, refDefEditsInBody(ps.refDefs(), lines, ps.fmOffset, oldLabel, newName)...)
+	out = append(out, refUseEditsInBody(ps.root(), ps.body, lines, ps.fmOffset, oldLabel, newName)...)
 	return out
 }
 
@@ -278,14 +295,14 @@ func linkRefEdits(source []byte, oldLabel, newName string) []Edit {
 // emits one Edit per match. A file may legally carry duplicate def
 // lines (goldmark only resolves the first); all are rewritten so the
 // file stays internally consistent. Filtering goes through
-// validRefDefMatches so a def-shaped line inside a code block is not
-// rewritten.
+// validRefDefMatches (defs) so a def-shaped line inside a code block
+// is not rewritten.
 func refDefEditsInBody(
-	body []byte, lines [][]byte, fmOffset int,
+	defs []validRefDefMatch, lines [][]byte, fmOffset int,
 	oldLabel, newName string,
 ) []Edit {
 	var out []Edit
-	for _, m := range validRefDefMatches(body) {
+	for _, m := range defs {
 		if m.normLabel != oldLabel {
 			continue
 		}
