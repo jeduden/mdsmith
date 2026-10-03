@@ -316,16 +316,96 @@ func TestAgain(t *testing.T) { again(t) }
 
 // Only plan9's build of the package runs a spawn test there, so only a
 // helper that builds on plan9 decides whether a call to it needs sh.
+// "_unix" is no file-name constraint, so the unix-only helper carries a
+// tag, and it sorts last, so indexing it would decide mk.
 func TestCheckProcTestFiles_OnlyPlan9HelpersCount(t *testing.T) {
 	files := map[string][]byte{
-		"a_unix_test.go":  []byte("package build\n\nfunc mk(t *testing.T) { skipOnPlan9(t) }\n"),
-		"b_plan9_test.go": []byte("package build\n\nfunc mk(t *testing.T) { writeScript(t, \"\", \"a.sh\", \"\") }\n"),
+		"a_plan9_test.go": []byte("package build\n\nfunc mk(t *testing.T) { skipOnPlan9(t) }\n"),
+		"z_test.go": []byte("//go:build unix\n\npackage build\n\n" +
+			"func mk(t *testing.T) { writeScript(t, \"\", \"a.sh\", \"\") }\n"),
 		"x_proc_test.go": []byte("//go:build unix || windows || plan9\n\npackage build\n\n" +
-			"func TestX(t *testing.T) { mk(t) }\n"),
+			"func TestX(t *testing.T) { mk(t); writeScript(t, \"\", \"a.sh\", \"\") }\n"),
 	}
-	errs := checkProcTestPkg(files)
+	assert.Empty(t, checkProcTestPkg(files))
+}
+
+// An sh use stays visible behind a method that shares its name with
+// one that runs nothing, a package-level const or table that holds sh,
+// an == comparison, a shebang through env or after "#! ", or a generic
+// helper. A shared method name skips only if every method skips.
+func TestCheckProcTestFiles_HiddenShUsesFail(t *testing.T) {
+	helpers := `package build
+
+type fa struct{}
+
+func (fa) run(t *testing.T)  { writeScript(t, "", "a.sh", "") }
+func (fa) prep(t *testing.T) { skipOnPlan9(t) }
+
+const shell = "/bin/sh"
+
+var cases = []struct{ fn func(*testing.T) }{{fn: func(t *testing.T) { writeScript(t, "", "a.sh", "") }}}
+
+func mk[T any](t *testing.T) { writeScript(t, "", "a.sh", "") }
+`
+	other := "package build\n\ntype fz struct{}\n\nfunc (fz) run(t *testing.T) {}\nfunc (fz) prep(t *testing.T) {}\n"
+	proc := `//go:build unix || windows || plan9
+
+package build
+
+func TestMethod(t *testing.T)   { fa{}.run(t) }
+func TestPrep(t *testing.T)     { fz{}.prep(t); writeScript(t, "", "a.sh", "") }
+func TestConst(t *testing.T)    { runHook(nil, []string{shell, "-c", "x"}, "") }
+func TestTable(t *testing.T)    { for _, c := range cases { c.fn(t) } }
+func TestCompared(t *testing.T) { _ = runHook(nil, []string{"sh"}, "") == nil }
+func TestEnv(t *testing.T)      { _ = []byte("#!/usr/bin/env sh\nexit 0\n") }
+func TestSpaced(t *testing.T)   { _ = []byte("#! /bin/sh\nexit 0\n") }
+func TestGeneric(t *testing.T)  { mk[int](t) }
+`
+	errs := checkProcTestPkg(map[string][]byte{
+		"a_test.go":      []byte(helpers),
+		"z_test.go":      []byte(other),
+		"x_proc_test.go": []byte(proc),
+	})
+	joined := strings.Join(errs, "\n")
+	want := []string{
+		"TestMethod", "TestPrep", "TestConst", "TestTable",
+		"TestCompared", "TestEnv", "TestSpaced", "TestGeneric",
+	}
+	require.Len(t, errs, len(want), joined)
+	for _, name := range want {
+		assert.Contains(t, joined, name+" ")
+	}
+}
+
+// A Skip that runs everywhere, a helper that makes one, and an if that
+// holds on plan9 through || skip on plan9 too; an && does not hold
+// there for sure, and a generic skip helper is still a skip.
+func TestCheckProcTestFile_BroaderSkipsPass(t *testing.T) {
+	src := `//go:build unix || windows || plan9
+
+package build
+
+func skipAll(t *testing.T)            { t.Skip("flaky") }
+func skipPlan9[T any](t *testing.T)   { skipOnPlan9(t) }
+func TestSkip(t *testing.T)           { t.Skip("flaky"); runHook(nil, []string{"sh"}, "") }
+func TestSkipHelper(t *testing.T)     { skipAll(t); runHook(nil, []string{"sh"}, "") }
+func TestGenericSkip(t *testing.T)    { skipPlan9[int](t); runHook(nil, []string{"sh"}, "") }
+func TestOr(t *testing.T) {
+	if runtime.GOOS == "windows" || (runtime.GOOS == "plan9") {
+		t.Skip("no sh")
+	}
+	runHook(nil, []string{"sh"}, "")
+}
+func TestAnd(t *testing.T) {
+	if runtime.GOOS == "plan9" && ok {
+		t.Skip("no sh")
+	}
+	runHook(nil, []string{"sh"}, "")
+}
+`
+	errs := checkProcTestFile("x_proc_test.go", []byte(src))
 	require.Len(t, errs, 1, strings.Join(errs, "\n"))
-	assert.Contains(t, errs[0], "TestX ")
+	assert.Contains(t, errs[0], "TestAnd ")
 }
 
 // A helper passed by name runs as surely as one called directly, a

@@ -51,7 +51,7 @@ var procTargets = []struct {
 func checkProcTestFiles(files map[string][]byte) []string {
 	var errs []string
 	var tests []fileFunc
-	scan := shScan{order: map[string]shOrder{}, helpers: map[string][]ast.Stmt{}}
+	scan := shScan{order: map[string]shOrder{}, helpers: map[string][][]ast.Stmt{}}
 	fset := token.NewFileSet()
 	for _, name := range slices.Sorted(maps.Keys(files)) {
 		f, err := parser.ParseFile(fset, name, files[name], parser.SkipObjectResolution)
@@ -162,11 +162,13 @@ const (
 
 // shScan holds what a call to each resolved helper reaches first
 // (order) and the bodies of the helpers not yet resolved (helpers). A
-// function or func-valued var is keyed by its name, a method by "."
-// and its name, since only a selector call can reach it.
+// function or package-level const or var is keyed by its name, a
+// method by "." and its name, since only a selector can reach it.
+// Methods of different types can share a key, so a key keeps every
+// body it is given.
 type shScan struct {
 	order   map[string]shOrder
-	helpers map[string][]ast.Stmt
+	helpers map[string][][]ast.Stmt
 }
 
 // index records f's helpers in s and, when withTests, appends its test
@@ -182,53 +184,88 @@ func (s shScan) index(name string, f *ast.File, tests []fileFunc, withTests bool
 					tests = append(tests, fileFunc{name, d})
 				}
 			case d.Recv != nil:
-				s.helpers["."+d.Name.Name] = d.Body.List
+				s.add("."+d.Name.Name, d.Body.List)
 			default:
-				s.helpers[d.Name.Name] = d.Body.List
+				s.add(d.Name.Name, d.Body.List)
 			}
 		case *ast.GenDecl:
-			for _, spec := range d.Specs {
-				vs, ok := spec.(*ast.ValueSpec)
-				if !ok {
-					continue
-				}
-				for i, v := range vs.Values {
-					if lit, ok := v.(*ast.FuncLit); ok && i < len(vs.Names) {
-						s.helpers[vs.Names[i].Name] = lit.Body.List
-					}
-				}
-			}
+			s.indexValues(d)
 		}
 	}
 	return tests
 }
 
+// indexValues records each package-level const or var d names: a func
+// literal by its body, any other value as one statement, so naming a
+// const that holds "/bin/sh" or a table of sh closures reaches sh.
+func (s shScan) indexValues(d *ast.GenDecl) {
+	for _, spec := range d.Specs {
+		vs, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		for i, v := range vs.Values {
+			if i >= len(vs.Names) || vs.Names[i].Name == "_" {
+				continue
+			}
+			if lit, ok := v.(*ast.FuncLit); ok {
+				s.add(vs.Names[i].Name, lit.Body.List)
+			} else {
+				s.add(vs.Names[i].Name, []ast.Stmt{&ast.ExprStmt{X: v}})
+			}
+		}
+	}
+}
+
+// add records body under key.
+func (s shScan) add(key string, body []ast.Stmt) {
+	s.helpers[key] = append(s.helpers[key], body)
+}
+
 // orderOf reports what a call to the helper key reaches first,
-// resolving its body once, so helpers resolve in any declaration
-// order. A call back into a helper that is still resolving, as
-// recursion makes, reaches neither; so does an unknown key.
+// resolving its bodies once, so helpers resolve in any declaration
+// order. A key that several methods share reaches sh if any of them
+// does, and skips only if all of them do. A call back into a helper
+// that is still resolving, as recursion makes, reaches neither; so
+// does an unknown key.
 func (s shScan) orderOf(key string) shOrder {
 	if o, ok := s.order[key]; ok {
 		return o
 	}
-	body, ok := s.helpers[key]
+	bodies, ok := s.helpers[key]
 	if !ok {
 		return neitherFirst
 	}
 	s.order[key] = neitherFirst
-	o := s.firstOf(body)
+	o := skipFirst
+	for _, body := range bodies {
+		switch s.firstOf(body) {
+		case shFirst:
+			s.order[key] = shFirst
+			return shFirst
+		case neitherFirst:
+			o = neitherFirst
+		case skipFirst:
+		}
+	}
 	s.order[key] = o
 	return o
 }
 
-// calleeKey returns the helper key a call to, or a reference to, e
-// names, or "" for anything else.
+// calleeKey returns the helper key a call to e names, looking through
+// parentheses and generic instantiation, or "" for anything else.
 func calleeKey(e ast.Expr) string {
 	switch e := e.(type) {
 	case *ast.Ident:
 		return e.Name
 	case *ast.SelectorExpr:
 		return "." + e.Sel.Name
+	case *ast.ParenExpr:
+		return calleeKey(e.X)
+	case *ast.IndexExpr:
+		return calleeKey(e.X)
+	case *ast.IndexListExpr:
+		return calleeKey(e.X)
 	}
 	return ""
 }
@@ -248,19 +285,17 @@ func (s shScan) firstOf(stmts []ast.Stmt) shOrder {
 	return neitherFirst
 }
 
-// isSkip reports whether st skips on plan9: a call to a helper that
-// skips first, `if runtime.GOOS == "plan9"` around a Skip call, or a
-// `switch runtime.GOOS` whose "plan9" case calls Skip.
+// isSkip reports whether st skips on plan9: a Skip call, a call to a
+// helper that skips first, an `if` whose condition holds on plan9
+// around a Skip call, or a `switch runtime.GOOS` whose "plan9" case
+// calls Skip.
 func (s shScan) isSkip(st ast.Stmt) bool {
 	switch st := st.(type) {
 	case *ast.ExprStmt:
 		call, ok := st.X.(*ast.CallExpr)
-		return ok && s.orderOf(calleeKey(call.Fun)) == skipFirst
+		return ok && (isSkipCall(call) || s.orderOf(calleeKey(call.Fun)) == skipFirst)
 	case *ast.IfStmt:
-		cond, ok := st.Cond.(*ast.BinaryExpr)
-		return ok && st.Init == nil && cond.Op == token.EQL &&
-			(isGOOS(cond.X) && isPlan9(cond.Y) || isPlan9(cond.X) && isGOOS(cond.Y)) &&
-			callsSkip(st.Body.List)
+		return st.Init == nil && holdsOnPlan9(st.Cond) && callsSkip(st.Body.List)
 	case *ast.SwitchStmt:
 		if st.Init != nil || !isGOOS(st.Tag) {
 			return false
@@ -270,6 +305,23 @@ func (s shScan) isSkip(st ast.Stmt) bool {
 			if slices.ContainsFunc(cc.List, isPlan9) && callsSkip(cc.Body) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// holdsOnPlan9 reports whether cond is `runtime.GOOS == "plan9"`, alone
+// or as one operand of ||, so it is true on plan9.
+func holdsOnPlan9(cond ast.Expr) bool {
+	switch e := cond.(type) {
+	case *ast.ParenExpr:
+		return holdsOnPlan9(e.X)
+	case *ast.BinaryExpr:
+		switch e.Op {
+		case token.LOR:
+			return holdsOnPlan9(e.X) || holdsOnPlan9(e.Y)
+		case token.EQL:
+			return isGOOS(e.X) && isPlan9(e.Y) || isPlan9(e.X) && isGOOS(e.Y)
 		}
 	}
 	return false
@@ -317,14 +369,14 @@ func isSkipCall(call *ast.CallExpr) bool {
 	return false
 }
 
-// usesSh reports whether n calls an sh helper, passes one by name (as
-// t.Run(name, scriptTest) does), or holds a string literal whose first
-// word is sh or a path ending in /sh: an "sh" argv, a "sh -c" recipe,
-// or a "#!/bin/sh" script. A closure counts only when its own body
-// reaches sh before a skip, so a subtest that skips first covers
-// itself. The arguments of a skip helper or a Skip call, such as
-// skipWithoutPOSIXTools(t, "sh"), and the operands of == or != are not
-// a use.
+// usesSh reports whether n calls an sh helper, names one (as
+// t.Run(name, scriptTest) passes it, or as a const or table holding sh
+// is read), or holds a string literal whose first word is sh or a path
+// ending in /sh: an "sh" argv, a "sh -c" recipe, or a "#!/bin/sh"
+// script. A closure counts only when its own body reaches sh before a
+// skip, so a subtest that skips first covers itself. The arguments of
+// a skip helper or a Skip call, such as skipWithoutPOSIXTools(t, "sh"),
+// and a string literal compared with == or != are not a use.
 func (s shScan) usesSh(n ast.Node) bool {
 	found := false
 	ast.Inspect(n, func(n ast.Node) bool {
@@ -336,24 +388,22 @@ func (s shScan) usesSh(n ast.Node) bool {
 			found = s.firstOf(n.Body.List) == shFirst
 			return false
 		case *ast.CallExpr:
-			if isSkipCall(n) {
+			if isSkipCall(n) || s.orderOf(calleeKey(n.Fun)) == skipFirst {
 				return false
 			}
-			switch s.orderOf(calleeKey(n.Fun)) {
-			case skipFirst:
-				return false
-			case shFirst:
-				found = true
-			case neitherFirst:
-			}
-			for _, arg := range n.Args {
-				if s.orderOf(calleeKey(arg)) == shFirst {
-					found = true
-				}
-			}
+		case *ast.SelectorExpr:
+			// Sel names a method or field, never a package-level helper.
+			found = s.orderOf("."+n.Sel.Name) == shFirst || s.usesSh(n.X)
+			return false
+		case *ast.Ident:
+			found = s.orderOf(n.Name) == shFirst
 		case *ast.BinaryExpr:
-			// A comparison with "sh" reads a name; it runs nothing.
-			return n.Op != token.EQL && n.Op != token.NEQ
+			if n.Op == token.EQL || n.Op == token.NEQ {
+				// A comparison with "sh" reads a name; it runs nothing,
+				// but a call on either side still runs.
+				found = s.operandUsesSh(n.X) || s.operandUsesSh(n.Y)
+				return false
+			}
 		case *ast.BasicLit:
 			found = isShLiteral(n)
 		}
@@ -362,8 +412,17 @@ func (s shScan) usesSh(n ast.Node) bool {
 	return found
 }
 
+// operandUsesSh reports whether an operand of == or != reaches sh. A
+// string literal there is a name being compared, so it is no use.
+func (s shScan) operandUsesSh(e ast.Expr) bool {
+	if _, ok := e.(*ast.BasicLit); ok {
+		return false
+	}
+	return s.usesSh(e)
+}
+
 // isShLiteral reports whether lit is a string whose first word, after
-// any #! prefix, is sh or a path ending in /sh.
+// any #! prefix and any env, is sh or a path ending in /sh.
 func isShLiteral(lit *ast.BasicLit) bool {
 	if lit.Kind != token.STRING {
 		return false
@@ -372,8 +431,11 @@ func isShLiteral(lit *ast.BasicLit) bool {
 	if err != nil {
 		return false
 	}
-	words := strings.Fields(v)
-	return len(words) > 0 && path.Base(strings.TrimPrefix(words[0], "#!")) == "sh"
+	words := strings.Fields(strings.TrimPrefix(v, "#!"))
+	if len(words) > 1 && path.Base(words[0]) == "env" {
+		words = words[1:]
+	}
+	return len(words) > 0 && path.Base(words[0]) == "sh"
 }
 
 // checkProcTestDir runs checkProcTestFiles over every _test.go in dir.
