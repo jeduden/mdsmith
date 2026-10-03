@@ -28,7 +28,7 @@
 //	mdsmith-release record-rotation <ENTRY_TITLE> <YYYY-MM-DD>
 //	mdsmith-release merge-coverage -o <out> <profile>...
 //	mdsmith-release test-summary
-//	mdsmith-release test-js-wasm <pkg>
+//	mdsmith-release test-js-wasm [--all] <pkg>
 //	mdsmith-release select-audit-sarifs <dir>
 //	mdsmith-release bench [workdir]
 //	mdsmith-release render-bench-page <out-path>
@@ -84,7 +84,8 @@ Commands:
   record-rotation <title> <date>  Update lastRotated in a per-secret rotation file.
   merge-coverage -o <out> <p>...  Merge coverage profiles by summing hit counts.
   test-summary                    Tally unit/integration/e2e tests from a go test -json stream on stdin.
-  test-js-wasm <pkg>              Run <pkg>'s js/wasm-only tests under Node; fail unless all pass.
+  test-js-wasm [--all] <pkg>      Run <pkg>'s js/wasm-only tests under Node; fail unless all pass.
+                                  --all runs every test and fails on any failure or no pass.
   select-audit-sarifs <dir>       Print the newest audit date's directories under <dir> (those with a
                                   findings.sarif) as a JSON array, for the security-audit-sarif matrix.
   bench [workdir]                 Run the pinned cross-tool benchmark; promote JSON + fragments.

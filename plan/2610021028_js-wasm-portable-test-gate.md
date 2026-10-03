@@ -1,7 +1,7 @@
 ---
 id: 2610021028
 title: Gate untagged internal/build tests under js/wasm in CI
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   CI's `test-js-wasm` step runs only tests that compile
@@ -35,20 +35,35 @@ still fails about 25 tests that start real processes
 
 ## Tasks
 
-1. List every `internal/build` test that fails under
+1. [x] List every `internal/build` test that fails under
    `GOOS=js GOARCH=wasm` and move each one into a
    `unix || windows` file. Keep the pure ones untagged.
-2. Add a CI step, through `mdsmith-release` per
+2. [x] Add a CI step, through `mdsmith-release` per
    [release-tooling.md](../docs/development/release-tooling.md),
    that runs the whole `internal/build` package under
    Node and fails on any failure.
-3. Note in the test-fixtures docs that a test which
+3. [x] Note in the test-fixtures docs that a test which
    spawns a process or opens a pipe needs the tag.
+4. [x] Also tag spawn tests that expect a failure, such
+   as `TestBuild_Timeout` and the hook exit-code tests.
+   They pass under Node only because the process never
+   starts, so the gate cannot catch them.
+5. [x] Make `test-js-wasm --all` fail when no test
+   passed, so an empty or fully skipped package does
+   not pass the gate. Make it also require `<pkg>` to
+   match exactly one package, so one package's passes
+   cannot hide another's empty run.
+
+Follow-ups from review: plan
+[2610030243](2610030243_plan9-vet-unix-windows-build-tests.md)
+(plan9 vet coverage) and plan
+[2610030244](2610030244_dedupe-build-js-wasm-ci-run.md)
+(one js/wasm run of `internal/build` in CI).
 
 ## Acceptance Criteria
 
-- [ ] `GOOS=js GOARCH=wasm go test ./internal/build`
+- [x] `GOOS=js GOARCH=wasm go test ./internal/build`
       passes under Node.
-- [ ] CI runs that command and gates on it.
-- [ ] Native `go test ./internal/build` still runs every
+- [x] CI runs that command and gates on it.
+- [x] Native `go test ./internal/build` still runs every
       moved test.

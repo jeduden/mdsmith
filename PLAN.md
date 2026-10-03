@@ -285,7 +285,7 @@ footer: |
 | 2610020946 | 🔳     | sonnet | [Kill a timed-out recipe's whole note group on plan9](plan/2610020946_plan9-recipe-note-group-kill.md)                                                  |
 | 2610021026 | 🔲     | opus   | [Replace runRecipe's hand-rolled pipe reaping with Cmd.WaitDelay](plan/2610021026_recipe-exec-waitdelay.md)                                             |
 | 2610021027 | ✅     | sonnet | [Release a disposed wasm session's dispose func](plan/2610021027_wasm-dispose-func-release.md)                                                          |
-| 2610021028 | 🔲     | sonnet | [Gate untagged internal/build tests under js/wasm in CI](plan/2610021028_js-wasm-portable-test-gate.md)                                                 |
+| 2610021028 | ✅     | sonnet | [Gate untagged internal/build tests under js/wasm in CI](plan/2610021028_js-wasm-portable-test-gate.md)                                                 |
 | 2610021237 | ✅     | sonnet | [Silence a stale wasm session dispose reference](plan/2610021237_wasm-stale-dispose-reference.md)                                                       |
 | 2610021439 | 🔲     | sonnet | [Make wasm session method bindings unforgeable](plan/2610021439_wasm-unforgeable-session-binding.md)                                                    |
 | 2610021452 | 🔲     | sonnet | [Free wasm sessions dropped without dispose](plan/2610021452_wasm-collect-dropped-sessions.md)                                                          |
@@ -295,4 +295,6 @@ footer: |
 | 2610021917 | 🔲     | sonnet | [Replace the per-platform kill maps with a per-recipe group killer](plan/2610021917_per-recipe-group-killer.md)                                         |
 | 2610022044 | ✅     | sonnet | [Count only Markdown files as wikilink stem siblings on move](plan/2610022044_move-stem-count-markdown-only.md)                                         |
 | 2610022104 | 🔲     | sonnet | [Count wikilink stem siblings against the resolver's index on move](plan/2610022104_move-stem-count-resolver-index.md)                                  |
+| 2610030243 | 🔲     | sonnet | [Vet the internal/build spawn tests for plan9](plan/2610030243_plan9-vet-unix-windows-build-tests.md)                                                   |
+| 2610030244 | 🔲     | sonnet | [Run internal/build under js/wasm once in CI](plan/2610030244_dedupe-build-js-wasm-ci-run.md)                                                           |
 <?/catalog?>
