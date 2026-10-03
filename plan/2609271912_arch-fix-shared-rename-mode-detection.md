@@ -2,7 +2,7 @@
 id: 2609271912
 title: >-
   Share rename-mode detection between the CLI and the engine
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   cmd/mdsmith/rename.go's detectRenameMode and
@@ -63,28 +63,28 @@ this duplication:
    text, no exit code — with a dedicated
    `TestDetectRenameKind` covering all four outcomes (both
    match, heading only, label only, neither).
-3. Update `cmd/mdsmith/rename.go`'s `detectRenameMode` to call
+3. [x] Update `cmd/mdsmith/rename.go`'s `detectRenameMode` to call
    `refactor.DetectRenameKind` and keep its own
    `os.Stderr`/exit-code/`move`-steering wrapping around the
    result.
-4. Update `pkg/mdsmith/refactor.go`'s `detectRenameKind` to
+4. [x] Update `pkg/mdsmith/refactor.go`'s `detectRenameKind` to
    call `refactor.DetectRenameKind` and keep its own
    `error`-returning wrapping around the result.
-5. `go build ./...` passes.
-6. `go test ./...` passes.
-7. `go tool -modfile=tools/go.mod golangci-lint run` reports
+5. [x] `go build ./...` passes.
+6. [x] `go test ./...` passes.
+7. [x] `go tool -modfile=tools/go.mod golangci-lint run` reports
    no issues.
 
 ## Acceptance Criteria
 
-- [ ] The `isHeading`/`isLabel` detection switch exists in
+- [x] The `isHeading`/`isLabel` detection switch exists in
       exactly one place: `internal/refactor`.
-- [ ] `cmd/mdsmith rename` and `pkg/mdsmith`'s `Session.Rename`
+- [x] `cmd/mdsmith rename` and `pkg/mdsmith`'s `Session.Rename`
       (and its WASM binding) produce the same user-visible
       messages and exit codes/errors as before the change —
       only the internal detection call changes.
-- [ ] `go test ./...` is green.
-- [ ] `mdsmith check .` is green.
+- [x] `go test ./...` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [go]: ../docs/development/architecture/go.md
