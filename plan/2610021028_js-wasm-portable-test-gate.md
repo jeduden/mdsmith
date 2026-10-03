@@ -44,6 +44,19 @@ still fails about 25 tests that start real processes
    Node and fails on any failure.
 3. [x] Note in the test-fixtures docs that a test which
    spawns a process or opens a pipe needs the tag.
+4. [x] Also tag spawn tests that expect a failure, such
+   as `TestBuild_Timeout` and the hook exit-code tests.
+   They pass under Node only because the process never
+   starts, so the gate cannot catch them.
+5. [x] Make `test-js-wasm --all` fail when no test
+   passed, so an empty or fully skipped package does
+   not pass the gate.
+
+Follow-ups from review: plan
+[2610030243](2610030243_plan9-vet-unix-windows-build-tests.md)
+(plan9 vet coverage) and plan
+[2610030244](2610030244_dedupe-build-js-wasm-ci-run.md)
+(one js/wasm run of `internal/build` in CI).
 
 ## Acceptance Criteria
 
