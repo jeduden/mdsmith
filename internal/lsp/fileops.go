@@ -62,8 +62,14 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 			merged[key] = append(merged[key], toTextEdits(edits)...)
 		}
 	}
-	for key := range merged {
-		sortTextEditsBottomUp(merged[key])
+	for key, edits := range merged {
+		edits = dropConflictingTextEdits(edits)
+		if len(edits) == 0 {
+			delete(merged, key)
+			continue
+		}
+		sortTextEditsBottomUp(edits)
+		merged[key] = edits
 	}
 	_ = s.t.writeResponse(msg.ID, &workspaceEdit{Changes: merged})
 }
@@ -100,4 +106,58 @@ func (s *Server) handleDidRenameFiles(params json.RawMessage) {
 			idx.Update(newRel, data)
 		}
 	}
+}
+
+// dropConflictingTextEdits withholds every edit whose range overlaps
+// another edit with a different result, and collapses exact duplicates
+// to one. A willRenameFiles batch plans each refactor.Move against the
+// same pre-batch snapshot, so two moved files that link to each other
+// get two different rewrites of one link; LSP clients reject a
+// WorkspaceEdit with overlapping ranges, which would lose every rewrite
+// in the batch. Keeping either side would be wrong (each assumes the
+// other file did not move), so both are dropped and any link left
+// stale surfaces as an MDS027 diagnostic. Batch-aware planning is
+// tracked by plan 2610030438.
+func dropConflictingTextEdits(edits []textEdit) []textEdit {
+	keep := make([]bool, len(edits))
+	for i := range keep {
+		keep[i] = true
+	}
+	for i := range edits {
+		for j := i + 1; j < len(edits); j++ {
+			if !rangesOverlap(edits[i].Range, edits[j].Range) {
+				continue
+			}
+			if edits[i] == edits[j] {
+				keep[j] = false
+				continue
+			}
+			keep[i], keep[j] = false, false
+		}
+	}
+	out := edits[:0]
+	for i, e := range edits {
+		if keep[i] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// rangesOverlap reports whether applying edits over a and b in one
+// WorkspaceEdit would be ambiguous: their spans intersect, or both
+// start at the same position (two insertions at one point have no
+// defined order). Ranges that merely touch end-to-start do not overlap.
+func rangesOverlap(a, b Range) bool {
+	if a.Start == b.Start {
+		return true
+	}
+	return posLess(a.Start, b.End) && posLess(b.Start, a.End)
+}
+
+func posLess(a, b Position) bool {
+	if a.Line != b.Line {
+		return a.Line < b.Line
+	}
+	return a.Character < b.Character
 }

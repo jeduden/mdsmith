@@ -221,3 +221,42 @@ func TestDidRenameFilesSwapsIndexPath(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &alpha))
 	assert.Empty(t, alpha, "old path dropped from the index")
 }
+
+// TestWillRenameFilesBatchDropsConflictingEdits locks that a batch
+// moving two files which link to each other never returns two edits
+// over the same range: each per-file refactor.Move plans against the
+// pre-batch snapshot, so a.md's link to b.md gets one rewrite from
+// a.md's own move and a different one from b.md's move. Clients reject
+// a WorkspaceEdit with overlapping ranges, which would drop every
+// rewrite in the batch, so the conflicting pair is withheld instead.
+func TestWillRenameFilesBatchDropsConflictingEdits(t *testing.T) {
+	t.Parallel()
+	srcA := "# Alpha\n\n[b](b.md)\n"
+	srcB := "# Beta\n"
+	srcC := "# Gamma\n\n[a](a.md)\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"a.md": srcA, "b.md": srcB, "c.md": srcC,
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/a.md", NewURI: rootURI + "/x/a.md"},
+			{OldURI: rootURI + "/b.md", NewURI: rootURI + "/x/b.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	for uri, edits := range edit.Changes {
+		for i := range edits {
+			for j := i + 1; j < len(edits); j++ {
+				assert.False(t, rangesOverlap(edits[i].Range, edits[j].Range),
+					"%s: edits %d and %d overlap", uri, i, j)
+			}
+		}
+	}
+	// a.md's link to b.md is left alone (both still land in x/), and
+	// c.md's unconflicted incoming link still follows a.md.
+	assert.NotContains(t, edit.Changes, rootURI+"/a.md")
+	require.Contains(t, edit.Changes, rootURI+"/c.md")
+	assert.Equal(t, "x/a.md", edit.Changes[rootURI+"/c.md"][0].NewText)
+}
