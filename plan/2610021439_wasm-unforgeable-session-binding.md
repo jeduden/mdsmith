@@ -24,7 +24,10 @@ never given by guessing its id. A script that patched
 `bind` or `call` before load still sees the id of every
 session, because the engine captures that patched `bind`.
 One that patches `Reflect.apply` sees the id of each
-session bound while its patch is in place. That limit is
+session bound while its patch is in place. One that
+patches `Reflect.get` sees the id of each session whose
+method is called while its patch is in place, since Go
+reads each call's arguments through it. That limit is
 documented in
 [engine-api.md](../docs/background/concepts/engine-api.md),
 not closed.
@@ -73,6 +76,8 @@ for the stale-dispose fix.
    TinyGo build also spans 2^53. Review round 3 made the
    round function AES-128 with 10 rounds, the FF1 shape,
    so ids seen after a patch do not reveal earlier ones.
+   Review round 4 draws its key from `crypto/rand`, not
+   `math/rand/v2`, whose docs rule it out for secrets.
    `Reflect`
    is not captured; the limit is documented in engine-api.md.
 2. [x] Write a failing js/wasm test that calls a raw shared

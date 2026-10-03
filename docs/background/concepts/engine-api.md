@@ -300,11 +300,14 @@ function. This is hardening, not a privilege boundary. A `bind` or
 and the id of every session. `wasm_exec.js` looks up `Reflect.apply`
 on every Go-to-JS call, so a patched `Reflect.apply` sees the same
 for each session created while the patch is in place, and every
-session object the engine resolves.
+session object the engine resolves. Go also reads the arguments of
+each call into a method through `Reflect.get`, the bound id first.
+So a patched `Reflect.get` sees the id of each session whose method
+is called while the patch is in place.
 
 A random id or a token object crosses those calls too, so the engine
-does not try to hide it. The keyed id shields only the sessions
-created while no such patch is in place.
+does not try to hide it. The keyed id shields only a session that is
+neither created nor called while such a patch is in place.
 
 An argument of the wrong type, a `BigInt` included, makes an async
 method reject and `invalidate()` do nothing. So does an options object
