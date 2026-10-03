@@ -43,15 +43,17 @@ fixed in place, but the copies remain:
 - [internal/rules/include/links.go][links] —
   `countFenceRun`, the `rewriteSkippingCode` opener
 - [internal/rules/slidevstructure/rule.go][slidev] —
-  `isCodeFence`, a prefix-only open/close toggle
-- [internal/rules/fencepos/fencepos.go][fencepos] —
-  `isFenceOpenLine`, the fallback scan in `OpenLineRange`
-  for a hand-built node with no parser position
+  `codeFenceOpenRun` / `codeFence.skip`
+- [internal/rules/fencepos/run.go][fencepos] — the run
+  count and blank-tail closer check in `OpenRun` /
+  `CloseRun` (these read the line through the block's
+  AST containers and keep that part)
 - [internal/release/website.go][website] — `fenceMarker` /
   `opensFence` / `fenceLineEmptyAfter`, the
   `applyOutsideFences` scanner
 - [internal/release/sitereleases.go][sitereleases] —
-  `openingFence` (string-based, over `fenceMarker`)
+  `openingFence` (string-based, over `fenceMarker` and
+  `opensFence`)
 
 Review round 2 found the same bug in five more copies and
 patched each one by hand: `fenceOpenRun`, `codeFenceRe`,
@@ -59,17 +61,13 @@ patched each one by hand: `fenceOpenRun`, `codeFenceRe`,
 scan all took "```a`b" as an opener. Round 3 found it in
 `applyOutsideFences` and added `opensFence`. Each fix
 duplicated the backtick check again, which is the drift
-this plan removes. Other differences remain. `isCodeFence`
-toggles on any run without matching the closer's character
-or length. The include scanners strip any amount of leading
-whitespace, while the others allow at most three spaces.
-
-The empty-fence position also has two answers.
-`fencepos.OpenLineRange` reads the parser's node position,
-so it finds the opener of an empty, info-less fence.
-`lint.FindFencedOpenLine` and the Layer 0 mirror in
-[layer0_fence.go][layer0] still return no line for that
-shape. The shared package should settle one answer.
+this plan removes. Round 3 also replaced the slidev
+toggle with a closer that matches the opener's character
+and length, deleted the fencepos fallback scan, and gave
+an empty, info-less fence one opener line in every
+package (the node position). One difference remains: the
+include scanners strip any amount of leading whitespace,
+while the others allow at most three spaces.
 
 ## Tasks
 
@@ -110,6 +108,6 @@ shape. The shared package should settle one answer.
 [headings]: ../internal/rules/include/headings.go
 [slidev]: ../internal/rules/slidevstructure/rule.go
 [links]: ../internal/rules/include/links.go
-[fencepos]: ../internal/rules/fencepos/fencepos.go
+[fencepos]: ../internal/rules/fencepos/run.go
 [sitereleases]: ../internal/release/sitereleases.go
 [website]: ../internal/release/website.go
