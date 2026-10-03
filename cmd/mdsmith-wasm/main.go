@@ -193,28 +193,30 @@ var objectToString js.Value
 // (a stored `const d = session.dispose`, a frozen session object, a
 // read-only method) finds no session and takes the disposed path: it
 // never reaches a released func, so syscall/js logs nothing. See plan
-// 2610021237. The id is registered only after every method is bound:
-// a bind that throws (one patched before load) rejects createSession
-// without leaving a Session no session object can dispose. A resolve
-// that throws after this returns still leaves one; plan 2610021800
-// tracks that.
+// 2610021237. The id is put in sessions last, after every method is
+// bound and the token registered: a bind or register that throws (one
+// patched before load) rejects createSession without leaving a Session
+// no session object can dispose. A resolve that throws after this
+// returns still leaves one until JS collects the dropped session
+// object; plan 2610021800 tracks that.
 func newSessionProxy(sess *mdsmith.Session) js.Value {
 	shared := sharedMethods()
 	id := newSessionID()
 	proxy := js.Global().Get("Object").New()
 	token := js.Global().Get("Object").New()
 	bindMethods(proxy, sessionMethodNames(), shared, id, token)
-	sessions[id] = sess
 	registerFinalizer.Invoke(token, id, token)
+	sessions[id] = sess
 	return proxy
 }
 
 // bindMethods sets each named method on proxy to its shared func bound
-// to id and token, in names order rather than Go map order, so Object.keys(session)
-// is the same for every session. A name with no shared func (the names
-// list and sharedMethodImpls drifted) is left off rather than passed to
-// bind, which would throw on every createSession;
-// TestNewSessionProxy_KeysMatchSessionMethodNames reports the drift.
+// to id and token, in names order rather than Go map order, so
+// Object.keys(session) is the same for every session. A name with no
+// shared func (the names list and sharedMethodImpls drifted) is left
+// off rather than passed to bind, which would throw on every
+// createSession; TestNewSessionProxy_KeysMatchSessionMethodNames
+// reports the drift.
 func bindMethods(proxy js.Value, names []string, shared map[string]js.Value, id int64, token js.Value) {
 	for _, name := range names {
 		if f, ok := shared[name]; ok {
@@ -240,8 +242,9 @@ var bindTo js.Value
 
 // registerFinalizer and unregisterFinalizer are the FinalizationRegistry
 // methods bound to the one registry sharedMethods creates.
-// registerFinalizer(token, id, token) arranges for finalizeSession(id) to run
-// once token is collected; unregisterFinalizer(token) cancels that, the unregister token being the target itself.
+// registerFinalizer(token, id, token) arranges for finalizeSession(id)
+// to run once token is collected; unregisterFinalizer(token) cancels
+// that, the token being its own unregister token.
 var registerFinalizer, unregisterFinalizer js.Value
 
 // sessions maps a live session's id to its Session. js/wasm runs every
@@ -464,7 +467,8 @@ var (
 // first use. main calls it before exposing the API; newSessionProxy
 // calls it too, for the tests, which never run main. The funcs are
 // never released, so every session reuses the same handler-table
-// entries. Each takes the session id as args[0].
+// entries. Each takes the session id as args[0] and its token as
+// args[1].
 func sharedMethods() map[string]js.Value {
 	sharedOnce.Do(func() {
 		proto := js.Global().Get("Function").Get("prototype")
@@ -486,10 +490,10 @@ func sharedMethods() map[string]js.Value {
 }
 
 // sharedFunc is the body of a forwarding method's shared func: it
-// calls impl.call with the live session bound as args[0] and the
-// remaining args, and returns impl.disposed() when that session is
-// disposed or args[0] is no live id, so impl.call never runs without a
-// live session.
+// calls impl.call with the live session bound as args[0] and the args
+// after the bound id and token, and returns impl.disposed() when that
+// session is disposed or args[0] is no live id, so impl.call never
+// runs without a live session.
 func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 	return func(_ js.Value, args []js.Value) any {
 		if _, sess, rest := boundSession(args); sess != nil {
@@ -502,10 +506,13 @@ func sharedFunc(impl methodImpl) func(js.Value, []js.Value) any {
 // finalizeSession is the FinalizationRegistry callback: it disposes the
 // session whose token JS collected. A session is collected only once its
 // object and every method taken off it are, because each method is bound
-// to the token. It does nothing for an id already disposed.
+// to the token. It does nothing for an id already disposed, and reads
+// the id through boundSession, so a held value that is not an integer
+// id (only a FinalizationRegistry patched before load can pass one)
+// disposes nothing rather than panicking in Value.Float.
 func finalizeSession(_ js.Value, args []js.Value) any {
-	if len(args) > 0 {
-		disposeSession(int64(args[0].Float()))
+	if id, sess, _ := boundSession(args); sess != nil {
+		disposeSession(id)
 	}
 	return js.Undefined()
 }
@@ -526,13 +533,14 @@ func disposeSession(id int64) {
 // check.
 const maxSessionID = 1 << 53
 
-// boundSession splits the session id a shared func is bound to off
-// args and looks up its live Session. sess is nil once that session is
-// disposed, and also when args[0] is not an integer number (a string,
-// a fraction, NaN, Infinity, or past ±maxSessionID), which only a
-// direct call to a shared func (never one through a session object)
-// can pass; args then comes back whole, and no fraction is truncated
-// onto a live id.
+// boundSession splits the session id and token a shared func is bound
+// to off args and looks up its live Session; a direct call that passes
+// the id alone has no token, and its rest is empty. sess is nil once
+// that session is disposed, and also when args[0] is not an integer
+// number (a string, a fraction, NaN, Infinity, or past ±maxSessionID),
+// which only a direct call to a shared func (never one through a
+// session object) can pass; args then comes back whole, and no
+// fraction is truncated onto a live id.
 func boundSession(args []js.Value) (id int64, sess *mdsmith.Session, rest []js.Value) {
 	if len(args) == 0 || jsType(args[0]) != js.TypeNumber {
 		return 0, nil, args
@@ -544,17 +552,7 @@ func boundSession(args []js.Value) (id int64, sess *mdsmith.Session, rest []js.V
 		return 0, nil, args
 	}
 	id = int64(f)
-	return id, sessions[id], boundRest(args)
-}
-
-// boundRest drops the bound id and token from the front of args. A
-// direct call that passes the id alone has no token, and its rest is
-// empty.
-func boundRest(args []js.Value) []js.Value {
-	if len(args) < 2 {
-		return nil
-	}
-	return args[2:]
+	return id, sessions[id], args[min(len(args), 2):]
 }
 
 // The async proxies reject bad arguments with these errors, built once
