@@ -66,6 +66,13 @@ func collectUntil(t *testing.T, done func() bool) {
 	require.True(t, done(), "not collected after forced GC")
 }
 
+// collectGone collects until the session with the given id has left
+// sessions.
+func collectGone(t *testing.T, id int64) {
+	t.Helper()
+	collectUntil(t, func() bool { _, ok := sessions[id]; return !ok })
+}
+
 // collectDropped drops a control session and collects until it has left
 // sessions. Anything dropped before the call that a finalizer would
 // free has then been freed too, so a test can assert that something it
@@ -73,8 +80,7 @@ func collectUntil(t *testing.T, done func() bool) {
 // ran.
 func collectDropped(t *testing.T) {
 	t.Helper()
-	control := newDroppedSession(t)
-	collectUntil(t, func() bool { _, ok := sessions[control]; return !ok })
+	collectGone(t, newDroppedSession(t))
 }
 
 // newDroppedSession creates a session and returns only its id, so the
@@ -88,7 +94,7 @@ func newDroppedSession(t *testing.T) int64 {
 func TestSessionDroppedWithoutDispose_LeavesSessions(t *testing.T) {
 	id := newDroppedSession(t)
 	require.Contains(t, sessions, id)
-	collectUntil(t, func() bool { _, ok := sessions[id]; return !ok })
+	collectGone(t, id)
 	assert.NotContains(t, sessions, id)
 }
 
@@ -114,7 +120,7 @@ func TestMethodOutlivesSessionObject(t *testing.T) {
 		assert.Zero(t, diags.Length(), "clean file has no diagnostics")
 		return id
 	}()
-	collectUntil(t, func() bool { _, ok := sessions[id]; return !ok })
+	collectGone(t, id)
 }
 
 // countCalls wraps fn in a JS function that adds one to *n per call.
@@ -217,19 +223,55 @@ func TestProxyDispose_DirectCallWithoutToken(t *testing.T) {
 	}
 }
 
+// recordFuncs swaps the funcOf seam for one that appends each func it
+// registers to the returned slice, and restores the seam when t ends.
+// A caller must not run in parallel.
+func recordFuncs(t *testing.T) *[]js.Func {
+	t.Helper()
+	oldOf := funcOf
+	t.Cleanup(func() { funcOf = oldOf })
+	made := new([]js.Func)
+	funcOf = func(fn func(js.Value, []js.Value) any) js.Func {
+		f := oldOf(fn)
+		*made = append(*made, f)
+		return f
+	}
+	return made
+}
+
+// TestBindFinalizer checks the real FinalizationRegistry yields bound
+// register and unregister funcs, and that a host whose registry is
+// missing or unusable (not a constructor, or a stub without register or
+// unregister) gets undefined for both instead of a JS exception, which
+// in main would stop the engine from loading. The finalizer func made
+// for a failed registry is released, and the test releases the one the
+// real registry holds, so no run leaves a func behind.
 func TestBindFinalizer(t *testing.T) {
+	sharedMethods() // captures bindTo, which bindFinalizer binds through
+	made := recordFuncs(t)
+	released := recordReleases(t)
 	reg, unreg := bindFinalizer(js.Global().Get("FinalizationRegistry"))
 	assert.Equal(t, js.TypeFunction, reg.Type())
 	assert.Equal(t, js.TypeFunction, unreg.Type())
+	require.Len(t, *made, 1, "one finalizer func per registry")
+	// The registry holds no entry, so its callback never runs.
+	t.Cleanup((*made)[0].Release)
+
+	fn := js.Global().Get("Function")
 	for name, ctor := range map[string]js.Value{
-		"undefined":    js.Undefined(),
-		"non-function": js.ValueOf(1),
+		"undefined":         js.Undefined(),
+		"non-function":      js.ValueOf(1),
+		"not a constructor": fn.New("return () => {}").Invoke(),
+		"no register":       fn.New(""),
+		"no unregister":     fn.New("this.register = function () {}"),
 	} {
 		t.Run(name, func(t *testing.T) {
+			*made, *released = nil, nil
 			var reg, unreg js.Value
 			require.NotPanics(t, func() { reg, unreg = bindFinalizer(ctor) })
 			assert.True(t, reg.IsUndefined(), "no registry, no register")
 			assert.True(t, unreg.IsUndefined(), "no registry, no unregister")
+			assert.Len(t, *released, len(*made), "the finalizer func of a failed registry is released")
 		})
 	}
 }

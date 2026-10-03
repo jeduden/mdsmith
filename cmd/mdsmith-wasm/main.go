@@ -244,7 +244,7 @@ var bindTo js.Value
 
 // registerFinalizer and unregisterFinalizer are the FinalizationRegistry
 // methods bound to the one registry sharedMethods creates, or undefined
-// on a host with no FinalizationRegistry (see bindFinalizer).
+// on a host with no usable FinalizationRegistry (see bindFinalizer).
 // registerFinalizer(token, id, token) arranges for finalizeSession(id)
 // to run once token is collected; unregisterFinalizer(token) cancels
 // that, the token being its own unregister token.
@@ -491,13 +491,25 @@ func sharedMethods() map[string]js.Value {
 // captured once, with bindTo, so a later patch of FinalizationRegistry
 // never sees a token. The finalizer func is never released, like the
 // shared funcs. When ctor is not a function (a host with no
-// FinalizationRegistry) both come back undefined: the engine still
-// loads, and dispose() is the only way to free a session there.
+// FinalizationRegistry), or building the registry or binding its
+// methods throws (a ctor that is not a constructor, or a stub with no
+// register or unregister), both come back undefined and the finalizer
+// func is released: main calls this before it exposes the API, so a
+// throw here would stop the engine from loading. dispose() is then the
+// only way to free a session. TinyGo does not implement recover() on
+// WebAssembly, so in a TinyGo build such a throw still ends the program.
 func bindFinalizer(ctor js.Value) (register, unregister js.Value) {
 	if jsType(ctor) != js.TypeFunction {
 		return js.Undefined(), js.Undefined()
 	}
-	registry := ctor.New(funcOf(finalizeSession))
+	cb := funcOf(finalizeSession)
+	defer func() {
+		if recover() != nil {
+			releaseFunc(cb)
+			register, unregister = js.Undefined(), js.Undefined()
+		}
+	}()
+	registry := ctor.New(cb)
 	return bindTo.Invoke(registry.Get("register"), registry),
 		bindTo.Invoke(registry.Get("unregister"), registry)
 }
