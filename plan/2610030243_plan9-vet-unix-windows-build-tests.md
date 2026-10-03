@@ -121,9 +121,9 @@ the maintainer's consent. These items live here until
 that happens, then move into their own plan (model
 sonnet, depends on this plan).
 
-**Take the guard module-wide.** `TestProcTestFilesCoverPlan9`
-lives in `internal/build` and reaches `../release` and
-`../../cmd/mdsmith-release` by relative path, so the build
+**Take the guard module-wide.** The guard test sits in
+`internal/build`. It reaches `../release` and
+`../../cmd/mdsmith-release` by relative path. So the build
 package's tests depend on how two other packages are laid
 out. These spawn-style test files go unchecked:
 
@@ -133,23 +133,27 @@ out. These spawn-style test files go unchecked:
 - `internal/rules/externallink/probe_net_test.go`
 - `internal/rules/recipesafety/register_test.go`
 
-The tag rule is the complement of `exec_other.go`'s stubs,
-which fits only `internal/build`, so each package needs a
-contract of its own. Two more gaps:
+The tag rule is the complement of `exec_other.go`'s stubs.
+That fits only `internal/build`. Each other package needs
+a contract of its own. Two more gaps remain:
 
 - About 28 untagged tests in `internal/release` and
-  `cmd/mdsmith-release` write fake `#!/bin/sh` tools with no
-  plan9 skip, and no js/wasm gate runs those packages.
+  `cmd/mdsmith-release` write fake `#!/bin/sh` tools. They
+  have no plan9 skip. No js/wasm gate runs those packages.
 - The `cp` and `cat` recipe tests skip on plan9 through
-  `skipWithoutPOSIXTools`. Recipes run argv with no shell and
-  plan9 has both tools, but CI has no plan9 runner to show
-  which tests could run there.
+  `skipWithoutPOSIXTools`. Recipes run argv with no shell,
+  and plan9 has both tools. CI has no plan9 runner to show
+  which of these tests could run there.
 
-Tasks: move the checker and its unit tests to a module-level
-test such as one under `internal/integration` and drop the
-relative paths; write the plan9 tag contract for each package
-above; add a plan9 skip or `//go:build !plan9` to the untagged
-release-tooling tests that run `sh` and extend the sh check to
-them; find out whether a plan9 runner (a 9front VM in CI) is
-practical and, if so, split `skipWithoutPOSIXTools` so the
-`cp`/`cat` tests run there.
+Follow-up tasks:
+
+1. Move the checker and its unit tests to a module-level
+   test, such as one under `internal/integration`. Drop the
+   relative paths.
+2. Write the plan9 tag contract for each package above.
+3. Add a plan9 skip, or `//go:build !plan9`, to the
+   untagged release-tooling tests that run `sh`. Extend
+   the sh check to cover them.
+4. Find out whether a plan9 runner, such as a 9front VM in
+   CI, is practical. If so, split `skipWithoutPOSIXTools` so
+   the `cp` and `cat` tests run there.
