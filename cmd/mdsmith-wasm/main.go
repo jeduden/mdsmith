@@ -534,21 +534,18 @@ func sharedMethods() map[string]js.Value {
 //
 // When ctor is not a function (a host with no FinalizationRegistry),
 // or building the registry or the WeakMap or binding their methods
-// throws (a ctor that is not a constructor, or a stub with no register
-// or unregister), every field comes back undefined: main calls this
-// before it exposes the API, so a throw here would stop the engine from
-// loading. dispose() is then the only way to free a session. TinyGo
-// does not implement recover() on WebAssembly, so in a TinyGo build
-// such a throw still ends the program.
+// fails on the JS side (a ctor that is not a constructor, a stub with
+// no register or unregister, no WeakMap global), every field comes back
+// undefined: main calls this before it exposes the API, so a throw here
+// would stop the engine from loading. dispose() is then the only way to
+// free a session. Any other panic is a Go bug and is re-raised
+// (recoverJS). TinyGo does not implement recover() on WebAssembly, so
+// in a TinyGo build such a throw still ends the program.
 func bindFinalizer(ctor js.Value) (f sessionFinalizer) {
 	if jsType(ctor) != js.TypeFunction {
 		return sessionFinalizer{}
 	}
-	defer func() {
-		if recover() != nil {
-			f = sessionFinalizer{}
-		}
-	}()
+	defer recoverJS(func() { f = sessionFinalizer{} })
 	g := js.Global()
 	queue := g.Get("Array").New()
 	registry := ctor.New(bindTo.Invoke(g.Get("Array").Get("prototype").Get("push"), queue))
@@ -558,6 +555,22 @@ func bindFinalizer(ctor js.Value) (f sessionFinalizer) {
 		unregister: bindTo.Invoke(registry.Get("unregister"), registry),
 		keep:       bindTo.Invoke(weakMap.Get("prototype").Get("set"), weakMap.New()),
 		queue:      queue,
+	}
+}
+
+// recoverJS, deferred, calls onJS when the function panicked with one
+// of the values syscall/js raises for a JS-side failure: a js.Error (a
+// JS exception from Call, Invoke, or New) or a *js.ValueError (a Value
+// method on the wrong type, such as Get on undefined). Any other panic
+// is re-raised unchanged, so a Go bug is not mistaken for a host
+// without the JS feature.
+func recoverJS(onJS func()) {
+	switch r := recover(); r.(type) {
+	case nil:
+	case js.Error, *js.ValueError:
+		onJS()
+	default:
+		panic(r)
 	}
 }
 

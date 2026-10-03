@@ -324,6 +324,18 @@ func TestBindFinalizer(t *testing.T) {
 	require.True(t, js.Global().Get("Array").Call("isArray", f.queue).Bool(), "queue is an array")
 	assert.Zero(t, f.queue.Length())
 	assert.Empty(t, *made, "the cleanup callback is no Go func")
+	// funcOf only sees Go funcs made through the seam; a callback built
+	// with js.FuncOf directly would slip past it. A Go func reaches JS as
+	// a wasm_exec.js wrapper whose source is plain JS, while a bound
+	// native function prints as [native code].
+	holder := js.Global().Get("Object").New()
+	recording := js.Global().Get("Function").New("h",
+		"return class extends FinalizationRegistry { constructor(cb) { super(cb); h.cb = cb; } }").Invoke(holder)
+	bindFinalizer(recording)
+	cb := holder.Get("cb")
+	require.Equal(t, js.TypeFunction, cb.Type(), "the registry got a cleanup callback")
+	src := js.Global().Get("Function").Get("prototype").Get("toString").Call("call", cb).String()
+	assert.Contains(t, src, "[native code]", "the cleanup callback is a native function, not a Go func")
 
 	fn := js.Global().Get("Function")
 	for name, ctor := range map[string]js.Value{
@@ -393,3 +405,39 @@ func TestBindMethods_TokenOnDisposeAndKeepAlive(t *testing.T) {
 		assert.False(t, k.Equal(proxy.Get("dispose")), "dispose holds the token itself")
 	}
 }
+
+// TestRecoverJS checks recoverJS swallows only the panics syscall/js
+// raises for a JS-side failure, so a Go bug in bindFinalizer fails at
+// load instead of silently turning off dropped-session collection.
+func TestRecoverJS(t *testing.T) {
+	run := func(p func()) (caught bool) {
+		defer recoverJS(func() { caught = true })
+		p()
+		return false
+	}
+	assert.False(t, run(func() {}), "no panic, no onJS")
+	assert.True(t, run(func() { panic(js.Error{Value: js.ValueOf("boom")}) }), "a JS exception")
+	assert.True(t, run(func() { js.Undefined().Get("x") }), "a Value method on the wrong type")
+	assert.PanicsWithValue(t, "go bug", func() { run(func() { panic("go bug") }) })
+	assert.Panics(t, func() {
+		run(func() { _ = indexEmpty(1) })
+	}, "a Go runtime error is re-raised")
+}
+
+// TestBindFinalizer_NoWeakMap checks a host with a FinalizationRegistry
+// but no WeakMap (a Value method on undefined, so a *js.ValueError
+// rather than a JS exception) still loads, without the fallback.
+func TestBindFinalizer_NoWeakMap(t *testing.T) {
+	sharedMethods()
+	g := js.Global()
+	weakMap := g.Get("WeakMap")
+	g.Delete("WeakMap")
+	t.Cleanup(func() { g.Set("WeakMap", weakMap) })
+	var f sessionFinalizer
+	require.NotPanics(t, func() { f = bindFinalizer(g.Get("FinalizationRegistry")) })
+	assert.True(t, f.register.IsUndefined(), "no WeakMap, no register")
+	assert.True(t, f.queue.IsUndefined(), "no WeakMap, no queue")
+}
+
+// indexEmpty indexes an empty slice at i, a Go runtime error for any i.
+func indexEmpty(i int) int { return []int{}[i] }
