@@ -27,7 +27,7 @@
           <p>No stable release has been published yet.</p>
         {{ end }}
         <h2 id="candidates">Release candidates</h2>
-        <p>Pre-releases of the next version, cut on every merge to <code>main</code> since the latest stable release. Each lists every change since that release.</p>
+        <p>Pre-releases of the next version, cut on every merge to <code>main</code> since the latest stable release. Each lists the changes since the previous candidate; the first lists every change since the latest stable release.</p>
         {{ range .candidates }}
           {{ partial "release-entry.html" (dict "page" $ "release" . "open" false) }}
         {{ else }}
