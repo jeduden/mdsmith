@@ -1,7 +1,7 @@
 ---
 id: 2610021028
 title: Gate untagged internal/build tests under js/wasm in CI
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   CI's `test-js-wasm` step runs only tests that compile
@@ -35,7 +35,7 @@ still fails about 25 tests that start real processes
 
 ## Tasks
 
-1. List every `internal/build` test that fails under
+1. [x] List every `internal/build` test that fails under
    `GOOS=js GOARCH=wasm` and move each one into a
    `unix || windows` file. Keep the pure ones untagged.
 2. Add a CI step, through `mdsmith-release` per

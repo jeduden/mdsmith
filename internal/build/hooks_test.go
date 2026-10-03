@@ -63,13 +63,6 @@ func TestRunHooks_Empty_ReturnsNil(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-func TestRunHooks_SingleSuccess(t *testing.T) {
-	var w bytes.Buffer
-	result := RunHooks(context.Background(), []HookEntry{echoEntry("greet", "hi")}, t.TempDir(), &w)
-	assert.Nil(t, result)
-	assert.Contains(t, w.String(), "greet: OK")
-}
-
 func TestRunHooks_SingleFail_ReturnsResult(t *testing.T) {
 	var w bytes.Buffer
 	result := RunHooks(context.Background(), []HookEntry{failEntry("bad")}, t.TempDir(), &w)
@@ -93,32 +86,6 @@ func TestRunHooks_StopsOnFirstFailure(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "second hook should not have run after first failed")
 }
 
-func TestRunHooks_MultipleSuccess(t *testing.T) {
-	dir := t.TempDir()
-	hooks := []HookEntry{
-		sentinelEntry(t, dir, "a", "a.txt"),
-		sentinelEntry(t, dir, "b", "b.txt"),
-	}
-	var w bytes.Buffer
-	result := RunHooks(context.Background(), hooks, dir, &w)
-	assert.Nil(t, result)
-	_, errA := os.Stat(filepath.Join(dir, "a.txt"))
-	_, errB := os.Stat(filepath.Join(dir, "b.txt"))
-	assert.NoError(t, errA, "sentinel a.txt must exist")
-	assert.NoError(t, errB, "sentinel b.txt must exist")
-}
-
-func TestRunHooks_UsesRootAsWorkDir(t *testing.T) {
-	dir := t.TempDir()
-	// The hook creates a file named "ok" — relative to cwd (= root).
-	hook := HookEntry{Tokens: []string{"touch", "ok"}, Name: "sentinel"}
-	var w bytes.Buffer
-	result := RunHooks(context.Background(), []HookEntry{hook}, dir, &w)
-	assert.Nil(t, result)
-	_, err := os.Stat(filepath.Join(dir, "ok"))
-	assert.NoError(t, err, "sentinel must be created in root")
-}
-
 func TestRunHooks_NameFallsBackToFirstToken(t *testing.T) {
 	var w bytes.Buffer
 	hook := HookEntry{Tokens: []string{"echo", "hello"}} // no Name set
@@ -132,29 +99,6 @@ func TestRunAfterHooks_Empty_ReturnsNil(t *testing.T) {
 	var w bytes.Buffer
 	result := RunAfterHooks(context.Background(), nil, t.TempDir(), &w)
 	assert.Nil(t, result)
-}
-
-func TestRunAfterHooks_AllSucceed_ReturnsNil(t *testing.T) {
-	var w bytes.Buffer
-	result := RunAfterHooks(context.Background(),
-		[]HookEntry{echoEntry("a", "1"), echoEntry("b", "2")},
-		t.TempDir(), &w)
-	assert.Nil(t, result)
-}
-
-func TestRunAfterHooks_FailContinues(t *testing.T) {
-	dir := t.TempDir()
-	sentinel := filepath.Join(dir, "second-ran")
-	hooks := []HookEntry{
-		failEntry("first"),
-		{Tokens: []string{"touch", sentinel}, Name: "second"},
-	}
-	var w bytes.Buffer
-	result := RunAfterHooks(context.Background(), hooks, dir, &w)
-	require.NotNil(t, result, "first failure must be returned")
-	// Second hook must still have run.
-	_, err := os.Stat(sentinel)
-	assert.NoError(t, err, "second hook should have run despite first failure")
 }
 
 func TestRunAfterHooks_ReturnsFirstFailure(t *testing.T) {
@@ -194,17 +138,6 @@ func TestRunHook_ExitCodePreserved(t *testing.T) {
 
 // --- output lines ---
 
-func TestRunHooks_OutputLines(t *testing.T) {
-	var w bytes.Buffer
-	hooks := []HookEntry{
-		{Tokens: []string{"echo", "hello"}, Name: "greet"},
-	}
-	RunHooks(context.Background(), hooks, t.TempDir(), &w)
-	out := w.String()
-	assert.Contains(t, out, "hook greet: running")
-	assert.Contains(t, out, "hook greet: OK")
-}
-
 func TestRunAfterHooks_OutputLines_OnFail(t *testing.T) {
 	var w bytes.Buffer
 	hooks := []HookEntry{failEntry("teardown")}
@@ -225,15 +158,6 @@ func TestRunHooks_HookEntryEmptyTokens_Skipped(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-// Regression: zero-exit hook must not produce a FAIL line.
-func TestRunHooks_SuccessNoFailLine(t *testing.T) {
-	var w bytes.Buffer
-	hooks := []HookEntry{echoEntry("x", "hello")}
-	result := RunHooks(context.Background(), hooks, t.TempDir(), &w)
-	assert.Nil(t, result)
-	assert.NotContains(t, w.String(), "FAIL")
-}
-
 // ExitCode on a non-existent binary returns 1 (exec.ExitError path or start error).
 func TestRunHook_NonExistentBinary_ReturnsFailure(t *testing.T) {
 	result := runHook(context.Background(), []string{"/no/such/binary"}, t.TempDir())
@@ -246,15 +170,6 @@ func TestRunAfterHooks_EmptyTokens_Skipped(t *testing.T) {
 	hooks := []HookEntry{{Tokens: nil, Name: "empty"}}
 	result := RunAfterHooks(context.Background(), hooks, t.TempDir(), silentDiscard{})
 	assert.Nil(t, result)
-}
-
-func TestRunAfterHooks_UnnamedHook_UsesFirstToken(t *testing.T) {
-	var w bytes.Buffer
-	h := echoEntry("echo", "hello")
-	h.Name = "" // force the name-from-token path
-	result := RunAfterHooks(context.Background(), []HookEntry{h}, t.TempDir(), &w)
-	assert.Nil(t, result)
-	assert.Contains(t, w.String(), "hook echo: running")
 }
 
 // TestRunHook_SignalKilled_NormalizesExitCode exercises the code < 0 branch:
