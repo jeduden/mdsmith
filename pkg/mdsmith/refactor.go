@@ -138,25 +138,11 @@ func toRefactorPlan(p refactor.Plan) RefactorPlan {
 // workspace, read through the session's Workspace (with the edited
 // buffer overlaid when a rename supplies one).
 type sessionRefactorWorkspace struct {
+	refactor.IndexEdges
 	s             *Session
-	idx           *index.Index
 	overlayURI    string
 	overlaySource []byte
 }
-
-func (w *sessionRefactorWorkspace) IncomingAnchorEdges(file, slug string) []index.Edge {
-	return w.idx.IncomingEdges(file, slug)
-}
-
-func (w *sessionRefactorWorkspace) IncomingPathEdges(file string) []index.Edge {
-	return w.idx.IncomingPathEdges(file)
-}
-
-func (w *sessionRefactorWorkspace) IncomingWikilinkEdges(stem string) []index.Edge {
-	return w.idx.IncomingWikilinkEdges(stem)
-}
-
-func (w *sessionRefactorWorkspace) Files() []string { return w.idx.Files() }
 
 func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
@@ -200,8 +186,8 @@ func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte
 		return s.ws.ReadFile(rel)
 	})
 	return &sessionRefactorWorkspace{
+		IndexEdges:    refactor.NewIndexEdges(idx),
 		s:             s,
-		idx:           idx,
 		overlayURI:    overlayURI,
 		overlaySource: overlaySource,
 	}
