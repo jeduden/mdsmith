@@ -278,9 +278,8 @@ func TestResolveWriteMode(t *testing.T) {
 
 // TestComputeRenamePlan pins every exit path computeRenamePlan maps
 // from refactor.Rename: -1 with a plan on success, 1 when an explicit
-// kind finds nothing (or a heading rename is a no-op), 2 on an
-// ambiguous or absent auto-detect, a path-shaped request, or an engine
-// conflict.
+// kind finds nothing (or a rename changes no byte), 2 on an ambiguous
+// or absent auto-detect, a path-shaped request, or an engine conflict.
 func TestComputeRenamePlan(t *testing.T) {
 	renameWorkspace(t)
 	ws, src, code := buildRenameWorkspace(renameOptions{}, "a.md")
@@ -311,6 +310,10 @@ func TestComputeRenamePlan(t *testing.T) {
 	}{
 		{"no-op heading", src, "Setup", "Setup", "", 1, `nothing to rename for heading "Setup"`},
 		{"no-op label", labelSrc, "docs", "docs", "", 1, `nothing to rename for label "docs"`},
+		{"same-bytes heading", []byte("# *Setup*\n"), "Setup", "*Setup*", "", 1,
+			`nothing to rename for heading "Setup"`},
+		{"missing label, colliding new name", labelSrc, "ghost", "docs", refactor.KindLabel, 1,
+			`no link reference "ghost" in a.md`},
 		{"missing heading", src, "Ghost", "X", refactor.KindHeading, 1, `no heading "Ghost" in a.md`},
 		{"missing label", labelSrc, "ghost", "x", refactor.KindLabel, 1, `no link reference "ghost" in a.md`},
 		{"ambiguous", []byte("# docs\n\nSee [docs].\n\n[docs]: u\n"), "docs", "x", "", 2,

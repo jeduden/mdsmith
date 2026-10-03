@@ -110,8 +110,8 @@ this duplication:
     "docs"` and `Session.Rename` errors with the same text.
 12. [x] Review round 2: both hosts hard-coded "heading or
     label" in their selector messages, flag help, and
-    ambiguity hints. `refactor.RenameKinds` is now the one
-    list `ParseRenameKind` accepts, and
+    ambiguity hints. The unexported `renameKinds` is now
+    the one list `ParseRenameKind` accepts, and
     `refactor.RenameKindList(verb)` renders it, so every
     host message names a new kind without an edit. The
     rendered text is unchanged.
@@ -121,6 +121,16 @@ this duplication:
     consult it. It now passes a `lazyRefactorWorkspace`
     that builds the index on first use, so only a heading
     rename pays for the walk.
+14. [x] Review round 3: two outcomes still disagreed with
+    the exit-code table. A heading renamed to its own
+    source spelling (`# *Setup*`, Setup → `*Setup*`)
+    rewrote identical bytes and exited 0; it now ends in
+    `NothingToRenameError` like the label case. An explicit
+    `--as label` naming a missing label ran `LinkRef`'s
+    new-name checks first, so `ghost` → `docs` reported a
+    collision with `[docs]` (exit 2). `Rename` now checks
+    that the label exists before `LinkRef` runs, as it does
+    for a heading, and reports `no link reference` (exit 1).
 
 ## Acceptance Criteria
 
@@ -129,7 +139,9 @@ this duplication:
 - [x] `cmd/mdsmith rename` produces the same user-visible
       messages and exit codes as before the change, except
       that a no-op label rename now exits 1 like a no-op
-      heading rename (task 11).
+      heading rename (task 11), a byte-identical heading
+      rename exits 1, and an explicit `--as label` for a
+      missing label exits 1 whatever the new name (task 14).
       `pkg/mdsmith`'s `Session.Rename` (and its WASM binding)
       keeps its error text, but now errors where the CLI
       exits 1 instead of returning an empty plan: a

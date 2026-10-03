@@ -25,13 +25,7 @@ const (
 // messages all derive from it.
 var renameKinds = []RenameKind{KindHeading, KindLabel}
 
-// RenameKinds returns a copy of the explicit kinds ParseRenameKind
-// accepts, in the order hosts list them.
-func RenameKinds() []RenameKind {
-	return append([]RenameKind(nil), renameKinds...)
-}
-
-// RenameKindList renders RenameKinds as an English "a or b" list,
+// RenameKindList renders renameKinds as an English "a or b" list,
 // formatting each kind with verb ("%s" bare, "%q" quoted), so a host's
 // invalid-selector message names every valid kind without
 // hard-coding them.
@@ -152,6 +146,12 @@ func Rename(ws Workspace, fileKey string, source []byte, kind RenameKind, oldNam
 		}
 		line = l
 	case KindLabel:
+		// Checked before LinkRef validates newName, as the heading
+		// branch does, so a missing label reports as missing rather
+		// than as a collision with (or a bad spelling of) newName.
+		if !hasLinkRef(source, oldName) {
+			return Plan{}, MissingSymbolError{Kind: KindLabel, Name: oldName}
+		}
 	default:
 		return Plan{}, InvalidRenameKindError{Kind: string(kind)}
 	}
@@ -162,36 +162,51 @@ func Rename(ws Workspace, fileKey string, source []byte, kind RenameKind, oldNam
 }
 
 // renameHeadingAt runs the heading rename for the heading on the
-// 1-based source line, turning Heading's empty no-op plan into
-// ErrNothingToRename.
+// 1-based source line, turning a no-op plan into a
+// NothingToRenameError: Heading's empty plan for a same-text rename,
+// and a plan whose only edits rewrite fileKey to the bytes it already
+// has (`# *Setup*` renamed Setup → *Setup*). Unchanged heading bytes
+// shift no slug, so such a plan touches no other file.
 func renameHeadingAt(ws Workspace, fileKey string, source []byte, line int, oldName, newName string) (Plan, error) {
 	p, err := Heading(ws, fileKey, fileKey, source, line, oldName, newName)
 	if err != nil {
 		return Plan{}, err
 	}
-	if len(p.Edits) == 0 {
+	if len(p.Edits) == 0 || onlyUnchangedSelf(p, fileKey, source) {
 		return Plan{}, NothingToRenameError{Kind: KindHeading, Name: oldName}
 	}
 	return p, nil
 }
 
-// renameLabel runs the link-ref rename, turning a plan with no edits
-// (no definition of oldName) into a MissingSymbolError and a plan
-// whose edits leave source byte-identical into a NothingToRenameError,
-// so a same-name label rename reports like a same-name heading rename.
+// onlyUnchangedSelf reports whether p edits fileKey alone and those
+// edits leave source byte-identical. A plan that edits some other file
+// is a real rename even when fileKey's own bytes do not change.
+func onlyUnchangedSelf(p Plan, fileKey string, source []byte) bool {
+	own, ok := p.Edits[fileKey]
+	return ok && len(p.Edits) == 1 && editsLeaveUnchanged(source, own)
+}
+
+// renameLabel runs the link-ref rename for a label Rename has already
+// found defined in source, turning a plan whose edits leave source
+// byte-identical into a NothingToRenameError, so a same-name label
+// rename reports like a same-name heading rename.
 func renameLabel(fileKey string, source []byte, oldName, newName string) (Plan, error) {
 	p, err := LinkRef(fileKey, source, oldName, newName)
 	if err != nil {
 		return Plan{}, err
 	}
-	edits := p.Edits[fileKey]
-	if len(edits) == 0 {
-		return Plan{}, MissingSymbolError{Kind: KindLabel, Name: oldName}
-	}
-	if out, err := ApplyEdits(source, edits); err == nil && bytes.Equal(out, source) {
+	if editsLeaveUnchanged(source, p.Edits[fileKey]) {
 		return Plan{}, NothingToRenameError{Kind: KindLabel, Name: oldName}
 	}
 	return p, nil
+}
+
+// editsLeaveUnchanged reports whether applying edits to source yields
+// source byte for byte. A plan ApplyEdits rejects is not a no-op: the
+// host's own apply step reports it.
+func editsLeaveUnchanged(source []byte, edits []Edit) bool {
+	out, err := ApplyEdits(source, edits)
+	return err == nil && bytes.Equal(out, source)
 }
 
 // detectRenameKind decides whether oldName names a heading or a

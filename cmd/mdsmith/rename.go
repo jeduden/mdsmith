@@ -253,10 +253,9 @@ func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 
 // computeRenamePlan runs the shared refactor.Rename dispatch — kind
 // from --as, or "" to auto-detect from src — and maps its outcome to
-// the CLI exit contract: 1 when an explicit kind finds nothing or a
-// heading rename is a no-op, 2 on a conflict, invalid input, an
-// ambiguous or absent auto-detect, or a request that looks like a file
-// move.
+// the CLI exit contract: 1 when an explicit kind finds nothing or the
+// rename changes no byte, 2 on a conflict, invalid input, an ambiguous
+// or absent auto-detect, or a request that looks like a file move.
 func computeRenamePlan(
 	ws cliRenameWorkspace, target string, src []byte,
 	oldName, newName string, kind refactor.RenameKind,

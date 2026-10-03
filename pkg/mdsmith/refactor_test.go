@@ -141,6 +141,12 @@ func TestSession_Rename_LabelNotFound(t *testing.T) {
 	_, err := s.Rename("a.md", src, "label", "ghost", "x")
 	require.Error(t, err)
 	assert.Equal(t, `no link reference "ghost" in a.md`, err.Error())
+
+	// The missing label is reported, not a collision with the existing
+	// [docs] it was asked to be renamed to.
+	_, err = s.Rename("a.md", src, "label", "ghost", "docs")
+	require.Error(t, err)
+	assert.Equal(t, `no link reference "ghost" in a.md`, err.Error())
 }
 
 func TestSession_Rename_HeadingCollisionErrors(t *testing.T) {
