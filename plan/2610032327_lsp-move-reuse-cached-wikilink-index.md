@@ -10,7 +10,10 @@ summary: >-
   MDS027. The walk also opens an `os.Root` through
   `lint.OpenRootFS` that no caller ever closes. Reuse the
   cached index when it is fresh, and give every
-  `OpenRootFS` caller a way to close its root.
+  `OpenRootFS` caller a way to close its root. Also give the
+  move its own seam, so a heading rename no longer carries a
+  wikilink index, and build `Session.Move`'s two indexes from
+  one walk.
 model: opus
 depends-on: [2610022104]
 ---
@@ -45,6 +48,18 @@ that reason.
 open until garbage collection. MDS027, `mdsmith list
 backlinks`, the CLI move, and the LSP move all leak it.
 
+The PR #904 pre-merge review found three more costs on the
+same seam. [heading.go](../internal/refactor/heading.go)
+`Workspace` makes every heading-rename surface supply
+`WikilinkIndex`, which only a move reads. So `renameHeading`
+takes a config snapshot and builds a closure it never calls.
+`lspRenameWorkspace.WikilinkIndex` calls its `wikilinks`
+field with no nil check, so a literal workspace panics once a
+move reaches a `[[stem]]` edge.
+[refactor.go](../pkg/mdsmith/refactor.go)
+`sessionRefactorWorkspace` walks its FS snapshot twice: once
+for the edge index and once for `WikilinkIndex`.
+
 ## Design
 
 - Read the session's cached index when the LSP has seen a
@@ -68,7 +83,19 @@ backlinks`, the CLI move, and the LSP move all leak it.
    fails.
 4. Close the root in `linkgraph.WikilinkIndexAtDir`,
    backlinks, and the MDS027 run cache.
-5. Run `go test ./...` and the linter.
+5. Write a failing compile-level test: a heading-rename
+   stub with no `WikilinkIndex` method satisfies the seam
+   `refactor.Heading` takes. Split `Workspace` into that seam
+   and a move seam that adds the path, wikilink-edge, and
+   `WikilinkIndex` questions.
+6. Build the LSP heading workspace without the wikilink
+   closure, and the move workspace only through a
+   constructor that sets it.
+7. Write a failing `Session.Move` test that counts FS walks:
+   a move with a `[[stem]]` edge walks once. Collect the
+   walked paths in the edge-index walk and build the index
+   with `linkgraph.NewWikilinkIndexFromPaths`.
+8. Run `go test ./...` and the linter.
 
 ## Acceptance Criteria
 
@@ -78,5 +105,11 @@ backlinks`, the CLI move, and the LSP move all leak it.
       walks fresh and counts a gitignored same-stem file
 - [ ] No `lint.OpenRootFS` caller leaves its `os.Root` open
       after its walk ends
+- [ ] `refactor.Heading` accepts a workspace with no
+      `WikilinkIndex` method, and an LSP heading rename builds
+      no wikilink closure
+- [ ] No LSP move workspace can hold a nil wikilink closure
+- [ ] `Session.Move` with a `[[stem]]` edge walks the
+      workspace FS once
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues
