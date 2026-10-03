@@ -280,8 +280,10 @@ func listJSOnlyFiles(d jsWasmDeps, mode, pkg string, listFlags ...string) ([]str
 }
 
 // testFuncsIn collects the Test functions declared across files, in
-// file then source order. None is not an error here: under --all a
-// js/wasm-only file may hold only helpers or a TestMain.
+// file then source order, each name once: an internal and an external
+// test file may both declare TestX, and go test reports both under the
+// one name. None is not an error here: under --all a js/wasm-only file
+// may hold only helpers or a TestMain.
 func testFuncsIn(d jsWasmDeps, files []string) ([]string, error) {
 	var names []string
 	for _, f := range files {
@@ -293,7 +295,11 @@ func testFuncsIn(d jsWasmDeps, files []string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
-		names = append(names, got...)
+		for _, n := range got {
+			if !slices.Contains(names, n) {
+				names = append(names, n)
+			}
+		}
 	}
 	return names, nil
 }

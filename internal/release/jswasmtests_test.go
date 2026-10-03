@@ -768,6 +768,12 @@ func TestTestFuncsIn(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"TestB", "TestA"}, got)
 
+	// An internal and an external test file may both declare TestA;
+	// the name is listed once so a skip is not counted twice.
+	got, err = testFuncsIn(jsWasmDeps{readFile: read}, []string{"A", "B", "A"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"TestA", "TestB"}, got)
+
 	// No Test function is not an error here; the default mode checks.
 	none := func(string) ([]byte, error) { return []byte("package p\n"), nil }
 	got, err = testFuncsIn(jsWasmDeps{readFile: none}, []string{"x_test.go"})
