@@ -130,7 +130,7 @@ func MoveWithStemEdits(ws Workspace, src, dst string) (Plan, map[string][]Edit, 
 	r := &destResolver{ws: ws, src: src}
 	appendReferrerEdits(changes, ws, p, r, src, dst)
 	stems := map[string][]Edit{}
-	appendWikilinkStemEdits(stems, ws, src, dst)
+	appendWikilinkStemEdits(stems, ws, r, src, dst)
 	for key, edits := range stems {
 		changes[key] = append(changes[key], edits...)
 	}
@@ -296,7 +296,8 @@ type destRef struct {
 
 // destResolver reads destinations for a move of src. It also holds the
 // workspace file list, read once per move and normalized, which the
-// referrer scan and the listed checks share.
+// referrer scan, the listed checks, and the wikilink holder count of a
+// workspace with no wikilink index share.
 type destResolver struct {
 	ws    Workspace
 	src   string
@@ -852,12 +853,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	// blocks the rewrite.
 	idx := ws.WikilinkIndex()
 	if idx == nil {
-		files := ws.Files()
-		listed := make([]string, len(files))
-		for i, f := range files {
-			listed[i] = index.NormalizePath(f)
-		}
-		idx = linkgraph.NewWikilinkIndexFromPaths(listed)
+		idx = linkgraph.NewWikilinkIndexFromPaths(r.paths())
 	}
 	oldHolders, newHolders := wikilinkKeyHolders(idx, src, oldStem, newKey, dstIsMarkdown)
 	if oldHolders > 1 || newHolders > 0 {

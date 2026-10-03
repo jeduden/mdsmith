@@ -364,7 +364,7 @@ func TestAppendWikilinkStemEdits_DefensiveBranches(t *testing.T) {
 	}
 	// Basename changes (api -> service) so the pass runs, but every edge
 	// hits a skip branch.
-	appendWikilinkStemEdits(changes, ws, "api.md", "service.md")
+	appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: "api.md"}, "api.md", "service.md")
 	assert.Empty(t, changes)
 }
 
@@ -488,8 +488,9 @@ func (w *countingWorkspace) Files() []string {
 
 // TestMove_ListsFilesOnce locks that a move reads the workspace file
 // list once and shares the normalized copy between the referrer scan,
-// the listed-source check, and the wikilink holder count, instead of
-// copying the list per pass.
+// the listed-source check, and, for a workspace with no wikilink
+// index, the wikilink holder count, instead of copying the list per
+// pass.
 func TestMove_ListsFilesOnce(t *testing.T) {
 	ws := &countingWorkspace{memWorkspace: newMemWorkspace(map[string]string{
 		"docs/api.md": "# API\n",
@@ -499,7 +500,19 @@ func TestMove_ListsFilesOnce(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, plan.Edits["index.md"])
 	assert.Equal(t, 1, ws.files)
+
+	nilIdx := &nilIndexCountingWorkspace{countingWorkspace{memWorkspace: ws.memWorkspace}}
+	plan, err = Move(nilIdx, "docs/api.md", "docs/service.md")
+	require.NoError(t, err)
+	require.NotEmpty(t, plan.Edits["index.md"])
+	assert.Equal(t, 1, nilIdx.files, "the nil-index holder count reuses the list")
 }
+
+// nilIndexCountingWorkspace is a countingWorkspace with no wikilink
+// index, so the move counts wikilink holders in the listed files.
+type nilIndexCountingWorkspace struct{ countingWorkspace }
+
+func (*nilIndexCountingWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex { return nil }
 
 // TestAppendWikilinkStemEdits_StaleEdgeKeyMismatch locks that an edge
 // whose column now holds a link to another stem, or a typed name such
@@ -523,7 +536,7 @@ func TestAppendWikilinkStemEdits_StaleEdgeKeyMismatch(t *testing.T) {
 				files:   []string{"api.md", "d.md"},
 				sources: map[string][]byte{"d.md": []byte(row + "\n")},
 			}
-			appendWikilinkStemEdits(changes, ws, "api.md", "service.md")
+			appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: "api.md"}, "api.md", "service.md")
 			assert.Len(t, changes["d.md"], want)
 		})
 	}
