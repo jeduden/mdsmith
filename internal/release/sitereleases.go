@@ -291,10 +291,10 @@ func stripContainers(line string, cs []fenceContainer) (string, bool) {
 // openingFence returns the fence character and run length when s
 // (indent removed) opens a fenced code block, or (0, 0). A backtick
 // fence's info string cannot hold a backtick, so "```go``` text" is
-// inline code in a paragraph, not a fence.
+// inline code in a paragraph, not a fence (opensFence's rule).
 func openingFence(s string) (byte, int) {
 	c, n := fenceMarker([]byte(s))
-	if c == '`' && strings.IndexByte(s[n:], '`') >= 0 {
+	if !opensFence([]byte(s), c, n) {
 		return 0, 0
 	}
 	return c, n
