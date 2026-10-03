@@ -187,8 +187,10 @@ func isIndentedCodeBlock(line []byte) bool {
 
 // openingFence reports the fence character and run length of a line
 // that begins (after up to 3 spaces of indentation) with a sequence
-// of three or more backticks or tildes. Returns (0, 0) if the line
-// is not a fence.
+// of three or more backticks or tildes. Per CommonMark (and goldmark),
+// a backtick fence's info string may not contain a backtick, so a
+// line like "```a`b" is prose, not an opener. Returns (0, 0) if the
+// line is not a fence.
 func openingFence(line []byte) (byte, int) {
 	// Allow up to three spaces of indentation per CommonMark.
 	i := 0
@@ -208,6 +210,9 @@ func openingFence(line []byte) (byte, int) {
 		run++
 	}
 	if run < 3 {
+		return 0, 0
+	}
+	if c == '`' && bytes.IndexByte(line[i:], '`') >= 0 {
 		return 0, 0
 	}
 	return c, run
