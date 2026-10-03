@@ -1,7 +1,7 @@
 ---
 id: 2610021452
 title: Free wasm sessions dropped without dispose
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   The wasm engine keeps each Go Session in a
@@ -9,10 +9,11 @@ summary: >-
   `dispose()` runs. A host that drops a session
   object without calling `dispose()` leaks that
   Session, with its workspace and parse caches, for
-  the life of the engine. Bind a per-session token
-  into every method and register it with a
-  `FinalizationRegistry` that disposes its id once the
-  object and every method taken off it are collected.
+  the life of the engine. Tie a per-session token to
+  every method and register it with a
+  `FinalizationRegistry` that queues its id, for the
+  next engine call to dispose, once the object and
+  every method taken off it are collected.
 ---
 # Free wasm sessions dropped without dispose
 
@@ -45,20 +46,34 @@ red/green.
 
 1. Create one `FinalizationRegistry` at load whose
    callback disposes the id it is handed, and capture
-   its `register` as `main` captures `bind`.
+   its `register` as `main` captures `bind`. As built
+   after review: the callback is a bound native
+   `Array.prototype.push` onto a private queue, which
+   every engine entry point drains, so a collection
+   never calls into Go (plan
+   [2610030846](2610030846_wasm-finalizer-after-exit.md)).
 2. Write a failing js/wasm test. Create a session, drop
    it, run a forced GC (`node --expose-gc` and
    `globalThis.gc()`, if the test runner allows it),
    then assert the id has left `sessions`. If forced GC
    is not available, test the callback directly with a
-   live id instead.
+   live id instead. As built: `go_js_wasm_exec` passes
+   no `--expose-gc`, so the test turns the flag on at
+   run time with `v8.setFlagsFromString` and reads `gc`
+   out of `vm.runInNewContext`. A GC test skips when
+   neither works, and `test-js-wasm` fails a skipped
+   test by name.
 3. In `newSessionProxy`, create one token object per
    session, bind it into every method after the id, and
    register the token with its id. Do not register the
    session object: a method taken off it outlives it,
    and the callback would dispose a session that method
    still uses. Bound arguments keep the token alive
-   while any method is reachable. Do not keep the token
+   while any method is reachable. As built after review:
+   only `dispose` binds the token, so a hot-path call
+   carries no extra object, and a private `WeakMap` maps
+   every other method to the token, which keeps it
+   alive just the same. Do not keep the token
    on the Go side as an unregister token: a `js.Value`
    held in Go pins it, so it is never collected.
    `proxyDispose` gets the bound id and the token, and
@@ -70,18 +85,24 @@ red/green.
 4. Check the WASM size budgets with
    [size_test.go](../cmd/mdsmith-wasm/size_test.go), and
    update the engine-api page to describe the fallback.
+5. Added during review: a host with no usable
+   `FinalizationRegistry` (none, a ctor that is not a
+   constructor, or a stub with no `register` or
+   `unregister`) still loads the engine. Register and
+   unregister come back undefined, and only `dispose()`
+   frees a session there.
 
 ## Acceptance Criteria
 
-- [ ] A session dropped without `dispose()` leaves
+- [x] A session dropped without `dispose()` leaves
       `sessions` once its object is collected
-- [ ] A method taken off a session object keeps working
+- [x] A method taken off a session object keeps working
       after the object alone is collected
-- [ ] An explicit `dispose()` followed by collection
+- [x] An explicit `dispose()` followed by collection
       disposes the Session only once
-- [ ] A create/dispose loop still holds a fixed number
+- [x] A create/dispose loop still holds a fixed number
       of registered funcs and registry entries
-- [ ] All tests pass: `go test ./...` and
+- [x] All tests pass: `go test ./...` and
       `go run ./cmd/mdsmith-release test-js-wasm ./cmd/mdsmith-wasm`
-- [ ] `go tool golangci-lint run` reports no issues,
+- [x] `go tool golangci-lint run` reports no issues,
       on the host and with `GOOS=js GOARCH=wasm`
