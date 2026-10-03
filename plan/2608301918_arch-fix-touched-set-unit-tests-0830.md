@@ -116,7 +116,15 @@ Both are `tax`: neither sits on a public surface by itself
    Fixtures for MDS010, MDS011, MDS020 (via a new
    `front-matter:` fixture key), MDS021, and MDS073 pin
    each change.
-10. [x] `go build ./...` and `go test ./...` pass.
+10. [x] Review fixes, each red/green. MDS031 again
+    judges a fence nested in a list item four or more
+    columns in, reading its opener and closer past
+    their indentation. `include` opens the fence of a
+    sibling item (`` 2. ``` `` after `1. a`): only a
+    document-level paragraph must be interrupted. The
+    fixture `front-matter:` key accepts a value with no
+    final newline.
+11. [x] `go build ./...` and `go test ./...` pass.
 
 ## Acceptance Criteria
 

@@ -189,9 +189,14 @@ func newFixtureFile(path string, content []byte, docFM string) (*lint.File, erro
 	if docFM == "" {
 		return lint.NewFile(path, content)
 	}
-	src := make([]byte, 0, len(docFM)+len(content)+8)
+	src := make([]byte, 0, len(docFM)+len(content)+9)
 	src = append(src, "---\n"...)
 	src = append(src, docFM...)
+	if !strings.HasSuffix(docFM, "\n") {
+		// A quoted scalar or a `|-` block carries no final newline; the
+		// closing `---` must still sit on a line of its own.
+		src = append(src, '\n')
+	}
 	src = append(src, "---\n"...)
 	src = append(src, content...)
 	return lint.NewFileFromSource(path, src, true)

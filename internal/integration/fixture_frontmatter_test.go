@@ -31,3 +31,13 @@ func TestNewFixtureFile_NoDocFrontMatter(t *testing.T) {
 	assert.Empty(t, f.FrontMatter)
 	assert.Equal(t, string(content), string(f.Source))
 }
+
+// TestNewFixtureFile_DocFrontMatterNoTrailingNewline pins that a
+// `front-matter:` value without a final newline (a quoted scalar or a
+// `|-` block) still closes its front matter on a line of its own.
+func TestNewFixtureFile_DocFrontMatterNoTrailingNewline(t *testing.T) {
+	f, err := newFixtureFile("doc.md", []byte("# T\n"), "id: alpha")
+	require.NoError(t, err)
+	assert.Equal(t, "---\nid: alpha\n---\n", string(f.FrontMatter))
+	assert.Equal(t, "# T\n", string(f.Source))
+}
