@@ -24,6 +24,13 @@ test.describe("release notes", () => {
     ).toBeVisible();
   });
 
+  test("footer keeps a direct link to GitHub Releases", async ({ page }) => {
+    await page.goto("/");
+    await expect(
+      page.locator("footer.footer").getByRole("link", { name: "GitHub Releases" }),
+    ).toHaveAttribute("href", "https://github.com/jeduden/mdsmith/releases");
+  });
+
   test("without release data the page links to GitHub Releases", async ({
     page,
   }) => {
