@@ -18,7 +18,7 @@ type failFS struct{}
 func (failFS) Open(string) (fs.File, error) { return nil, fs.ErrPermission }
 
 // failFSWorkspace reads files normally but hands the refactor walk a
-// failing FS, exercising buildRefactorWorkspace's walk-error branch.
+// failing FS, exercising indexRefactorWorkspace's walk-error branch.
 type failFSWorkspace struct{ *MemWorkspace }
 
 func (failFSWorkspace) FS() fs.FS { return failFS{} }

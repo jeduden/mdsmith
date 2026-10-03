@@ -123,6 +123,21 @@ func Move(ws Workspace, src, dst string) (Plan, error) {
 	return Plan{Edits: changes, FileOp: &FileOp{From: src, To: dst}}, nil
 }
 
+// WikilinkStemEdits returns the `[[stem]]` rewrites Move plans for a
+// move of src to dst, keyed as Move keys them: a subset of Move's
+// edits, for a pair Move accepts. Each names dst by its stem, not by a
+// path spelled from the file that holds the link, so it stays right
+// wherever that file moves. A host planning several moves at once uses
+// it to tell these from the path rewrites that depend on the holder's
+// directory.
+func WikilinkStemEdits(ws Workspace, src, dst string) map[string][]Edit {
+	src = index.NormalizePath(src)
+	dst = index.NormalizePath(dst)
+	changes := map[string][]Edit{}
+	appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: src}, src, dst)
+	return changes
+}
+
 // workspaceRelative reports whether p is a safe workspace-relative path
 // — not absolute, not a `..` traversal. p is assumed already
 // NormalizePath-cleaned (forward slashes, no leading `./`).

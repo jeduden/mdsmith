@@ -343,6 +343,31 @@ func TestWillRenameFilesBatchKeepsCrossEditInSameDirectoryRename(t *testing.T) {
 	assert.Equal(t, "sub/b.md", edit.Changes[rootURI+"/docs/a.md"][0].NewText)
 }
 
+// TestWillRenameFilesBatchKeepsStemRewriteInMovedFile locks that a
+// `[[stem]]` rewrite another move plans inside a file the batch moves
+// to a new directory is kept: it names the target by stem, not by a
+// path from the holder's directory, so the holder's move cannot make
+// it wrong. Withholding it would leave `[[b]]` naming a stem no file
+// carries once docs/b.md becomes docs/c.md.
+func TestWillRenameFilesBatchKeepsStemRewriteInMovedFile(t *testing.T) {
+	t.Parallel()
+	h, _, rootURI := rootedHarness(t, map[string]string{
+		"docs/a.md": "# Alpha\n\nSee [[b]].\n",
+		"docs/b.md": "# Beta\n",
+	})
+	raw, errResp := h.request("workspace/willRenameFiles", renameFilesParams{
+		Files: []fileRename{
+			{OldURI: rootURI + "/docs/a.md", NewURI: rootURI + "/other/a.md"},
+			{OldURI: rootURI + "/docs/b.md", NewURI: rootURI + "/docs/c.md"},
+		},
+	})
+	require.Nil(t, errResp)
+	var edit workspaceEdit
+	require.NoError(t, json.Unmarshal(raw, &edit))
+	require.Len(t, edit.Changes[rootURI+"/docs/a.md"], 1)
+	assert.Equal(t, "c", edit.Changes[rootURI+"/docs/a.md"][0].NewText)
+}
+
 // TestWillRenameFilesBatchLogsWithheldEdits locks that withholding a
 // rewrite is not silent: the server sends a window/logMessage warning
 // naming how many link rewrites it left out.

@@ -30,8 +30,9 @@ it to `x/b.md`. Both are wrong: the right text is `b.md`.
 Code review of PR #889 found this. That PR added a stopgap,
 `dropConflictingTextEdits`. It withholds any pair of edits whose
 ranges overlap, so the client gets a valid WorkspaceEdit. A
-second guard, `dropCrossMoveEdits`, withholds any edit one move
-plans inside another moved file whose folder changes. A
+second guard, `dropCrossMoveEdits`, withholds any path rewrite
+one move plans inside another moved file whose folder changes.
+It keeps a `[[stem]]` rewrite, which no folder change affects. A
 `window/logMessage` warning gives the withheld count.
 
 The withheld link stays stale whenever the batch changes the
@@ -63,6 +64,15 @@ then reports it.
    `other/`, so the move of `a.md` emits no edit. The move of
    `b.md` emits `sub/b.md`, spelled from `docs/`. The stopgap
    withholds it, but the right text is `../docs/sub/b.md`.
+6. Keep a one-sided rewrite that is already right. `docs/a.md`
+   links `../b.md`, and one request moves it to `other/a.md`
+   and `b.md` to `b2.md`. The move of `b.md` emits `../b2.md`,
+   which also resolves from `other/`, yet the stopgap withholds
+   it.
+7. Plan a chain such as `b.md` to `z.md` plus `a.md` to `b.md`.
+   `refactor.Move` refuses `a.md` because `b.md` exists in the
+   pre-batch snapshot, so links to `a.md` stay stale and the
+   warning does not count them.
 
 ## Acceptance Criteria
 

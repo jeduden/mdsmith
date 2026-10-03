@@ -62,6 +62,25 @@ func TestMove_WikilinkStemRewrittenWhenBasenameChanges(t *testing.T) {
 	assert.Equal(t, "See [[service]] and [[service#usage]] and [[service|the API]].\n", got)
 }
 
+// WikilinkStemEdits returns exactly the `[[stem]]` rewrites among
+// Move's edits, keyed the same way, and leaves out its path rewrites.
+func TestWikilinkStemEdits(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"api.md":   "# API\n",
+		"guide.md": "See [[api]] and [the API](api.md).\n",
+	})
+	plan, err := Move(ws, "api.md", "./service.md")
+	require.NoError(t, err)
+	require.Len(t, plan.Edits["guide.md"], 2, "one stem and one path rewrite")
+
+	stems := WikilinkStemEdits(ws, "./api.md", "service.md")
+	require.Len(t, stems["guide.md"], 1)
+	assert.Equal(t, "service", stems["guide.md"][0].NewText)
+	assert.Contains(t, plan.Edits["guide.md"], stems["guide.md"][0])
+
+	assert.Empty(t, WikilinkStemEdits(ws, "api.md", "docs/api.md"), "a kept stem needs no rewrite")
+}
+
 func TestMove_WikilinksUntouchedWhenBasenameKept(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{
 		"api.md":   "# API\n",

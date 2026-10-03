@@ -192,17 +192,19 @@ func TestPosLess(t *testing.T) {
 	assert.False(t, posLess(Position{Line: 2, Character: 0}, Position{Line: 1, Character: 9}))
 }
 
+// ref is the refactor.Edit that edAt(line, 0, 4, text) converts from.
+func ref(line int, text string) refactor.Edit {
+	return refactor.Edit{
+		Range: refactor.Range{
+			Start: refactor.Position{Line: line, Character: 0},
+			End:   refactor.Position{Line: line, Character: 4},
+		},
+		NewText: text,
+	}
+}
+
 func TestDropCrossMoveEdits(t *testing.T) {
 	t.Parallel()
-	ref := func(line int, text string) refactor.Edit {
-		return refactor.Edit{
-			Range: refactor.Range{
-				Start: refactor.Position{Line: line, Character: 0},
-				End:   refactor.Position{Line: line, Character: 4},
-			},
-			NewText: text,
-		}
-	}
 	t.Run("edit inside a file moved to another directory is dropped", func(t *testing.T) {
 		t.Parallel()
 		moves := []plannedMove{
@@ -239,6 +241,25 @@ func TestDropCrossMoveEdits(t *testing.T) {
 		dropCrossMoveEdits(merged, moves)
 		assert.Equal(t, map[string][]textEdit{"a": {edAt(3, 0, 4, "x")}}, merged)
 	})
+}
+
+// A `[[stem]]` rewrite another move plans inside a file moved to
+// another directory is kept beside that file's own edits, while the
+// other move's path rewrite there is dropped.
+func TestDropCrossMoveEdits_KeepsStemRewrites(t *testing.T) {
+	t.Parallel()
+	stem := ref(3, "c")
+	moves := []plannedMove{
+		{key: "a", changesDir: true, edits: map[string][]refactor.Edit{"a": {ref(1, "own")}}},
+		{
+			key: "b", changesDir: true,
+			edits:     map[string][]refactor.Edit{"a": {stem, ref(5, "x")}},
+			stemEdits: map[string][]refactor.Edit{"a": {stem}},
+		},
+	}
+	merged := map[string][]textEdit{"a": {edAt(1, 0, 4, "own"), edAt(3, 0, 4, "c"), edAt(5, 0, 4, "x")}}
+	dropCrossMoveEdits(merged, moves)
+	assert.Equal(t, map[string][]textEdit{"a": {edAt(1, 0, 4, "own"), edAt(3, 0, 4, "c")}}, merged)
 }
 
 func TestCompareTextEditsTopDown(t *testing.T) {

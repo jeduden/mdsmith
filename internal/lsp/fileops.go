@@ -44,10 +44,11 @@ func markdownFileOperationCapabilities() *workspaceServerCapabilities {
 // planned once. Each move is planned against the pre-batch snapshot, so
 // an edit that assumes another batch member stayed put is withheld:
 // overlapping edits from two moves (see dropConflictingTextEdits) and
-// any edit one move plans inside another moved file whose directory
-// changes (see dropCrossMoveEdits). A window/logMessage warning names
-// how many rewrites were withheld. Batch-aware planning is tracked by
-// plan 2610030438.
+// any path rewrite one move plans inside another moved file whose
+// directory changes (see dropCrossMoveEdits); a `[[stem]]` rewrite
+// does not depend on where its file sits, so it is kept. A
+// window/logMessage warning names how many rewrites were withheld.
+// Batch-aware planning is tracked by plan 2610030438.
 func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 	var p renameFilesParams
 	if err := json.Unmarshal(msg.Params, &p); err != nil {
@@ -76,6 +77,7 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 			key:        key,
 			changesDir: path.Dir(src) != path.Dir(dst),
 			edits:      plan.Edits,
+			stemEdits:  refactor.WikilinkStemEdits(ws, src, dst),
 		})
 	}
 	merged := map[string][]textEdit{}
@@ -111,28 +113,40 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 
 // plannedMove is one willRenameFiles move after planning: key is the
 // moved file's edit key (its URI as ws.Resolve returns it), changesDir
-// reports whether the move lands in another directory, and edits is
-// the plan's per-key edit set.
+// reports whether the move lands in another directory, edits is the
+// plan's per-key edit set, and stemEdits is its `[[stem]]` subset
+// (refactor.WikilinkStemEdits).
 type plannedMove struct {
 	key        string
 	changesDir bool
 	edits      map[string][]refactor.Edit
+	stemEdits  map[string][]refactor.Edit
 }
 
-// dropCrossMoveEdits withholds from merged every edit one move planned
-// inside the file another move relocates to a new directory. That move
-// spelled the edit's link from the file's old directory, so the text
-// is wrong once the file lands elsewhere — even when no other edit
-// overlaps it (moving docs/b.md to docs/sub/b.md rewrites docs/a.md's
-// `../docs/b.md` as `sub/b.md`, wrong after docs/a.md moves to
-// other/). A rename within one directory keeps such edits: the
-// spelling base does not change. It runs after dropConflictingTextEdits
-// so a moved file's own rewrite of a link to a co-moved file is
-// already gone with its overlapping partner. A surviving edit is
-// unique in its range, so matching by value finds exactly the edit
-// that move planned. Keys left with no edit are deleted.
+// dropCrossMoveEdits withholds from merged every path rewrite one move
+// planned inside the file another move relocates to a new directory.
+// That move spelled the rewritten path from the file's old directory,
+// so the text is wrong once the file lands elsewhere — even when no
+// other edit overlaps it (moving docs/b.md to docs/sub/b.md rewrites
+// docs/a.md's `../docs/b.md` as `sub/b.md`, wrong after docs/a.md
+// moves to other/). A `[[stem]]` rewrite is kept: it names its target
+// by stem, which no directory change affects. A rename within one
+// directory keeps every edit: the spelling base does not change.
+//
+// It runs after dropConflictingTextEdits, so a moved file's own
+// rewrite of a link to a co-moved file is already gone with its
+// overlapping partner, and every surviving edit is unique in its
+// range. Keeping the edits the moved file's own move planned, plus any
+// stem rewrite, therefore drops exactly the other moves' path
+// rewrites, matched by value. Keys left with no edit are deleted.
 func dropCrossMoveEdits(merged map[string][]textEdit, moves []plannedMove) {
-	for i, m := range moves {
+	stems := map[string][]refactor.Edit{}
+	for _, m := range moves {
+		for key, edits := range m.stemEdits {
+			stems[key] = append(stems[key], edits...)
+		}
+	}
+	for _, m := range moves {
 		if !m.changesDir {
 			continue
 		}
@@ -140,19 +154,14 @@ func dropCrossMoveEdits(merged map[string][]textEdit, moves []plannedMove) {
 		if !ok {
 			continue
 		}
-		foreign := map[textEdit]bool{}
-		for j, other := range moves {
-			if j == i {
-				continue
-			}
-			for _, e := range toTextEdits(other.edits[m.key]) {
-				foreign[e] = true
-			}
+		keep := map[textEdit]bool{}
+		for _, e := range toTextEdits(m.edits[m.key]) {
+			keep[e] = true
 		}
-		if len(foreign) == 0 {
-			continue
+		for _, e := range toTextEdits(stems[m.key]) {
+			keep[e] = true
 		}
-		edits = slices.DeleteFunc(edits, func(e textEdit) bool { return foreign[e] })
+		edits = slices.DeleteFunc(edits, func(e textEdit) bool { return !keep[e] })
 		if len(edits) == 0 {
 			delete(merged, m.key)
 			continue
