@@ -872,11 +872,10 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 		// An edge from a stale index can point at a column that now
 		// holds a link to another file; only a link still keyed by
 		// oldStem is rewritten.
-		if stem, ok := linkgraph.WikilinkStemAt(row, e.SourceCol-1); !ok || stem != oldStem {
+		stem, start, end, ok := linkgraph.WikilinkStemAt(row, e.SourceCol-1)
+		if !ok || stem != oldStem {
 			continue
 		}
-		// WikilinkStemAt accepted this link, so its span always exists.
-		start, end, _ := linkgraph.WikilinkBaseSpan(row, e.SourceCol-1)
 		text := newSpelling
 		// A folder prefix already keeps the name from reading as a
 		// drive path, so the `./` guard is only for a bare link. The

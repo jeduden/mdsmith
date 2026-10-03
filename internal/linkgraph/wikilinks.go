@@ -412,21 +412,25 @@ func WikilinkStem(target string) (string, bool) {
 	return FileNameKey(stem), true
 }
 
-// WikilinkBaseSpan returns the byte span, within row, of the base
-// segment of the wikilink whose `[[` starts at bracketStart: the part
-// of the target the resolver keys by (path.Base of the trimmed target
-// with `\` read as `/`). Any folder prefix, anchor, and alias lie
-// outside the span, as does the `\` that escapes a `|` in a table
-// cell. The span comes from the same match ExtractWikiLinks reads, so
-// the two cannot disagree on where a target ends. ok is false when no
-// wikilink starts there or the resolver refuses its target.
-func WikilinkBaseSpan(row []byte, bracketStart int) (start, end int, ok bool) {
+// WikilinkStemAt reads the wikilink whose `[[` starts at bracketStart
+// in row. It returns the target's stem key (as WikilinkStem returns it)
+// and the byte span, within row, of the target's base segment: the part
+// the resolver keys by (path.Base of the trimmed target with `\` read as
+// `/`). Any folder prefix, anchor, and alias lie outside the span, as
+// does the `\` that escapes a `|` in a table cell. Key and span come
+// from one match, the same one ExtractWikiLinks reads, so they cannot
+// disagree on where a target ends. ok is false when no wikilink starts
+// there or its target has no stem key: a typed non-Markdown name, or a
+// target the resolver refuses. A caller holding an edge from an index
+// that may be stale checks the key before it edits the span.
+func WikilinkStemAt(row []byte, bracketStart int) (stem string, start, end int, ok bool) {
 	raw, at, ok := wikilinkTargetAt(row, bracketStart)
 	if !ok {
-		return 0, 0, false
+		return "", 0, 0, false
 	}
-	if _, ok := normalizeTarget(string(raw)); !ok {
-		return 0, 0, false
+	stem, ok = WikilinkStem(string(raw))
+	if !ok {
+		return "", 0, 0, false
 	}
 	left := bytes.TrimLeftFunc(raw, unicode.IsSpace)
 	lo := len(raw) - len(left)
@@ -439,21 +443,7 @@ func WikilinkBaseSpan(row []byte, bracketStart int) (start, end int, ok bool) {
 			lo = j + 1
 		}
 	}
-	return at + lo, at + hi, true
-}
-
-// WikilinkStemAt returns the stem key (as WikilinkStem returns it) of
-// the wikilink whose `[[` starts at bracketStart in row. ok is false
-// when no wikilink starts there or its target has no stem key: a typed
-// non-Markdown name, or a target the resolver refuses. A caller holding
-// an edge from an index that may be stale checks the key before it
-// edits the link at that column.
-func WikilinkStemAt(row []byte, bracketStart int) (string, bool) {
-	raw, _, ok := wikilinkTargetAt(row, bracketStart)
-	if !ok {
-		return "", false
-	}
-	return WikilinkStem(string(raw))
+	return stem, at + lo, at + hi, true
 }
 
 // wikilinkTargetAt returns the raw target of the wikilink whose `[[`

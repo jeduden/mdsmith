@@ -754,30 +754,33 @@ func TestWikilinkIndex_PathsNilReceiver(t *testing.T) {
 	assert.Empty(t, idx.NamePaths("a.md"))
 }
 
-func TestWikilinkBaseSpan(t *testing.T) {
+// TestWikilinkStemAt_Span locks the base span WikilinkStemAt returns:
+// the last segment of the trimmed target, with `\` read as `/`, outside
+// any folder prefix, anchor, alias, or table-cell `\|` escape.
+func TestWikilinkStemAt_Span(t *testing.T) {
 	t.Run("not a wikilink returns false", func(t *testing.T) {
-		_, _, ok := WikilinkBaseSpan([]byte("[x](y)"), 0)
+		_, _, _, ok := WikilinkStemAt([]byte("[x](y)"), 0)
 		assert.False(t, ok)
 	})
 	t.Run("out-of-range bracket start returns false", func(t *testing.T) {
-		_, _, ok := WikilinkBaseSpan([]byte("[["), 0)
+		_, _, _, ok := WikilinkStemAt([]byte("[["), 0)
 		assert.False(t, ok)
-		_, _, ok = WikilinkBaseSpan([]byte("[[a]]"), -1)
+		_, _, _, ok = WikilinkStemAt([]byte("[[a]]"), -1)
 		assert.False(t, ok)
-		_, _, ok = WikilinkBaseSpan([]byte("[[a]]"), 9)
+		_, _, _, ok = WikilinkStemAt([]byte("[[a]]"), 9)
 		assert.False(t, ok)
 	})
 	t.Run("a link that starts later is not read", func(t *testing.T) {
-		_, _, ok := WikilinkBaseSpan([]byte("x [[a]]"), 0)
+		_, _, _, ok := WikilinkStemAt([]byte("x [[a]]"), 0)
 		assert.False(t, ok)
 	})
 	t.Run("empty target returns false", func(t *testing.T) {
-		_, _, ok := WikilinkBaseSpan([]byte("[[#frag]]"), 0)
+		_, _, _, ok := WikilinkStemAt([]byte("[[#frag]]"), 0)
 		assert.False(t, ok)
 	})
 	t.Run("offsets are relative to the row", func(t *testing.T) {
 		row := []byte("see ![[folder/Page#f|alias]] now")
-		s, e, ok := WikilinkBaseSpan(row, 5)
+		_, s, e, ok := WikilinkStemAt(row, 5)
 		require.True(t, ok)
 		assert.Equal(t, "Page", string(row[s:e]))
 	})
@@ -795,14 +798,14 @@ func TestWikilinkBaseSpan(t *testing.T) {
 		"[[api /]]":            "api ",
 	} {
 		t.Run(row, func(t *testing.T) {
-			s, e, ok := WikilinkBaseSpan([]byte(row), 0)
+			_, s, e, ok := WikilinkStemAt([]byte(row), 0)
 			require.True(t, ok)
 			assert.Equal(t, want, row[s:e])
 		})
 	}
 	for _, row := range []string{`[[/\ ]]`, "[[/abs]]", "[[../up]]", "[[C:\\x]]"} {
 		t.Run("unresolvable "+row, func(t *testing.T) {
-			_, _, ok := WikilinkBaseSpan([]byte(row), 0)
+			_, _, _, ok := WikilinkStemAt([]byte(row), 0)
 			assert.False(t, ok)
 		})
 	}
@@ -836,14 +839,14 @@ func TestWikilinkStemAt(t *testing.T) {
 		"[[ Guide ]]":        "guide",
 		"[[Guide /]]":        "guide ",
 	} {
-		got, ok := WikilinkStemAt([]byte(row), 0)
+		got, _, _, ok := WikilinkStemAt([]byte(row), 0)
 		assert.True(t, ok, row)
 		assert.Equal(t, want, got, row)
 	}
 	for _, row := range []string{"[[logo.png]]", "[[../x]]", "x [[a]]", "[["} {
-		_, ok := WikilinkStemAt([]byte(row), 0)
+		_, _, _, ok := WikilinkStemAt([]byte(row), 0)
 		assert.False(t, ok, row)
 	}
-	_, ok := WikilinkStemAt([]byte("[[a]]"), -1)
+	_, _, _, ok := WikilinkStemAt([]byte("[[a]]"), -1)
 	assert.False(t, ok)
 }
