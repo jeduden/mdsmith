@@ -12,8 +12,8 @@ runs:
         # Bump here only when intentionally updating that baseline.
         # After bumping, scan PLAN.md for plans waiting to adopt the
         # newly-released syntax. See docs/development/adopt-new-directive-syntax.md.
-        MDSMITH_VERSION: v0.53.0
-        MDSMITH_SHA256: bfee797520d02d7b0132d09bd273ced9334a8d858872a8f65a348c028fbb0a0e
+        MDSMITH_VERSION: v0.56.0-rc.7
+        MDSMITH_SHA256: 4bd75c8fd39c59d74df42f0afd6d910efb0a6e074be511235adb188d20229ba1
       # The binary is downloaded over HTTPS and SHA256-verified above
       # before $HOME/.local/bin is appended to PATH, so the github-env
       # write is safe to ignore.
