@@ -300,3 +300,30 @@ func TestIsResultPrevLineFence(t *testing.T) {
 	assert.False(t, isResultPrevLineFence([]string{"plain text"}),
 		"non-fence content returns false")
 }
+
+// TestAdjustHeadings_BacktickInfoStringIsNotFence pins the CommonMark
+// rule that a backtick fence's info string may not contain a
+// backtick: "```a`b" is paragraph text, so headings after it must
+// still be shifted rather than skipped as fenced code.
+func TestAdjustHeadings_BacktickInfoStringIsNotFence(t *testing.T) {
+	content := "# Part\n\n```a`b c\n\n## Sub\n"
+	assert.Equal(t, "### Part\n\n```a`b c\n\n#### Sub\n",
+		adjustHeadingsToLevel(content, 3))
+	assert.Equal(t, "## Part\n\n```a`b c\n\n### Sub\n",
+		adjustHeadings(content, 1))
+	assert.Equal(t, "# Part\n\n~~~a`b\n\n## Sub\n",
+		adjustHeadingsByOffset("# Part\n\n~~~a`b\n\n## Sub\n", 0),
+		"a tilde fence may carry a backtick in its info string")
+	assert.Equal(t, "## Part\n\n~~~a`b\n## Sub\n~~~\n",
+		adjustHeadingsByOffset("# Part\n\n~~~a`b\n## Sub\n~~~\n", 1),
+		"a tilde fence with a backtick info string is still a fence")
+}
+
+func TestFenceOpenMarker(t *testing.T) {
+	assert.Equal(t, "```", fenceOpenMarker("```go"))
+	assert.Equal(t, "````", fenceOpenMarker("  ````"))
+	assert.Equal(t, "~~~", fenceOpenMarker("\t~~~a`b"), "tilde info may hold a backtick")
+	assert.Equal(t, "", fenceOpenMarker("```a`b"))
+	assert.Equal(t, "", fenceOpenMarker("``x"))
+	assert.Equal(t, "", fenceOpenMarker("text"))
+}

@@ -1,6 +1,7 @@
 package include
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -227,4 +228,23 @@ func TestAdjustLinks_Skip(t *testing.T) {
 			assert.Equal(t, tt.want, got, "adjustLinks() =\n  %q\nwant:\n  %q", got, tt.want)
 		})
 	}
+}
+
+// TestCountFenceRun pins the opener rule rewriteSkippingCode mirrors:
+// a run of at least three backticks or tildes, where a backtick run
+// may not be followed by another backtick on the line (CommonMark
+// forbids backticks in a backtick fence's info string).
+func TestCountFenceRun(t *testing.T) {
+	assert.Equal(t, 3, countFenceRun("```go\n"))
+	assert.Equal(t, 4, countFenceRun("~~~~a`b\n"), "tilde info may hold a backtick")
+	assert.Zero(t, countFenceRun("``x\n"))
+	assert.Zero(t, countFenceRun("```a`b\n"))
+	assert.Zero(t, countFenceRun("text"))
+}
+
+// TestRewriteSkippingCode_BacktickInfoStringIsNotFence checks that a
+// "```a`b" line does not open a fence, so later lines are rewritten.
+func TestRewriteSkippingCode_BacktickInfoStringIsNotFence(t *testing.T) {
+	got := rewriteSkippingCode("```a`b\nx\n", strings.ToUpper)
+	assert.Equal(t, "```A`B\nX\n", got)
 }
