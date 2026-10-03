@@ -2,10 +2,12 @@ package listscan
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // split converts a string to the lines slice Parse expects (bytes.Split on "\n").
@@ -100,4 +102,48 @@ func TestParser_IsSetextUnderline(t *testing.T) {
 	assert.True(t, item.isSetextUnderline([]byte("  --"), 2))
 	assert.False(t, item.isSetextUnderline([]byte("--"), 0), "a lazy line is no underline")
 	assert.False(t, item.isSetextUnderline([]byte("      --"), 6))
+}
+
+// ParseLists must return the same lists as Parse without building the
+// flat item slice (docs/development/high-performance-go.md, "Skip work
+// you don't need").
+func TestParseLists_MatchesParseLists(t *testing.T) {
+	src := "- a\n  - b\n  - c\n- d\n  - e\n1. x\n2. y\n"
+	lines := bytes.Split([]byte(src), []byte("\n"))
+	want, _ := Parse(lines)
+	got := ParseLists(lines)
+	require.Equal(t, want, got)
+}
+
+// A flat item slice over nested lists must stay in document order.
+func TestParse_FlatItemsInDocumentOrder(t *testing.T) {
+	var sb strings.Builder
+	for i := 0; i < 50; i++ {
+		sb.WriteString("- a\n  - b\n")
+	}
+	_, items := Parse(bytes.Split([]byte(sb.String()), []byte("\n")))
+	require.Len(t, items, 100)
+	for i := 1; i < len(items); i++ {
+		require.Less(t, items[i-1].Line, items[i].Line)
+	}
+}
+
+func BenchmarkParse_NestedList(b *testing.B) {
+	var sb strings.Builder
+	for i := 0; i < 1000; i++ {
+		sb.WriteString("- a\n  - b\n")
+	}
+	lines := bytes.Split([]byte(sb.String()), []byte("\n"))
+	b.ReportAllocs()
+	for b.Loop() {
+		Parse(lines)
+	}
+}
+
+// ParseLists must not build the flat item slice that Parse builds.
+func TestParseLists_SkipsFlatSlice(t *testing.T) {
+	lines := split(strings.Repeat("- a\n  - b\n", 20))
+	parseAllocs := testing.AllocsPerRun(20, func() { Parse(lines) })
+	listsAllocs := testing.AllocsPerRun(20, func() { ParseLists(lines) })
+	assert.Less(t, listsAllocs, parseAllocs)
 }

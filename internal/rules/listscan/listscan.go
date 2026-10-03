@@ -29,6 +29,8 @@ package listscan
 
 import (
 	"bytes"
+	"cmp"
+	"slices"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdfence"
@@ -79,6 +81,15 @@ type List struct {
 	TopLevel bool
 }
 
+// ParseLists scans lines and returns every list in document order. It
+// skips the flat item slice that Parse builds, for callers that walk
+// List.Items themselves.
+func ParseLists(lines [][]byte) []List {
+	p := &parser{lines: lines}
+	p.run()
+	return p.lists
+}
+
 // Parse scans lines and returns every list in document order plus a flat
 // slice of every item in document order. The flat item slice is built
 // from the lists' final Items, so the MultiBlock and Number values it
@@ -98,11 +109,7 @@ func Parse(lines [][]byte) (lists []List, items []Item) {
 // list closes, which can place them after a later sibling's items; a
 // stable sort by line restores document order for the flat slice.
 func sortByLine(items []Item) []Item {
-	for i := 1; i < len(items); i++ {
-		for j := i; j > 0 && items[j-1].Line > items[j].Line; j-- {
-			items[j-1], items[j] = items[j], items[j-1]
-		}
-	}
+	slices.SortStableFunc(items, func(a, b Item) int { return cmp.Compare(a.Line, b.Line) })
 	return items
 }
 

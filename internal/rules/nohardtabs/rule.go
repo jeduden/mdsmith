@@ -25,15 +25,22 @@ func (r *Rule) Category() string { return "whitespace" }
 
 // Check implements rule.Rule.
 func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
-	codeLines := lint.CollectCodeBlockLines(f)
+	// Fetched on the first candidate line, saving a map lookup on every
+	// other line.
+	var codeLines map[int]struct{}
+	codeLinesReady := false
 	var diags []lint.Diagnostic
 	for i, line := range f.Lines {
 		lineNum := i + 1
-		if _, ok := codeLines[lineNum]; ok {
-			continue
-		}
 		idx := bytes.IndexByte(line, '\t')
 		if idx >= 0 {
+			// Consult the code-line map only for the rare candidate line.
+			if !codeLinesReady {
+				codeLines, codeLinesReady = lint.CollectCodeBlockLines(f), true
+			}
+			if _, ok := codeLines[lineNum]; ok {
+				continue
+			}
 			diags = append(diags, lint.Diagnostic{
 				File:     f.Path,
 				Line:     lineNum,

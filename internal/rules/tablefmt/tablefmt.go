@@ -510,10 +510,10 @@ func isTableRow(content []byte) bool {
 
 // splitRow splits a table row into cell contents. Leading and trailing
 // pipes are removed. Escaped pipes (\|) inside cells are preserved.
+// Cells are substrings of row, so a call allocates only the result slice.
 func splitRow(row string) []string {
 	row = strings.TrimSpace(row)
 
-	// Remove leading and trailing pipe.
 	if len(row) > 0 && row[0] == '|' {
 		row = row[1:]
 	}
@@ -521,63 +521,30 @@ func splitRow(row string) []string {
 		row = row[:len(row)-1]
 	}
 
-	// Split on unescaped pipes. Pre-size to avoid slice-growth allocs in
-	// the tryParseTable hot path; pipe count is an upper bound (escaped
-	// pipes \| are not delimiters but counted anyway).
+	// Pre-size; over-estimates slightly for escaped \| pairs, which is fine
+	// for capacity.
 	cells := make([]string, 0, strings.Count(row, "|")+1)
-	var current strings.Builder
+	start := 0
 	for i := 0; i < len(row); i++ {
 		if row[i] == '\\' && i+1 < len(row) && row[i+1] == '|' {
-			current.WriteString(`\|`)
-			i++ // skip the pipe
-			continue
-		}
-		if row[i] == '|' {
-			cells = append(cells, strings.TrimSpace(current.String()))
-			current.Reset()
-			continue
-		}
-		current.WriteByte(row[i])
-	}
-	cells = append(cells, strings.TrimSpace(current.String()))
-
-	return cells
-}
-
-// splitRowBytes is a bytes-native version of splitRow that avoids
-// the string([]byte) allocation in the tryParseTable hot path.
-func splitRowBytes(row []byte) []string {
-	row = bytes.TrimSpace(row)
-
-	if len(row) > 0 && row[0] == '|' {
-		row = row[1:]
-	}
-	if len(row) > 0 && row[len(row)-1] == '|' {
-		row = row[:len(row)-1]
-	}
-
-	// Pre-size to avoid slice-growth allocs; over-estimates slightly for
-	// escaped \| pairs (which are not delimiters) but that is fine for
-	// capacity. []byte("|") is a stack-allocated needle; escape analysis
-	// confirms bytes.Count does not retain it.
-	cells := make([]string, 0, bytes.Count(row, []byte("|"))+1)
-	var current strings.Builder
-	for i := 0; i < len(row); i++ {
-		if row[i] == '\\' && i+1 < len(row) && row[i+1] == '|' {
-			current.WriteString(`\|`)
 			i++
 			continue
 		}
 		if row[i] == '|' {
-			cells = append(cells, strings.TrimSpace(current.String()))
-			current.Reset()
-			continue
+			cells = append(cells, strings.TrimSpace(row[start:i]))
+			start = i + 1
 		}
-		current.WriteByte(row[i])
 	}
-	cells = append(cells, strings.TrimSpace(current.String()))
+	cells = append(cells, strings.TrimSpace(row[start:]))
 
 	return cells
+}
+
+// splitRowBytes is the []byte entry point for splitRow. One string
+// conversion lets every cell be a substring, so it allocates twice per
+// row regardless of column count.
+func splitRowBytes(row []byte) []string {
+	return splitRow(string(row))
 }
 
 // isSeparatorRow returns true if all cells match the separator pattern.

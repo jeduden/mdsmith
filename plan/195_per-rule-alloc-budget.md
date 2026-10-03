@@ -120,8 +120,9 @@ reference it.
    `columnHeader` converts to string lazily for the
    one diagnostic message that needs it. Grandfather
    entry removed.
-3. [🔳] MDS025 table-format stays at 105 allocs/op
-   (grandfathered). The format pass parses cells as
+3. [🔳] MDS025 table-format stays at 44 allocs/op
+   (grandfathered; was 105, then 60, then 44 once `splitRow`
+   sliced cells out of one string per row). The format pass parses cells as
    strings; the structure pass (MD055/056/058)
    re-parses every row independently. Reducing to
    ≤ 10 needs the single-table-walk refactor
@@ -286,10 +287,10 @@ slots.
 
 - [x] `TestPerRuleAllocBudget` passes for every
       registered rule. MDS025 is grandfathered at
-      105 with a documented follow-up to plan 181;
+      44 with a documented follow-up to plan 181;
       every other rule fits the ≤ 10 ceiling.
 - [x] `BenchmarkPerRuleAllocBudget` lists every rule
-      at ≤ 10 allocs/op except MDS025 (105,
+      at ≤ 10 allocs/op except MDS025 (44,
       grandfathered as above).
 - [x] `BenchmarkCheckCorpusLarge` stays within its
       existing 12 s p95 budget. Latest p95 = 222 ms.

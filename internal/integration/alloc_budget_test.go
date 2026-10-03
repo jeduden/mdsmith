@@ -47,7 +47,7 @@ var allocBudgetGrandfathered = map[string]int{
 	// row a second time alongside tablefmt's alignment scan. Reducing
 	// this to the ≤ 10 ceiling needs the single-table-walk refactor
 	// scheduled as a follow-up to plan 181.
-	"MDS025": 60, // table-format; tightened after five byte-native fixes (plan 195 task 3 partial)
+	"MDS025": 44, // table-format; tightened after splitRow substring cells (plan 195 task 3 partial)
 	// MDS027 (cross-file-reference-integrity) dropped out: the link
 	// walk no longer materialises each link's visible text, and
 	// ParseTargetBytes resolves an ordinary destination without the

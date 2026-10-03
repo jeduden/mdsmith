@@ -153,3 +153,11 @@ func TestCategory(t *testing.T) {
 		t.Error("expected non-empty category")
 	}
 }
+
+func TestCheck_CodeBlockTrailingSpacesIgnored_ProseFlagged(t *testing.T) {
+	f, err := lint.NewFile("t.md", []byte("```\ncode  \n```\n\nprose  \n"))
+	require.NoError(t, err)
+	diags := (&Rule{}).Check(f)
+	require.Len(t, diags, 1)
+	require.Equal(t, 5, diags[0].Line)
+}
