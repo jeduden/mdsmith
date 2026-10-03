@@ -226,21 +226,28 @@ var bindTo js.Value
 // read and a write here blocks, so it needs no lock.
 var sessions = map[int]*mdsmith.Session{}
 
-// newSessionID draws an unused id uniformly from [1, maxSessionID], so
-// a script that holds a raw shared func cannot reach a session by
-// counting up from 0. The range is 2^53 under standard Go and
-// math.MaxInt under TinyGo; a collision with a live id redraws. The
-// ids are not cryptographic: math/rand/v2's global source is seeded
-// from the OS, which on js/wasm is crypto.getRandomValues. Plan
-// 2610021439.
+// newSessionID draws an id no live session holds, uniformly from
+// [1, maxSessionID], so a script that holds a raw shared func cannot
+// reach a session by counting up from 0. The range is 2^53 under
+// standard Go and math.MaxInt under TinyGo; a collision with a live id
+// redraws. A disposed session's id is not retired (a retired set would
+// grow with every create/dispose), so it can be drawn again, at odds of
+// one in maxSessionID per draw; a stale method of the disposed session
+// would then reach the new one. The ids are not cryptographic:
+// math/rand/v2's global source is seeded from the OS, which on js/wasm
+// is crypto.getRandomValues. Plan 2610021439.
 func newSessionID() int {
 	for {
-		id := 1 + rand.IntN(maxSessionID)
+		id := 1 + drawSessionID(maxSessionID)
 		if _, taken := sessions[id]; !taken {
 			return id
 		}
 	}
 }
+
+// drawSessionID is rand.IntN behind a seam so a test can force the
+// collision with a live id that newSessionID redraws on.
+var drawSessionID = rand.IntN
 
 // methodImpl pairs a forwarding session method's implementation with
 // the result it returns once its session is disposed. Build one with

@@ -318,15 +318,12 @@ func newTestProxy(t *testing.T) js.Value {
 // registered under, found as the one key sessions gained.
 func newTestProxyWithID(t *testing.T) (js.Value, int) {
 	t.Helper()
-	before := make(map[int]bool, len(sessions))
-	for id := range sessions {
-		before[id] = true
-	}
+	before := maps.Clone(sessions)
 	opts := js.ValueOf(map[string]any{})
 	v, rejected := awaitPromise(t, jsValue(t, createSession(js.Undefined(), []js.Value{opts})))
 	require.False(t, rejected, "promise must resolve: %v", v)
 	for id := range sessions {
-		if !before[id] {
+		if _, had := before[id]; !had {
 			return v, id
 		}
 	}
@@ -689,7 +686,7 @@ func TestNewSessionProxy_DisposeLeavesNoFuncs(t *testing.T) {
 func TestBoundSession(t *testing.T) {
 	proxy, liveID := newTestProxyWithID(t)
 	defer proxy.Call("dispose")
-	require.NotNil(t, sessions[liveID], "newTestProxy registered the newest id")
+	require.NotNil(t, sessions[liveID], "newTestProxyWithID returned a live id")
 	src := js.ValueOf("a.md")
 	// Random ids can exceed 2^52, where float64 has no .5, so the
 	// fraction targets a small id registered by hand.
@@ -1038,18 +1035,56 @@ func TestJSErrorFor(t *testing.T) {
 	assert.Equal(t, mdsmith.ErrorCodeNothingToRename, e.Get("code").String())
 }
 
-// TestSharedFunc_GuessedIDsReachNoSession calls a raw shared func with
-// every small integer id, as a script that captured one could, and
-// requires none to reach the live session: ids are drawn at random from
-// a 53-bit range, so counting up from 0 finds nothing. Plan 2610021439.
+// TestSharedFunc_GuessedIDsReachNoSession calls a raw shared func as a
+// script that captured one could: with every small integer id, and with
+// every id within 4096 of one it learned (its own session's). None may
+// reach the other live session: ids are drawn at random from a 53-bit
+// range, so neither counting up from 0 nor stepping from a known id
+// finds it. Plan 2610021439.
 func TestSharedFunc_GuessedIDsReachNoSession(t *testing.T) {
-	proxy := newTestProxy(t)
-	defer proxy.Call("dispose")
+	own, ownID := newTestProxyWithID(t)
+	defer own.Call("dispose")
+	other := newTestProxy(t)
+	defer other.Call("dispose")
 	raw := sharedMethods()["capabilities"]
-	for id := -1; id <= 4096; id++ {
+	guess := func(id int) {
+		// ownID is the one id this script holds; past maxSessionID a
+		// float64 can round back onto it.
+		if id == ownID || id > maxSessionID {
+			return
+		}
 		got := raw.Invoke(id)
 		assert.Equal(t, 0, got.Length(), "guessed id %d reached a live session", id)
 	}
-	// The session's own method still works.
-	assert.Positive(t, proxy.Call("capabilities").Length())
+	for id := -1; id <= 4096; id++ {
+		guess(id)
+	}
+	for d := 1; d <= 4096; d++ {
+		guess(ownID - d)
+		guess(ownID + d)
+	}
+	// Each session's own method still works.
+	assert.Positive(t, own.Call("capabilities").Length())
+	assert.Positive(t, other.Call("capabilities").Length())
+}
+
+// TestNewSessionID_RedrawsLiveID forces the draw onto an id a live
+// session holds and checks newSessionID draws again rather than hand
+// that id out, each draw from [0, maxSessionID) shifted to start at 1.
+// Not parallel: it swaps the drawSessionID seam.
+func TestNewSessionID_RedrawsLiveID(t *testing.T) {
+	oldDraw := drawSessionID
+	t.Cleanup(func() { drawSessionID = oldDraw })
+	const liveID = 7
+	require.NotContains(t, sessions, liveID, "precondition: id 7 is free")
+	sessions[liveID] = nil
+	defer delete(sessions, liveID)
+	draws := []int{liveID - 1, liveID - 1, 41}
+	var gotN []int
+	drawSessionID = func(n int) int {
+		gotN = append(gotN, n)
+		return draws[min(len(gotN), len(draws))-1]
+	}
+	assert.Equal(t, 42, newSessionID())
+	assert.Equal(t, []int{maxSessionID, maxSessionID, maxSessionID}, gotN)
 }
