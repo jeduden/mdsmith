@@ -271,11 +271,16 @@ registry disposes the session's id, so a host that drops a session
 without `dispose()` still frees the Go session. That is a fallback:
 the Go and JS garbage collectors decide when it runs, so call
 `dispose()` when you are done with a session to free its caches and
-workspace at once. The TinyGo build never releases a JS value that Go
-has held, so there the token is never collected and only `dispose()`
-frees a session. A host with no `FinalizationRegistry` still loads the
-engine; it has no fallback either, and only `dispose()` frees a
-session.
+workspace at once.
+
+Go holds the session's JS values until its own collector runs. On
+WebAssembly that happens only as the Go heap grows, so an engine that
+is no longer called can keep a dropped session for good. The TinyGo
+build never releases a JS value that Go has held, so there the token
+is never collected and only `dispose()` frees a session. A host with
+no `FinalizationRegistry`, or one the engine cannot build or bind,
+still loads the standard Go build. It has no fallback either, and only
+`dispose()` frees a session.
 
 `dispose()` drops the id and cancels the registry entry, so the
 disposed session's caches and workspace can be freed, and a
