@@ -326,6 +326,40 @@ func TestComputeRenamePlan(t *testing.T) {
 	}
 }
 
+// TestRenameExitCode maps each refactor.Rename outcome straight to its
+// exit code and message, without a workspace.
+func TestRenameExitCode(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      error
+		old, neu string
+		code     int
+		stderr   string
+	}{
+		{"ambiguous", refactor.ErrAmbiguousRename, "docs", "x", 2,
+			`"docs" matches both a heading and a link-ref label in a.md; pass --as heading or --as label`},
+		{"neither", refactor.ErrNoRenameTarget, "ghost", "x", 2,
+			`no heading or link-ref label "ghost" in a.md (to relocate a file, use mdsmith move)`},
+		{"neither, new name path-shaped", refactor.ErrNoRenameTarget, "ghost", "docs/new.md", 2,
+			`"docs/new.md" looks like a file path; to relocate a file use: mdsmith move ghost docs/new.md`},
+		{"nothing to rename", refactor.ErrNothingToRename, "Setup", "Setup", 1,
+			`nothing to rename for heading "Setup"`},
+		{"missing symbol", refactor.MissingSymbolError{Kind: refactor.KindLabel, Name: "ghost"}, "ghost", "x", 1,
+			`no link reference "ghost" in a.md`},
+		{"engine error", refactor.ErrEmptyLabel, "docs", "", 2, "mdsmith: label cannot be empty"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got int
+			stderr := captureStderr(func() {
+				got = renameExitCode(tc.err, "a.md", tc.old, tc.neu)
+			})
+			assert.Equal(t, tc.code, got)
+			assert.Contains(t, stderr, tc.stderr)
+		})
+	}
+}
+
 func TestApplyPlan_Errors(t *testing.T) {
 	renameWorkspace(t)
 	ws, _, code := buildRenameWorkspace(renameOptions{}, "a.md")

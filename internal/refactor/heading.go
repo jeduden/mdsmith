@@ -134,13 +134,13 @@ func Heading(
 	return Plan{Edits: changes}, nil
 }
 
-// FindHeadingLine returns the 1-based source line of the first
+// findHeadingLine returns the 1-based source line of the first
 // heading whose visible text equals headingText, or ok=false when no
 // heading matches. Rename uses it to locate (or auto-detect) a heading
 // and turn its text into the line coordinate Heading expects; it
 // parses the same way the engine does so the line it finds is the
 // line Heading rewrites.
-func FindHeadingLine(source []byte, headingText string) (int, bool) {
+func findHeadingLine(source []byte, headingText string) (int, bool) {
 	body, fmOffset := bodyAndFMOffset(source)
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
 	for _, h := range walkAllHeadings(root, body) {

@@ -15,12 +15,14 @@ summary: >-
 
 ## Goal
 
-Collapse the shared *detection* core of the two host-side
-rename-mode functions into one function. It lands on
-[internal/refactor][refactor], the package both surfaces
-already import. Each host keeps its own message formatting
-and exit-code/error-value shape. Only the "which kind does
-oldName match" decision moves.
+Collapse the rename dispatch the two hosts duplicated into
+one function. It lands on [internal/refactor][refactor],
+the package both surfaces already import. Each host keeps
+its own message formatting and exit-code/error-value shape.
+The plan first moved only the "which kind does oldName
+match" decision; review showed the hosts had also drifted on
+the kind → planner step, so `refactor.Rename` now owns
+detection and dispatch (tasks 8–10).
 
 ## Background
 
@@ -94,9 +96,11 @@ this duplication:
    impossible combination can be expressed. Detection now
    lives in the unexported `detectRenameKind`.
 10. [x] Reuse the heading line detection already found, so an
-    auto-detected heading rename parses the file once. Make
-    `HasLinkRef` unexported (`hasLinkRef`), since it has no
-    callers outside `internal/refactor`.
+    auto-detected heading rename searches for the heading
+    once rather than twice. Make `HasLinkRef` and
+    `FindHeadingLine` unexported (`hasLinkRef`,
+    `findHeadingLine`), since neither has callers outside
+    `internal/refactor`.
 
 ## Acceptance Criteria
 

@@ -128,3 +128,47 @@ func TestRename_DispatchErrors(t *testing.T) {
 		assert.ErrorAs(t, err, &invalid)
 	})
 }
+
+func TestInvalidRenameKindError_Error(t *testing.T) {
+	err := InvalidRenameKindError{Kind: "file"}
+	assert.Equal(t, `rename kind must be "heading" or "label", got "file"`, err.Error())
+}
+
+func TestMissingSymbolError_Error(t *testing.T) {
+	assert.Equal(t, `no heading "Setup"`,
+		MissingSymbolError{Kind: KindHeading, Name: "Setup"}.Error())
+	assert.Equal(t, `no link reference "docs"`,
+		MissingSymbolError{Kind: KindLabel, Name: "docs"}.Error())
+}
+
+func TestRenameHeadingAt(t *testing.T) {
+	ws := newDispatchWorkspace()
+	src := []byte(dispatchSrc)
+
+	p, err := renameHeadingAt(ws, "a.md", src, 1, "Setup", "Install")
+	require.NoError(t, err)
+	assert.Contains(t, p.Edits, "a.md")
+	assert.Contains(t, p.Edits, "b.md", "the incoming anchor is rewritten")
+
+	_, err = renameHeadingAt(ws, "a.md", src, 1, "Setup", " Setup ")
+	assert.ErrorIs(t, err, ErrNothingToRename, "a same-text rename has no edits")
+
+	_, err = renameHeadingAt(ws, "a.md", src, 1, "Setup", "!!!")
+	assert.ErrorIs(t, err, ErrEmptyHeadingSlug, "engine errors pass through")
+}
+
+func TestRenameLabel(t *testing.T) {
+	src := []byte(dispatchSrc)
+
+	p, err := renameLabel("a.md", src, "docs", "rfc")
+	require.NoError(t, err)
+	assert.Len(t, p.Edits["a.md"], 2, "the def and the shortcut use")
+
+	_, err = renameLabel("a.md", src, "ghost", "x")
+	var missing MissingSymbolError
+	require.ErrorAs(t, err, &missing)
+	assert.Equal(t, MissingSymbolError{Kind: KindLabel, Name: "ghost"}, missing)
+
+	_, err = renameLabel("a.md", src, "docs", " ")
+	assert.ErrorIs(t, err, ErrEmptyLabel, "engine errors pass through")
+}

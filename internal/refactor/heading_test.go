@@ -229,11 +229,11 @@ func TestHeading_RefDefInCodeBlockNotRewritten(t *testing.T) {
 
 func TestFindHeadingLine(t *testing.T) {
 	src := []byte("---\ntitle: x\n---\n# Intro\n\n## Setup\n")
-	line, ok := FindHeadingLine(src, "Setup")
+	line, ok := findHeadingLine(src, "Setup")
 	require.True(t, ok)
 	assert.Equal(t, 6, line) // 3 front-matter lines + body line 3
 
-	_, ok = FindHeadingLine(src, "Missing")
+	_, ok = findHeadingLine(src, "Missing")
 	assert.False(t, ok)
 }
 

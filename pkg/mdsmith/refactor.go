@@ -48,8 +48,11 @@ type RefactorPlan struct {
 // source) and rewrites every dependent reference across the workspace.
 // as selects the kind — "heading" or "label" — or "" to auto-detect
 // from source (a heading whose visible text is oldName, or a label
-// normalizing to oldName; ambiguous or absent is an error). The plan
-// carries only edits: a symbol rename never moves a file.
+// normalizing to oldName; ambiguous or absent is an error). It also
+// errors, rather than returning an empty plan, when an explicit kind
+// finds no heading or label named oldName, or when a heading's new
+// text equals its old text. The plan carries only edits: a symbol
+// rename never moves a file.
 func (s *Session) Rename(uri string, source []byte, as, oldName, newName string) (RefactorPlan, error) {
 	kind, err := refactor.ParseRenameKind(as)
 	if err != nil {
