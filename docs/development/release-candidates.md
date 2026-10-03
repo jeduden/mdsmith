@@ -73,7 +73,7 @@ it deletes the run's draft and skips the publish. The
 run stays green with a notice, and the next merge cuts
 `v0.57.0-rc.1`.
 
-After the publish step, the `pages` job calls
+When the candidate publishes, the `pages` job calls
 `pages.yml` to redeploy mdsmith.dev. The deploy runs
 `mdsmith-release sync-releases`, so the site's
 [release notes page](https://mdsmith.dev/releases/)

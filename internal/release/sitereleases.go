@@ -90,55 +90,220 @@ func sortNewestFirst(rs []SiteRelease) {
 }
 
 // rewriteHeadings adds shift levels to every ATX heading in body,
-// capped at h6. When idPrefix is set, each heading also gets an
-// explicit "{#<idPrefix>-<slug>}" attribute: every release's notes
-// render separately and share headings such as "What's Changed",
-// so automatic IDs would repeat across the page. A heading that
-// already carries an attribute block keeps it. Lines inside fenced
-// code blocks, lines indented four or more spaces, and "#123"-style
-// text are left alone.
+// capped at h6, and rewrites each setext heading (a paragraph
+// underlined with "===" or "---") as an ATX heading at the shifted
+// level, its lines joined with a space. When idPrefix is set, each
+// heading also gets an explicit "{#<idPrefix>-<slug>}" attribute:
+// every release's notes render separately and share headings such
+// as "What's Changed", so automatic IDs would repeat across the
+// page. A heading that already ends in an attribute block ("{#id}",
+// "{.class}", "{key=value}") keeps it. Lines inside fenced code
+// blocks, lines indented four or more spaces, and "#123"-style text
+// are left alone.
 func rewriteHeadings(body string, shift int, idPrefix string) string {
-	lines := strings.Split(body, "\n")
-	seen := map[string]int{}
-	var fence string
-	for i, line := range lines {
-		trimmed := strings.TrimLeft(line, " ")
-		indent := len(line) - len(trimmed)
-		if indent > 3 {
-			continue
-		}
-		if fence != "" {
-			if strings.HasPrefix(trimmed, fence) && strings.Trim(trimmed, fence[:1]) == "" {
-				fence = ""
-			}
-			continue
-		}
-		if f := fenceOpener(trimmed); f != "" {
-			fence = f
-			continue
-		}
-		level := atxLevel(trimmed)
-		if level == 0 {
-			continue
-		}
-		hashes := strings.Repeat("#", min(level+shift, 6))
-		rest := trimmed[level:]
-		lines[i] = line[:indent] + hashes + rest
-		text := atxHeadingText(rest)
-		slug := headingSlug(text)
-		if idPrefix == "" || slug == "" || strings.HasSuffix(text, "}") {
-			continue
-		}
-		id := idPrefix + "-" + slug
-		if n := seen[id]; n > 0 {
-			seen[id] = n + 1
-			id = fmt.Sprintf("%s-%d", id, n)
-		} else {
-			seen[id] = 1
-		}
-		lines[i] = line[:indent] + hashes + " " + text + " {#" + id + "}"
+	w := headingRewriter{
+		lines:     strings.Split(body, "\n"),
+		shift:     shift,
+		ids:       headingIDs{prefix: idPrefix, seen: map[string]bool{}},
+		paraStart: -1,
+		canStart:  true,
 	}
-	return strings.Join(lines, "\n")
+	for i := range w.lines {
+		w.visit(i)
+	}
+	return strings.Join(w.lines, "\n")
+}
+
+// headingRewriter is rewriteHeadings' line-by-line state.
+type headingRewriter struct {
+	lines []string
+	shift int
+	ids   headingIDs
+	// fenceChar and fenceLen describe the open fenced code block's
+	// opening run; fenceChar is 0 outside one.
+	fenceChar byte
+	fenceLen  int
+	// paraStart is the first line of the open plain paragraph (one a
+	// setext underline can turn into a heading), or -1. canStart
+	// reports whether the next plain line opens a new paragraph rather
+	// than lazily continuing a list item or block quote.
+	paraStart int
+	canStart  bool
+}
+
+func (w *headingRewriter) visit(i int) {
+	line := w.lines[i]
+	if w.fenceChar != 0 {
+		if w.closesFence(line) {
+			w.fenceChar, w.canStart = 0, true
+		}
+		return
+	}
+	trimmed := strings.TrimLeft(line, " ")
+	indent := len(line) - len(trimmed)
+	switch {
+	case strings.TrimSpace(line) == "":
+		w.paraStart, w.canStart = -1, true
+	case indent > 3:
+		if w.paraStart < 0 {
+			w.canStart = true
+		}
+	default:
+		w.block(i, line[:indent], trimmed)
+	}
+}
+
+// closesFence reports whether line closes the open fenced code
+// block: the same fence character, a run at least as long as the
+// opener's, and nothing but whitespace after it.
+func (w *headingRewriter) closesFence(line string) bool {
+	c, n := fenceMarker([]byte(line))
+	return c == w.fenceChar && n >= w.fenceLen && fenceLineEmptyAfter([]byte(line), n)
+}
+
+// block handles a non-blank line indented at most three spaces;
+// indent is its leading spaces and trimmed the rest.
+func (w *headingRewriter) block(i int, indent, trimmed string) {
+	if c, n := fenceMarker([]byte(trimmed)); c != 0 {
+		w.fenceChar, w.fenceLen, w.paraStart = c, n, -1
+		return
+	}
+	if level := atxLevel(trimmed); level > 0 {
+		w.lines[i] = indent + w.ids.atx(w.hashes(level), trimmed[level:])
+		w.paraStart, w.canStart = -1, true
+		return
+	}
+	if level := setextLevel(trimmed); level > 0 {
+		if w.paraStart >= 0 {
+			rewriteSetext(w.lines, w.paraStart, i, w.hashes(level), &w.ids)
+		}
+		w.paraStart, w.canStart = -1, true
+		return
+	}
+	if opensNonParagraphBlock(trimmed) {
+		w.paraStart, w.canStart = -1, false
+		return
+	}
+	if w.paraStart < 0 && w.canStart {
+		w.paraStart = i
+	}
+	w.canStart = false
+}
+
+// hashes returns the ATX marker for a heading of level after the
+// shift, capped at h6.
+func (w *headingRewriter) hashes(level int) string {
+	return strings.Repeat("#", min(level+w.shift, 6))
+}
+
+// rewriteSetext replaces the setext heading whose paragraph spans
+// lines[start:underline] and whose underline is lines[underline] with
+// one ATX heading line, blanking the lines it absorbs so the line
+// count stays the same.
+func rewriteSetext(lines []string, start, underline int, hashes string, ids *headingIDs) {
+	parts := make([]string, 0, underline-start)
+	for _, l := range lines[start:underline] {
+		parts = append(parts, strings.TrimSpace(l))
+	}
+	text := strings.Join(parts, " ")
+	heading := hashes + " " + text
+	if id := ids.next(text); id != "" {
+		heading += " {#" + id + "}"
+	}
+	lines[start] = heading
+	for j := start + 1; j <= underline; j++ {
+		lines[j] = ""
+	}
+}
+
+// headingIDs hands out tag-scoped heading ids, unique within one
+// release body.
+type headingIDs struct {
+	prefix string
+	seen   map[string]bool
+}
+
+// atx renders an ATX heading from its new hashes and rest, the
+// original line after its opening hashes. The scoped id is appended
+// when next yields one; otherwise rest is kept verbatim.
+func (h *headingIDs) atx(hashes, rest string) string {
+	text := atxHeadingText(rest)
+	id := h.next(text)
+	if id == "" {
+		return hashes + rest
+	}
+	return hashes + " " + text + " {#" + id + "}"
+}
+
+// next returns the scoped id for a heading with the given text, or
+// "" when there is no prefix, the text has no slug, or the heading
+// carries its own attribute block. A repeated id gets the first
+// "-<n>" suffix no earlier heading has taken.
+func (h *headingIDs) next(text string) string {
+	if h.prefix == "" || hasAttributeBlock(text) {
+		return ""
+	}
+	slug := headingSlug(text)
+	if slug == "" {
+		return ""
+	}
+	base := h.prefix + "-" + slug
+	id := base
+	for n := 1; h.seen[id]; n++ {
+		id = fmt.Sprintf("%s-%d", base, n)
+	}
+	h.seen[id] = true
+	return id
+}
+
+// hasAttributeBlock reports whether heading text ends in a Goldmark
+// attribute block: "{#id}", "{.class}", or "{key=value}". Plain
+// braces such as "Fix {x}" are heading text, not attributes.
+func hasAttributeBlock(text string) bool {
+	if !strings.HasSuffix(text, "}") {
+		return false
+	}
+	i := strings.LastIndexByte(text, '{')
+	if i < 0 {
+		return false
+	}
+	inner := strings.TrimSpace(text[i+1 : len(text)-1])
+	return strings.HasPrefix(inner, "#") || strings.HasPrefix(inner, ".") || strings.Contains(inner, "=")
+}
+
+// setextLevel returns 1 for a setext h1 underline ("==="), 2 for an
+// h2 underline ("---"), or 0, on a line with its indent removed.
+func setextLevel(s string) int {
+	s = strings.TrimRight(s, " \t")
+	switch {
+	case s == "":
+		return 0
+	case strings.Trim(s, "=") == "":
+		return 1
+	case strings.Trim(s, "-") == "":
+		return 2
+	}
+	return 0
+}
+
+// opensNonParagraphBlock reports whether s (indent removed) opens a
+// list item, block quote, HTML block, or table row: a block a setext
+// underline cannot turn into a heading.
+func opensNonParagraphBlock(s string) bool {
+	switch s[0] {
+	case '>', '<', '|':
+		return true
+	case '-', '*', '+':
+		return len(s) == 1 || s[1] == ' ' || s[1] == '\t'
+	}
+	n := 0
+	for n < len(s) && n < 9 && s[n] >= '0' && s[n] <= '9' {
+		n++
+	}
+	if n == 0 || n >= len(s) || (s[n] != '.' && s[n] != ')') {
+		return false
+	}
+	return n+1 == len(s) || s[n+1] == ' ' || s[n+1] == '\t'
 }
 
 // atxHeadingText returns an ATX heading's inline text: rest is the line
@@ -173,22 +338,6 @@ func headingSlug(s string) string {
 		}
 	}
 	return b.String()
-}
-
-// fenceOpener returns the run of three or more backticks or tildes
-// that opens a fenced code block on s, or "" when s opens none.
-func fenceOpener(s string) string {
-	if len(s) < 3 || (s[0] != '`' && s[0] != '~') {
-		return ""
-	}
-	n := 0
-	for n < len(s) && s[n] == s[0] {
-		n++
-	}
-	if n < 3 {
-		return ""
-	}
-	return s[:n]
 }
 
 // atxLevel returns the heading level of an ATX heading line with its

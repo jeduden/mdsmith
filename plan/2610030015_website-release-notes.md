@@ -43,10 +43,11 @@ the next doc edit.
 1. Add `release.BuildSiteReleases` to split published releases
    into `stable` and `candidates` (by GitHub's `prerelease`
    flag), drop drafts, sort each list newest first, and demote
-   body headings by two levels so `## What's Changed` sits
-   under the release's own heading. Each body heading also
-   gets an id scoped by the tag (`{#v0-55-1-whats-changed}`),
-   since every release renders its own "What's Changed".
+   body headings (ATX and setext) by two levels so
+   `## What's Changed` sits under the release's own heading.
+   Each body heading also gets an id scoped by the tag
+   (`{#v0-55-1-whats-changed}`), since every release renders
+   its own "What's Changed".
 2. Add `release.SyncReleases` to list every release via the
    paginated `GET /repos/{repo}/releases` endpoint and write the
    result as JSON.

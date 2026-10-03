@@ -225,6 +225,10 @@ jobs:
     needs: [version, build, vscode, obsidian]
     if: *rc_repo_ok
     runs-on: ubuntu-latest
+    outputs:
+      # 'true' when check-rc found the candidate current and the
+      # publish step ran; the pages job below deploys only then.
+      published: ${{ steps.fresh.outputs.current }}
     permissions:
       contents: write
       id-token: write
@@ -313,11 +317,15 @@ jobs:
   # A plain docs-only deploy would not pick the candidate up: a merge
   # that touches no docs or website path never triggers pages.yml.
   # No version input, so the site keeps the latest stable version.
-  # Runs even when check-rc skipped a stale candidate's publish; the
-  # site then shows the release list as it stands, which is harmless.
+  # Skipped when check-rc discarded a stale candidate: nothing new
+  # was published, and the stable release that made it stale already
+  # redeployed the site through release.yml's own pages job.
   pages:
     needs: [release]
-    if: *rc_repo_ok
+    if: >-
+      github.repository == 'jeduden/mdsmith' &&
+      github.ref == 'refs/heads/main' &&
+      needs.release.outputs.published == 'true'
     permissions:
       contents: read
       pages: write

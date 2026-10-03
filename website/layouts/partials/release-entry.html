@@ -6,8 +6,9 @@
        (render expanded).
 
        The id is the tag, so /releases/#v0.55.1 deep-links to a
-       release; browsers open a collapsed <details> on fragment
-       navigation. The notes' own headings arrive demoted to h4
+       release; not every browser opens a collapsed <details> on
+       fragment navigation, so the page's script opens it (see
+       releases/page.html). The notes' own headings arrive demoted to h4
        with tag-scoped ids (sync-releases), so they nest under
        this h3 and never collide across releases. Goldmark runs
        with unsafe = false, so raw HTML in a release body is

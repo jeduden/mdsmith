@@ -48,7 +48,15 @@
   <script>
     (() => {
       const openTarget = () => {
-        const id = decodeURIComponent(location.hash.slice(1));
+        // A malformed escape (#%E0) makes decodeURIComponent throw;
+        // treat it as no target so the hashchange listener below
+        // still registers.
+        let id = "";
+        try {
+          id = decodeURIComponent(location.hash.slice(1));
+        } catch {
+          return;
+        }
         const el = id && document.getElementById(id);
         const release = el && el.closest("details.release");
         if (release && !release.open) {

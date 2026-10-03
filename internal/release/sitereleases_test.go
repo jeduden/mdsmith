@@ -39,6 +39,14 @@ func TestRewriteHeadingsDemotes(t *testing.T) {
 		{"shorter fence does not close", "````\n```\n# in\n````\n# out", "````\n```\n# in\n````\n### out"},
 		{"other fence char does not close", "```\n~~~\n# in\n```", "```\n~~~\n# in\n```"},
 		{"tab after hashes", "#\tTab", "###\tTab"},
+		{"fence closer with trailing spaces", "```\n# c\n```  \n# after", "```\n# c\n```  \n### after"},
+		{"setext h2 becomes atx", "Highlights\n---\n\nx", "#### Highlights\n\n\nx"},
+		{"setext h1 becomes atx", "Title\n===", "### Title\n"},
+		{"multi-line setext joins its lines", "Two\nlines\n---", "#### Two lines\n\n"},
+		{"thematic break after blank stays", "a\n\n---\nb", "a\n\n---\nb"},
+		{"dash under a list item is a break", "- item\n---", "- item\n---"},
+		{"underline under a fence is not setext", "```\nx\n```\n---", "```\nx\n```\n---"},
+		{"underline under a heading is not setext", "# H\n---", "### H\n---"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -59,6 +67,11 @@ func TestRewriteHeadingsAddsScopedIDs(t *testing.T) {
 		{"explicit attribute kept", "## A {#own}", "#### A {#own}"},
 		{"no slug, no id", "## !!!", "#### !!!"},
 		{"empty heading", "##", "####"},
+		{"counter skips a taken id", "## A\n## A\n## A 1", "#### A {#v1-a}\n#### A {#v1-a-1}\n#### A 1 {#v1-a-1-1}"},
+		{"brace text is not an attribute", "## Fix {x}", "#### Fix {x} {#v1-fix-x}"},
+		{"class attribute kept", "## A {.c}", "#### A {.c}"},
+		{"key-value attribute kept", "## A {k=v}", "#### A {k=v}"},
+		{"setext heading gets an id", "Notes\n---", "#### Notes {#v1-notes}\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -235,23 +248,142 @@ func TestSyncReleasesErrors(t *testing.T) {
 	})
 }
 
-func TestFenceOpener(t *testing.T) {
-	cases := map[string]string{
-		"```":      "```",
-		"````go":   "````",
-		"~~~ sh":   "~~~",
-		"``":       "",
-		"``x":      "",
-		"text":     "",
-		"":         "",
-		"-- ```":   "",
-		"~~~~~~~~": "~~~~~~~~",
+func TestSetextLevel(t *testing.T) {
+	cases := map[string]int{
+		"===":   1,
+		"=":     1,
+		"---":   2,
+		"-  \t": 2,
+		"- - -": 0,
+		"==-":   0,
+		"":      0,
+		"  ":    0,
+		"text":  0,
 	}
 	for in, want := range cases {
 		t.Run(in, func(t *testing.T) {
-			assert.Equal(t, want, fenceOpener(in))
+			assert.Equal(t, want, setextLevel(in))
 		})
 	}
+}
+
+func TestOpensNonParagraphBlock(t *testing.T) {
+	cases := map[string]bool{
+		"> quote":         true,
+		"<details>":       true,
+		"| a | b |":       true,
+		"- item":          true,
+		"*\titem":         true,
+		"+":               true,
+		"1. item":         true,
+		"12) item":        true,
+		"3.":              true,
+		"**Full** change": false,
+		"-dash":           false,
+		"1.5 release":     false,
+		"2026":            false,
+		"plain":           false,
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			assert.Equal(t, want, opensNonParagraphBlock(in))
+		})
+	}
+}
+
+func TestHasAttributeBlock(t *testing.T) {
+	cases := map[string]bool{
+		"A {#id}":    true,
+		"A {.cls}":   true,
+		"A {k=v}":    true,
+		"A { #id }":  true,
+		"Fix {x}":    false,
+		"Plain":      false,
+		"Ends in }":  false,
+		"{#id} then": false,
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			assert.Equal(t, want, hasAttributeBlock(in))
+		})
+	}
+}
+
+func TestHeadingIDsNext(t *testing.T) {
+	ids := headingIDs{prefix: "v1", seen: map[string]bool{}}
+	assert.Equal(t, "v1-a-1", ids.next("A 1"))
+	assert.Equal(t, "v1-a", ids.next("A"))
+	assert.Equal(t, "v1-a-2", ids.next("A"))
+	assert.Empty(t, ids.next("!!!"))
+	assert.Empty(t, ids.next("A {#own}"))
+
+	none := headingIDs{seen: map[string]bool{}}
+	assert.Empty(t, none.next("A"))
+}
+
+func TestHeadingIDsATX(t *testing.T) {
+	ids := headingIDs{prefix: "v1", seen: map[string]bool{}}
+	assert.Equal(t, "### A {#v1-a}", ids.atx("###", " A ##"))
+	assert.Equal(t, "###\t!!!", ids.atx("###", "\t!!!"))
+}
+
+func TestHeadingRewriterClosesFence(t *testing.T) {
+	w := headingRewriter{fenceChar: '`', fenceLen: 3}
+	assert.True(t, w.closesFence("```"))
+	assert.True(t, w.closesFence("  ````  "))
+	assert.False(t, w.closesFence("``"))
+	assert.False(t, w.closesFence("```go"))
+	assert.False(t, w.closesFence("~~~"))
+	assert.False(t, w.closesFence("    ```"))
+}
+
+func TestHeadingRewriterHashes(t *testing.T) {
+	w := headingRewriter{shift: 2}
+	assert.Equal(t, "###", w.hashes(1))
+	assert.Equal(t, "######", w.hashes(5))
+}
+
+func TestHeadingRewriterVisit(t *testing.T) {
+	w := headingRewriter{
+		lines:     []string{"Para", "    indented", "---"},
+		shift:     2,
+		ids:       headingIDs{seen: map[string]bool{}},
+		paraStart: -1,
+		canStart:  true,
+	}
+	for i := range w.lines {
+		w.visit(i)
+	}
+	// The indented line lazily continues the paragraph, so the
+	// underline turns both lines into one heading.
+	assert.Equal(t, []string{"#### Para indented", "", ""}, w.lines)
+}
+
+func TestHeadingRewriterBlock(t *testing.T) {
+	w := headingRewriter{
+		lines:     []string{"- item", "lazy", "---"},
+		ids:       headingIDs{seen: map[string]bool{}},
+		paraStart: -1,
+		canStart:  true,
+	}
+	w.block(0, "", w.lines[0])
+	assert.False(t, w.canStart)
+	w.block(1, "", w.lines[1])
+	assert.Equal(t, -1, w.paraStart, "a lazy list continuation opens no paragraph")
+	w.block(2, "", w.lines[2])
+	assert.Equal(t, []string{"- item", "lazy", "---"}, w.lines)
+}
+
+func TestRewriteSetext(t *testing.T) {
+	ids := headingIDs{prefix: "v1", seen: map[string]bool{}}
+	lines := []string{"intro", "", "Two ", "  lines", "---", "after"}
+	rewriteSetext(lines, 2, 4, "####", &ids)
+	assert.Equal(t, []string{"intro", "", "#### Two lines {#v1-two-lines}", "", "", "after"}, lines)
+
+	noID := headingIDs{seen: map[string]bool{}}
+	lines = []string{"Title", "==="}
+	rewriteSetext(lines, 0, 1, "###", &noID)
+	assert.Equal(t, []string{"### Title", ""}, lines)
 }
 
 func TestATXLevel(t *testing.T) {
