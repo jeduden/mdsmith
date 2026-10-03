@@ -67,8 +67,9 @@ errors only then.
    `cmd/mdsmith-release/testjswasm_proc_test.go`, take
    the same tag. They run only the go toolchain and
    `os.Pipe`, which plan9 has, so they need no skip.
-   Plan [2610031843](2610031843_dev-guide-plan9-proc-test-tag.md)
-   updates the developer guide's tag advice.
+   The "Test Fixtures" section of
+   [docs/development/index.md](../docs/development/index.md)
+   names the new tag and the two plan9 skip helpers.
 4. Guard the tag in CI:
    [proctags_test.go](../internal/build/proctags_test.go)
    fails when an `internal/build` test file builds on
