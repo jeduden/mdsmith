@@ -144,11 +144,14 @@ func skipOnPlan9(t *testing.T) {
 
 // skipWithoutPOSIXTools skips a test whose recipe needs the named POSIX
 // tools (an `sh` script, `cp`, ...): Windows lacks them and plan9 has
-// only `rc`.
+// only `rc`. The skip names tools on both, since a `cp` or `cat` test
+// is skipped on plan9 for its POSIX recipe, not for a missing binary.
 func skipWithoutPOSIXTools(t *testing.T, tools string) {
 	t.Helper()
-	skipOnPlan9(t)
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "plan9":
+		t.Skip(tools + " recipe assumes POSIX tools; plan9 has only rc, see exec_plan9_test.go")
+	case "windows":
 		t.Skip(tools + " is not available on Windows")
 	}
 }
