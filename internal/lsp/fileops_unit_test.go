@@ -1,13 +1,13 @@
 package lsp
 
 import (
+	"maps"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"testing"
-	"testing/fstest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -287,11 +287,7 @@ func newMemRenameWorkspace(files map[string]string) memRenameWorkspace {
 }
 
 func (w memRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
-	fsys := fstest.MapFS{}
-	for rel := range w.files {
-		fsys[rel] = &fstest.MapFile{}
-	}
-	return linkgraph.NewWikilinkIndex(fsys)
+	return linkgraph.NewWikilinkIndexFromPaths(slices.Collect(maps.Keys(w.files)))
 }
 
 func (w memRenameWorkspace) Resolve(file string) (string, []byte, bool) {

@@ -4,8 +4,9 @@ import "github.com/jeduden/mdsmith/internal/index"
 
 // edgeLines reads the row an incoming edge points at, resolving and
 // splitting each source file once while consecutive edges share it.
-// The index returns edges sorted by SourceFile, so a file with many
-// links is read once rather than once per link.
+// The index returns each file's edges together (IncomingWikilinkEdges
+// sorts by SourceFile; IncomingEdges groups by file without sorting),
+// so a file with many links is read once rather than once per link.
 type edgeLines struct {
 	ws    Workspace
 	file  string
