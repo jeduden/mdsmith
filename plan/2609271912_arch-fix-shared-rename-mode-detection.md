@@ -2,7 +2,7 @@
 id: 2609271912
 title: >-
   Share rename-mode detection between the CLI and the engine
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   cmd/mdsmith/rename.go's detectRenameMode and
@@ -49,14 +49,14 @@ this duplication:
 
 ## Tasks
 
-1. Read [cmd/mdsmith/rename.go][cmd-rename]'s
+1. [x] Read [cmd/mdsmith/rename.go][cmd-rename]'s
    `detectRenameMode` and
    [pkg/mdsmith/refactor.go][pkg-refactor]'s
    `detectRenameKind` in full, plus their existing unit
    tests, and confirm both wrap the same four-way
    `isHeading`/`isLabel` branch on top of
    `refactor.FindHeadingLine` / `refactor.HasLinkRef`.
-2. Add a `refactor.DetectRenameKind(source []byte, oldName
+2. [x] Add a `refactor.DetectRenameKind(source []byte, oldName
    string) (kind string, ambiguous, found bool)` (or an
    equivalent small result type) to [internal/refactor][refactor]
    that returns only the detection outcome — no message

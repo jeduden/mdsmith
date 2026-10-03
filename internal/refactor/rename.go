@@ -122,6 +122,25 @@ func HasLinkRef(source []byte, label string) bool {
 	return false
 }
 
+// DetectRenameKind auto-detects whether oldName names a heading or a
+// link-ref label in source. kind is "heading" or "label" when exactly
+// one matches. When both match, ambiguous is true and kind is empty.
+// found is true when at least one matches. It carries no message text
+// or exit code; each host formats its own error.
+func DetectRenameKind(source []byte, oldName string) (kind string, ambiguous, found bool) {
+	_, isHeading := FindHeadingLine(source, oldName)
+	isLabel := HasLinkRef(source, oldName)
+	switch {
+	case isHeading && isLabel:
+		return "", true, true
+	case isHeading:
+		return "heading", false, true
+	case isLabel:
+		return "label", false, true
+	}
+	return "", false, false
+}
+
 // ValidRefDefBodyLines reports the body-line indices that hold a real
 // reference definition goldmark accepted (not a code-block
 // look-alike). The LSP prepare-rename gate consults it so the rename

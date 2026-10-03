@@ -541,3 +541,27 @@ func TestInlineTextBracket(t *testing.T) {
 	assert.Equal(t, -1, inlineTextBracket([]byte("[a\n\n](u)"), 1))
 	assert.Equal(t, -1, inlineTextBracket([]byte("[a]"), 1))
 }
+
+func TestDetectRenameKind(t *testing.T) {
+	tests := []struct {
+		name      string
+		src       string
+		old       string
+		kind      string
+		ambiguous bool
+		found     bool
+	}{
+		{"heading only", "# Setup\n\nSee [docs].\n\n[docs]: u\n", "Setup", "heading", false, true},
+		{"label only", "# Setup\n\nSee [docs].\n\n[docs]: u\n", "docs", "label", false, true},
+		{"both match", "# docs\n\nSee [docs].\n\n[docs]: u\n", "docs", "", true, true},
+		{"neither match", "# Setup\n\nSee [docs].\n\n[docs]: u\n", "ghost", "", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			kind, ambiguous, found := DetectRenameKind([]byte(tt.src), tt.old)
+			assert.Equal(t, tt.kind, kind)
+			assert.Equal(t, tt.ambiguous, ambiguous)
+			assert.Equal(t, tt.found, found)
+		})
+	}
+}
