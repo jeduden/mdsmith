@@ -111,17 +111,23 @@ cross-directory move, check them by hand.
   `\` just before the `#` or `?` that ends the path, as in
   `a.md\#x`, only escapes that byte, so such a link is repointed
   and keeps its `\`.
-- **Ambiguous wikilinks.** When another Markdown file shares the
-  old or the new basename stem, no `[[stem]]` is rewritten,
-  because the rewrite could point it at the wrong file. For a new
-  name with another extension, such as `guide.mdx`, any file with
-  that name blocks the rewrite, since `[[guide.mdx]]` reads it by
-  exact name. The check reads the files a wikilink resolves
-  against: every file under the workspace root except `.git` and
-  `node_modules`, whatever the `files:` patterns or `.gitignore`
-  say. A gitignored `archive/guide.md` or an unlisted `logo.png`
-  therefore blocks the rewrite, and a `node_modules` README does
-  not. Check such a move with `--dry-run`.
+- **Ambiguous wikilinks.** A `[[stem]]` reads the basename
+  alone, folder prefix or not. When several Markdown files share
+  the stem, it reaches the shallowest one, then the first by name.
+  If that file is not the one you move, no `[[stem]]` is
+  rewritten, because each one still reaches that other file. If
+  it is, every `[[stem]]` follows the move. When any file already
+  has the new stem, no `[[stem]]` is rewritten, because the new
+  name would reach that file. For a new name with another
+  extension, such as `guide.mdx`, any file with that name blocks
+  the rewrite, since `[[guide.mdx]]` reads it by exact name. The
+  check reads the files a wikilink resolves against: every file
+  under the workspace root except `.git` and `node_modules`,
+  whatever the `files:` patterns or `.gitignore` say. So a
+  gitignored `archive/guide.md` blocks the rewrite for a move of
+  `docs/guide.md`, and an unlisted `logo.png` blocks it for a move
+  to `docs/logo.png`. A `node_modules` README does not block a
+  move of `docs/readme.md`. Check such a move with `--dry-run`.
 - **Wikilinks to a name they cannot reach.** A move to a name
   with no extension, such as `COPYING`, leaves every `[[stem]]`
   as written, because a bare `[[name]]` finds only Markdown

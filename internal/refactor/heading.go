@@ -21,11 +21,15 @@ import (
 // reaches beyond the edited file: every incoming `[t](other.md#slug)`
 // anchor and every `[label]: other.md#slug` ref-def whose destination
 // resolves to the renamed heading must be rewritten too. The engine
-// asks the Workspace three questions and stays surface-neutral:
+// asks the Workspace these questions and stays surface-neutral:
 //
 //   - which edges point at (file, slug)?
 //   - what files exist?
 //   - what key + bytes back a workspace-relative path?
+//
+// A file move (see Move) shares the seam and also asks which edges
+// name a file by path or by `[[stem]]`, and which files a `[[stem]]`
+// resolves against (WikilinkIndex).
 //
 // The LSP server backs it with its warm index plus open buffers; the
 // `mdsmith rename` CLI with a transient index plus disk reads. The
@@ -45,10 +49,11 @@ type Workspace interface {
 	IncomingWikilinkEdges(stem string) []index.Edge
 	// WikilinkIndex returns the index `[[stem]]` resolution reads: every
 	// file under the workspace root except `.git` and `node_modules`,
-	// whether or not Files lists it. A file move counts same-stem and
-	// same-name files against it, so it must cover the same file set
-	// the resolver does. A nil index (no readable root) makes the move
-	// count the Files list instead. An implementation may walk the
+	// whether or not Files lists it. A file move reads from it which
+	// file `[[oldStem]]` resolves to and whether the new stem or name
+	// is taken, so it must cover the same file set the resolver does. A
+	// nil index (no readable root) makes the move read the Files list
+	// instead. An implementation may walk the
 	// whole root on every call (the CLI and Session ones do; the LSP
 	// one memoizes), so a planner calls it at most once per plan and
 	// only once it has a `[[stem]]` edge to guard.

@@ -333,6 +333,19 @@ func (idx *WikilinkIndex) StemPaths(key string) []string {
 	return idx.stems[key]
 }
 
+// StemResolvesTo reports whether a `[[stem]]` link keyed by key (as
+// FileStemKey returns it) resolves to the workspace-relative path p,
+// counting p as a holder of key even when the index lacks it: the
+// shallowest, then alphabetically first, holder wins. A nil index holds
+// no other file, so p wins.
+func (idx *WikilinkIndex) StemResolvesTo(key, p string) bool {
+	paths := idx.StemPaths(key)
+	if len(paths) == 0 || paths[0] == p {
+		return true
+	}
+	return !slices.Contains(paths, p) && compareDepthThenName(p, paths[0]) < 0
+}
+
 // NamePaths returns the files, of any extension, the resolver reaches
 // by the exact-name key (as FileNameKey returns it), shallowest first.
 // The slice is the index's own: callers must not modify it. A nil
@@ -390,12 +403,17 @@ func skipHeavyDirs(p string) error {
 // buckets are small: a cached-depth copy cost one allocation per
 // bucket and measured slower below about 50 paths, breaking even there.
 func sortByDepthThenName(paths []string) {
-	slices.SortFunc(paths, func(a, b string) int {
-		return cmp.Or(
-			cmp.Compare(strings.Count(a, "/"), strings.Count(b, "/")),
-			cmp.Compare(a, b),
-		)
-	})
+	slices.SortFunc(paths, compareDepthThenName)
+}
+
+// compareDepthThenName orders a before b when it is shallower, or at
+// the same depth sorts first by name: the order a `[[stem]]` picks its
+// file in.
+func compareDepthThenName(a, b string) int {
+	return cmp.Or(
+		cmp.Compare(strings.Count(a, "/"), strings.Count(b, "/")),
+		cmp.Compare(a, b),
+	)
 }
 
 // ResolveWikiLink resolves an Obsidian-style wikilink target against

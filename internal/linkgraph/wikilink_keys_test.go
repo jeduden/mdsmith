@@ -71,3 +71,29 @@ func TestWikilinkAtRE_Anchored(t *testing.T) {
 	assert.Equal(t, []int{0, 6}, wikilinkAtRE.FindStringIndex("![[a]]"))
 	assert.Equal(t, wikilinkRE.NumSubexp(), wikilinkAtRE.NumSubexp())
 }
+
+// TestStemResolvesTo locks which same-stem file a `[[stem]]` reaches:
+// the shallowest, then alphabetically first, holder, counting p as a
+// holder even when the index lacks it.
+func TestStemResolvesTo(t *testing.T) {
+	idx := NewWikilinkIndexFromPaths([]string{"docs/Guide.md", "ref/Guide.md", "a/b/guide.md"})
+	for name, tc := range map[string]struct {
+		idx  *WikilinkIndex
+		key  string
+		p    string
+		want bool
+	}{
+		"first holder":             {idx, "guide", "docs/Guide.md", true},
+		"later holder":             {idx, "guide", "ref/Guide.md", false},
+		"deeper holder":            {idx, "guide", "a/b/guide.md", false},
+		"unindexed shallower path": {idx, "guide", "guide.md", true},
+		"unindexed sorts first":    {idx, "guide", "ab/guide.md", true},
+		"unindexed sorts later":    {idx, "guide", "zz/guide.md", false},
+		"no holder":                {idx, "manual", "docs/manual.md", true},
+		"nil index holds only p":   {nil, "guide", "ref/Guide.md", true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tc.idx.StemResolvesTo(tc.key, tc.p))
+		})
+	}
+}

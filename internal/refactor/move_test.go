@@ -103,11 +103,11 @@ func TestMove_WikilinksUntouchedWhenBasenameKept(t *testing.T) {
 	require.NotNil(t, plan.FileOp)
 }
 
-// TestMove_WikilinkAmbiguousStemLeftUntouched locks that a move whose
-// basename stem is shared by another workspace file does not rewrite
-// any wikilink: the index keys wikilink edges by stem alone and cannot
-// tell which same-stem file `[[ref/Guide]]` points at, so rewriting it
-// would break a reference to the sibling file that is not moving.
+// TestMove_WikilinkAmbiguousStemLeftUntouched locks that a move of a
+// file that shares its basename stem with a sibling the resolver picks
+// first rewrites no wikilink: the resolver reads the basename alone, so
+// `[[ref/Guide]]` and `[[docs/Guide]]` both reach docs/Guide.md, and
+// retargeting them would steal links from that sibling.
 func TestMove_WikilinkAmbiguousStemLeftUntouched(t *testing.T) {
 	src := "See [[ref/Guide]] and [[docs/Guide]].\n"
 	ws := newMemWorkspace(map[string]string{
@@ -115,10 +115,27 @@ func TestMove_WikilinkAmbiguousStemLeftUntouched(t *testing.T) {
 		"ref/Guide.md":  "# Guide\n",
 		"index.md":      src,
 	})
-	plan, err := Move(ws, "docs/Guide.md", "docs/Manual.md")
+	plan, err := Move(ws, "ref/Guide.md", "ref/Manual.md")
 	require.NoError(t, err)
 	assert.Empty(t, plan.Edits["index.md"],
-		"ambiguous stem: no wikilink is rewritten")
+		"a sibling wins the stem: no wikilink is rewritten")
+}
+
+// TestMove_WikilinkSharedStemRewrittenWhenSourceWins locks that a move
+// of the same-stem file the resolver picks first rewrites every
+// `[[stem]]`: each one reaches the moved file today, and left alone it
+// would silently reach the sibling once the file is gone.
+func TestMove_WikilinkSharedStemRewrittenWhenSourceWins(t *testing.T) {
+	src := "See [[Guide]] and [[ref/Guide]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/Guide.md": "# Guide\n",
+		"ref/Guide.md":  "# Guide\n",
+		"index.md":      src,
+	})
+	plan, err := Move(ws, "docs/Guide.md", "docs/Manual.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[Manual]] and [[ref/Manual]].\n",
+		applyEditsToSource(t, src, plan.Edits["index.md"]))
 }
 
 // TestMove_DestinationWithSpaceIsPercentEncoded locks that relocating a

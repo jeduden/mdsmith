@@ -108,6 +108,15 @@ out of plan 2610022044, which fixes the extension filter.
     `linkgraph.WikilinkStemAt` and skips it unless the key is
     still the old stem, so an edge from a stale index cannot
     rewrite a link to another file.
+13. A `[[stem]]` reads the basename alone and reaches the
+    shallowest, then alphabetically first, same-stem file.
+    The guard used to skip the rewrite whenever another file
+    shared the old stem. When the moved file is that first
+    file, every link then silently reached the sibling. The
+    guard now asks `WikilinkIndex.StemResolvesTo` whether the
+    moved file is the one `[[stem]]` reaches, and rewrites
+    every such link when it is. The PR #904 pre-merge review
+    found this.
 
 PR #885 already retired `fileStem`: the move planner keys
 files with `linkgraph.FileStemKey`, the same function
@@ -126,7 +135,10 @@ files with `linkgraph.FileStemKey`, the same function
 - [x] A move into or out of `node_modules` or `.git` leaves
       `[[stem]]` as written
 - [x] With no wikilink index, a listed same-stem sibling
-      still blocks the `[[stem]]` rewrite
+      that `[[stem]]` reaches still blocks the rewrite
+- [x] Moving the same-stem file that `[[stem]]` reaches
+      rewrites every `[[stem]]`; moving one a sibling
+      outsorts rewrites none
 - [x] A stale edge whose column holds a link to another
       stem is not rewritten
 - [x] The move planner reuses `linkgraph`'s base-segment

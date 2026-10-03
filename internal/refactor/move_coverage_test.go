@@ -4,7 +4,6 @@ import (
 	"path"
 	"strings"
 	"testing"
-	"testing/fstest"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
@@ -68,77 +67,79 @@ func TestRelFrom_ErrorFallsBackToTarget(t *testing.T) {
 // would index a workspace holding exactly them. The test workspaces'
 // WikilinkIndex methods build theirs through it too.
 func holderIndex(files ...string) *linkgraph.WikilinkIndex {
-	fsys := fstest.MapFS{}
-	for _, f := range files {
-		fsys[f] = &fstest.MapFile{}
-	}
-	return linkgraph.NewWikilinkIndex(fsys)
+	return linkgraph.NewWikilinkIndexFromPaths(files)
 }
 
-func TestWikilinkKeyHolders_OldStem(t *testing.T) {
+func TestWikilinkRewriteSafe_OldStem(t *testing.T) {
 	files := []string{"a.md", "docs/API.md", "api/api.md", "img/api.png", "notes/b.mdx", "notes/c.markdown"}
 	licenseFiles := []string{"notes/LICENSE", "docs/license.md"}
 	for name, tc := range map[string]struct {
-		files []string
-		stem  string
-		want  int
+		files   []string
+		stem    string
+		holders bool
 	}{
-		"no files":                       {nil, "api", 0},
-		"no match":                       {files, "missing", 0},
-		"single match":                   {files, "a", 1},
-		"same stem in two directories":   {files, "api", 2},
-		"case-folded basename":           {[]string{"docs/API.md"}, "api", 1},
-		"markdown extension is stripped": {files, "c", 1},
-		"upper-case markdown extension":  {[]string{"docs/Guide.MD"}, "guide", 1},
-		"extensionless file is no stem":  {licenseFiles, "license", 1},
-		"stem is not a prefix match":     {files, "ap", 0},
+		"no files":                       {nil, "api", false},
+		"no match":                       {files, "missing", false},
+		"single match":                   {files, "a", true},
+		"same stem in two directories":   {files, "api", true},
+		"case-folded basename":           {[]string{"docs/API.md"}, "api", true},
+		"markdown extension is stripped": {files, "c", true},
+		"upper-case markdown extension":  {[]string{"docs/Guide.MD"}, "guide", true},
+		"extensionless file is no stem":  {licenseFiles, "license", true},
+		"stem is not a prefix match":     {files, "ap", false},
+		"typed name is no stem":          {files, "b", false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			idx := holderIndex(tc.files...)
-			// src.txt is no Markdown file, so the index never holds it
-			// under a stem and it adds exactly one oldStem holder.
-			oldN, _ := wikilinkKeyHolders(idx, "src.txt", tc.stem, "zzz", true)
-			assert.Equal(t, tc.want+1, oldN)
-			_, newN := wikilinkKeyHolders(idx, "src.txt", "zzz", tc.stem, true)
-			assert.Equal(t, tc.want, newN, "a Markdown destination counts stems the same way")
+			// The source sorts after every listed file, so any indexed
+			// holder of the stem is the file the link resolves to.
+			const src = "z/z/z/src.md"
+			assert.Equal(t, !tc.holders, wikilinkRewriteSafe(idx, src, tc.stem, "zzz", true))
+			assert.Equal(t, !tc.holders, wikilinkRewriteSafe(idx, src, "zzz", tc.stem, true),
+				"a Markdown destination reads stems the same way")
 		})
 	}
 }
 
-func TestWikilinkKeyHolders_NewName(t *testing.T) {
+func TestWikilinkRewriteSafe_NewName(t *testing.T) {
 	files := []string{"a.md", "img/api.png", "notes/b.mdx", "x/B.MDX"}
 	for name, tc := range map[string]struct {
 		files []string
 		base  string
-		want  int
+		safe  bool
 	}{
-		"no files":                     {nil, "api.png", 0},
-		"non-markdown keeps extension": {files, "api.png", 1},
-		"mdx keeps its extension":      {files, "b.mdx", 2},
-		"markdown name matches":        {files, "a.md", 1},
-		"no prefix match":              {files, "api", 0},
+		"no files":                     {nil, "api.png", true},
+		"non-markdown keeps extension": {files, "api.png", false},
+		"mdx keeps its extension":      {files, "b.mdx", false},
+		"markdown name matches":        {files, "a.md", false},
+		"no prefix match":              {files, "api", true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, newN := wikilinkKeyHolders(holderIndex(tc.files...), "", "zzz", tc.base, false)
-			assert.Equal(t, tc.want, newN)
+			assert.Equal(t, tc.safe, wikilinkRewriteSafe(holderIndex(tc.files...), "src.md", "zzz", tc.base, false))
 		})
 	}
 }
 
-func TestWikilinkKeyHolders_UnindexedSourceCounts(t *testing.T) {
+func TestWikilinkRewriteSafe_SourceResolution(t *testing.T) {
+	safe := func(idx *linkgraph.WikilinkIndex, src string) bool {
+		return wikilinkRewriteSafe(idx, src, "guide", "manual", true)
+	}
 	files := []string{"docs/guide.md"}
-	oldN, _ := wikilinkKeyHolders(holderIndex(files...), "a/guide.md", "guide", "manual", true)
-	assert.Equal(t, 2, oldN, "a source the index lacks holds its own stem")
-	oldN, _ = wikilinkKeyHolders(holderIndex("docs/guide.md", "a/guide.md"), "a/guide.md", "guide", "manual", true)
-	assert.Equal(t, 2, oldN, "an indexed source is not counted twice")
-	oldN, _ = wikilinkKeyHolders(nil, "a/guide.md", "guide", "manual", true)
-	assert.Equal(t, 1, oldN, "a nil index holds only the source")
+	assert.False(t, safe(holderIndex(files...), "z/guide.md"),
+		"an unindexed source a sibling outsorts is not the link's file")
+	assert.True(t, safe(holderIndex(files...), "a/guide.md"),
+		"an unindexed source that sorts first is the link's file")
+	assert.True(t, safe(holderIndex("docs/guide.md", "a/guide.md"), "a/guide.md"),
+		"an indexed source that sorts first is the link's file")
+	assert.False(t, safe(holderIndex("docs/guide.md", "z/guide.md"), "z/guide.md"),
+		"an indexed sibling that sorts first keeps the link")
+	assert.True(t, safe(nil, "a/guide.md"), "a nil index holds only the source")
 	// The nil-index fallback indexes r.paths(), which normalizes the
-	// listing, so a source listed as `./a/guide.md` is found, not
-	// counted a second time.
-	r := &destResolver{ws: stubWorkspace{files: []string{"./a/guide.md"}}, src: "a/guide.md"}
-	oldN, _ = wikilinkKeyHolders(linkgraph.NewWikilinkIndexFromPaths(r.paths()), "a/guide.md", "guide", "manual", true)
-	assert.Equal(t, 1, oldN, "a source listed with a ./ prefix is still indexed")
+	// listing, so a source listed as `./z/guide.md` is found as itself,
+	// not as a second holder that outsorts it.
+	r := &destResolver{ws: stubWorkspace{files: []string{"./z/guide.md"}}, src: "z/guide.md"}
+	assert.True(t, safe(linkgraph.NewWikilinkIndexFromPaths(r.paths()), "z/guide.md"),
+		"a source listed with a ./ prefix is still indexed")
 }
 
 // spellDst calls dstWikilinkSpelling the way the planner does, passing

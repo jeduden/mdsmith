@@ -30,8 +30,9 @@ func (w *unlistedWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 
 // TestMove_UnlistedStemSiblingBlocksWikilinkRewrite locks that a file
 // the resolver indexes but the workspace does not list (a gitignored
-// archive/guide.md) still counts as a same-stem holder, so `[[guide]]`
-// is left alone rather than retargeted at a file it never resolved to.
+// archive/guide.md) still counts as a same-stem holder: it sorts before
+// docs/guide.md, so `[[guide]]` resolves to it and is left alone rather
+// than retargeted at the moved file it never resolved to.
 func TestMove_UnlistedStemSiblingBlocksWikilinkRewrite(t *testing.T) {
 	ws := newUnlistedWorkspace(map[string]string{
 		"docs/guide.md": "# Guide\n",
@@ -131,19 +132,19 @@ type nilIndexWorkspace struct{ *memWorkspace }
 func (nilIndexWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex { return nil }
 
 // TestMove_NilWikilinkIndexCountsListedFiles locks that a workspace with
-// no wikilink index still counts the files it lists: a listed same-stem
-// sibling blocks the `[[guide]]` rewrite, and a lone holder is still
-// rewritten.
+// no wikilink index still reads the files it lists: a listed same-stem
+// sibling that `[[guide]]` resolves to blocks the rewrite, and a lone
+// holder is still rewritten.
 func TestMove_NilWikilinkIndexCountsListedFiles(t *testing.T) {
 	src := "See [[guide]].\n"
 	ws := nilIndexWorkspace{newMemWorkspace(map[string]string{
 		"docs/guide.md": "# Guide\n",
-		"ref/guide.md":  "# Ref\n",
+		"a/guide.md":    "# A\n",
 		"index.md":      src,
 	})}
 	plan, err := Move(ws, "docs/guide.md", "docs/manual.md")
 	require.NoError(t, err)
-	assert.Empty(t, plan.Edits["index.md"], "a listed sibling holds the stem")
+	assert.Empty(t, plan.Edits["index.md"], "a listed sibling wins the stem")
 
 	ws = nilIndexWorkspace{newMemWorkspace(map[string]string{
 		"docs/guide.md": "# Guide\n",

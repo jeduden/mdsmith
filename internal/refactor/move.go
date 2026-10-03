@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -813,20 +812,15 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	if !ok || !linkgraph.WikilinkIndexed(dst) {
 		return
 	}
-	// A wikilink resolves by basename stem, and the index keys these
-	// edges by stem alone — it cannot record which same-stem file a
-	// given `[[stem]]` actually points at. When two or more workspace
-	// files share oldStem the rewrite is ambiguous: blindly retargeting
-	// every `[[oldStem]]` would rewrite links that resolve to a sibling
-	// file that is not moving (e.g. `[[ref/Guide]]` when both
-	// docs/Guide.md and ref/Guide.md exist and only docs/Guide.md
-	// moves). Leave every such wikilink untouched in that case rather
-	// than break an unrelated reference — the moved file's own links
-	// stay resolvable by the sibling's stem. The files are counted in
-	// ws.WikilinkIndex, the set the resolver reads, listed or not. The
-	// source is counted even when that index lacks it: it holds oldStem
-	// either way, so one indexed sibling already makes the link
-	// ambiguous.
+	// A wikilink resolves by basename stem alone: every `[[oldStem]]`,
+	// with or without a folder prefix such as `[[ref/Guide]]`, reaches
+	// the same-stem file that sorts first (shallowest, then by name).
+	// When that file is a sibling that is not moving, every such link
+	// reaches the sibling and stays as written. When it is src, every
+	// such link reaches src today and would silently reach a sibling
+	// once src is gone, so all of them are rewritten. The files are
+	// read from ws.WikilinkIndex, the set the resolver reads, listed or
+	// not. src counts as a holder even when that index lacks it.
 	//
 	// The destination stem must be unique too. dst does not exist in the
 	// workspace yet (Move rejected an existing destination), so any file
@@ -855,8 +849,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	if idx == nil {
 		idx = linkgraph.NewWikilinkIndexFromPaths(r.paths())
 	}
-	oldHolders, newHolders := wikilinkKeyHolders(idx, src, oldStem, newKey, dstIsMarkdown)
-	if oldHolders > 1 || newHolders > 0 {
+	if !wikilinkRewriteSafe(idx, src, oldStem, newKey, dstIsMarkdown) {
 		return
 	}
 	lines := edgeLines{ws: ws}
@@ -889,23 +882,23 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	}
 }
 
-// wikilinkKeyHolders counts the files the resolver reaches by oldStem
-// and by newKey, reading idx, the index `[[stem]]` resolution reads.
-// newKey is a stem when newIsStem (a Markdown destination) and
-// otherwise a lowercased exact basename, since a typed wikilink such as
+// wikilinkRewriteSafe reports whether retargeting `[[oldStem]]` to
+// newKey keeps every such link on src, reading idx, the index
+// `[[stem]]` resolution reads. That holds when src is the file
+// `[[oldStem]]` resolves to and no file already holds newKey. newKey is
+// a stem when newIsStem (a Markdown destination) and otherwise a
+// lowercased exact basename, since a typed wikilink such as
 // `[[guide.mdx]]` resolves by file name. src always counts as an
 // oldStem holder: the resolver reads it from disk, and an index built
 // before the file existed, or over a host buffer, may not hold it.
-func wikilinkKeyHolders(idx *linkgraph.WikilinkIndex, src, oldStem, newKey string, newIsStem bool) (oldN, newN int) {
-	old := idx.StemPaths(oldStem)
-	oldN = len(old)
-	if !slices.Contains(old, src) {
-		oldN++
+func wikilinkRewriteSafe(idx *linkgraph.WikilinkIndex, src, oldStem, newKey string, newIsStem bool) bool {
+	if !idx.StemResolvesTo(oldStem, src) {
+		return false
 	}
 	if newIsStem {
-		return oldN, len(idx.StemPaths(newKey))
+		return len(idx.StemPaths(newKey)) == 0
 	}
-	return oldN, len(idx.NamePaths(newKey))
+	return len(idx.NamePaths(newKey)) == 0
 }
 
 // dstWikilinkSpelling returns the token a rewritten wikilink names dst
