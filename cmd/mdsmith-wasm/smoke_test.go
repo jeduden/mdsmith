@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
@@ -114,19 +116,53 @@ func wasmExecPath(t *testing.T) string {
 	return filepath.Join(root, "lib", "wasm", "wasm_exec.js")
 }
 
-// buildWASM compiles cmd/mdsmith-wasm for GOOS=js GOARCH=wasm into a
-// temp file and returns its path. A build failure fails the test (the
-// artifact must compile); a missing wasm target is not expected on a
-// standard Go toolchain.
+// shippingBuild is the one stripped artifact every test in this binary
+// shares, built on first use: the size budget and both Node harnesses
+// test the same bytes, and the 13 MiB GOOS=js link runs once per
+// `go test` instead of once per test.
+var shippingBuild struct {
+	once sync.Once
+	dir  string
+	path string
+	err  error
+}
+
+// TestMain removes the shared artifact's directory once every test has
+// run; a temp dir of one test would vanish before the next.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if shippingBuild.dir != "" {
+		_ = os.RemoveAll(shippingBuild.dir)
+	}
+	os.Exit(code)
+}
+
+// buildWASM compiles cmd/mdsmith-wasm for GOOS=js GOARCH=wasm with the
+// same -trimpath -ldflags="-s -w" flags as build.sh's `go` target and
+// returns the artifact's path. It builds once per test binary and
+// hands every caller the same file, which a caller must not modify. A
+// build failure fails each caller (the artifact must compile); a
+// missing wasm target is not expected on a standard Go toolchain.
 func buildWASM(t *testing.T) string {
 	t.Helper()
-	out := filepath.Join(t.TempDir(), "mdsmith.wasm")
-	cmd := exec.Command("go", "build", "-o", out, ".")
-	cmd.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
-	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("building wasm artifact: %v\n%s", err, b)
+	b := &shippingBuild
+	b.once.Do(func() {
+		if b.dir, b.err = os.MkdirTemp("", "mdsmith-wasm-test-"); b.err != nil {
+			return
+		}
+		b.path = filepath.Join(b.dir, "mdsmith.wasm")
+		// -trimpath for reproducibility; -ldflags="-s -w" strips the
+		// symbol table and DWARF.
+		cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", b.path, ".")
+		cmd.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			b.err = fmt.Errorf("%w\n%s", err, out)
+		}
+	})
+	if b.err != nil {
+		t.Fatalf("building wasm artifact: %v", b.err)
 	}
-	return out
+	return b.path
 }
 
 // nativeSmoke runs the native engine on the same fixture and projects
