@@ -270,3 +270,116 @@ func TestHasDirectiveMarker_ClosingFenceWithTrailingWhitespace(t *testing.T) {
 	content := []byte("```\ninside\n```  \n<?catalog?>\n")
 	assert.True(t, hasDirectiveMarker(content, []string{"catalog"}))
 }
+
+func TestHasDirectiveMarker_BacktickInInfoStringIsNotAFence(t *testing.T) {
+	// A backtick run whose info string holds a backtick is not a fence
+	// opener per CommonMark (goldmark's parser agrees), so the marker on
+	// the next line is real, top-level content and must count.
+	content := []byte("```a`b\n<?catalog?>\n")
+	assert.True(t, hasDirectiveMarker(content, []string{"catalog"}))
+}
+
+// TestOpeningFence pins the fence character and run length openingFence
+// reports: a run of 3+ backticks or tildes after 0–3 spaces, with no
+// backtick in a backtick fence's info string. Any other line is (0, 0).
+func TestOpeningFence(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     string
+		wantChar byte
+		wantLen  int
+	}{
+		{"three backticks", "```", '`', 3},
+		{"four backticks", "````", '`', 4},
+		{"three tildes", "~~~", '~', 3},
+		{"five tildes", "~~~~~", '~', 5},
+		{"backticks with info string", "```python", '`', 3},
+		{"long run with info string", "````go", '`', 4},
+		{"tildes allow backtick in info string", "~~~ a`b", '~', 3},
+		{"one space indent", " ```", '`', 3},
+		{"three spaces indent", "   ~~~", '~', 3},
+		{"crlf line ending", "```\r", '`', 3},
+		{"four spaces indent", "    ```", 0, 0},
+		{"tab indent", "\t```", 0, 0},
+		{"two backticks", "``", 0, 0},
+		{"two tildes", "~~", 0, 0},
+		{"mixed characters do not sum", "`~`", 0, 0},
+		{"backtick in backtick info string", "```a`b", 0, 0},
+		{"inline code span at line start", "``` x ```", 0, 0},
+		{"empty line", "", 0, 0},
+		{"only spaces", "   ", 0, 0},
+		{"non-fence character", "abc", 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotChar, gotLen := openingFence([]byte(tt.line))
+			assert.Equal(t, tt.wantChar, gotChar)
+			assert.Equal(t, tt.wantLen, gotLen)
+		})
+	}
+}
+
+// TestIsClosingFence pins that a closer must repeat the opener's
+// character at least openLen times after 0–3 spaces, followed only by
+// whitespace.
+func TestIsClosingFence(t *testing.T) {
+	tests := []struct {
+		name    string
+		line    string
+		ch      byte
+		openLen int
+		want    bool
+	}{
+		{"exact backtick run", "```", '`', 3, true},
+		{"longer run than opener", "````", '`', 3, true},
+		{"exact tilde run", "~~~", '~', 3, true},
+		{"run matches longer opener", "`````", '`', 5, true},
+		{"one space indent", " ```", '`', 3, true},
+		{"three spaces indent", "   ```", '`', 3, true},
+		{"trailing spaces", "```  ", '`', 3, true},
+		{"trailing tab", "```\t", '`', 3, true},
+		{"trailing carriage return", "```\r", '`', 3, true},
+		{"run shorter than opener", "``", '`', 3, false},
+		{"run shorter than longer opener", "```", '`', 4, false},
+		{"tildes do not close backtick fence", "~~~", '`', 3, false},
+		{"backticks do not close tilde fence", "```", '~', 3, false},
+		{"four spaces indent", "    ```", '`', 3, false},
+		{"trailing non-whitespace", "```a", '`', 3, false},
+		{"empty line", "", '`', 3, false},
+		{"only spaces", "   ", '`', 3, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isClosingFence([]byte(tt.line), tt.ch, tt.openLen))
+		})
+	}
+}
+
+// TestIsIndentedCodeBlock pins the CommonMark indented-code gate: four
+// or more leading spaces, or a tab after at most three spaces.
+func TestIsIndentedCodeBlock(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want bool
+	}{
+		{"four spaces", "    code", true},
+		{"five spaces", "     code", true},
+		{"tab", "\tcode", true},
+		{"one space then tab", " \tcode", true},
+		{"two spaces then tab", "  \tcode", true},
+		{"three spaces then tab", "   \tcode", true},
+		{"three spaces", "   code", false},
+		{"two spaces", "  code", false},
+		{"one space", " code", false},
+		{"no indent", "code", false},
+		{"tab after content", "code\tmore", false},
+		{"only three spaces", "   ", false},
+		{"empty line", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isIndentedCodeBlock([]byte(tt.line)))
+		})
+	}
+}

@@ -222,13 +222,13 @@ None.
   `go tool golangci-lint run` are green; behavior is
   unchanged (existing unit and e2e tests moved/kept
   untouched). Superseded by the 2026-09-13 audit.
-- `internal/mdtext/wordfreq.go`'s `WordFrequencyInto` and
-  three helpers in `internal/directivefiles/directivefiles.go`
-  (`openingFence`, `isClosingFence`, `isIndentedCodeBlock`)
-  have no dedicated unit test by name, only behavior-level
-  coverage via their callers — [tests.md][tests] requires a
-  test by the function's own name —
-  [plan/2608301918][2608301918].
+- `internal/mdtext/wordfreq.go`'s `WordFrequencyInto` and three helpers in
+  `internal/directivefiles/directivefiles.go` (`openingFence`,
+  `isClosingFence`, `isIndentedCodeBlock`) have no dedicated unit test by
+  name, only behavior-level coverage via their callers — [tests.md][tests]
+  requires a test by the function's own name — [plan/2608301918][2608301918].
+  Resolved: each has a test by its own name; `openingFence` now rejects a
+  backtick in a backtick fence's info string, as goldmark does.
 - `internal/lint/runcache.go`'s `RunCache` caches state across
   every file in a whole `engine.Run` pass, which answers a
   different question than [go.md][go]'s stated charter for

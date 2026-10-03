@@ -3,10 +3,7 @@
 <?catalog
 glob: ["plan/*.md", "!plan/proto.md"]
 sort: numeric:id
-header: |
-
-  | ID  | Status | Model | Title |
-  |-----|--------|-------|-------|
+header: "\n| ID  | Status | Model | Title |\n|-----|--------|-------|-------|\n"
 row: "| {id} | {status} | {model} | [{title}]({filename}) |"
 footer: ""
 ?>
@@ -265,7 +262,7 @@ footer: ""
 | 2608161914 | ✅     | haiku  | [Add dedicated unit tests for the 2026-08-16 touched-set tax findings](plan/2608161914_arch-fix-touched-set-unit-tests.md)                              |
 | 2608282011 | ✅     | sonnet | [Security hardening batch — 2026-08-28](plan/2608282011_security-hardening-batch-2026-08-28.md)                                                         |
 | 2608301343 | ✅     | sonnet | [Reduce mdsmith.dev homepage clutter and coined words](plan/2608301343_reduce-homepage-clutter.md)                                                      |
-| 2608301918 | 🔲     | haiku  | [Add dedicated unit tests for the 2026-08-30 touched-set tax findings](plan/2608301918_arch-fix-touched-set-unit-tests-0830.md)                         |
+| 2608301918 | ✅     | haiku  | [Add dedicated unit tests for the 2026-08-30 touched-set tax findings](plan/2608301918_arch-fix-touched-set-unit-tests-0830.md)                         |
 | 2608301919 | ✅     | sonnet | [Relocate RunCache out of internal/lint](plan/2608301919_arch-fix-runcache-package-placement.md)                                                        |
 | 2609032052 | 🔲     | opus   | [Resolve config from `pyproject.toml` under `[tool.mdsmith]`](plan/2609032052_pyproject-config-source.md)                                               |
 | 2609061915 | ✅     | sonnet | [Add unit tests for the untested rename/move helpers](plan/2609061915_arch-fix-touched-set-unit-tests-0906.md)                                          |
@@ -297,4 +294,6 @@ footer: ""
 | 2610030244 | ✅     | sonnet | [Run internal/build under js/wasm once in CI](plan/2610030244_dedupe-build-js-wasm-ci-run.md)                                                           |
 | 2610030438 | 🔲     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
 | 2610030846 | ✅     | sonnet | [Silence wasm session finalizers after the Go program exits](plan/2610030846_wasm-finalizer-after-exit.md)                                              |
+| 2610031436 | 🔲     | sonnet | [Share one CommonMark fence scanner across packages](plan/2610031436_shared-fence-scanner.md)                                                           |
+| 2610031451 | 🔲     | sonnet | [Keep PLAN.md under its file-length budget](plan/2610031451_plan-index-line-budget.md)                                                                  |
 <?/catalog?>

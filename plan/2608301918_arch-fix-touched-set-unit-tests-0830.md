@@ -3,7 +3,7 @@ id: 2608301918
 title: >-
   Add dedicated unit tests for the 2026-08-30 touched-set
   tax findings
-status: "🔲"
+status: "✅"
 model: haiku
 summary: >-
   WordFrequencyInto in internal/mdtext and three helpers in
@@ -35,7 +35,7 @@ exercised only indirectly through a caller's scenario test:
   `WordFrequencyInto` directly across repeated
   accumulate/clear cycles — the exact zero-alloc-reuse
   behavior it exists for.
-- [internal/directivefiles/directivefiles.go][directivefiles]:192,222,174 —
+- [internal/directivefiles/directivefiles.go][directivefiles]:194,227,174 —
   `openingFence`, `isClosingFence`, and `isIndentedCodeBlock`,
   the fence-tracking helpers `hasDirectiveMarker` uses to skip
   directive-marker matches inside code blocks. Covered only
@@ -62,18 +62,23 @@ Both are `tax`: neither sits on a public surface by itself
 3. Do not delete or duplicate the existing behavior-level
    tests named above. They cover the public contract and
    stay as-is.
-4. `go build ./...` passes.
-5. `go test ./internal/mdtext/... ./internal/directivefiles/...`
+4. Fix the one gap the new table exposed: `openingFence`
+   accepted a backtick fence whose info string holds a
+   backtick (e.g. "```a`b"). CommonMark and goldmark treat
+   that line as prose, so a real directive after it was
+   missed. It now returns (0, 0) for such a line.
+5. `go build ./...` passes.
+6. `go test ./internal/mdtext/... ./internal/directivefiles/...`
    passes.
 
 ## Acceptance Criteria
 
-- [ ] Every function named in the Background section has a
+- [x] Every function named in the Background section has a
       test carrying its own name.
-- [ ] `go test ./...` is green.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] `go test ./...` is green.
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` is green.
+- [x] `mdsmith check .` is green.
 
 [audit-log]: ../docs/development/architecture-audit.md
 [tests]: ../docs/development/architecture/tests.md

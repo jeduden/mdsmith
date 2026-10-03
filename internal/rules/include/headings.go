@@ -17,8 +17,25 @@ var setextH2Re = regexp.MustCompile(`^-+\s*$`)
 // codeFenceRe matches the opening of a fenced code block after leading
 // whitespace has been stripped. Unlike the CommonMark spec (which
 // limits indent to 3 spaces), we strip all leading whitespace so that
-// fenced blocks inside list items are also detected and skipped.
-var codeFenceRe = regexp.MustCompile("^(`{3,}|~{3,})")
+// fenced blocks inside list items are also detected and skipped. A
+// backtick run must not be followed by another backtick on the line:
+// CommonMark forbids backticks in a backtick fence's info string, so
+// "```a`b" is paragraph text, not a fence.
+var codeFenceRe = regexp.MustCompile("^(?:(`{3,})[^`]*$|(~{3,}))")
+
+// fenceOpenMarker returns the fence marker run when line opens a
+// fenced code block (after stripping leading whitespace), or "" when
+// it does not.
+func fenceOpenMarker(line string) string {
+	m := codeFenceRe.FindStringSubmatch(strings.TrimLeft(line, " \t"))
+	if m == nil {
+		return ""
+	}
+	if m[1] != "" {
+		return m[1]
+	}
+	return m[2]
+}
 
 // adjustHeadings shifts all heading levels in content so that the minimum
 // heading level becomes parentLevel+1. If parentLevel is 0 or the computed
@@ -97,9 +114,9 @@ func findMinHeadingLevel(lines []string) int {
 			continue
 		}
 
-		if m := codeFenceRe.FindStringSubmatch(strings.TrimLeft(line, " \t")); m != nil {
+		if m := fenceOpenMarker(line); m != "" {
 			inFence = true
-			fenceMarker = m[1]
+			fenceMarker = m
 			continue
 		}
 
@@ -145,9 +162,9 @@ func applyShift(lines []string, shift int) []string {
 			continue
 		}
 
-		if m := codeFenceRe.FindStringSubmatch(strings.TrimLeft(line, " \t")); m != nil {
+		if m := fenceOpenMarker(line); m != "" {
 			inFence = true
-			fenceMarker = m[1]
+			fenceMarker = m
 			result = append(result, line)
 			continue
 		}

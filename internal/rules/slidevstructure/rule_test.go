@@ -521,3 +521,13 @@ func TestCheckSlide(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Contains(t, diags[0].Message, "unknown Slidev layout")
 }
+
+// TestIsCodeFence_BacktickInfoString pins the CommonMark rule that a
+// backtick fence's info string may not contain a backtick, so
+// "```a`b" is paragraph text and must not toggle the fence state.
+func TestIsCodeFence_BacktickInfoString(t *testing.T) {
+	assert.True(t, isCodeFence([]byte("```go")))
+	assert.True(t, isCodeFence([]byte("  ~~~a`b")), "tilde info may hold a backtick")
+	assert.False(t, isCodeFence([]byte("```a`b")))
+	assert.False(t, isCodeFence([]byte(" ````x`")))
+}

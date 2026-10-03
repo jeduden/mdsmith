@@ -198,6 +198,11 @@ func TestFenceOpenRun(t *testing.T) {
 	assert.Zero(t, n, "4-space indent is indented code")
 	_, n = fenceOpenRun([]byte("text"), []byte("text"))
 	assert.Zero(t, n)
+	_, n = fenceOpenRun([]byte("```a`b"), []byte("```a`b"))
+	assert.Zero(t, n, "a backtick info string may not contain a backtick")
+	c, n = fenceOpenRun([]byte("~~~a`b"), []byte("~~~a`b"))
+	assert.Equal(t, byte('~'), c, "a tilde info string may contain a backtick")
+	assert.Equal(t, 3, n)
 }
 
 // TestFenceClose pins the close rule: same character, a run at least

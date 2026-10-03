@@ -89,3 +89,30 @@ func TestWordFrequency_LastWordBelowMinLength(t *testing.T) {
 	freq := mdtext.WordFrequency("hi", 5)
 	assert.Empty(t, freq)
 }
+
+// TestWordFrequencyInto verifies that WordFrequencyInto adds to the
+// counts already in a caller-owned map, that a caller-side clear starts
+// a fresh scope unit, and that the clear/accumulate reuse cycle on
+// lowercase prose allocates nothing — the contract it exists for.
+func TestWordFrequencyInto(t *testing.T) {
+	freq := make(map[string]int)
+
+	// Two calls with no clear between them: counts add up, they are
+	// not reset or overwritten.
+	mdtext.WordFrequencyInto(freq, "hello world hello", 4)
+	assert.Equal(t, map[string]int{"hello": 2, "world": 1}, freq)
+	mdtext.WordFrequencyInto(freq, "world peace", 4)
+	assert.Equal(t, map[string]int{"hello": 2, "world": 2, "peace": 1}, freq)
+
+	// A clear starts a new scope unit: earlier words do not leak in.
+	clear(freq)
+	mdtext.WordFrequencyInto(freq, "testing testing data", 4)
+	assert.Equal(t, map[string]int{"testing": 2, "data": 1}, freq)
+
+	// Steady-state reuse of the warmed map is zero-alloc.
+	allocs := testing.AllocsPerRun(100, func() {
+		clear(freq)
+		mdtext.WordFrequencyInto(freq, "testing testing data", 4)
+	})
+	assert.Zero(t, allocs)
+}
