@@ -72,11 +72,12 @@ var apiFuncs = map[string]func(js.Value, []js.Value) any{
 }
 
 // exposeAPI builds the mdsmith global: version, plus each of apiFuncs
-// registered through drainFirst. The funcs are never released.
+// registered through drainFirst and the funcOf seam. The funcs are
+// never released.
 func exposeAPI() js.Value {
 	api := map[string]any{"version": resolveVersion()}
 	for name, fn := range apiFuncs {
-		api[name] = trackedFuncOf(drainFirst(fn))
+		api[name] = funcOf(drainFirst(fn))
 	}
 	return js.ValueOf(api)
 }
@@ -178,7 +179,7 @@ func createSession(_ js.Value, args []js.Value) any {
 		resolved := false
 		defer func() {
 			if !resolved {
-				releaseSession(sid, tok)
+				releaseSessionKeepingPanic(sid, tok)
 			}
 		}()
 		resolve(proxy)
@@ -187,9 +188,14 @@ func createSession(_ js.Value, args []js.Value) any {
 	// A Promise constructor that ran the executor and then threw makes
 	// newPromise return undefined: the session objects reached only the
 	// constructor's resolve, never the caller, so free every session it
-	// registered. releaseSession is idempotent, so one the executor's own
-	// defer already freed is freed again harmlessly.
+	// registered. Every session is disposed before any unregister call, so
+	// one that throws (a patched Reflect.apply) cannot leave a later
+	// session registered. Disposing is idempotent, so one the executor's
+	// own defer already freed is freed again harmlessly.
 	if p.IsUndefined() {
+		for _, c := range created {
+			disposeSession(c.id)
+		}
 		for _, c := range created {
 			releaseSession(c.id, c.token)
 		}
@@ -851,6 +857,22 @@ func releaseSession(id int64, token js.Value) {
 	if jsType(token) == js.TypeObject && jsType(finalizer.unregister) == js.TypeFunction {
 		finalizer.unregister.Invoke(token)
 	}
+}
+
+// releaseSessionKeepingPanic is releaseSession for cleanup that runs
+// while another JS-side failure is unwinding, such as createSession's
+// executor after a patched resolve threw. A JS-side failure from
+// finalizer.unregister (a patched Reflect.apply) is swallowed so it
+// does not replace the failure in flight, which is the reason the
+// caller sees; the session is already disposed by then. Any other
+// panic is re-raised (repanicUnlessJS).
+func releaseSessionKeepingPanic(id int64, token js.Value) {
+	defer func() {
+		if r := recover(); r != nil {
+			repanicUnlessJS(r)
+		}
+	}()
+	releaseSession(id, token)
 }
 
 // disposedAsyncReason is the message of a disposed async method's

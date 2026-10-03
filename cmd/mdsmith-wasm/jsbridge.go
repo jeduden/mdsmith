@@ -36,15 +36,17 @@ import (
 // swallows that failure, and the Promise stays as the constructor left
 // it, never settling. Any other panic is re-raised (recoverJS).
 func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
-	// One heap object for the handler and its ran flag: the escaping
-	// callback captures both.
+	// One heap object for the handler and its flags: the escaping
+	// callback captures it.
 	st := new(promiseHandler)
 	st.f = funcOf(func(_ js.Value, pArgs []js.Value) any {
 		st.ran = true
 		// Free this handler once the executor body returns; the executor
 		// runs to completion synchronously within Promise construction
-		// for our synchronous engine calls.
-		defer releaseFunc(st.f)
+		// for our synchronous engine calls. A patched constructor can run
+		// it again from inside resolve; release is once-only, so the
+		// nested run's return does not release the func a second time.
+		defer st.release()
 		defer recoverJS(func() {})
 		var resolveFn, rejectFn js.Value // undefined unless passed
 		if len(pArgs) > 0 {
@@ -59,26 +61,34 @@ func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
 		executor(resolve, reject)
 		return js.Undefined()
 	})
-	// A handler the constructor already ran released itself.
-	defer recoverJS(func() {
+	// A handler the constructor never ran is released here, whether the
+	// constructor threw or returned; one it ran released itself.
+	defer func() {
 		if !st.ran {
-			releaseFunc(st.f)
+			st.release()
+			p = js.Undefined()
 		}
-		p = js.Undefined()
-	})
-	p = js.Global().Get("Promise").New(st.f)
-	if !st.ran {
-		releaseFunc(st.f)
-		return js.Undefined()
-	}
-	return p
+	}()
+	defer recoverJS(func() { p = js.Undefined() })
+	return js.Global().Get("Promise").New(st.f)
 }
 
-// promiseHandler is newPromise's executor func and whether the Promise
-// constructor ran it.
+// promiseHandler is newPromise's executor func, whether the Promise
+// constructor ran it, and whether the func is released.
 type promiseHandler struct {
-	f   js.Func
-	ran bool
+	f        js.Func
+	ran      bool
+	released bool
+}
+
+// release frees the handler func the first time it is called and does
+// nothing after that.
+func (h *promiseHandler) release() {
+	if h.released {
+		return
+	}
+	h.released = true
+	releaseFunc(h.f)
 }
 
 // jsError constructs a JavaScript Error with the given message, the

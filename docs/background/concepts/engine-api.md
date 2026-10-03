@@ -353,20 +353,23 @@ executor makes `createSession` and each async method return
 `reject` that throws, returns an object that never settles when the
 call fails, because the engine has no working callback left to settle
 it. A missing or throwing `resolve` turns a success into a rejection.
-A `resolve` that throws during
-`createSession`, or a `Promise` that throws after it ran the executor,
-disposes every session the create registered, so none stays
-registered.
+
+A `resolve` that throws during `createSession` disposes the session
+it was passed, and the create rejects with that error. A `Promise`
+that throws after it ran the executor disposes every session the
+create registered, so none stays registered.
 
 A patched `Reflect.apply` that throws while the engine builds a
 callback's JS wrapper leaks that callback. `syscall/js` stores it in
 the Go runtime's func table first, then drops its id on the panic.
 Plan 2610031420 tracks that leak.
 
-A `Reflect.get` or `Reflect.set` patched so that Go cannot read a
-callback's arguments or write back its result still ends the program.
-The JS that made the call is then still on the WebAssembly stack, and
-Go cannot safely resume below it.
+A `Reflect.get` or `Reflect.set` that throws while Go reads a
+callback's arguments or writes back its result still stops the Go
+runtime, as a throwing getter does: `wasm_exec.js` does not catch it.
+A `console.error` that throws when a released callback is called ends
+the program. The JS that made the call is then still on the
+WebAssembly stack, and Go cannot safely resume below it.
 TinyGo has no `recover()` on WebAssembly, so there the exception still
 ends the program.
 

@@ -56,12 +56,15 @@ func handleEventFrames() int {
 // escapedCallback reports, from a deferred func recovering a panic,
 // whether the stack holds a handleEvent frame that no tracked callback
 // accounts for. The panic then came from syscall/js's own code around
-// a callback (reading the event's arguments, or writing its result
-// back), and recovering it in a frame below would resume Go while the
-// JS that called the callback is still on the wasm stack. A tracked
-// callback a panic escaped has already dropped its count, so that is
-// reported too. The count is global, so a tracked callback blocked on
-// another goroutine can hide one; the engine's callbacks never block.
+// a callback (an event id that is no number, or the console.error call
+// that reports a call to a released func), and recovering it in a
+// frame below would resume Go while the JS that called the callback is
+// still on the wasm stack. A Reflect.get or Reflect.set that throws
+// never reaches here: wasm_exec.js does not catch it, so it is no Go
+// panic at all. A tracked callback a panic escaped has already dropped
+// its count, so that is reported too. The count is global, so a
+// tracked callback blocked on another goroutine can hide one; the
+// engine's callbacks never block.
 func escapedCallback() bool {
 	return handleEventFrames() > activeCallbacks
 }

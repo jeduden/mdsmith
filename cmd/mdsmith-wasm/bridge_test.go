@@ -1356,6 +1356,106 @@ func TestCreateSession_CtorThrowAfterReentrantExecutorFreesEverySession(t *testi
 	assert.Len(t, *unregistered, 2, "both sessions' finalizer entries are cancelled")
 }
 
+// TestCreateSession_LateReleaseSurvivesUnregisterThrow is the
+// re-entrant constructor above with a finalizer.unregister that throws,
+// as a patched Reflect.apply could. The create, run through drainFirst
+// as exposeAPI registers it, yields undefined, and the throw on the
+// first session's token must not leave the second session registered.
+// Not parallel: it swaps globalThis.Promise and finalizer.unregister.
+func TestCreateSession_LateReleaseSurvivesUnregisterThrow(t *testing.T) {
+	sharedMethods()
+	old := finalizer.unregister
+	t.Cleanup(func() { finalizer.unregister = old })
+	finalizer.unregister = js.Global().Get("Function").New(`throw new TypeError("unregister");`)
+	swapPromise(t, js.Global().Get("Function").New(`executor`,
+		`var calls = 0;
+		executor(function () {
+			if (calls++ > 0) return;
+			executor(function () {}, function () {});
+		}, function () {});
+		throw new TypeError("after");`))
+	before := maps.Clone(sessions)
+	opts := js.ValueOf(map[string]any{})
+	v := jsValue(t, drainFirst(createSession)(js.Undefined(), []js.Value{opts}))
+	assert.True(t, v.IsUndefined(), "a failed create yields undefined")
+	assert.Equal(t, before, sessions, "neither session is left registered")
+}
+
+// TestCreateSession_ResolveThrowKeepsReasonWhenUnregisterThrows has a
+// patched resolve throw while finalizer.unregister also throws (a
+// patched Reflect.apply). The executor's cleanup of the session that
+// resolve never delivered must not replace resolve's error: the create
+// rejects with it, and the session is still disposed. Not parallel: it
+// swaps globalThis.Promise and finalizer.unregister.
+func TestCreateSession_ResolveThrowKeepsReasonWhenUnregisterThrows(t *testing.T) {
+	sharedMethods()
+	old := finalizer.unregister
+	t.Cleanup(func() { finalizer.unregister = old })
+	finalizer.unregister = js.Global().Get("Function").New(`throw new TypeError("unregister");`)
+	swapPromise(t, js.Global().Get("Function").New(`executor`,
+		`var self = this;
+		executor(function () { throw new TypeError("resolve"); },
+			function (e) { self.rejection = e; });`))
+	before := maps.Clone(sessions)
+	opts := js.ValueOf(map[string]any{})
+	p := jsValue(t, createSession(js.Undefined(), []js.Value{opts}))
+	require.Equal(t, js.TypeObject, p.Get("rejection").Type(), "the create rejects")
+	assert.Equal(t, "resolve", p.Get("rejection").Get("message").String(),
+		"with resolve's error, not unregister's")
+	assert.Equal(t, before, sessions, "the undelivered session is disposed")
+}
+
+// TestReleaseSessionKeepingPanic checks the helper disposes and
+// unregisters a session, and that a finalizer.unregister that throws
+// (a patched Reflect.apply) is swallowed instead of panicking, with the
+// session still disposed. Not parallel: it swaps finalizer.unregister.
+func TestReleaseSessionKeepingPanic(t *testing.T) {
+	unregistered := recordUnregister(t)
+	newSession := func() (int64, js.Value) {
+		sess, err := mdsmith.NewSession(mdsmith.SessionOptions{Workspace: mdsmith.NewMemWorkspace(nil)})
+		require.NoError(t, err)
+		_, id, tok := registerSession(sess)
+		return id, tok
+	}
+	id, tok := newSession()
+	releaseSessionKeepingPanic(id, tok)
+	assert.NotContains(t, sessions, id, "the session is disposed")
+	assert.Len(t, *unregistered, 1, "its finalizer entry is cancelled")
+
+	finalizer.unregister = js.Global().Get("Function").New(`throw new TypeError("unregister");`)
+	id, tok = newSession()
+	assert.NotPanics(t, func() { releaseSessionKeepingPanic(id, tok) })
+	assert.NotContains(t, sessions, id, "the session is disposed despite the throw")
+}
+
+// TestPromiseHandlerRelease checks release frees the handler func once
+// however often it is called. Not parallel: it swaps releaseFunc.
+func TestPromiseHandlerRelease(t *testing.T) {
+	released := recordReleases(t)
+	h := &promiseHandler{f: funcOf(func(js.Value, []js.Value) any { return nil })}
+	h.release()
+	h.release()
+	assert.Len(t, *released, 1, "released once")
+	assert.True(t, h.released)
+}
+
+// TestNewPromise_ReentrantExecutorReleasesHandlerOnce replaces Promise
+// with a constructor whose resolve runs the executor a second time from
+// inside the first run. Both runs end, but the handler func is one
+// func and must be released exactly once. Not parallel: it swaps
+// Promise and the releaseFunc seam.
+func TestNewPromise_ReentrantExecutorReleasesHandlerOnce(t *testing.T) {
+	swapPromise(t, js.Global().Get("Function").New(`executor`,
+		`var calls = 0;
+		executor(function () {
+			if (calls++ > 0) return;
+			executor(function () {}, function () {});
+		}, function () {});`))
+	released := recordReleases(t)
+	newPromise(func(resolve, _ func(any)) { resolve(1) })
+	assert.Len(t, *released, 1, "the handler is released once")
+}
+
 // TestCreateSession_CtorThrowAfterExecutorRegistersNoSession replaces
 // Promise with a constructor that runs the executor, so the session is
 // registered and resolve returns, and then throws. createSession returns
@@ -1381,7 +1481,8 @@ func TestCreateSession_CtorThrowAfterExecutorRegistersNoSession(t *testing.T) {
 // executor, one that runs the executor and then throws, a Promise
 // that is no function at all (syscall/js raises that as a
 // *js.ValueError, not a js.Error), and one that returns without ever
-// running the executor, which a spec Promise runs during construction. An async method returns undefined
+// running the executor, which a spec Promise runs during construction.
+// An async method returns undefined
 // instead of ending the program, and the executor's func is released
 // exactly once. Not parallel: it swaps Promise and the funcOf and
 // releaseFunc seams.

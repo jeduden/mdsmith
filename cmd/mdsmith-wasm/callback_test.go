@@ -163,7 +163,8 @@ func TestRecoverJS_EscapedCallbackRepanics(t *testing.T) {
 
 // TestRegisteredFuncsAreTracked checks every func the engine hands JS,
 // through the funcOf seam and through exposeAPI, counts as a running
-// callback while JS calls it.
+// callback while JS calls it. The exposeAPI func is released at the
+// end so the test leaves no handler in the func table.
 func TestRegisteredFuncsAreTracked(t *testing.T) {
 	var during int
 	f := funcOf(func(js.Value, []js.Value) any { during = activeCallbacks; return nil })
@@ -177,6 +178,11 @@ func TestRegisteredFuncsAreTracked(t *testing.T) {
 		"probe": func(js.Value, []js.Value) any { during = activeCallbacks; return nil },
 	}
 	during = 0
+	made := recordFuncs(t)
 	exposeAPI().Call("probe")
+	assert.Len(t, *made, 1, "exposeAPI registers through the funcOf seam")
+	for _, f := range *made {
+		releaseFunc(f)
+	}
 	assert.Equal(t, 1, during, "an exposeAPI func is tracked")
 }
