@@ -10,6 +10,11 @@
 // `go test -json`, and fails unless every one of them reports a "pass"
 // event. A skipped test therefore fails the step by name; a
 // commented-out one is not listed.
+//
+// With --all (RunJSWasmPackage) it instead runs the whole package under
+// Node, whatever its build tags, and fails on any go test failure or
+// when no test passes, so an untagged test that fails without a real
+// process or pipe fails CI.
 package release
 
 import (
@@ -46,8 +51,9 @@ const testFilesTemplate = pkgLinePrefix + `{{.ImportPath}}{{"\n"}}` +
 // is the caller's.
 type goRunFunc func(stdout io.Writer, env []string, args ...string) error
 
-// jsWasmDeps are the side effects runJSWasmTestsWith needs, injectable so
-// a test can drive every branch without Go or Node.
+// jsWasmDeps are the side effects runJSWasmTestsWith and
+// runJSWasmPackageWith need, injectable so a test can drive every
+// branch without Go or Node.
 type jsWasmDeps struct {
 	run      goRunFunc
 	readFile func(string) ([]byte, error)
@@ -60,12 +66,7 @@ type jsWasmDeps struct {
 // (the -v text, rebuilt from the -json stream) is streamed to out as
 // each line arrives, so a hung test still shows its progress.
 func RunJSWasmTests(root, pkg string, out io.Writer) error {
-	return runJSWasmTestsWith(jsWasmDeps{
-		run:      osGoRunner(root),
-		readFile: os.ReadFile,
-		path:     os.Getenv("PATH"),
-		out:      out,
-	}, pkg)
+	return runJSWasmTestsWith(osJSWasmDeps(root, out), pkg)
 }
 
 // osGoRunner is the production goRunFunc: it runs go in dir with
@@ -90,15 +91,22 @@ func (d jsWasmDeps) output(env []string, args ...string) ([]byte, error) {
 }
 
 // RunJSWasmPackage runs every test in pkg under Node, whatever its
-// build tags, and fails on any go test failure. Unlike RunJSWasmTests
-// it does not require each test to pass by name: a skip is fine.
+// build tags, and fails on any go test failure or when no test passes.
+// Unlike RunJSWasmTests it does not require each test to pass by name:
+// a skip is fine as long as some test passed.
 func RunJSWasmPackage(root, pkg string, out io.Writer) error {
-	return runJSWasmPackageWith(jsWasmDeps{
+	return runJSWasmPackageWith(osJSWasmDeps(root, out), pkg)
+}
+
+// osJSWasmDeps is the production jsWasmDeps: go run from root, files
+// read from disk, and the process PATH handed to Node.
+func osJSWasmDeps(root string, out io.Writer) jsWasmDeps {
+	return jsWasmDeps{
 		run:      osGoRunner(root),
 		readFile: os.ReadFile,
 		path:     os.Getenv("PATH"),
 		out:      out,
-	}, pkg)
+	}
 }
 
 func runJSWasmPackageWith(d jsWasmDeps, pkg string) error {
@@ -110,8 +118,16 @@ func runJSWasmPackageWith(d jsWasmDeps, pkg string) error {
 	if err != nil {
 		return err
 	}
-	_, err = d.goTest(pkg, execFlag, nil)
-	return err
+	passed, err := d.goTest(pkg, execFlag, nil)
+	if err != nil {
+		return err
+	}
+	// go test exits 0 on a package with no test files, or whose every
+	// test skipped, so a gate with no pass would pass vacuously.
+	if len(passed) == 0 {
+		return fmt.Errorf("no test passed in %s under js/wasm", pkg)
+	}
+	return nil
 }
 
 // goroot returns `go env GOROOT`, erroring on empty output.
@@ -130,6 +146,12 @@ func (d jsWasmDeps) goroot() (string, error) {
 // goTest runs `go test -json` on pkg under Node, streaming the console
 // log to d.out, and returns the names that reported a pass. A non-nil
 // names becomes the -run filter.
+//
+// env -i in execFlag: wasm_exec.js caps args plus environment at
+// ~8 KB. It wraps only the Node runtime, so the go command keeps the
+// full Go and proxy environment. -json, not -v: test2json frames each
+// result, so a test whose output lacks a trailing newline still
+// reports its own pass event instead of a glued `x--- PASS` line.
 func (d jsWasmDeps) goTest(pkg, execFlag string, names []string) ([]string, error) {
 	args := []string{"test", "-json", "-exec=" + execFlag}
 	if names != nil {
@@ -161,11 +183,6 @@ func runJSWasmTestsWith(d jsWasmDeps, pkg string) error {
 	if err != nil {
 		return err
 	}
-	// env -i in -exec: wasm_exec.js caps args plus environment at
-	// ~8 KB. It wraps only the Node runtime, so the go command keeps
-	// the full Go and proxy environment. -json, not -v: test2json frames
-	// each result, so a test whose output lacks a trailing newline still
-	// reports its own pass event instead of a glued `x--- PASS` line.
 	passed, err := d.goTest(pkg, execFlag, names)
 	if err != nil {
 		return err

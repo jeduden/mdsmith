@@ -707,9 +707,18 @@ func TestRunJSWasmPackageWith(t *testing.T) {
 	})
 
 	t.Run("a skipped test does not fail", func(t *testing.T) {
-		f := &fakeGo{goroot: "/go", testLog: goTestJSON(t, result("skip", "TestA")...)}
+		log := goTestJSON(t, append(result("skip", "TestA"), result("pass", "TestB")...)...)
+		f := &fakeGo{goroot: "/go", testLog: log}
 		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
 		require.NoError(t, runJSWasmPackageWith(d, "./p"))
+	})
+
+	t.Run("no test passed fails", func(t *testing.T) {
+		// go test exits 0 on a package with no test files, or whose
+		// every test skipped: the gate must not pass vacuously.
+		f := &fakeGo{goroot: "/go", testLog: goTestJSON(t, result("skip", "TestA")...)}
+		d := jsWasmDeps{run: f.run, path: "/bin", out: &bytes.Buffer{}}
+		require.ErrorContains(t, runJSWasmPackageWith(d, "./p"), "no test passed in ./p under js/wasm")
 	})
 
 	t.Run("go test failure fails and still prints the log", func(t *testing.T) {
@@ -743,6 +752,18 @@ func TestRunJSWasmPackageWith(t *testing.T) {
 		d := jsWasmDeps{run: f.run, path: `a'"b`, out: &bytes.Buffer{}}
 		require.ErrorContains(t, runJSWasmPackageWith(d, "./p"), "cannot quote")
 	})
+}
+
+// TestOSJSWasmDeps checks the production wiring hands Node the process
+// PATH and streams to the given writer.
+func TestOSJSWasmDeps(t *testing.T) {
+	t.Setenv("PATH", "/x/bin")
+	var out bytes.Buffer
+	d := osJSWasmDeps(t.TempDir(), &out)
+	assert.Equal(t, "/x/bin", d.path)
+	assert.Same(t, &out, d.out)
+	require.NotNil(t, d.run)
+	require.NotNil(t, d.readFile)
 }
 
 // TestRunJSWasmPackage drives the production wiring against a
