@@ -33,7 +33,11 @@ test.describe("release notes", () => {
     expect(version).toMatch(/^v\d/);
     await expect(badge).toHaveAttribute("href", `/releases/#${version}`);
     await badge.click();
-    await expect(page).toHaveURL(new RegExp(`/releases/#${version.replace(/\./g, "\\.")}$`));
+    // Compare path and fragment as strings: a RegExp built from the
+    // version would need full escaping of every metacharacter.
+    await expect(page).toHaveURL(
+      (url) => url.pathname === "/releases/" && url.hash === `#${version}`,
+    );
   });
 
   test("footer keeps a direct link to GitHub Releases", async ({ page }) => {
