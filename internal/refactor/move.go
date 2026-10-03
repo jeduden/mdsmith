@@ -879,8 +879,9 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 		start, end, _ := linkgraph.WikilinkBaseSpan(row, e.SourceCol-1)
 		text := newSpelling
 		// A folder prefix already keeps the name from reading as a
-		// drive path, so the `./` guard is only for a bare link.
-		if needsPrefix && (start == 0 || row[start-1] != '/' && row[start-1] != '\\') {
+		// drive path, so the `./` guard is only for a bare link. The
+		// span starts after the `[[`, so start-1 is always in the row.
+		if needsPrefix && row[start-1] != '/' && row[start-1] != '\\' {
 			text = "./" + text
 		}
 		changes[key] = append(changes[key], Edit{
