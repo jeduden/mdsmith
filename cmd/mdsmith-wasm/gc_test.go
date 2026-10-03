@@ -19,6 +19,10 @@ var (
 	jsGCFunc func()
 )
 
+// testAPI is the mdsmith global exposeAPI builds, built once per test
+// binary: each exposeAPI call registers funcs that are never released.
+var testAPI = sync.OnceValue(exposeAPI)
+
 // jsGC returns a function that forces a V8 collection, or nil when the
 // host offers no way to. Node exposes gc only under --expose-gc, which
 // the go_js_wasm_exec wrapper does not pass, so it turns the flag on at
@@ -105,7 +109,7 @@ func TestDroppedSessionFreedOnNextCall(t *testing.T) {
 		"dispose":        func(_ *testing.T, k js.Value) { k.Call("dispose") },
 		"createSession": func(t *testing.T, _ js.Value) {
 			opts := js.Global().Get("Object").New()
-			sess, rejected := awaitPromise(t, exposeAPI().Get("createSession").Invoke(opts))
+			sess, rejected := awaitPromise(t, testAPI().Get("createSession").Invoke(opts))
 			require.False(t, rejected, "createSession: %v", sess)
 			sess.Call("dispose")
 		},
@@ -448,9 +452,12 @@ func indexEmpty(i int) int { return []int{}[i] }
 // before it runs. It walks the registered tables, so an entry point
 // added later is covered without a new case.
 func TestEveryEntryPointDrainsFirst(t *testing.T) {
+	// sharedMethods creates the registry; without it, a run of this
+	// test alone would find no queue.
+	shared := sharedMethods()
 	require.Equal(t, js.TypeObject, finalizer.queue.Type(), "the host has a FinalizationRegistry")
 	entries := map[string]js.Value{}
-	api := exposeAPI()
+	api := testAPI()
 	keys := js.Global().Get("Object").Call("keys", api)
 	for i := 0; i < keys.Length(); i++ {
 		k := keys.Index(i).String()
@@ -459,7 +466,7 @@ func TestEveryEntryPointDrainsFirst(t *testing.T) {
 		}
 	}
 	require.Contains(t, entries, "mdsmith.createSession")
-	for name, f := range sharedMethods() {
+	for name, f := range shared {
 		entries["session."+name] = f
 	}
 	promise := js.Global().Get("Promise")
@@ -468,7 +475,7 @@ func TestEveryEntryPointDrainsFirst(t *testing.T) {
 			keeper, kid := newTestProxyWithID(t)
 			defer keeper.Call("dispose")
 			_, victim := newTestProxyWithID(t)
-			finalizer.queue.Call("push", victim)
+			enqueue(js.ValueOf(victim))
 			if res := f.Invoke(kid); res.InstanceOf(promise) {
 				awaitPromise(t, res)
 			}
