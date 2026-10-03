@@ -341,6 +341,7 @@ describe.skipIf(skip)("createRuntime", () => {
       factory.createSession = original;
     }
     expect(failure?.message).toContain("createSession returned no session");
+    expect(failure?.message).toContain("Reflect.construct");
   });
 
   test("a createSession that yields an object without check disposes it", async () => {
@@ -442,6 +443,25 @@ describe.skipIf(skip)("createRuntime", () => {
     }
     expect(result).toBeInstanceOf(native);
     await expect(result).rejects.toThrow("check returned no result");
+    rt.dispose();
+  });
+
+  test("an async method whose Reflect.construct throws names the cause", async () => {
+    // wasm_exec.js builds every Promise through Reflect.construct, so a
+    // throwing one makes the engine's check() return undefined too. The
+    // error names it alongside globalThis.Promise.
+    const rt = await makeRuntime({});
+    const native = Reflect.construct;
+    let result: Promise<Diagnostic[]> | undefined;
+    Reflect.construct = () => {
+      throw new TypeError("patched construct");
+    };
+    try {
+      result = rt.check("a.md", "# A\n");
+    } finally {
+      Reflect.construct = native;
+    }
+    await expect(result).rejects.toThrow("Reflect.construct patched?");
     rt.dispose();
   });
 });

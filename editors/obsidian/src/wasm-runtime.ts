@@ -126,7 +126,8 @@ interface MdsmithFactory {
 // WasmSession is the JS proxy the factory returns. Method names match
 // the Go Session exactly (see cmd/mdsmith-wasm/methods.go).
 // An async method yields undefined instead of a Promise when a patched
-// globalThis.Promise breaks its Promise construction.
+// globalThis.Promise or Reflect.construct breaks its Promise
+// construction.
 interface WasmSession {
   check(uri: string, source: string): Promise<Diagnostic[]> | undefined;
   fix(uri: string, source: string): Promise<FixResult> | undefined;
@@ -250,15 +251,16 @@ export async function createRuntime(
     configYAML: opts.configYAML ?? "",
   });
   // The engine yields undefined instead of a session when a patched
-  // globalThis.Promise breaks its Promise construction, since Go cannot
-  // throw to its caller. Fail here, not on the first check(). Anything
-  // the engine did return is disposed first: nothing else holds it.
+  // globalThis.Promise or Reflect.construct breaks its Promise
+  // construction, since Go cannot throw to its caller. Fail here, not on
+  // the first check(). Anything the engine did return is disposed
+  // first: nothing else holds it.
   if (!session || typeof session.check !== "function") {
     if (session && typeof session.dispose === "function") {
       session.dispose();
     }
     throw new Error(
-      "mdsmith: createSession returned no session (is globalThis.Promise patched?)",
+      "mdsmith: createSession returned no session (is globalThis.Promise or Reflect.construct patched?)",
     );
   }
   return new SessionRuntime(session);
@@ -275,13 +277,13 @@ export function __resetEngineForTests(): void {
 
 // settle turns an engine async method's result into a Promise that
 // rejects with a clear error when the engine returned undefined (a
-// patched globalThis.Promise broke its Promise construction). It is an
-// async function, so the Promise it returns is the intrinsic one even
-// while globalThis.Promise is patched.
+// patched globalThis.Promise or Reflect.construct broke its Promise
+// construction). It is an async function, so the Promise it returns is
+// the intrinsic one even while globalThis.Promise is patched.
 async function settle<T>(method: string, result: Promise<T> | undefined): Promise<T> {
   if (result === undefined) {
     throw new Error(
-      `mdsmith: ${method} returned no result (is globalThis.Promise patched?)`,
+      `mdsmith: ${method} returned no result (is globalThis.Promise or Reflect.construct patched?)`,
     );
   }
   return await result;

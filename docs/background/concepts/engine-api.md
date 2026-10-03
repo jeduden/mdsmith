@@ -394,19 +394,20 @@ it was passed, and the create rejects with that error. A `Promise`
 that throws after it ran the executor disposes every session the
 create registered, so none stays registered.
 
-The engine captures `Reflect.apply` at load. `createSession` and each
-async method compare it with the current one before they register a
-Promise executor callback. `syscall/js` stores a callback in the Go
-runtime's func table, then builds its JS wrapper through
-`Reflect.apply`. A `Reflect.apply` that throws there would strand the
-table entry, and nothing can free it.
+`createSession` and each async method register no callback of their
+own. `syscall/js` stores a callback in the Go runtime's func table,
+then builds its JS wrapper through `Reflect.apply`. A patched
+`Reflect.apply`, `Reflect.get`, or `_makeFuncWrapper` that throws there
+would strand the table entry, and nothing could free it. So the engine
+registers one Promise executor at load and builds every Promise with
+it. Each call waits on a Go-side stack until the `Promise` constructor
+runs the shared executor, and leaves the stack before it returns. Such
+a patch therefore strands nothing, and a `Reflect.apply` that only
+delegates leaves every method working.
 
-If `Reflect.apply` is no longer the captured function, even a
-replacement that delegates to it, the call registers nothing and
-returns `undefined`, like a failing `Promise`. No session is created.
-An existing session stays usable once `Reflect.apply` is restored. A
-getter that returns the original on the first read and throws on the
-next is not detected.
+A script that keeps the executor and calls it after the call returned
+runs nothing. One that calls it during a call runs that call, as the
+`Promise` constructor could.
 
 A `Reflect.get` or `Reflect.set` that throws while Go reads a
 callback's arguments or writes back its result still stops the Go

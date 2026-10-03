@@ -52,23 +52,31 @@ Possible fixes:
 
 ## Decision
 
-Fix 2: capture `Reflect.apply` at load (`captureGlobals`) and
-compare it with the current one before each `FuncOf`
-(`reflectApplyIntact`, checked at the top of `newPromise`).
-It is the smallest change: no pool, no per-call context
-slot, no upstream dependency, and every per-call func goes
-through `newPromise`, so one check covers it. The
-size budgets are unaffected.
+Fix 1, without a pool: `sharedExecutor` registers one Promise
+executor func (`runPromiseCall`) at load, from `sharedMethods`, and
+`newPromise` constructs every Promise with it. The per-call context
+slot is a Go-side stack, `promiseCalls`: `newPromise` pushes its call,
+constructs the Promise, and pops the call in a defer. A spec Promise
+runs its executor synchronously during construction, so the shared
+func runs the call on top of the stack. No func is registered per
+call, so no patched `Reflect.apply`, `Reflect.get`, or
+`_makeFuncWrapper` can strand a func-table entry. The stack slot is
+cleared on pop, so the stack's backing array does not keep a Session
+reachable. The size budgets are unaffected.
 
-Deviation: the plan says to refuse with a rejection. A
-rejection needs a Promise, and building or rejecting one
-goes through the same patched `Reflect.apply` (`Call`) or a
-second `FuncOf`, so `newPromise` returns `undefined`, as it
-does for a patched `Promise` that fails.
+This replaced a first attempt (fix 2) that captured `Reflect.apply` at
+load and refused, returning `undefined`, when it had changed. Review
+round 1 found that design wanting. Reading `apply` with `Get` could end
+the program, since that read runs outside a `try`. A throwing
+`_makeFuncWrapper`, a one-shot `Reflect.get`, or a patch in place at
+load still leaked. And a benign delegating `Reflect.apply` silently
+turned off every async method. The shared executor needs no global
+identity check, so all of these go away.
 
-Known limit: a `Reflect.apply` accessor that returns the
-original on the first read and throws on the next passes the
-check. Recorded in engine-api.md.
+A late call of an executor that a patched constructor kept runs
+nothing. A nested run from inside `resolve` still runs, as it did when
+each call had its own func. A second run after the outermost one
+returned runs nothing, as a released func would not.
 
 ## Tasks
 
@@ -76,8 +84,9 @@ check. Recorded in engine-api.md.
    `Reflect.apply` to throw on `_makeFuncWrapper`,
    calls an async session method, and asserts no func
    is registered through the `funcOf` seam and the
-   wrapper is never called. (Red: the unguarded
-   `FuncOf` panicked out of the test.)
+   wrapper is never called. (Red: the per-call
+   `FuncOf` panicked out of the test, then, under
+   the Reflect.apply check, returned `undefined`.)
 2. [x] Pick one of the fixes above and record why in this
    plan.
 3. [x] Make the test pass. The engine-api.md size budgets

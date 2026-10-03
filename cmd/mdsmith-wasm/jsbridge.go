@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"sync"
 	"syscall/js"
 
 	"github.com/jeduden/mdsmith/pkg/mdsmith"
@@ -13,93 +14,126 @@ import (
 // receives resolve and reject callbacks; any Go method returning
 // (T, error) maps to a Promise<T> that rejects with new Error(msg).
 //
-// The js.Func backing the executor is released inside the executor so
-// it is freed once Promise construction calls it (Promise executors run
-// synchronously during construction).
+// It registers no func per call. Every Promise is constructed with the
+// one executor func sharedMethods registers at load (sharedExecutor),
+// and the call's Go executor waits on promiseCalls, a Go-side stack, for
+// the constructor to run it: a spec Promise runs its executor
+// synchronously during construction, so the shared func runs the call
+// on top of the stack. newPromise pops its call before it returns, so
+// nothing outlives the call. js.FuncOf stores a handler in syscall/js's
+// private func table before it builds the handler's JS wrapper through
+// Reflect.apply, and a patched one that throws there would strand the
+// entry, with its closure over the Session, for good; building no
+// wrapper per call leaves nothing to strand, whatever Reflect.apply,
+// Reflect.get, or _makeFuncWrapper a page installs. Plan 2610031420.
 //
 // A JS exception the executor raises (a js.Error panic) rejects the
 // Promise with that exception, and a *js.ValueError rejects it with an
 // Error (see rejectOnJSError), so no executor needs its own guard.
 //
-// A Reflect.apply that is no longer the function captured at load makes
-// newPromise return undefined before it registers the handler (see
-// reflectApplyIntact).
-//
 // A patched Promise can fail around the executor too. A constructor
 // that throws, or a Promise that is no constructor, would end the
-// program, and a handler it never ran would stay registered: newPromise
-// releases that handler and returns undefined instead, since Go cannot
-// throw to its caller. A constructor that returns without running the
+// program: newPromise returns undefined instead, since Go cannot throw
+// to its caller. A constructor that returns without running the
 // executor, which a spec Promise runs during construction, gets the
-// same treatment: its handler would otherwise stay registered for good,
-// and a later call to the released handler only logs an error. A
-// constructor that passes the executor too few arguments, or a reject
-// that itself throws or is no function, would end the program from
-// inside the handler callback: a panic that leaves a js.FuncOf callback
-// unwinds into the Go frames below the JS that called it. The handler
-// swallows that failure, and the Promise stays as the constructor left
-// it, never settling. Any other panic is re-raised (recoverJS).
+// same treatment, and a later call of the executor it kept runs nothing
+// (runPromiseCall). A constructor that passes the executor too few
+// arguments, or a reject that itself throws or is no function, would end
+// the program from inside the executor callback: a panic that leaves a
+// js.FuncOf callback unwinds into the Go frames below the JS that called
+// it. The callback swallows that failure, and the Promise stays as the
+// constructor left it, never settling. Any other panic is re-raised
+// (recoverJS).
 func newPromise(executor func(resolve, reject func(any))) (p js.Value) {
-	// js.FuncOf stores the handler before it calls _makeFuncWrapper through
-	// Reflect.apply, and a patched one that throws strands the entry. Refuse
-	// before registering anything; Go cannot reject without a Promise, and
-	// building one needs the same call.
-	if !reflectApplyIntact() {
-		return js.Undefined()
-	}
-	// One heap object for the handler and its flags: the escaping
-	// callback captures it.
-	st := new(promiseHandler)
-	st.f = funcOf(func(_ js.Value, pArgs []js.Value) any {
-		st.ran = true
-		// Free this handler once the executor body returns; the executor
-		// runs to completion synchronously within Promise construction
-		// for our synchronous engine calls. A patched constructor can run
-		// it again from inside resolve; release is once-only, so the
-		// nested run's return does not release the func a second time.
-		defer st.release()
-		defer recoverJS(func() {})
-		var resolveFn, rejectFn js.Value // undefined unless passed
-		if len(pArgs) > 0 {
-			resolveFn = pArgs[0]
-		}
-		if len(pArgs) > 1 {
-			rejectFn = pArgs[1]
-		}
-		resolve := func(v any) { resolveFn.Invoke(v) }
-		reject := func(v any) { rejectFn.Invoke(v) }
-		defer rejectOnJSError(reject)
-		executor(resolve, reject)
-		return js.Undefined()
-	})
-	// A handler the constructor never ran is released here, whether the
-	// constructor threw or returned; one it ran released itself.
+	exec := sharedExecutor()
+	c := &promiseCall{executor: executor}
+	promiseCalls = append(promiseCalls, c)
+	// Pop c whatever happens, and clear its slot so the stack's backing
+	// array does not keep the executor, and the Session it closes over,
+	// reachable. A call the constructor never ran yields undefined.
 	defer func() {
-		if !st.ran {
-			st.release()
+		n := len(promiseCalls) - 1
+		promiseCalls[n] = nil
+		promiseCalls = promiseCalls[:n]
+		if !c.ran {
 			p = js.Undefined()
 		}
 	}()
 	defer recoverJS(func() { p = js.Undefined() })
-	return js.Global().Get("Promise").New(st.f)
+	return js.Global().Get("Promise").New(exec)
 }
 
-// promiseHandler is newPromise's executor func, whether the Promise
-// constructor ran it, and whether the func is released.
-type promiseHandler struct {
-	f        js.Func
+// promiseCall is one pending newPromise call: its Go executor, whether
+// the Promise constructor ran it, how many of its runs are on the stack,
+// and whether its outermost run has returned.
+type promiseCall struct {
+	executor func(resolve, reject func(any))
 	ran      bool
-	released bool
+	depth    int
+	done     bool
 }
 
-// release frees the handler func the first time it is called and does
-// nothing after that.
-func (h *promiseHandler) release() {
-	if h.released {
-		return
+// promiseCalls is the stack of pending newPromise calls, innermost last.
+// js/wasm runs every goroutine on one thread, and a call is pushed and
+// popped within one newPromise frame, so it needs no lock.
+var promiseCalls []*promiseCall
+
+// promiseExecutor is the one Promise executor func, runPromiseCall
+// registered through the funcOf seam by sharedExecutor. It is never
+// released.
+var (
+	promiseExecutor js.Value
+	executorOnce    sync.Once
+)
+
+// sharedExecutor registers promiseExecutor on first use and returns it.
+// sharedMethods calls it at load, before the API is reachable, so the
+// one FuncOf runs before a page can have patched anything after load.
+// newPromise calls it too rather than sharedMethods, whose method table
+// reaches newPromise, so a test that builds a Promise first still works.
+func sharedExecutor() js.Value {
+	executorOnce.Do(func() { promiseExecutor = funcOf(runPromiseCall).Value })
+	return promiseExecutor
+}
+
+// runPromiseCall is the shared Promise executor. It runs the Go executor
+// of the newPromise call on top of promiseCalls with the resolve and
+// reject the constructor passed. With no call pending (a constructor or
+// script that kept the executor and calls it after newPromise returned)
+// it runs nothing. A constructor can run the executor again from inside
+// resolve; that nested run executes the body too, as it did when each
+// call had its own func. Once the outermost run has returned the call is
+// done, and a further run (a constructor that runs the executor twice in
+// a row) executes nothing, as a released func would not.
+func runPromiseCall(_ js.Value, pArgs []js.Value) any {
+	if len(promiseCalls) == 0 {
+		return js.Undefined()
 	}
-	h.released = true
-	releaseFunc(h.f)
+	c := promiseCalls[len(promiseCalls)-1]
+	if c.done {
+		return js.Undefined()
+	}
+	c.ran = true
+	c.depth++
+	defer func() {
+		c.depth--
+		if c.depth == 0 {
+			c.done = true
+		}
+	}()
+	defer recoverJS(func() {})
+	var resolveFn, rejectFn js.Value // undefined unless passed
+	if len(pArgs) > 0 {
+		resolveFn = pArgs[0]
+	}
+	if len(pArgs) > 1 {
+		rejectFn = pArgs[1]
+	}
+	resolve := func(v any) { resolveFn.Invoke(v) }
+	reject := func(v any) { rejectFn.Invoke(v) }
+	defer rejectOnJSError(reject)
+	c.executor(resolve, reject)
+	return js.Undefined()
 }
 
 // jsError constructs a JavaScript Error with the given message, the
