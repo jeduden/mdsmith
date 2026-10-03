@@ -1,7 +1,7 @@
 ---
 id: 2609131911
 title: >-
-  Share the refactor Workspace adapter between CLI and Session
+  Share the refactor Workspace adapter between CLI, Session, and LSP
 status: "✅"
 model: sonnet
 summary: >-
@@ -79,7 +79,10 @@ The 2026-09-13 audit (see [the audit log][audit-log]) found:
    `IncomingWikilinkEdges`, and `Files`. A getter keeps the
    CLI's lazy build; a nil getter or nil index answers nothing,
    as the CLI does today. `NewIndexEdges(idx)` is the eager
-   constructor for a ready index. Give it value receivers:
+   constructor for a ready index; `NewLazyIndexEdges(build)`
+   builds on the first query and reuses the result, so the
+   memoizing lives in the helper, not in each lazy host.
+   Give it value receivers:
    `cliRenameWorkspace` and `lspRenameWorkspace` are used by
    value, so a pointer-receiver helper embedded in them would
    not satisfy `refactor.Workspace`. `internal/refactor`
@@ -101,8 +104,8 @@ The 2026-09-13 audit (see [the audit log][audit-log]) found:
       `IncomingWikilinkEdges`, and `Files` are implemented
       once and shared by `cliRenameWorkspace`,
       `sessionRefactorWorkspace`, and `lspRenameWorkspace`.
-- [x] `Resolve` stays a distinct method on each type; neither
-      is asked to read the other's source.
+- [x] `Resolve` stays a distinct method on each type; none
+      is asked to read another's source.
 - [x] No behavior change: `mdsmith rename` and
       `Session.Rename`/`Session.Move` produce identical results
       before and after.

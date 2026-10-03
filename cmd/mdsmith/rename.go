@@ -82,11 +82,12 @@ type renameSummary struct {
 // under is its workspace-relative path — the same string the CLI
 // writes back to disk.
 type cliRenameWorkspace struct {
-	// IndexEdges builds the transient index on its first edge query
-	// and reuses it after that. Only the engine's edge queries call
-	// it, so a label rename — and Resolve or applyPlan — reads no
-	// file beyond the ones it touches. A workspace built without an
-	// index answers every edge query with nothing.
+	// IndexEdges (from refactor.NewLazyIndexEdges) builds the
+	// transient index on its first edge query and reuses it after
+	// that. Only the engine's edge queries call it, so a label
+	// rename — and Resolve or applyPlan — reads no file beyond the
+	// ones it touches. A workspace built without an index answers
+	// every edge query with nothing.
 	refactor.IndexEdges
 	relToAbs map[string]string
 	rootDir  string
@@ -231,7 +232,7 @@ func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 		relToAbs[rel] = srcPath
 		rels = append(rels, rel)
 	}
-	idx := sync.OnceValue(func() *index.Index {
+	edges := refactor.NewLazyIndexEdges(func() *index.Index {
 		idx := index.New(rootDir)
 		idx.BuildSerial(rels, func(rel string) ([]byte, error) {
 			return bytelimit.ReadFileLimited(relToAbs[rel], maxBytes)
@@ -239,7 +240,7 @@ func buildWorkspace(opts renameOptions) (cliRenameWorkspace, int) {
 		return idx
 	})
 	return cliRenameWorkspace{
-		IndexEdges: refactor.IndexEdges{Get: idx},
+		IndexEdges: edges,
 		relToAbs:   relToAbs,
 		rootDir:    rootDir,
 		maxBytes:   maxBytes,
