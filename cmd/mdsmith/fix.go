@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	flag "github.com/spf13/pflag"
@@ -32,6 +35,12 @@ func runFix(args []string) int {
 		fmt.Fprintf(os.Stderr, "mdsmith: cannot fix stdin in place\n")
 		return 2
 	}
+	// Cancel the build pass on SIGINT/SIGTERM so each recipe's process
+	// group is killed before mdsmith exits; recipes run in their own group
+	// and would otherwise survive the terminal's interrupt.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	opts.build.ctx = ctx
 	if len(fileArgs) > 0 {
 		return fixFiles(fileArgs, opts)
 	}

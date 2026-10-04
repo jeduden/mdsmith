@@ -52,7 +52,7 @@ done, so only the cancellation is missing.
 
 ## Acceptance Criteria
 
-- [ ] Interrupting `mdsmith fix` during a recipe leaves no
+- [x] Interrupting `mdsmith fix` during a recipe leaves no
       process from the recipe's group running (Unix test).
 - [x] An interrupted build is reported as interrupted, not
       as timed out.
