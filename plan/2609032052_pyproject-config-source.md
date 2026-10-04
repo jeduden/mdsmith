@@ -232,7 +232,7 @@ Phase B — the pyproject source:
 
 Phase C — guardrails and docs:
 
-11. [ ] Confirm the WASM boundary: the standard-Go and
+11. [x] Confirm the WASM boundary: the standard-Go and
     TinyGo builds in
     [build.sh](../cmd/mdsmith-wasm/build.sh) still
     compile, and
