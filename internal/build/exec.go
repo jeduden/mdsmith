@@ -213,13 +213,15 @@ var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
 // returns the exit code and a non-nil error. On timeout it returns the
 // leader's exit status, timedOut=true, and a non-nil error: a leader
 // that exited before the deadline (a child held a captured pipe past
-// it) keeps its own code, 0 included; one the kill ended, or that was
-// never reaped, reports -1.
+// it) keeps its own code, 0 included; one the kill ended reports the
+// status the kill left it (-1 for a signal on Unix; Windows and plan9
+// report a code), and one Wait read no status for reports -1.
 func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	// A context already done at entry (a CLI interrupt that landed while
-	// the target was staged, or a spent deadline) starts no recipe:
-	// exec.Command's Start ignores ctx, so it would fork one only to
-	// kill it at once. No kill path runs, so a cancel is not timedOut.
+	// the target was staged, or a spent deadline) starts no recipe and
+	// opens no pipes. One that ends after this check is refused by
+	// Start itself (startFailure). No kill path runs, so a cancel is not
+	// timedOut.
 	if err := ctx.Err(); err != nil {
 		return -1, errors.Is(err, context.DeadlineExceeded), NotStartedError(err)
 	}
@@ -347,8 +349,8 @@ func exitResult(err error) (int, bool, error) {
 // waits at most reapWait (forcedReapWait once a second interrupt closed
 // the WithForceKill channel) for captured output to drain, abandons the
 // pipes if a survivor still holds them, and reports the timeout or
-// cancellation with exitCode, the leader's exit status (-1 when it was
-// not reaped or died of a signal). forced (a second
+// cancellation with exitCode, the leader's exit status (-1 when it died
+// of a signal on Unix or Wait read no status). forced (a second
 // interrupt escalated the kill) wraps ErrForceKilled into either one:
 // a timed-out recipe still in its grace is cut short by it too.
 func timeoutResult(ctx context.Context, ro *recipeOutput, exitCode int, forced bool) (int, bool, error) {
@@ -440,7 +442,8 @@ const forcedReapWait = 100 * time.Millisecond
 // zero value when the wait runs out first. Once force is closed (a
 // second interrupt, see WithForceKill) the wait ends at most
 // forcedReapWait later; a nil force never fires. It still waits that
-// long, so a leader the SIGKILL reached is reaped, not orphaned.
+// long, so output a holder wrote before the SIGKILL reached it can
+// still drain before runRecipe abandons the pipe.
 func waitAtMost[T any](ch <-chan T, d time.Duration, force <-chan struct{}) (bool, T) {
 	t := time.NewTimer(d)
 	defer t.Stop()

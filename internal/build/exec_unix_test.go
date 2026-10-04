@@ -458,8 +458,9 @@ trap '' TERM; echo $$ > "`+ready+`"; while :; do sleep 0.05; done`)
 
 func TestRunRecipe_ForceShortensLeaderReap(t *testing.T) {
 	// The group kill leaves the leader running (stubGroupKiller's kill
-	// does nothing). With force already closed, the leader reap and the
-	// wait after the leader-only kill each take one short poll.
+	// does nothing). With force already closed when the kill returns,
+	// Cancel cuts WaitDelay to forcedReapWait, so os/exec kills the
+	// leader after one short poll, not after reapWait.
 	stubGroupKiller(t, func(*exec.Cmd) {})
 	reapWait = 3 * time.Second
 	script := writeScript(t, t.TempDir(), "slow.sh", `exec sleep 30`)
