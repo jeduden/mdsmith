@@ -1070,3 +1070,16 @@ func TestRunInit_APM_PyprojectConfig_PrintsTOMLMergeHint(t *testing.T) {
 	_, err := os.Stat(".mdsmith.yml")
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
+
+// writeInitConfig refuses a symlinked target itself, not only through
+// runInitConfig's earlier check.
+func TestWriteInitConfig_SymlinkTarget_Refused(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.Symlink(filepath.Join(dir, "target.yml"), ".mdsmith.yml"))
+	var buf bytes.Buffer
+	err := writeInitConfig(".mdsmith.yml", "", "", true, &buf)
+	require.ErrorContains(t, err, "symlink")
+	_, statErr := os.Stat(filepath.Join(dir, "target.yml"))
+	assert.True(t, os.IsNotExist(statErr))
+}
