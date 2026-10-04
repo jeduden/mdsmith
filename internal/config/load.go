@@ -338,9 +338,9 @@ func SidecarOwnerDir(path string) (string, bool) {
 // searching when it encounters a .git directory (the repository root)
 // or reaches the filesystem root. Returns the path to the config file,
 // or "" if none was found.
-func Discover(startDir string) (string, error) {
+func Discover(startDir string) string {
 	found, _ := DiscoverWithHints(startDir)
-	return found, nil
+	return found
 }
 
 // DiscoverWithHints is Discover plus the one-line hints its walk

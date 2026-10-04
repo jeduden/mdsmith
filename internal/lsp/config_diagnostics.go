@@ -57,14 +57,6 @@ func (s *Server) publishConfigDiagnostic(d *lint.Diagnostic) {
 		publishDiagnosticsParams{URI: uri, Diagnostics: toLSPAll([]lint.Diagnostic{*d}, source, root)})
 }
 
-// discoverWithHints is the production discoverConfig: one walk from
-// root that returns the config file it finds and the hints it collects.
-// The walk itself cannot fail; the error return serves test seams.
-func discoverWithHints(root string) (string, []string, error) {
-	found, hints := config.DiscoverWithHints(root)
-	return found, hints, nil
-}
-
 // logDiscoverHints reports, as warnings, the hints a config discovery
 // walk collected — a pyproject.toml with a plural `[tools.mdsmith]`
 // table that is not read as config. Hints identical to the ones the

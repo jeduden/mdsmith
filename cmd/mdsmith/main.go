@@ -499,7 +499,7 @@ func discoverConfigPath(configPath string) string {
 	if err != nil {
 		return config.DefaultConfigPath("")
 	}
-	if discovered, derr := config.Discover(cwd); derr == nil && discovered != "" {
+	if discovered := config.Discover(cwd); discovered != "" {
 		return discovered
 	}
 	return config.DefaultConfigPath(cwd)

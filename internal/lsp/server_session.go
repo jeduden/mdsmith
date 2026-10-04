@@ -168,8 +168,8 @@ func (s *Server) reloadConfig() {
 // reloadConfig so the caller can release configMu before notifying
 // the client. The returned cfg is always non-nil (defaults on
 // failure); cfgPath is empty when no config was successfully
-// loaded; loadErr is a human-readable message when load or
-// discover surfaced an error worth logging; cfgDiag is the load
+// loaded; loadErr is a human-readable message when the load
+// surfaced an error worth logging; cfgDiag is the load
 // failure as a diagnostic on the config file when it has a position.
 func (s *Server) resolveConfig(override string) (
 	cfg *config.Config, cfgPath, loadErr string, cfgDiag *lint.Diagnostic,
@@ -198,11 +198,8 @@ func (s *Server) resolveConfig(override string) (
 	if root == "" {
 		return fallback, "", "", nil
 	}
-	discovered, hints, err := s.discoverConfig(root)
+	discovered, hints := s.discoverConfig(root)
 	s.logDiscoverHints(hints)
-	if err != nil {
-		return fallback, "", fmt.Sprintf("discovering config under %q: %v", root, err), nil
-	}
 	if discovered == "" {
 		return fallback, "", "", nil
 	}

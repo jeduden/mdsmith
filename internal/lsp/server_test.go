@@ -1524,30 +1524,6 @@ func TestReloadConfigBadYAMLFallsBack(t *testing.T) {
 	assert.Empty(t, path, "path should be empty when load fails")
 }
 
-// Regression: a config.Discover error path also surfaces via
-// window/logMessage, not just a load error. The Discover
-// implementation almost never fails in practice (only when
-// filepath.Abs cannot resolve a relative path), but the branch
-// must still report — otherwise an unreadable workspace silently
-// falls back to defaults.
-func TestReloadConfigSurfacesDiscoverFailure(t *testing.T) {
-	t.Parallel()
-	var buf safeBuffer
-	s := New(Options{Reader: nil, Writer: &buf})
-	s.discoverConfig = func(string) (string, []string, error) {
-		return "", nil, errors.New("synthetic discover failure")
-	}
-	s.configMu.Lock()
-	s.rootDir = "/some/root"
-	s.configMu.Unlock()
-	s.reloadConfig()
-
-	out := buf.String()
-	assert.Contains(t, out, `"window/logMessage"`)
-	assert.Contains(t, out, "discovering")
-	assert.Contains(t, out, "synthetic discover failure")
-}
-
 // Regression: reloadConfig must surface load failures via
 // window/logMessage instead of silently falling back to defaults,
 // so the editor user can diagnose misconfiguration.

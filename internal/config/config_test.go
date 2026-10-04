@@ -241,8 +241,7 @@ func TestDiscoverFindsInCurrentDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := Discover(dir)
-	require.NoError(t, err, "Discover returned error: %v", err)
+	found := Discover(dir)
 	assert.Equal(t, cfgPath, found, "expected %s, got %s", cfgPath, found)
 }
 
@@ -257,8 +256,7 @@ func TestDiscoverFindsInParentDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := Discover(child)
-	require.NoError(t, err, "Discover returned error: %v", err)
+	found := Discover(child)
 	assert.Equal(t, cfgPath, found, "expected %s, got %s", cfgPath, found)
 }
 
@@ -284,8 +282,7 @@ func TestDiscoverStopsAtGitBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := Discover(child)
-	require.NoError(t, err, "Discover returned error: %v", err)
+	found := Discover(child)
 	assert.Equal(t, "", found, "expected empty string (stopped at .git), got %s", found)
 }
 
@@ -307,8 +304,7 @@ func TestDiscoverStopsAtGitBoundaryWithConfigInRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := Discover(child)
-	require.NoError(t, err, "Discover returned error: %v", err)
+	found := Discover(child)
 	assert.Equal(t, cfgPath, found, "expected %s, got %s", cfgPath, found)
 }
 
@@ -320,8 +316,7 @@ func TestDiscoverReturnsEmptyWhenNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := Discover(dir)
-	require.NoError(t, err, "Discover returned error: %v", err)
+	found := Discover(dir)
 	assert.Equal(t, "", found, "expected empty string, got %s", found)
 }
 
@@ -335,8 +330,7 @@ func TestDiscoverReachesFilesystemRoot(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "sub", "deep")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 
-	found, err := Discover(dir)
-	require.NoError(t, err)
+	found := Discover(dir)
 	assert.Equal(t, "", found)
 }
 

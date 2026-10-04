@@ -168,8 +168,8 @@ func TestReloadConfigLogsHintsFromDiscoverSeam(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf})
-	s.discoverConfig = func(string) (string, []string, error) {
-		return "", []string{"stub hint"}, nil
+	s.discoverConfig = func(string) (string, []string) {
+		return "", []string{"stub hint"}
 	}
 	s.configMu.Lock()
 	s.rootDir = "/nonexistent/root"
@@ -186,8 +186,8 @@ func TestReloadConfigLogsUnchangedHintsOnce(t *testing.T) {
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf})
 	hints := []string{"stub hint"}
-	s.discoverConfig = func(string) (string, []string, error) {
-		return "", hints, nil
+	s.discoverConfig = func(string) (string, []string) {
+		return "", hints
 	}
 	s.configMu.Lock()
 	s.rootDir = "/nonexistent/root"
@@ -263,9 +263,9 @@ func TestNestedPyprojectChangeSkipsReload(t *testing.T) {
 	root := t.TempDir()
 	s := New(Options{Reader: nil, Writer: &safeBuffer{}})
 	calls := 0
-	s.discoverConfig = func(string) (string, []string, error) {
+	s.discoverConfig = func(string) (string, []string) {
 		calls++
-		return "", nil, nil
+		return "", nil
 	}
 	s.configMu.Lock()
 	s.rootDir = root
@@ -382,13 +382,15 @@ func TestIsWatchedConfigChangeThroughSymlink(t *testing.T) {
 	s.rootDir = link
 	s.configMu.Unlock()
 	assert.True(t, s.isWatchedConfigChange(filepath.Join(real, ".mdsmith.yml")), "root config by its real path")
-	assert.True(t, s.isWatchedConfigChange(filepath.Join(real, ".mdsmith", "kinds", "k.yml")), "root sidecar by its real path")
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(real, ".mdsmith", "kinds", "k.yml")),
+		"root sidecar by its real path")
 	assert.False(t, s.isWatchedConfigChange(filepath.Join(real, "sub", ".mdsmith.yml")))
 
 	s.configMu.Lock()
 	s.configPath = filepath.Join(link, "sub", ".mdsmith.yml")
 	s.configMu.Unlock()
-	assert.True(t, s.isWatchedConfigChange(filepath.Join(real, "sub", ".mdsmith.yml")), "loaded config by its real path")
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(real, "sub", ".mdsmith.yml")),
+		"loaded config by its real path")
 
 	s.settings.ConfigPath = filepath.Join(link, "sub", "pyproject.toml")
 	assert.True(t, s.isWatchedConfigChange(filepath.Join(real, "sub", "pyproject.toml")), "override by its real path")

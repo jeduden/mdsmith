@@ -25,7 +25,7 @@ type Server struct {
 	rules          []rule.Rule
 	debounce       time.Duration
 	fetchTimeout   time.Duration
-	discoverConfig func(string) (string, []string, error)
+	discoverConfig func(string) (string, []string)
 	onConfigReload func(cfgPath string)
 	logger         *vlog.Logger
 	docs           *documentStore
@@ -246,7 +246,7 @@ func New(opts Options) *Server {
 		rules:          opts.Rules,
 		debounce:       debounce,
 		fetchTimeout:   2 * time.Second,
-		discoverConfig: discoverWithHints,
+		discoverConfig: config.DiscoverWithHints,
 		onConfigReload: opts.OnConfigReload,
 		logger:         logger,
 		docs:           newDocumentStore(),
