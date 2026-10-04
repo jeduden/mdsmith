@@ -169,3 +169,12 @@ the split. File this as its own plan once `PLAN.md` has
 room. Round 3 of the review freed one line by dropping the
 blank line between the catalog marker and its table, and
 used it for plan 2610040606, so `PLAN.md` is at 300 again.
+
+A fourth, final review found one edge case left open.
+In `appendWikilinkStemEdits` (`internal/refactor/move.go`),
+when the file a bare `[[stem]]` reaches moves somewhere no
+wikilink can spell, such as into `.git` or `node_modules`,
+the function returns early. Links that name a sibling folder
+are then neither rewritten nor counted. Fixing it needs an
+"unreachable target" mode in the stem pass. File it as its
+own plan once `PLAN.md` has room.
