@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -42,6 +43,75 @@ type buildPassOpts struct {
 	verify             bool          // --build-verify: run each recipe twice and diff outputs
 	jobs               int           // --build-jobs N: concurrent recipe dispatch (default 1)
 	explain            string        // --build-explain TARGET: print ActionID inputs; run nothing
+
+	// ctx, when non-nil, is the parent of every recipe and hook context.
+	// Cancelling it (CLI interrupt) kills the running recipes' process
+	// groups. Nil means context.Background().
+	ctx context.Context
+	// interruptible installs the SIGINT/SIGTERM/SIGHUP handler around the
+	// dispatch of recipes and hooks (dispatchInterruptible). Only
+	// runBuildPassInterruptible, the fix entry point, sets it.
+	interruptible bool
+}
+
+// context returns the parent context for recipe and hook runs.
+func (o buildPassOpts) context() context.Context {
+	if o.ctx == nil {
+		return context.Background()
+	}
+	return o.ctx
+}
+
+// runsProcesses reports whether the pass may start a recipe or hook.
+// --build-dry-run, --build-check-stale, and --build-explain run none.
+func (o buildPassOpts) runsProcesses() bool {
+	return !o.dryRun && !o.checkStale && o.explain == ""
+}
+
+// interrupted reports whether the build context is already done, so a
+// target reached after an interrupt neither hashes its inputs nor
+// starts its recipe. The caller returns outcomeNotStarted (decideAndRun
+// does for a run refusedByInterrupt), and dispatchTargets reports every
+// such target in one reportNotStarted line.
+func interrupted(opts buildPassOpts) bool {
+	return opts.context().Err() != nil
+}
+
+// refusedByInterrupt reports whether a run's err says an interrupt
+// refused its recipe before it started (buildexec.NotStartedError from
+// runOneTarget, or runRecipe's entry check): such a target is
+// outcomeNotStarted, like one
+// dispatchOne refused. A spent deadline that refused it stays a
+// timeout.
+func refusedByInterrupt(err error) bool {
+	return errors.Is(err, buildexec.ErrNotStarted) && errors.Is(err, context.Canceled)
+}
+
+// notStartedShown caps how many target names reportNotStarted lists.
+const notStartedShown = 3
+
+// reportNotStarted prints one line for the targets an interrupt
+// stopped before their recipe started (names, in declared order), so a
+// large pass does not bury the killed recipe's report under one line
+// per target. It prints nothing for no target.
+func reportNotStarted(names []string, w io.Writer) {
+	switch {
+	case len(names) == 0:
+		return
+	case len(names) == 1:
+		_, _ = fmt.Fprintf(w, "INTERRUPTED %s before start\n", names[0])
+		return
+	}
+	shown := names
+	if len(shown) > notStartedShown {
+		shown = shown[:notStartedShown]
+	}
+	more := ""
+	if n := len(names) - len(shown); n > 0 {
+		more = fmt.Sprintf(", and %d more", n)
+	}
+	_, _ = fmt.Fprintf(w, "INTERRUPTED %d targets before start: %s%s\n",
+		len(names), strings.Join(shown, ", "), more)
 }
 
 // buildTarget pairs a resolved build.Target with the file and line it
@@ -203,7 +273,9 @@ func runBuildPass(
 			_, _ = fmt.Fprintf(w, "mdsmith: %v\n", err)
 		}
 	}
-	return dispatchWithHooks(builder, targets, cfg, root, opts, cache, timeout, errs, w)
+	return dispatchInterruptible(opts, func(o buildPassOpts) int {
+		return dispatchWithHooks(builder, targets, cfg, root, o, cache, timeout, errs, w)
+	})
 }
 
 // ensureTrusted checks the build trust gate and returns false (printing a
@@ -251,7 +323,7 @@ func dispatchWithHooks(
 	// block the build pass indefinitely.
 	if runHooks && len(cfg.Build.Hooks.Before) > 0 {
 		before := resolveHooks(cfg.Build.Hooks.Before)
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(opts.context(), timeout)
 		result := buildexec.RunHooks(ctx, before, root, w)
 		cancel()
 		if result != nil {
@@ -279,7 +351,7 @@ func dispatchWithHooks(
 	afterCode := 0
 	if runHooks && len(cfg.Build.Hooks.After) > 0 {
 		after := resolveHooks(cfg.Build.Hooks.After)
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(opts.context(), timeout)
 		result := buildexec.RunAfterHooks(ctx, after, root, w)
 		cancel()
 		if result != nil {
@@ -316,11 +388,16 @@ func resolveHooks(hooks []config.HookCfg) []buildexec.HookEntry {
 // allFresh returns true when every target's staleness verdict is Fresh.
 // This is used to decide whether to skip hooks under --build-skip-hooks-when-fresh.
 // --build-force and --build-no-cache always force Stale, so hooks run unconditionally.
+// An interrupt stops the scan before the next target's inputs are
+// hashed and returns false: no verdict claims a target it never checked.
 func allFresh(targets []buildTarget, cfg *config.Config, cache *buildexec.Cache, opts buildPassOpts) bool {
 	if opts.force || opts.noCache {
 		return false
 	}
 	for _, bt := range targets {
+		if interrupted(opts) {
+			return false
+		}
 		stin := stalenessFor(bt, cfg)
 		verdict, err := buildexec.CheckStaleness(stin, cache)
 		if err != nil {
@@ -413,10 +490,11 @@ func resolveDefaultInputs(entries []string, params map[string]string) []string {
 type targetOutcome int
 
 const (
-	outcomeNeutral targetOutcome = iota // reported, no state change (dry-run, skip, fresh-stale-report)
-	outcomeFailed                       // a failure was reported
-	outcomeStale                        // --build-check-stale found this target stale
-	outcomeRebuilt                      // recipe ran and the cache entry was refreshed
+	outcomeNeutral    targetOutcome = iota // reported, no state change (dry-run, skip, fresh-stale-report)
+	outcomeFailed                          // a failure was reported
+	outcomeStale                           // --build-check-stale found this target stale
+	outcomeRebuilt                         // recipe ran and the cache entry was refreshed
+	outcomeNotStarted                      // an interrupt stopped it before its recipe started
 )
 
 // dispatchTargets runs the staleness check, dispatch, and cache refresh
@@ -429,8 +507,12 @@ func dispatchTargets(
 	timeout time.Duration, w io.Writer,
 ) int {
 	var failed, anyStale, rebuilt bool
-	var fold = func(o targetOutcome) {
+	var notStarted []string
+	var fold = func(bt buildTarget, o targetOutcome) {
 		switch o {
+		case outcomeNotStarted:
+			failed = true
+			notStarted = append(notStarted, targetName(bt))
 		case outcomeFailed:
 			failed = true
 		case outcomeStale:
@@ -451,9 +533,10 @@ func dispatchTargets(
 		runConcurrent(builder, targets, cfg, opts, cache, timeout, w, fold)
 	} else {
 		for _, bt := range targets {
-			fold(dispatchOne(builder, bt, cfg, opts, cache, timeout, w))
+			fold(bt, dispatchOne(builder, bt, cfg, opts, cache, timeout, w))
 		}
 	}
+	reportNotStarted(notStarted, w)
 
 	if opts.checkStale {
 		if anyStale {
@@ -480,6 +563,9 @@ func dispatchOne(
 	builder buildexec.Builder, bt buildTarget, cfg *config.Config,
 	opts buildPassOpts, cache *buildexec.Cache, timeout time.Duration, w io.Writer,
 ) targetOutcome {
+	if interrupted(opts) {
+		return outcomeNotStarted
+	}
 	stin := stalenessFor(bt, cfg)
 	verdict, serr := targetVerdict(stin, cache, opts)
 	outcome, entry := decideAndRun(builder, bt, opts, stin, verdict, serr, timeout, nil, w)
@@ -533,12 +619,15 @@ func decideAndRun(
 		}
 	}
 	res := runOneTarget(builder, bt, id, opts, timeout, allFinals, w)
+	if refusedByInterrupt(res.Err) {
+		return outcomeNotStarted, nil // reported in dispatchTargets' summary
+	}
 	if res.Err != nil {
 		reportBuildFailure(bt, res, w)
 		return outcomeFailed, nil
 	}
-	if opts.verify {
-		verifyTarget(builder, bt, id, opts, timeout, &res, w)
+	if opts.verify && !verifyTarget(builder, bt, id, opts, timeout, &res, w) {
+		return outcomeFailed, nil
 	}
 	entry, err := buildCacheEntry(stin, opts, res.Unstable)
 	if err != nil {
@@ -619,7 +708,13 @@ func runOneTarget(
 	if opts.stream {
 		bopts.LiveSink = w
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	// After an interrupt no further recipe may start: the run is ending.
+	// dispatchOne and the concurrent workers check before hashing; this
+	// covers an interrupt that lands while the ActionID is computed.
+	if err := opts.context().Err(); err != nil {
+		return targetRunResult{Result: buildexec.Result{Err: buildexec.NotStartedError(err)}}
+	}
+	ctx, cancel := context.WithTimeout(opts.context(), timeout)
 	defer cancel()
 	return targetRunResult{Result: b.BuildWithResult(ctx, bt.target, bopts)}
 }

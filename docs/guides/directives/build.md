@@ -244,8 +244,9 @@ Each hook entry has three fields:
 | `params`  | no       | Map of param name to literal string value                        |
 | `name`    | no       | Display label for `OK`/`FAIL` output; defaults to the executable |
 
-Hooks have no directive surface. They are config-level and run once
-per `mdsmith fix` build pass, not once per directive.
+Hooks run once per build pass in mdsmith's environment and process group. A
+timeout or interrupt signals only the hook, as for a recipe on Unix (`SIGTERM`,
+grace, `SIGKILL`; at once elsewhere): a `TERM` trap runs, a server survives.
 
 ### Execution order
 
@@ -267,7 +268,8 @@ per `mdsmith fix` build pass, not once per directive.
 The exit code priority: lint-fix errors → `before`-fail → recipe-fail →
 `after`-fail → 0. A failing `before` hook means setup is incomplete and
 recipes would produce garbage; a failing `after` hook means teardown is
-broken but artifacts are already written.
+broken but artifacts are already written. An interrupt skips every `after` hook
+not yet started, silently; one it cuts short reports `FAIL`.
 
 ### Hook argv rules
 
@@ -286,14 +288,13 @@ pass and hooks together.
 
 ## Build safety
 
-The build pass is the only part of mdsmith that runs an external
-process. It treats `.mdsmith.yml` and the `<?build?>` directives as
-untrusted input, so a freshly cloned repository cannot silently run a
-recipe. Four layers cooperate: a trust gate gates execution, a
-hermetic environment bounds what a recipe can read and how it is
-killed, atomic-write hardening protects the project tree from a hostile
-staging path, and output post-conditions reject any write outside the
-declared `outputs:`.
+The build pass is the only part of mdsmith that runs an external process. It
+treats `.mdsmith.yml` and the `<?build?>` directives as untrusted input, so a
+freshly cloned repository cannot silently run a recipe. Four layers cooperate:
+a trust gate gates execution, a hermetic environment bounds what a recipe can
+read and how it is killed, atomic-write hardening protects the project tree
+from a hostile staging path, and output post-conditions reject any write
+outside the declared `outputs:`.
 
 These layers raise the cost of an accidental or hostile recipe; they
 are **not** a sandbox. PATH allowlisting and the staging working
@@ -339,12 +340,10 @@ variable instead of a committed marker:
 MDSMITH_TRUST_BUILD=1 mdsmith fix .
 ```
 
-When `MDSMITH_TRUST_BUILD` is set to an affirmative value (anything other
-than `0`, `false`, `no`, or `off`) the gate is satisfied without a marker
-file; setting it to a disabling value leaves the gate in force. The
-variable is consumed by the gate only; it is **not** passed through to
-recipes (see the hermetic environment below). Set it only on a runner you
-control.
+An affirmative `MDSMITH_TRUST_BUILD` (anything but `0`, `false`, `no`, or
+`off`) satisfies the gate without a marker file; a disabling value leaves the
+gate in force. Only the gate reads it: it is **not** passed through to recipes
+(see the hermetic environment below). Set it only on a runner you control.
 
 ### Hermetic execution environment
 
@@ -367,22 +366,23 @@ build:
 ```
 
 `env-pass-through` *replaces* the default list — it does not append.
-Re-list the defaults you still want; the example above keeps all three
-and adds `SOURCE_DATE_EPOCH` for reproducible builds. MDS040 rejects an
-empty pass-through name or a name containing `=` (which would smuggle in
-a value rather than forward a variable).
+Re-list the defaults you still want; the example above keeps all three and
+adds `SOURCE_DATE_EPOCH` for reproducible builds. MDS040 rejects an empty
+pass-through name or one containing `=` (which would smuggle in a value).
 
-The default `build.exec.path` deliberately omits mdsmith's own install
-directory. A recipe that invokes `mdsmith` (for example to run
-`mdsmith extract`) must add the directory holding the binary to
-`build.exec.path`.
+The default `build.exec.path` omits mdsmith's own install directory. A recipe
+that invokes `mdsmith` (for example `mdsmith extract`) must add the directory
+holding the binary to `build.exec.path`.
 
 Each recipe runs in its own group (`Setpgid` on Unix, `RFNOTEG` on plan9,
 `CREATE_NEW_PROCESS_GROUP` plus a Job Object on Windows). On timeout, Unix sends
 the group `SIGTERM`, then `SIGKILL` after up to 5 s; plan9 writes `kill` to its
 `notepg`, then each member's and the leader's `ctl` (an rc `&` job escapes);
 Windows sends `CTRL_BREAK_EVENT` and ends its Job Object; without one, a daemon
-can survive. Each later wait (leader, after a direct kill, output) caps at 5 s.
+can survive. Each later wait caps at 5 s. Ctrl-C, `SIGTERM`, `SIGHUP` (DEL on
+plan9) in `mdsmith fix` do the same; a second one 250 ms later skips the grace
+and cuts each later wait to 0.1 s.
+mdsmith reports `INTERRUPTED`, then dies of the signal (exit 2 off Unix).
 
 ### Atomic-write hardening
 

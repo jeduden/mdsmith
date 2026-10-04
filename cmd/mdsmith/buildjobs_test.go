@@ -70,7 +70,7 @@ func TestRunConcurrent_SingleTarget_Succeeds(t *testing.T) {
 
 	var outcomes []targetOutcome
 	var mu sync.Mutex
-	fold := func(o targetOutcome) {
+	fold := func(_ buildTarget, o targetOutcome) {
 		mu.Lock()
 		defer mu.Unlock()
 		outcomes = append(outcomes, o)
@@ -108,7 +108,7 @@ func TestRunConcurrent_MultipleTargets_AllRun(t *testing.T) {
 
 	var outcomes []targetOutcome
 	var mu sync.Mutex
-	fold := func(o targetOutcome) {
+	fold := func(_ buildTarget, o targetOutcome) {
 		mu.Lock()
 		defer mu.Unlock()
 		outcomes = append(outcomes, o)
@@ -146,7 +146,7 @@ func TestRunConcurrent_FailingTarget_OutcomeFailed(t *testing.T) {
 
 	var outcomes []targetOutcome
 	var mu sync.Mutex
-	fold := func(o targetOutcome) {
+	fold := func(_ buildTarget, o targetOutcome) {
 		mu.Lock()
 		defer mu.Unlock()
 		outcomes = append(outcomes, o)
@@ -179,7 +179,7 @@ func TestRunConcurrent_FreshTarget_AppliesCacheEntry(t *testing.T) {
 
 	// First run: builds the target.
 	var outcomes1 []targetOutcome
-	fold1 := func(o targetOutcome) { outcomes1 = append(outcomes1, o) }
+	fold1 := func(_ buildTarget, o targetOutcome) { outcomes1 = append(outcomes1, o) }
 	opts := buildPassOpts{jobs: 2, timeout: time.Second}
 	var buf1 strings.Builder
 	runConcurrent(builder, targets, cfg, opts, cache, time.Second, &buf1, fold1)
@@ -188,7 +188,7 @@ func TestRunConcurrent_FreshTarget_AppliesCacheEntry(t *testing.T) {
 
 	// Second run with the same cache: target should be FRESH.
 	var outcomes2 []targetOutcome
-	fold2 := func(o targetOutcome) { outcomes2 = append(outcomes2, o) }
+	fold2 := func(_ buildTarget, o targetOutcome) { outcomes2 = append(outcomes2, o) }
 	var buf2 strings.Builder
 	runConcurrent(builder, targets, cfg, opts, cache, time.Second, &buf2, fold2)
 	require.Len(t, outcomes2, 1)
@@ -213,7 +213,7 @@ func TestRunConcurrent_MockBuilderError_OutcomeFailed(t *testing.T) {
 	cache := buildexec.NewCache()
 
 	var outcomes []targetOutcome
-	fold := func(o targetOutcome) { outcomes = append(outcomes, o) }
+	fold := func(_ buildTarget, o targetOutcome) { outcomes = append(outcomes, o) }
 
 	opts := buildPassOpts{jobs: 1, timeout: time.Second}
 	var buf strings.Builder

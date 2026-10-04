@@ -30,7 +30,9 @@ import (
 )
 
 func main() {
-	os.Exit(run())
+	code := run()
+	reraiseInterrupt()
+	os.Exit(code)
 }
 
 const usageText = `Usage: mdsmith <command> [flags] [files...]

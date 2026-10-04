@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -726,4 +727,77 @@ func TestReportTimeout_NamesThisPlatformsKill(t *testing.T) {
 	var buf strings.Builder
 	reportTimeout("book.html", targetRunResult{}, &buf)
 	assert.Contains(t, buf.String(), "  "+buildexec.TimeoutKillAction+"\n")
+}
+
+func TestPrintKillReport(t *testing.T) {
+	var buf strings.Builder
+	printKillReport(targetRunResult{Result: buildexec.Result{
+		StdoutTail: []string{"out line"}, StderrTail: []string{"err line"},
+	}}, &buf)
+	assert.Equal(t, "  --- last 1 lines of stdout ---\n  out line\n"+
+		"  --- last 1 lines of stderr ---\n  err line\n"+
+		"  "+buildexec.TimeoutKillAction+"\n", buf.String())
+
+	buf.Reset()
+	printKillReport(targetRunResult{Result: buildexec.Result{Err: buildexec.ErrForceKilled}}, &buf)
+	assert.Contains(t, buf.String(), "  "+buildexec.TimeoutKillAction+", then SIGKILL on a second interrupt\n")
+}
+
+func TestReportTimeout_NamesSecondInterruptSIGKILL(t *testing.T) {
+	// A recipe that timed out, then had its SIGTERM grace cut short by a
+	// second Ctrl-C, got SIGKILL: the report must not say only SIGTERM.
+	var buf strings.Builder
+	err := fmt.Errorf("recipe timed out (%w): %w", buildexec.ErrForceKilled, context.DeadlineExceeded)
+	reportTimeout("book.html", targetRunResult{Result: buildexec.Result{TimedOut: true, Err: err}}, &buf)
+	assert.Contains(t, buf.String(), "TIMEOUT book.html after")
+	assert.Contains(t, buf.String(),
+		"  "+buildexec.TimeoutKillAction+", then SIGKILL on a second interrupt\n")
+}
+
+func TestReportBuildFailure_DeadlineSpentBeforeStart(t *testing.T) {
+	// A deadline already spent when the recipe was reached started no
+	// process: the report must not claim a kill was sent.
+	var buf strings.Builder
+	err := buildexec.NotStartedError(context.DeadlineExceeded)
+	res := targetRunResult{Result: buildexec.Result{TimedOut: true, Err: err}}
+	reportBuildFailure(buildTarget{target: buildexec.Target{Outputs: []string{"book.html"}}}, res, &buf)
+	assert.Equal(t, "TIMEOUT book.html before start\n", buf.String())
+}
+
+func TestReportInterrupt_AlwaysReportsTheKill(t *testing.T) {
+	// A cancel reaches reportInterrupt only for a recipe the kill path
+	// stopped: refusedByInterrupt takes a refusal before start first
+	// (outcomeNotStarted), so the report never says "before start".
+	var buf strings.Builder
+	reportInterrupt("book.html", targetRunResult{Result: buildexec.Result{Err: context.Canceled}}, &buf)
+	assert.Contains(t, buf.String(), "INTERRUPTED book.html after ")
+	assert.NotContains(t, buf.String(), "before start")
+	assert.Contains(t, buf.String(), "  "+buildexec.TimeoutKillAction+"\n")
+}
+
+func TestReportInterrupt_NamesSecondInterruptSIGKILL(t *testing.T) {
+	// A second Ctrl-C escalated the kill: the report must not say only
+	// SIGTERM was sent.
+	var buf strings.Builder
+	err := fmt.Errorf("recipe cancelled (%w): %w", buildexec.ErrForceKilled, context.Canceled)
+	reportInterrupt("book.html", targetRunResult{Result: buildexec.Result{TimedOut: true, Err: err}}, &buf)
+	assert.Contains(t, buf.String(),
+		"  "+buildexec.TimeoutKillAction+", then SIGKILL on a second interrupt\n")
+}
+
+func TestReportInterrupt_PrintsStreamTails(t *testing.T) {
+	// A recipe killed by the interrupt keeps the last lines of both
+	// streams, as a timeout does, so the user sees what it was doing.
+	var buf strings.Builder
+	res := targetRunResult{Result: buildexec.Result{
+		TimedOut:   true,
+		StdoutTail: []string{"compiling chapter 7"},
+		StderrTail: []string{"warning: slow font"},
+	}}
+	reportInterrupt("book.html", res, &buf)
+	out := buf.String()
+	assert.Contains(t, out, "INTERRUPTED book.html after")
+	assert.Contains(t, out, "compiling chapter 7")
+	assert.Contains(t, out, "warning: slow font")
+	assert.Contains(t, out, "  "+buildexec.TimeoutKillAction+"\n")
 }
