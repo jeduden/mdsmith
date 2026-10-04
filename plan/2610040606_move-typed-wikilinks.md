@@ -117,4 +117,14 @@ That puts it outside this PR. File it as its own plan once
 `PLAN.md` has room, with the adoption step gated on the pin
 bump.
 
+The final review left two design choices as they are.
+First, `countShadowed` in
+[`moveall.go`](../internal/refactor/moveall.go) skips the
+`knowsHolders` gate. With no root index, it can count a
+typed link that never reached the shadowed file, so
+`Withheld` can run high. Second, the index build stores an
+edge for every typed embed, but only a move reads them.
+Building them lazily would save index work in vaults with
+many images. Plan both with the key-type refactor above.
+
 [adopt]: ../docs/development/adopt-new-directive-syntax.md
