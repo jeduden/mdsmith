@@ -280,7 +280,7 @@ func wikilinkRoot(f *lint.File) (fs.FS, func()) {
 		return f.RootFS, keepRoot
 	}
 	if f.RootDir != "" {
-		root := openRootFS(f.RootDir)
+		root := lint.OpenRootFS(f.RootDir)
 		return root, func() { _ = root.Close() }
 	}
 	return f.FS, keepRoot
@@ -289,11 +289,6 @@ func wikilinkRoot(f *lint.File) (fs.FS, func()) {
 // keepRoot is wikilinkRoot's release for a borrowed root: it leaves the
 // root open for its owner.
 func keepRoot() {}
-
-// openRootFS opens the root wikilinkRoot falls back to. A test seam —
-// production uses lint.OpenRootFS — so a test can check the handle is
-// closed.
-var openRootFS = lint.OpenRootFS
 
 // wikilinkResolver caches workspace-walk results so a doc with many
 // references to the same target does a single fs walk per target.

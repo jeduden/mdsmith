@@ -1492,20 +1492,20 @@ func TestWikilinkRoot_Fallbacks(t *testing.T) {
 
 // TestCheckWikilinks_ClosesOpenedRoot locks that a Check whose file
 // carries a RootDir but no RootFS closes the os.Root it opened for
-// wikilink resolution once the check ends. Not parallel: it swaps the
-// openRootFS seam.
+// wikilink resolution once the check ends. Not parallel: it records
+// lint.OpenRootFS.
 func TestCheckWikilinks_ClosesOpenedRoot(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"), []byte("# B\n"), 0o644))
-	opened := rootfstest.Record(t, &openRootFS)
+	opened := rootfstest.Record(t)
 	f, err := lint.NewFileFromSource("a.md", []byte("See [[b]].\n"), true)
 	require.NoError(t, err)
 	f.FS = os.DirFS(dir)
 	f.RootDir = dir
 
 	assert.Empty(t, (&Rule{Wikilinks: true}).Check(f), "[[b]] resolves through the opened root")
-	require.Len(t, *opened, 1)
-	_, err = fs.Stat((*opened)[0], "b.md")
+	require.Len(t, opened(), 1)
+	_, err = fs.Stat(opened()[0], "b.md")
 	assert.Error(t, err, "the opened root is closed once the check ends")
 }
 

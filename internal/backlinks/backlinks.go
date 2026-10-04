@@ -158,7 +158,7 @@ func extractBacklinksFromSource(
 	if rootDir != "" {
 		f.RootDir = rootDir
 		if index == nil {
-			root := openRootFS(rootDir)
+			root := lint.OpenRootFS(rootDir)
 			defer func() { _ = root.Close() }()
 			f.RootFS = root
 		}
@@ -279,11 +279,6 @@ func wikilinkTargetString(wl linkgraph.WikiLink) string {
 // otherwise untestable on the platform this project's coverage gate
 // runs on.
 var relFn = filepath.Rel
-
-// openRootFS opens the root a source file's wikilinks resolve against.
-// A test seam — production uses lint.OpenRootFS — so a test can check
-// the handle is closed.
-var openRootFS = lint.OpenRootFS
 
 // relPath returns p relative to rootDir using forward slashes. When
 // rootDir is empty or relFn cannot relate the paths, p is returned

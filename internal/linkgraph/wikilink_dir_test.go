@@ -62,14 +62,14 @@ func TestCachedWikilinkIndexAtDir(t *testing.T) {
 
 // TestWikilinkIndexAtDirClosesRoot locks that the one-shot on-disk walk
 // closes the os.Root it opened once the index is built. Not parallel:
-// it swaps a package seam.
+// it records lint.OpenRootFS.
 func TestWikilinkIndexAtDirClosesRoot(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "guide.md"), []byte("# G\n"), 0o644))
-	opened := rootfstest.Record(t, &openRootFS)
+	opened := rootfstest.Record(t)
 
 	require.NotNil(t, WikilinkIndexAtDir(root))
-	require.Len(t, *opened, 1)
-	_, err := fs.Stat((*opened)[0], "guide.md")
+	require.Len(t, opened(), 1)
+	_, err := fs.Stat(opened()[0], "guide.md")
 	assert.Error(t, err, "the walk's root is closed once the index is built")
 }

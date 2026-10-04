@@ -202,17 +202,12 @@ func WikilinkIndexFor(cache *runcache.Cache, rootKey string, root fs.FS) *Wikili
 // dir builds no index (nil). The root's handle is closed before it
 // returns.
 func WikilinkIndexAtDir(dir string) *WikilinkIndex {
-	root := openRootFS(dir)
+	root := lint.OpenRootFS(dir)
 	// The index holds paths only, so the root closes once it is built.
 	// A close error on a read-only directory handle loses nothing.
 	defer func() { _ = root.Close() }()
 	return WikilinkIndexFor(nil, "", root)
 }
-
-// openRootFS opens the root WikilinkIndexAtDir walks. A test seam —
-// production uses lint.OpenRootFS — so a test can check the walk closes
-// the handle it opened.
-var openRootFS = lint.OpenRootFS
 
 // CachedWikilinkIndexAtDir returns the index memoized on cache for dir,
 // walking dir on disk (as WikilinkIndexAtDir does) only on a miss. The

@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-// OpenRootFS returns an fs.FS rooted at dir that enforces RESOLVE_BENEATH
+// openRootFS returns an fs.FS rooted at dir that enforces RESOLVE_BENEATH
 // containment via os.OpenRoot: any Open that resolves through a symlink to
 // a path outside dir is denied with an error. This prevents within-workspace
 // symlinks from escaping the project root during include and catalog
@@ -24,7 +24,7 @@ import (
 //
 // The returned RootFS holds the os.Root directory handle open until its
 // Close; a caller that walks the tree once closes it when done.
-func OpenRootFS(dir string) RootFS {
+func openRootFS(dir string) RootFS {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return &openRootErrFS{err: err}
