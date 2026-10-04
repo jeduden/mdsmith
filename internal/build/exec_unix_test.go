@@ -38,6 +38,11 @@ func TestKillGroup_NilProcess(t *testing.T) {
 	killGroup(&exec.Cmd{})
 }
 
+func TestKillLeaderUntil_NilProcess(t *testing.T) {
+	// A hook that never started has a nil Process: nothing to signal.
+	assert.False(t, killLeaderUntil(&exec.Cmd{}, nil))
+}
+
 func TestKillGroup_SIGKILLPath(t *testing.T) {
 	// A recipe that ignores SIGTERM must still be force-killed: killGroup
 	// waits gracePeriod for the polite signal to work, then sends SIGKILL.

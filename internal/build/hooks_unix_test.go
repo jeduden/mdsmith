@@ -123,3 +123,92 @@ func TestRunHook_KeepsMdsmithEnvironment(t *testing.T) {
 	script := writeScript(t, t.TempDir(), "probe.sh", `[ "$MDSMITH_HOOK_ENV_PROBE" = yes ]`)
 	assert.Nil(t, runHook(context.Background(), []string{script}, t.TempDir()))
 }
+
+// shortGrace sets gracePeriod to d for one test.
+func shortGrace(t *testing.T, d time.Duration) {
+	t.Helper()
+	old := gracePeriod
+	gracePeriod = d
+	t.Cleanup(func() { gracePeriod = old })
+}
+
+// runHookCancelledWhenReady runs script as a hook and cancels its
+// context once the script has written its pid to ready, then closes
+// force after forceAfter (never when it is zero). It returns the
+// hook's result, the hook pid, and how long runHook took after the
+// cancel.
+func runHookCancelledWhenReady(
+	t *testing.T, script, ready string, forceAfter time.Duration,
+) (*HookResult, int, time.Duration) {
+	t.Helper()
+	force := make(chan struct{})
+	ctx, cancel := context.WithCancel(WithForceKill(context.Background(), force))
+	defer cancel()
+	pid := make(chan int, 1)
+	cancelled := make(chan time.Time, 1)
+	go func() {
+		p := waitForPID(ready)
+		pid <- p
+		cancelled <- time.Now()
+		cancel()
+		if forceAfter > 0 {
+			time.Sleep(forceAfter)
+			close(force)
+		}
+	}()
+	result := runHook(ctx, []string{script}, t.TempDir())
+	end := time.Now()
+	p := <-pid
+	require.NotZero(t, p, "the hook never became ready")
+	return result, p, end.Sub(<-cancelled)
+}
+
+// TestRunHook_CancelRunsTermTrapCleanup checks that a cancelled hook
+// gets SIGTERM, not an immediate SIGKILL: a hook that traps TERM runs
+// its cleanup, as it did before the build pass caught interrupts.
+func TestRunHook_CancelRunsTermTrapCleanup(t *testing.T) {
+	shortGrace(t, 5*time.Second)
+	dir := t.TempDir()
+	ready := filepath.Join(dir, "ready.pid")
+	marker := filepath.Join(dir, "cleaned")
+	script := writeScript(t, t.TempDir(), "trap.sh",
+		`trap ': > "`+marker+`"; exit 0' TERM; echo $$ > "`+ready+`"; while :; do sleep 0.05; done`)
+
+	result, pid, took := runHookCancelledWhenReady(t, script, ready, 0)
+	require.NotNil(t, result)
+	assert.Contains(t, result.Err.Error(), "(interrupted)")
+	assert.FileExists(t, marker, "the hook's TERM trap must run its cleanup")
+	assert.False(t, processAlive(pid), "the hook leader must be reaped")
+	assert.Less(t, took, gracePeriod, "a hook that exits on SIGTERM ends the grace early")
+}
+
+// TestRunHook_CancelKillsTermIgnoringHookAfterGrace checks that a hook
+// that ignores SIGTERM is SIGKILLed once the grace period runs out.
+func TestRunHook_CancelKillsTermIgnoringHookAfterGrace(t *testing.T) {
+	shortGrace(t, 300*time.Millisecond)
+	dir := t.TempDir()
+	ready := filepath.Join(dir, "ready.pid")
+	script := writeScript(t, t.TempDir(), "ignore.sh",
+		`trap '' TERM; echo $$ > "`+ready+`"; while :; do sleep 0.05; done`)
+
+	result, pid, took := runHookCancelledWhenReady(t, script, ready, 0)
+	require.NotNil(t, result)
+	assert.False(t, processAlive(pid), "the hook leader must be killed after the grace")
+	assert.GreaterOrEqual(t, took, gracePeriod, "the hook must get the whole grace period")
+	assert.Less(t, took, 5*time.Second)
+}
+
+// TestRunHook_ForceSkipsHookGrace checks that a second interrupt (the
+// force channel) cuts a hook's SIGTERM grace short with SIGKILL.
+func TestRunHook_ForceSkipsHookGrace(t *testing.T) {
+	shortGrace(t, 20*time.Second)
+	dir := t.TempDir()
+	ready := filepath.Join(dir, "ready.pid")
+	script := writeScript(t, t.TempDir(), "ignore.sh",
+		`trap '' TERM; echo $$ > "`+ready+`"; while :; do sleep 0.05; done`)
+
+	result, pid, took := runHookCancelledWhenReady(t, script, ready, 200*time.Millisecond)
+	require.NotNil(t, result)
+	assert.False(t, processAlive(pid), "the hook leader must be killed")
+	assert.Less(t, took, 5*time.Second, "the second interrupt must skip the grace")
+}

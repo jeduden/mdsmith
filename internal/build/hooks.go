@@ -98,9 +98,11 @@ func announceHook(ctx context.Context, name string, w io.Writer) {
 // on success. It runs through runRecipe, so a done context starts no
 // hook and a cancel (CLI interrupt) reports as one. Unlike a recipe it
 // keeps mdsmith's environment, runs in root, and stays in mdsmith's
-// process group (sharedGroup): a cancel or the hook timeout kills the
-// hook process itself, and a child it backgrounded (a dev server)
-// outlives it and gets the terminal's Ctrl-C as before.
+// process group (sharedGroup): a cancel or the hook timeout signals the
+// hook process itself (on Unix SIGTERM, the grace period, then
+// SIGKILL, so a TERM trap runs its cleanup), and a child it
+// backgrounded (a dev server) outlives it and gets the terminal's
+// Ctrl-C as before.
 func runHook(ctx context.Context, tokens []string, root string) *HookResult {
 	code, _, err := runRecipe(ctx, runOpts{
 		argv:        tokens,

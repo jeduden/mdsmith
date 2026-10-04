@@ -44,17 +44,37 @@ func killGroupUntil(cmd *exec.Cmd, force <-chan struct{}) bool {
 		return false
 	}
 	pgid := cmd.Process.Pid // Setpgid made pgid == leader pid
-	_ = signalGroup(pgid, syscall.SIGTERM)
+	return termThenKill(func(sig syscall.Signal) error { return signalGroup(pgid, sig) }, force)
+}
 
-	// Wait for the group to drain, polling with signal 0 (existence probe).
+// killLeaderUntil is killGroupUntil for a run in mdsmith's own process
+// group (a hook, sharedGroup): signalling the group would hit mdsmith,
+// so SIGTERM, the grace period, and the SIGKILL reach the leader alone.
+// A hook that traps TERM runs its cleanup. The existence probe goes
+// through cmd.Process, which fails once runRecipe's Wait reaped the
+// leader, so a reused pid is never signalled.
+func killLeaderUntil(cmd *exec.Cmd, force <-chan struct{}) bool {
+	if cmd.Process == nil {
+		return false
+	}
+	return termThenKill(func(sig syscall.Signal) error { return cmd.Process.Signal(sig) }, force)
+}
+
+// termThenKill sends SIGTERM through signal, polls with signal 0 (an
+// existence probe) until the target is gone or gracePeriod runs out,
+// then sends SIGKILL. A closed force skips what is left of the grace;
+// it reports whether force did so while the target was still alive.
+func termThenKill(signal func(syscall.Signal) error, force <-chan struct{}) bool {
+	_ = signal(syscall.SIGTERM)
+
 	// One ticker serves every poll instead of a new timer per iteration.
 	poll := time.NewTicker(50 * time.Millisecond)
 	defer poll.Stop()
 	deadline := time.Now().Add(gracePeriod)
 	forced := false
 	for time.Now().Before(deadline) {
-		if signalGroup(pgid, 0) != nil {
-			return false // group is gone
+		if signal(0) != nil {
+			return false // the target is gone
 		}
 		select {
 		case <-force:
@@ -63,7 +83,7 @@ func killGroupUntil(cmd *exec.Cmd, force <-chan struct{}) bool {
 		case <-poll.C:
 		}
 	}
-	_ = signalGroup(pgid, syscall.SIGKILL)
+	_ = signal(syscall.SIGKILL)
 	return forced
 }
 

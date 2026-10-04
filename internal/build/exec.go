@@ -100,8 +100,9 @@ type runOpts struct {
 	// label names the process in start errors; empty means "recipe".
 	label string
 	// sharedGroup keeps the process in mdsmith's own process group (no
-	// Setpgid, Job Object, or RFNOTEG), and a cancel or timeout kills
-	// only its leader: signalling the group would hit mdsmith. Hooks
+	// Setpgid, Job Object, or RFNOTEG), and a cancel or timeout signals
+	// only its leader (killLeaderUntil): signalling the group would hit
+	// mdsmith. Hooks
 	// set it. A before-hook may background a dev server that must
 	// outlive the hook, which a Job Object's kill-on-close would end;
 	// in the terminal's foreground group the Ctrl-C reaches that server
@@ -136,8 +137,11 @@ var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
 // directory, and process-group isolation. No shell is invoked: argv[0]
 // is the program and argv[1:] its arguments. A hook opts out of the
 // environment (inheritEnv) and the group (sharedGroup); the group and
-// kill notes below then do not apply, and a cancel or timeout kills
-// only its leader with forceKillLeader.
+// kill notes below then do not apply: a cancel or timeout signals only
+// its leader with killLeaderUntil, which on Unix is SIGTERM, up to
+// gracePeriod, then SIGKILL (a closed WithForceKill channel skips the
+// grace), so a hook that traps TERM runs its cleanup; elsewhere it is
+// forceKillLeader at once.
 //
 // The recipe runs in its own process group (Setpgid on Unix;
 // CREATE_NEW_PROCESS_GROUP plus a Job Object on Windows). On timeout
@@ -223,9 +227,10 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	}
 
 	forced := false
-	kill := func() { forced = killGroupFn(cmd, forceKillFrom(ctx)) }
+	force := forceKillFrom(ctx)
+	kill := func() { forced = killGroupFn(cmd, force) }
 	if o.sharedGroup {
-		kill = func() { forceKillLeaderFn(cmd) }
+		kill = func() { forced = killLeaderUntil(cmd, force) }
 	} else if jobCleanup := afterStartFn(cmd); jobCleanup != nil {
 		defer jobCleanup()
 	}

@@ -11,3 +11,11 @@ func killGroupUntil(cmd *exec.Cmd, _ <-chan struct{}) bool {
 	killGroup(cmd)
 	return false
 }
+
+// killLeaderUntil is forceKillLeader on platforms whose kill has no
+// grace period: a hook (sharedGroup) is killed at once, so force is
+// ignored and it reports false.
+func killLeaderUntil(cmd *exec.Cmd, _ <-chan struct{}) bool {
+	forceKillLeader(cmd)
+	return false
+}

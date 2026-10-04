@@ -244,8 +244,9 @@ Each hook entry has three fields:
 | `params`  | no       | Map of param name to literal string value                        |
 | `name`    | no       | Display label for `OK`/`FAIL` output; defaults to the executable |
 
-Hooks run once per build pass in mdsmith's environment and process group; a
-timeout or interrupt kills only the hook, so a server it backgrounds survives.
+Hooks run once per build pass in mdsmith's environment and process group. A
+timeout or interrupt signals only the hook, as for a recipe on Unix (`SIGTERM`,
+grace, `SIGKILL`; at once elsewhere): a `TERM` trap runs, a server survives.
 
 ### Execution order
 
@@ -339,12 +340,10 @@ variable instead of a committed marker:
 MDSMITH_TRUST_BUILD=1 mdsmith fix .
 ```
 
-When `MDSMITH_TRUST_BUILD` is set to an affirmative value (anything other
-than `0`, `false`, `no`, or `off`) the gate is satisfied without a marker
-file; setting it to a disabling value leaves the gate in force. The
-variable is consumed by the gate only; it is **not** passed through to
-recipes (see the hermetic environment below). Set it only on a runner you
-control.
+An affirmative `MDSMITH_TRUST_BUILD` (anything but `0`, `false`, `no`, or
+`off`) satisfies the gate without a marker file; a disabling value leaves the
+gate in force. Only the gate reads it: it is **not** passed through to recipes
+(see the hermetic environment below). Set it only on a runner you control.
 
 ### Hermetic execution environment
 
