@@ -31,6 +31,21 @@ func processAlive(pid int) bool {
 	return err == nil || err == syscall.EPERM
 }
 
+// leaderGone returns a readiness check for deadlineWhen: it holds once
+// pidFile holds the leader's pid and that pid is gone (the leader
+// exited and runRecipe's Wait reaped it), so a test that pins the
+// leader's own exit code never has its deadline fire first.
+func leaderGone(pidFile string) func() bool {
+	return func() bool {
+		b, err := os.ReadFile(pidFile)
+		if err != nil {
+			return false
+		}
+		pid, err := parsePID(strings.TrimSpace(string(b)))
+		return err == nil && !processAlive(pid)
+	}
+}
+
 func TestKill_Unix_NilProcess(t *testing.T) {
 	// A command that never started has a nil Process; kill must return
 	// immediately rather than dereference it.
@@ -293,12 +308,12 @@ func TestRunRecipe_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
 	t.Cleanup(func() { gracePeriod = old })
 	stage := t.TempDir()
 	pidFile := filepath.Join(stage, "child.pid")
+	leaderPID := filepath.Join(stage, "leader.pid")
 	script := writeScript(t, t.TempDir(), "orphan.sh",
-		`sleep 30 & echo $! > "`+pidFile+`"; echo started; exit 0`)
+		`echo $$ > "`+leaderPID+`"; sleep 30 & echo $! > "`+pidFile+`"; echo started; exit 0`)
 
 	out := &lockedBuffer{}
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
+	ctx := deadlineWhen(t, leaderGone(leaderPID))
 	start := time.Now()
 	code, timedOut, err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
@@ -330,11 +345,10 @@ func TestRunRecipe_TimedOutAfterLeaderExitKeepsExitCode(t *testing.T) {
 	t.Cleanup(func() { gracePeriod = old })
 	for _, want := range []int{0, 2} {
 		t.Run(strconv.Itoa(want), func(t *testing.T) {
+			leaderPID := filepath.Join(t.TempDir(), "leader.pid")
 			script := writeScript(t, t.TempDir(), "exit.sh",
-				`sleep 30 & echo started; exit `+strconv.Itoa(want))
-			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-			defer cancel()
-			code, timedOut, err := runRecipe(ctx, runOpts{
+				`echo $$ > "`+leaderPID+`"; sleep 30 & echo started; exit `+strconv.Itoa(want))
+			code, timedOut, err := runRecipe(deadlineWhen(t, leaderGone(leaderPID)), runOpts{
 				argv:    []string{script},
 				dir:     t.TempDir(),
 				defExec: defaultExecConfig(),
