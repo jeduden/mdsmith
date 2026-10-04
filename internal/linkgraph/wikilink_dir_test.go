@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/lint/rootfstest"
 	"github.com/jeduden/mdsmith/internal/runcache"
 )
 
@@ -60,29 +60,13 @@ func TestCachedWikilinkIndexAtDir(t *testing.T) {
 	})
 }
 
-// recordOpenedRoots swaps the openRootFS seam for one that records each
-// handle it opens, restoring it when t ends. A test that calls it must
-// not run in parallel.
-func recordOpenedRoots(t *testing.T) *[]lint.RootFS {
-	t.Helper()
-	var opened []lint.RootFS
-	prev := openRootFS
-	openRootFS = func(dir string) lint.RootFS {
-		r := prev(dir)
-		opened = append(opened, r)
-		return r
-	}
-	t.Cleanup(func() { openRootFS = prev })
-	return &opened
-}
-
 // TestWikilinkIndexAtDirClosesRoot locks that the one-shot on-disk walk
 // closes the os.Root it opened once the index is built. Not parallel:
 // it swaps a package seam.
 func TestWikilinkIndexAtDirClosesRoot(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "guide.md"), []byte("# G\n"), 0o644))
-	opened := recordOpenedRoots(t)
+	opened := rootfstest.Record(t, &openRootFS)
 
 	require.NotNil(t, WikilinkIndexAtDir(root))
 	require.Len(t, *opened, 1)

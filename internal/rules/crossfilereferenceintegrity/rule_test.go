@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/lint/rootfstest"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/runcache"
 
@@ -1496,22 +1497,15 @@ func TestWikilinkRoot_Fallbacks(t *testing.T) {
 func TestCheckWikilinks_ClosesOpenedRoot(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"), []byte("# B\n"), 0o644))
-	var opened []lint.RootFS
-	prev := openRootFS
-	openRootFS = func(d string) lint.RootFS {
-		r := prev(d)
-		opened = append(opened, r)
-		return r
-	}
-	t.Cleanup(func() { openRootFS = prev })
+	opened := rootfstest.Record(t, &openRootFS)
 	f, err := lint.NewFileFromSource("a.md", []byte("See [[b]].\n"), true)
 	require.NoError(t, err)
 	f.FS = os.DirFS(dir)
 	f.RootDir = dir
 
 	assert.Empty(t, (&Rule{Wikilinks: true}).Check(f), "[[b]] resolves through the opened root")
-	require.Len(t, opened, 1)
-	_, err = fs.Stat(opened[0], "b.md")
+	require.Len(t, *opened, 1)
+	_, err = fs.Stat((*opened)[0], "b.md")
 	assert.Error(t, err, "the opened root is closed once the check ends")
 }
 

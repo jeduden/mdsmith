@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
-	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/lint/rootfstest"
 )
 
 // TestExtractBacklinksClosesRoot locks that the os.Root a source file's
@@ -22,20 +22,13 @@ func TestExtractBacklinksClosesRoot(t *testing.T) {
 	src := filepath.Join(root, "a.md")
 	require.NoError(t, os.WriteFile(src, []byte("See [[b]].\n"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "b.md"), []byte("# B\n"), 0o644))
-	var opened []lint.RootFS
-	prev := openRootFS
-	openRootFS = func(dir string) lint.RootFS {
-		r := prev(dir)
-		opened = append(opened, r)
-		return r
-	}
-	t.Cleanup(func() { openRootFS = prev })
+	opened := rootfstest.Record(t, &openRootFS)
 
 	got, err := extractBacklinksFromSource(src, "a.md", root, "b.md", "", 0, true, nil)
 	require.NoError(t, err)
 	require.Len(t, got, 1, "wikilink resolution read through the root")
-	require.Len(t, opened, 1)
-	_, statErr := fs.Stat(opened[0], "b.md")
+	require.Len(t, *opened, 1)
+	_, statErr := fs.Stat((*opened)[0], "b.md")
 	assert.Error(t, statErr, "the source file's root is closed once its records are built")
 }
 
@@ -50,16 +43,10 @@ func TestExtractBacklinksWithIndexOpensNoRoot(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "b.md"), []byte("# B\n"), 0o644))
 	idx := linkgraph.WikilinkIndexAtDir(root)
 	require.NotNil(t, idx)
-	opens := 0
-	prev := openRootFS
-	openRootFS = func(dir string) lint.RootFS {
-		opens++
-		return prev(dir)
-	}
-	t.Cleanup(func() { openRootFS = prev })
+	opened := rootfstest.Record(t, &openRootFS)
 
 	got, err := extractBacklinksFromSource(src, "a.md", root, "b.md", "", 0, true, idx)
 	require.NoError(t, err)
 	require.Len(t, got, 1, "wikilink resolution read through the index")
-	assert.Zero(t, opens)
+	assert.Empty(t, *opened)
 }
