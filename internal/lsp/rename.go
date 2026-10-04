@@ -3,9 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -389,16 +387,15 @@ func (s *Server) moveWikilinkIndex(root string) *linkgraph.WikilinkIndex {
 
 // watchesRoot reports whether root is the workspace folder the client
 // watches or lies under it, so every file-set change below root reaches
-// the server. A server with no workspace folder watches nothing.
+// the server. Both paths are compared with symlinks resolved (see
+// insideWorkspace): a root reached through a link out of the folder is
+// not watched, since the client's watcher does not follow the link. A
+// server with no workspace folder watches nothing.
 func (s *Server) watchesRoot(root string) bool {
 	s.configMu.RLock()
 	folder := s.rootDir
 	s.configMu.RUnlock()
-	if folder == "" || root == "" {
-		return false
-	}
-	rel, err := filepath.Rel(folder, root)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return root != "" && insideWorkspace(folder, root)
 }
 
 // WikilinkIndex implements refactor.MoveWorkspace: the index `[[stem]]`

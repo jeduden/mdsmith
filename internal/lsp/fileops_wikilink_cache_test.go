@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
+	"github.com/jeduden/mdsmith/internal/testsymlink"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
@@ -315,4 +316,20 @@ func TestWatchesRoot(t *testing.T) {
 			assert.Equal(t, tc.want, s.watchesRoot(tc.root))
 		})
 	}
+}
+
+// TestWatchesRootResolvesSymlinks locks that a move root spelled under
+// the watched folder through a symlink to a directory outside it is not
+// watched: the client's recursive watcher does not follow the link, so
+// a create or delete behind it never reaches the server.
+func TestWatchesRootResolvesSymlinks(t *testing.T) {
+	t.Parallel()
+	testsymlink.SkipIfSymlinkUnsupported(t)
+	folder := t.TempDir()
+	outside := t.TempDir()
+	link := filepath.Join(folder, "docs")
+	require.NoError(t, os.Symlink(outside, link))
+	s := New(Options{Writer: io.Discard})
+	s.rootDir = folder
+	assert.False(t, s.watchesRoot(link))
 }
