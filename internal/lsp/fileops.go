@@ -61,8 +61,8 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 	ws := s.renameWorkspace(root)
 
 	batch := planRenameBatch(ws, root, p.Files)
-	merged, dropped := guardRenameEdits(batch)
-	if withheld := batch.withheld + dropped; withheld > 0 {
+	merged, dropped := guardRenameEdits(batch.Edits)
+	if withheld := batch.Withheld + dropped; withheld > 0 {
 		warn := fmt.Sprintf("mdsmith: withheld %d link rewrite(s) for files renamed together; "+
 			"re-check those links (MDS027 flags any that no longer resolve)", withheld)
 		s.logger.Printf("%s", warn)
@@ -73,13 +73,13 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 	_ = s.t.writeResponse(msg.ID, &workspaceEdit{Changes: merged})
 }
 
-// guardRenameEdits converts the batch's edits to LSP text edits and
-// runs dropConflictingTextEdits over each file's, returning the kept
-// edits and how many the guard dropped.
-func guardRenameEdits(batch renameBatch) (map[string][]textEdit, int) {
+// guardRenameEdits converts a batch's edits, keyed by edit key, to LSP
+// text edits and runs dropConflictingTextEdits over each file's,
+// returning the kept edits and how many the guard dropped.
+func guardRenameEdits(edits map[string][]refactor.Edit) (map[string][]textEdit, int) {
 	merged := map[string][]textEdit{}
 	dropped := 0
-	for key, edits := range batch.edits {
+	for key, edits := range edits {
 		kept := dropConflictingTextEdits(toTextEdits(edits))
 		dropped += len(edits) - len(kept)
 		if len(kept) > 0 {
@@ -92,7 +92,7 @@ func guardRenameEdits(batch renameBatch) (map[string][]textEdit, int) {
 // planRenameBatch runs refactor.MoveAll over the renames in files,
 // read against root. A pair with an empty or unchanged path is
 // skipped, and a pair listed twice is planned once.
-func planRenameBatch(ws refactor.Workspace, root string, files []fileRename) renameBatch {
+func planRenameBatch(ws refactor.Workspace, root string, files []fileRename) refactor.BatchPlan {
 	var pairs []refactor.MovePair
 	seen := map[refactor.MovePair]bool{}
 	for _, f := range files {
@@ -106,16 +106,7 @@ func planRenameBatch(ws refactor.Workspace, root string, files []fileRename) ren
 		seen[pair] = true
 		pairs = append(pairs, pair)
 	}
-	bp := refactor.MoveAll(ws, pairs)
-	return renameBatch{edits: bp.Edits, withheld: bp.Withheld}
-}
-
-// renameBatch is one willRenameFiles request after planning: the
-// batch's edits, keyed by edit key, and the count of links the batch
-// left stale (refactor.BatchPlan.Withheld).
-type renameBatch struct {
-	edits    map[string][]refactor.Edit
-	withheld int
+	return refactor.MoveAll(ws, pairs)
 }
 
 // handleDidRenameFiles processes the workspace/didRenameFiles

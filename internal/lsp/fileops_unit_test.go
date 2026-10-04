@@ -264,10 +264,10 @@ func TestGuardRenameEdits_BatchCasesDropNothing(t *testing.T) {
 				files = append(files, fileRename{OldURI: uri(tc.pairs[i]), NewURI: uri(tc.pairs[i+1])})
 			}
 			batch := planRenameBatch(newMemRenameWorkspace(tc.files), root, files)
-			merged, dropped := guardRenameEdits(batch)
+			merged, dropped := guardRenameEdits(batch.Edits)
 			assert.Zero(t, dropped)
-			assert.Zero(t, batch.withheld)
-			for key, edits := range batch.edits {
+			assert.Zero(t, batch.Withheld)
+			for key, edits := range batch.Edits {
 				assert.ElementsMatch(t, toTextEdits(edits), merged[key], key)
 			}
 		})
@@ -288,9 +288,9 @@ func TestPlanRenameBatch_SameFolderMoveWithholdsNothing(t *testing.T) {
 		{OldURI: uri("docs/a.md"), NewURI: uri("docs/sub/a.md")},
 		{OldURI: uri("docs/b.md"), NewURI: uri("docs/sub/b.md")},
 	})
-	assert.Empty(t, batch.edits)
-	assert.Zero(t, batch.withheld)
-	_, dropped := guardRenameEdits(batch)
+	assert.Empty(t, batch.Edits)
+	assert.Zero(t, batch.Withheld)
+	_, dropped := guardRenameEdits(batch.Edits)
 	assert.Zero(t, dropped)
 }
 
@@ -337,7 +337,7 @@ func TestPlanRenameBatch(t *testing.T) {
 			{OldURI: uri("docs/a.md"), NewURI: uri("x/y/a.md")},
 			{OldURI: uri("docs/b.md"), NewURI: uri("x/y/c.md")},
 		})
-		assert.Equal(t, []string{"c"}, editTexts(batch.edits["docs/a.md"]), "`b.md` still resolves from x/y/")
+		assert.Equal(t, []string{"c"}, editTexts(batch.Edits["docs/a.md"]), "`b.md` still resolves from x/y/")
 	})
 	t.Run("skips empty, unchanged, repeated, and unreadable pairs", func(t *testing.T) {
 		t.Parallel()
@@ -348,8 +348,8 @@ func TestPlanRenameBatch(t *testing.T) {
 			{OldURI: "untitled:x", NewURI: uri("docs/z.md")},
 			{OldURI: uri("gone.md"), NewURI: uri("gone2.md")},
 		})
-		assert.Equal(t, []string{"c", "c.md"}, editTexts(batch.edits["docs/a.md"]), "docs/b.md is planned once")
-		assert.Len(t, batch.edits, 1)
+		assert.Equal(t, []string{"c", "c.md"}, editTexts(batch.Edits["docs/a.md"]), "docs/b.md is planned once")
+		assert.Len(t, batch.Edits, 1)
 	})
 	t.Run("a moved file gets its stem and path rewrites", func(t *testing.T) {
 		t.Parallel()
@@ -357,7 +357,7 @@ func TestPlanRenameBatch(t *testing.T) {
 			{OldURI: uri("docs/a.md"), NewURI: uri("docs/z/a.md")},
 			{OldURI: uri("docs/b.md"), NewURI: uri("docs/z/c.md")},
 		})
-		assert.Equal(t, []string{"c", "c.md"}, editTexts(batch.edits["docs/a.md"]))
+		assert.Equal(t, []string{"c", "c.md"}, editTexts(batch.Edits["docs/a.md"]))
 	})
 }
 
@@ -408,11 +408,9 @@ func TestServerRenameWorkspace_WikilinkIndex(t *testing.T) {
 // edit is deleted.
 func TestGuardRenameEdits(t *testing.T) {
 	t.Parallel()
-	merged, dropped := guardRenameEdits(renameBatch{
-		edits: map[string][]refactor.Edit{
-			"a": {ref(1, "x"), ref(1, "y"), ref(2, "z")},
-			"m": {ref(1, "p"), ref(1, "q")},
-		},
+	merged, dropped := guardRenameEdits(map[string][]refactor.Edit{
+		"a": {ref(1, "x"), ref(1, "y"), ref(2, "z")},
+		"m": {ref(1, "p"), ref(1, "q")},
 	})
 	assert.Equal(t, map[string][]textEdit{"a": {edAt(2, 0, 4, "z")}}, merged)
 	assert.Equal(t, 4, dropped)
