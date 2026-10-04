@@ -119,6 +119,10 @@ func TestSingletonNoScopeNeverClaims(t *testing.T) {
 		"a scope-less server starting later must not supersede the scoped one")
 	assert.Equal(t, vscode.srv.instanceID, reg.current(workspaceKey("/work/space", "ws-uuid")),
 		"the scoped server must remain the recorded owner")
+	// Checked before laterVSCode starts: its own legacy write would
+	// otherwise overwrite, and so hide, a write by the scope-less server.
+	assert.Equal(t, vscode.srv.instanceID, reg.current(workspaceKey("/work/space", "")),
+		"a scope-less server must never write the legacy root-only record")
 
 	laterVSCode.initialize("ws-uuid")
 	require.True(t, vscode.superseded(2*time.Second), "same-scope hand-off still works")
@@ -127,7 +131,7 @@ func TestSingletonNoScopeNeverClaims(t *testing.T) {
 	assert.NotContains(t, plugin.out.String(), "mdsmith/superseded")
 
 	assert.Equal(t, laterVSCode.srv.instanceID, reg.current(workspaceKey("/work/space", "")),
-		"only scoped servers write the legacy root-only record; the scope-less one never does")
+		"each scoped server rewrites the legacy root-only record at claim")
 }
 
 // The first upgrade from a root-only build: the leaked host's old
