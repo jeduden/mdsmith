@@ -284,7 +284,7 @@ row: "| {id} | {status} | {model} | [{title}]({filename}) |"
 | 2610021452 | ✅     | sonnet | [Free wasm sessions dropped without dispose](plan/2610021452_wasm-collect-dropped-sessions.md)                                                          |
 | 2610021556 | ✅     | sonnet | [Declare each wasm method's disposed result next to its impl](plan/2610021556_wasm-disposed-result-table.md)                                            |
 | 2610021800 | ✅     | sonnet | [Contain wasm JS exceptions outside the executor guard](plan/2610021800_wasm-js-exception-outside-guard.md)                                             |
-| 2610021849 | 🔲     | opus   | [Kill running build recipes when the CLI is interrupted](plan/2610021849_cancel-recipes-on-cli-interrupt.md)                                            |
+| 2610021849 | 🔲     | sonnet | [Kill running build recipes when the CLI is interrupted](plan/2610021849_cancel-recipes-on-cli-interrupt.md)                                            |
 | 2610021917 | ✅     | sonnet | [Replace the per-platform kill maps with a per-recipe group killer](plan/2610021917_per-recipe-group-killer.md)                                         |
 | 2610022044 | ✅     | sonnet | [Count only Markdown files as wikilink stem siblings on move](plan/2610022044_move-stem-count-markdown-only.md)                                         |
 | 2610022104 | ✅     | sonnet | [Count wikilink stem siblings against the resolver's index on move](plan/2610022104_move-stem-count-resolver-index.md)                                  |

@@ -98,3 +98,23 @@ failed.
       pass.
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues
+
+## Follow-ups
+
+Round 3 of the code review found two kill races that were
+already on main and need new syscall work, so they are out
+of scope here. They sit in this file, not in plans of their
+own, because `PLAN.md` is at its 300-line limit. Move each
+into a plan once `PLAN.md` has room.
+
+- Windows: `afterStart` in
+  [exec_windows.go](../internal/build/exec_windows.go)
+  assigns the Job Object after `cmd.Start` returns. A child
+  the recipe spawns in that gap is outside the job, so
+  `terminateJob` and `KILL_ON_JOB_CLOSE` miss it. Fixing it
+  needs a suspended start or a job-list process attribute.
+- Unix: when the leader has been reaped, `pgKiller.kill`
+  still signals `-pgid`. If every member has left, the id
+  can be reused as another group's pgid. Fixing it needs
+  `waitid` with `WNOWAIT` so the leader stays unreaped
+  until the group kill.
