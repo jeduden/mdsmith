@@ -764,6 +764,17 @@ func TestReportBuildFailure_DeadlineSpentBeforeStart(t *testing.T) {
 	assert.Equal(t, "TIMEOUT book.html before start\n", buf.String())
 }
 
+func TestReportInterrupt_AlwaysReportsTheKill(t *testing.T) {
+	// A cancel reaches reportInterrupt only for a recipe the kill path
+	// stopped: refusedByInterrupt takes a refusal before start first
+	// (outcomeNotStarted), so the report never says "before start".
+	var buf strings.Builder
+	reportInterrupt("book.html", targetRunResult{Result: buildexec.Result{Err: context.Canceled}}, &buf)
+	assert.Contains(t, buf.String(), "INTERRUPTED book.html after ")
+	assert.NotContains(t, buf.String(), "before start")
+	assert.Contains(t, buf.String(), "  "+buildexec.TimeoutKillAction+"\n")
+}
+
 func TestReportInterrupt_NamesSecondInterruptSIGKILL(t *testing.T) {
 	// A second Ctrl-C escalated the kill: the report must not say only
 	// SIGTERM was sent.

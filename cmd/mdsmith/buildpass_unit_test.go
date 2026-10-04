@@ -28,10 +28,16 @@ func (m *mockBuilder) Build(ctx context.Context, target buildexec.Target) error 
 	return m.fn(ctx, target)
 }
 
+// BuildWithResult mirrors the real builder's TimedOut: a run that ends
+// in a cancel or deadline went through the kill path unless it was
+// refused before start (buildexec.ErrNotStarted).
 func (m *mockBuilder) BuildWithResult(
 	ctx context.Context, target buildexec.Target, _ buildexec.Options,
 ) buildexec.Result {
-	return buildexec.Result{Err: m.fn(ctx, target)}
+	err := m.fn(ctx, target)
+	killed := (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) &&
+		!errors.Is(err, buildexec.ErrNotStarted)
+	return buildexec.Result{Err: err, TimedOut: killed}
 }
 
 // buildPassCfg returns a minimal *config.Config with the given recipe
@@ -1446,8 +1452,9 @@ func TestDispatchTargets_CancelledContextStartsNoFurtherRecipe(t *testing.T) {
 		buildPassOpts{ctx: ctx, noCache: true}, buildexec.NewCache(), time.Second, &buf)
 	assert.Equal(t, 2, code)
 	assert.Equal(t, []string{"a.txt"}, started)
-	// The target that never started is reported as interrupted, not as
-	// a recipe failure.
+	// The running target names its kill; the one that never started is
+	// reported as interrupted, not as a recipe failure.
+	assert.Contains(t, buf.String(), "INTERRUPTED a.txt after ")
 	assert.Contains(t, buf.String(), "INTERRUPTED b.txt before start")
 	assert.NotContains(t, buf.String(), "FAIL b.txt")
 }

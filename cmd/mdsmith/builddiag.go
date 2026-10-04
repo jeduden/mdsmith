@@ -151,15 +151,12 @@ func reportBuildFailure(bt buildTarget, res targetRunResult, w io.Writer) {
 
 // reportInterrupt prints the diagnostic for a recipe stopped because the
 // build context was cancelled (CLI interrupt), not because it ran out of
-// time. res.TimedOut is set only when the kill path ran, so a recipe the
-// interrupt reached before it started gets no kill line; a running
-// one's group was already killed before this is called, and its last
-// stdout and stderr lines print as in the timeout block.
+// time. Its group was already killed before this is called, and its
+// last stdout and stderr lines print as in the timeout block. A recipe
+// the interrupt reached before it started never gets here:
+// refusedByInterrupt makes it outcomeNotStarted, which reportNotStarted
+// lists.
 func reportInterrupt(name string, res targetRunResult, w io.Writer) {
-	if !res.TimedOut {
-		_, _ = fmt.Fprintf(w, "INTERRUPTED %s before start\n", name)
-		return
-	}
 	_, _ = fmt.Fprintf(w, "INTERRUPTED %s after %s\n", name, res.Duration.Round(time.Millisecond))
 	printKillReport(res, w)
 }
