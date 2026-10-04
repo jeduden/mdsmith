@@ -72,8 +72,8 @@ func TestE2E_Check_BadConfig_ExitsTwo(t *testing.T) {
 
 	_, stderr, exitCode := runBinary(t, "", "check", "--config", badConfig, filepath.Join(dir, "test.md"))
 	assert.Equal(t, 2, exitCode, "expected exit code 2 for bad config, got %d", exitCode)
-	assert.Contains(t, stderr, "mdsmith:",
-		"expected error in stderr for bad config, got: %s", stderr)
+	assert.Contains(t, stderr, "bad.yml:1:1 config ",
+		"expected a positioned config diagnostic in stderr, got: %s", stderr)
 }
 
 // (duplicate of TestE2E_Check_NonExistentFile_ExitsTwo removed)
@@ -89,8 +89,8 @@ func TestE2E_Fix_BadConfig_ExitsTwo(t *testing.T) {
 
 	_, stderr, exitCode := runBinary(t, "", "fix", "--config", badConfig, filepath.Join(dir, "test.md"))
 	assert.Equal(t, 2, exitCode, "expected exit code 2 for bad config, got %d", exitCode)
-	assert.Contains(t, stderr, "mdsmith:",
-		"expected error in stderr for bad config, got: %s", stderr)
+	assert.Contains(t, stderr, "bad.yml:1:1 config ",
+		"expected a positioned config diagnostic in stderr, got: %s", stderr)
 }
 
 // (duplicate of TestE2E_Fix_NonExistentFile_ExitsTwo removed)

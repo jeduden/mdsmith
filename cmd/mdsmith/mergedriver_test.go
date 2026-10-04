@@ -272,7 +272,9 @@ func TestRunMergeDriverInstall_LoadConfigError(t *testing.T) {
 	got := captureStderr(func() {
 		assert.Equal(t, 2, runMergeDriverInstall(nil))
 	})
-	assert.Contains(t, got, "loading config")
+	// A syntax error in the config is reported as a positioned
+	// diagnostic on the config file.
+	assert.Contains(t, got, ".mdsmith.yml:1:1 config ")
 }
 
 func TestRunMergeDriverInstall_RejectsWhitespacePath(t *testing.T) {
@@ -1404,7 +1406,9 @@ func TestRunMergeDriver_CIInstall_LoadConfigError(t *testing.T) {
 	got := captureStderr(func() {
 		assert.Equal(t, 2, runMergeDriver([]string{"ci-install"}))
 	})
-	assert.Contains(t, got, "loading config")
+	// A syntax error in the config is reported as a positioned
+	// diagnostic on the config file.
+	assert.Contains(t, got, ".mdsmith.yml:1:1 config ")
 }
 
 // pathWithOnlyGit points PATH at a temp dir holding just a `git` symlink

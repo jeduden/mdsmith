@@ -177,7 +177,7 @@ Phase A — positioned config diagnostics (YAML first):
    the `RuleCfg` decoder, wordlist validation, convention
    application, and build validation — one area per
    commit, each with a test asserting the resolved line.
-3. [ ] Red/green: at the load boundary, turn config
+3. [x] Red/green: at the load boundary, turn config
    issues into `lint.Diagnostic`s anchored on the config
    file. Have the CLI render them as
    `file:line:column` diagnostics (exit 2), replacing the

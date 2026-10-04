@@ -25,13 +25,24 @@ func DefaultConfigPath(dir string) string {
 	return filepath.Join(dir, configFileName)
 }
 
-// Load reads and parses a config file at the given path.
+// Load reads and parses a config file at the given path. A failure is
+// a *LoadError positioned at the offending value when it is known.
 func Load(path string) (*Config, error) {
 	data, err := readLimitedConfig(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading config file: %w", err)
+		return nil, positionError(fmt.Errorf("reading config file: %w", err), path, nil)
 	}
-	return loadFromBytes(data, path, true)
+	cfg, err := loadFromBytes(data, path, true)
+	if err != nil {
+		return nil, positionError(err, path, yamlResolverFor(data))
+	}
+	return cfg, nil
+}
+
+// yamlResolverFor returns a lazy constructor for the YAML resolver over
+// data, so the node tree is only built when an error needs a position.
+func yamlResolverFor(data []byte) func() PositionResolver {
+	return func() PositionResolver { return newYAMLResolver(data) }
 }
 
 // ParseBytes parses config from an in-memory YAML byte slice, running
@@ -42,7 +53,11 @@ func Load(path string) (*Config, error) {
 // path), mirroring how the `-c` flag's file text is processed. Empty
 // input yields a usable, mostly-default Config.
 func ParseBytes(data []byte) (*Config, error) {
-	return loadFromBytes(data, "", false)
+	cfg, err := loadFromBytes(data, "", false)
+	if err != nil {
+		return nil, positionError(err, "", yamlResolverFor(data))
+	}
+	return cfg, nil
 }
 
 // loadFromBytes is the shared parse pipeline behind Load and
@@ -59,7 +74,7 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 
 	var cfg Config
 	if err := yamlutil.UnmarshalSafe(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing config file: %w", err)
+		return nil, fmt.Errorf("parsing config file: %w", yamlErrorIssue(err))
 	}
 
 	// Detect top-level key presence with a single additional parse so

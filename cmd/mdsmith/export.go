@@ -107,7 +107,7 @@ func parseExportFlags(args []string) (exportFlags, []string, int) {
 func doExport(path string, flags exportFlags) int {
 	cfg, cfgPath, err := loadConfig(flags.configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		printConfigError(os.Stderr, err)
 		return 2
 	}
 	maxBytes, err := resolveMaxInputBytes(cfg, flags.maxInputSize)

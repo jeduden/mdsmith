@@ -266,7 +266,7 @@ func validateWordlists(cfg *Config) error {
 	sort.Strings(kindNames)
 	for _, kn := range kindNames {
 		if err := checkRuleLists("kind "+kn, KeyPath{"kinds", kn, "rules"}, cfg.Kinds[kn].Rules, userMap); err != nil {
-			return err
+			return attachFile(cfg.Kinds[kn].SourcePath, err)
 		}
 	}
 	for i, o := range cfg.Overrides {

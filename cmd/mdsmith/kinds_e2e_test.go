@@ -533,21 +533,21 @@ func TestKinds_ListFailsOnBadConfig(t *testing.T) {
 	dir := kindsBadConfigDir(t)
 	_, stderr, code := runBinaryInDir(t, dir, "", "kinds", "list")
 	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "mdsmith:")
+	assert.Contains(t, stderr, ".mdsmith.yml:2:1 config ")
 }
 
 func TestKinds_ShowFailsOnBadConfig(t *testing.T) {
 	dir := kindsBadConfigDir(t)
 	_, stderr, code := runBinaryInDir(t, dir, "", "kinds", "show", "x")
 	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "mdsmith:")
+	assert.Contains(t, stderr, ".mdsmith.yml:2:1 config ")
 }
 
 func TestKinds_PathFailsOnBadConfig(t *testing.T) {
 	dir := kindsBadConfigDir(t)
 	_, stderr, code := runBinaryInDir(t, dir, "", "kinds", "path", "x")
 	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "mdsmith:")
+	assert.Contains(t, stderr, ".mdsmith.yml:2:1 config ")
 }
 
 func TestKinds_ResolveFailsOnBadConfig(t *testing.T) {
@@ -555,7 +555,7 @@ func TestKinds_ResolveFailsOnBadConfig(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "doc.md"), []byte("# T\n"), 0o644))
 	_, stderr, code := runBinaryInDir(t, dir, "", "kinds", "resolve", "doc.md")
 	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "mdsmith:")
+	assert.Contains(t, stderr, ".mdsmith.yml:2:1 config ")
 }
 
 func TestKinds_WhyFailsOnBadConfig(t *testing.T) {
@@ -563,7 +563,7 @@ func TestKinds_WhyFailsOnBadConfig(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "doc.md"), []byte("# T\n"), 0o644))
 	_, stderr, code := runBinaryInDir(t, dir, "", "kinds", "why", "doc.md", "rule")
 	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, "mdsmith:")
+	assert.Contains(t, stderr, ".mdsmith.yml:2:1 config ")
 }
 
 func TestKinds_ResolveMissingFileExits2(t *testing.T) {

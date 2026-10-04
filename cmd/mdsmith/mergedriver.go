@@ -235,7 +235,7 @@ func runMergeDriverRun(args []string) int {
 	// driver honors the same limit as check/fix.
 	cfg, _, err := loadConfig("")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: loading config: %v\n", err)
+		printConfigError(os.Stderr, fmt.Errorf("loading config: %w", err))
 		return 2
 	}
 	maxBytes, err := resolveMaxInputBytes(cfg, "")
@@ -491,7 +491,7 @@ func hasConflictMarkers(content []byte) bool {
 func resolveManagedGlobs(_ string, args []string) (gitattributes.Globs, int) {
 	cfg, _, err := loadConfig("")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: loading config: %v\n", err)
+		printConfigError(os.Stderr, fmt.Errorf("loading config: %w", err))
 		return gitattributes.Globs{}, 2
 	}
 	globs, skipped := gitattributes.GlobsFromConfig(cfg)

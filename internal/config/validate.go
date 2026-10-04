@@ -28,13 +28,13 @@ func ValidateKinds(cfg *Config) error {
 	for _, name := range names {
 		body := cfg.Kinds[name]
 		if err := validateKindSchemaSources(name, body); err != nil {
-			return err
+			return attachFile(body.SourcePath, err)
 		}
 		if err := validateKindPathPattern(name, body); err != nil {
-			return err
+			return attachFile(body.SourcePath, err)
 		}
 		if err := validateKindExtends(cfg.Kinds, name); err != nil {
-			return err
+			return attachFile(body.SourcePath, err)
 		}
 	}
 	// Walk extends chains a second time, now that every chain is
@@ -52,7 +52,7 @@ func ValidateKinds(cfg *Config) error {
 			continue
 		}
 		if err := ValidateKindInlineSchema(cfg.Kinds, name); err != nil {
-			return issueWrap(KeyPath{"kinds", name, "schema"}, err)
+			return attachFile(body.SourcePath, issueWrap(KeyPath{"kinds", name, "schema"}, err))
 		}
 	}
 	for i, entry := range cfg.KindAssignment {

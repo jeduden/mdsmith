@@ -63,7 +63,7 @@ func runKinds(args []string) int {
 func kindsConfig() (*config.Config, string, int) {
 	cfg, cfgPath, err := loadConfig("")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		printConfigError(os.Stderr, err)
 		return nil, "", 2
 	}
 	return cfg, cfgPath, 0

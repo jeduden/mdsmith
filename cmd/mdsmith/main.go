@@ -257,7 +257,7 @@ func loadAndResolve(
 
 	cfg, cfgPath, err := loadConfig(configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		printConfigError(os.Stderr, err)
 		return nil, "", nil, nil, 0, 2
 	}
 	if cfgPath != "" {
@@ -349,7 +349,7 @@ func discoverFiles(
 
 	cfg, cfgPath, err := loadConfig(configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		printConfigError(os.Stderr, err)
 		return nil, "", nil, nil, 2
 	}
 	if cfgPath != "" {

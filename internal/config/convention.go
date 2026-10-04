@@ -127,48 +127,62 @@ func buildUserConventionMap(cfg *Config) (map[string]convention.Convention, erro
 
 	result := make(map[string]convention.Convention, len(cfg.Conventions))
 	for name, uc := range cfg.Conventions {
-		if reserved[name] {
-			return nil, issueAt(KeyPath{"conventions", name},
-				"conventions.%s: name is reserved by a built-in convention",
-				name,
-			)
+		conv, err := userConvention(name, uc, reserved)
+		if err != nil {
+			// A file-defined convention's issue positions resolve in
+			// its `.mdsmith/conventions/` file, not the main config.
+			return nil, attachFile(uc.SourcePath, err)
 		}
-
-		fl, ok := convention.ParseFlavor(uc.Flavor)
-		if !ok {
-			return nil, issueAt(KeyPath{"conventions", name, "flavor"},
-				"convention %q: unknown flavor %q",
-				name, uc.Flavor,
-			)
-		}
-
-		rules := make(map[string]convention.RulePreset, len(uc.Rules))
-		for ruleName, rc := range uc.Rules {
-			r := rule.ByName(ruleName)
-			if r == nil {
-				return nil, issueAt(KeyPath{"conventions", name, "rules", ruleName},
-					"convention %q: unknown rule %q",
-					name, ruleName,
-				)
-			}
-			if len(rc.Settings) > 0 {
-				if err := validateConventionRuleSettings(r, name, ruleName, rc.Settings); err != nil {
-					return nil, issueWrap(KeyPath{"conventions", name, "rules", ruleName}, err)
-				}
-			}
-			rules[ruleName] = convention.RulePreset{
-				Enabled:  rc.Enabled,
-				Settings: cloneSettings(rc.Settings),
-			}
-		}
-
-		result[name] = convention.Convention{
-			Name:   name,
-			Flavor: fl,
-			Rules:  rules,
-		}
+		result[name] = conv
 	}
 	return result, nil
+}
+
+// userConvention validates one user-declared convention and converts
+// it for Lookup. See buildUserConventionMap for the checks.
+func userConvention(
+	name string, uc UserConvention, reserved map[string]bool,
+) (convention.Convention, error) {
+	if reserved[name] {
+		return convention.Convention{}, issueAt(KeyPath{"conventions", name},
+			"conventions.%s: name is reserved by a built-in convention",
+			name,
+		)
+	}
+
+	fl, ok := convention.ParseFlavor(uc.Flavor)
+	if !ok {
+		return convention.Convention{}, issueAt(KeyPath{"conventions", name, "flavor"},
+			"convention %q: unknown flavor %q",
+			name, uc.Flavor,
+		)
+	}
+
+	rules := make(map[string]convention.RulePreset, len(uc.Rules))
+	for ruleName, rc := range uc.Rules {
+		r := rule.ByName(ruleName)
+		if r == nil {
+			return convention.Convention{}, issueAt(KeyPath{"conventions", name, "rules", ruleName},
+				"convention %q: unknown rule %q",
+				name, ruleName,
+			)
+		}
+		if len(rc.Settings) > 0 {
+			if err := validateConventionRuleSettings(r, name, ruleName, rc.Settings); err != nil {
+				return convention.Convention{}, issueWrap(KeyPath{"conventions", name, "rules", ruleName}, err)
+			}
+		}
+		rules[ruleName] = convention.RulePreset{
+			Enabled:  rc.Enabled,
+			Settings: cloneSettings(rc.Settings),
+		}
+	}
+
+	return convention.Convention{
+		Name:   name,
+		Flavor: fl,
+		Rules:  rules,
+	}, nil
 }
 
 // validateConventionRuleSettings clones the rule and calls
