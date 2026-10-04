@@ -513,6 +513,63 @@ func TestMoveAll_UnplannedHolderInSameFolder(t *testing.T) {
 	assert.Zero(t, bp.Withheld)
 }
 
+// TestMoveAll_RefusedHolderMisreads covers a link inside a file whose
+// move was refused and leaves its folder, to a file the batch does not
+// plan to move. The link gets no edit. If the host moves the file
+// anyway, the link is read from the new folder: when it names another
+// file that may exist there, it reaches that file silently, so it is
+// counted. When it names nothing, it stops resolving and MDS027 flags
+// it, and when it still names its target, it is right either way.
+func TestMoveAll_RefusedHolderMisreads(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		files map[string]string
+		pairs []MovePair
+		want  int
+	}{
+		{"another file there", map[string]string{
+			"docs/b.md": "# B\n\n[c](c.md)\n", "docs/c.md": "# C\n", "x/b.md": "# Old\n", "x/c.md": "# X\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}}, 1},
+		{"image and ref-def", map[string]string{
+			"docs/b.md": "# B\n\n![i](i.png) [c][c]\n\n[c]: c.md\n", "docs/c.md": "# C\n", "docs/i.png": "x\n",
+			"x/b.md": "# Old\n", "x/c.md": "# X\n", "x/i.png": "x\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}}, 2},
+		{"nothing there", map[string]string{
+			"docs/b.md": "# B\n\n[c](c.md)\n", "docs/c.md": "# C\n", "x/b.md": "# Old\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}}, 0},
+		{"still names it", map[string]string{
+			"docs/b.md": "# B\n\n[c](../docs/c.md)\n", "docs/c.md": "# C\n", "x/b.md": "# Old\n", "x/c.md": "# X\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}}, 0},
+		{"same folder", map[string]string{
+			"docs/b.md": "# B\n\n[c](c.md)\n", "docs/c.md": "# C\n", "docs/d.md": "# D\n",
+		}, []MovePair{{"docs/b.md", "docs/d.md"}}, 0},
+		{"a planned member lands there", map[string]string{
+			"docs/b.md": "# B\n\n[c](c.md)\n", "docs/c.md": "# C\n", "x/b.md": "# Old\n", "z.md": "# Z\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}, {"z.md", "x/c.md"}}, 1},
+		{"a planned member vacates it", map[string]string{
+			"docs/b.md": "# B\n\n[c](c.md)\n", "docs/c.md": "# C\n", "x/b.md": "# Old\n", "x/c.md": "# X\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}, {"x/c.md", "y/c.md"}}, 0},
+		{"another refused move", map[string]string{
+			"docs/a.md": "# A\n\n[b](b.md)\n", "docs/b.md": "# B\n", "x/a.md": "# OldA\n", "x/b.md": "# OldB\n",
+		}, []MovePair{{"docs/a.md", "x/a.md"}, {"docs/b.md", "x/b.md"}}, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bp := MoveAll(newMemWorkspace(tc.files), tc.pairs)
+			var refused []string
+			for _, m := range bp.Moves {
+				if m.Err != nil {
+					refused = append(refused, m.Src)
+				}
+			}
+			require.NotEmpty(t, refused)
+			for _, src := range refused {
+				assert.NotContains(t, bp.Edits, src)
+			}
+			assert.Equal(t, tc.want, bp.Withheld)
+		})
+	}
+}
+
 // TestMoveAll_KeptStemTakenByMember covers a move that keeps its stem
 // while another member lands on a shallower file with that stem: every
 // bare `[[guide]]` then reaches the newcomer, so it is counted.
@@ -928,6 +985,55 @@ func TestUnplannedInPlace(t *testing.T) {
 	assert.False(t, unplannedInPlace(batchMember{dst: "z/c.md"}, "docs/a.md"), "another folder")
 	assert.False(t, unplannedInPlace(batchMember{dst: "docs/c.md", planned: true}, "docs/a.md"), "a planned move")
 	assert.False(t, unplannedInPlace(batchMember{}, "a.md"), "a file leaving the workspace")
+}
+
+func TestRefusedLeaving(t *testing.T) {
+	assert.True(t, refusedLeaving(batchMember{dst: "x/b.md"}, "docs/b.md"))
+	assert.False(t, refusedLeaving(batchMember{dst: "docs/c.md"}, "docs/b.md"), "its own folder")
+	assert.False(t, refusedLeaving(batchMember{dst: "x/b.md", planned: true}, "docs/b.md"), "a planned move")
+	assert.False(t, refusedLeaving(batchMember{}, "docs/b.md"), "a file leaving the workspace")
+}
+
+func TestMoveBatch_AnyRefusedLeaving(t *testing.T) {
+	b := newMoveBatch()
+	assert.False(t, b.anyRefusedLeaving(), "no members")
+	b.members["docs/a.md"] = batchMember{dst: "x/a.md", planned: true}
+	b.members["docs/b.md"] = batchMember{dst: "docs/c.md"}
+	assert.False(t, b.anyRefusedLeaving(), "planned, or refused in place")
+	b.members["docs/d.md"] = batchMember{dst: "x/d.md"}
+	assert.True(t, b.anyRefusedLeaving())
+}
+
+func TestDestResolver_MayOccupy(t *testing.T) {
+	r := &destResolver{ws: newMemWorkspace(map[string]string{
+		"kept.md": "x\n", "gone.md": "x\n", "refused.md": "x\n", "taken.md": "x\n",
+	}), batch: newMoveBatch()}
+	r.batch.members["gone.md"] = batchMember{dst: "new.md", planned: true}
+	r.batch.members["refused.md"] = batchMember{dst: "taken.md"}
+	r.batch.dsts["new.md"], r.batch.dsts["taken.md"] = true, true
+	assert.True(t, r.mayOccupy("kept.md"), "a file the batch leaves alone")
+	assert.True(t, r.mayOccupy("new.md"), "a member lands there")
+	assert.True(t, r.mayOccupy("refused.md"), "a refused move may stay")
+	assert.True(t, r.mayOccupy("taken.md"), "a refused destination")
+	assert.False(t, r.mayOccupy("gone.md"), "a planned move vacates it")
+	assert.False(t, r.mayOccupy("none.md"), "nothing is there")
+	assert.False(t, r.mayOccupy(""), "outside the workspace")
+}
+
+func TestDestResolver_CountMisread(t *testing.T) {
+	r := &destResolver{ws: newMemWorkspace(map[string]string{
+		"docs/b.md": "x\n", "docs/c.md": "x\n", "x/b.md": "x\n", "x/c.md": "x\n",
+	}), batch: newMoveBatch()}
+	refused := batchMember{dst: "x/b.md"}
+	r.countMisread(refused, "docs/b.md", destRef{target: "docs/c.md", path: "../docs/c.md"})
+	assert.Zero(t, r.batch.withheld, "still names its target")
+	r.countMisread(refused, "docs/b.md", destRef{target: "docs/d.md", path: "d.md"})
+	assert.Zero(t, r.batch.withheld, "names nothing there: MDS027 flags it")
+	r.countMisread(batchMember{dst: "docs/z.md"}, "docs/b.md", destRef{target: "docs/c.md", path: "c.md"})
+	r.countMisread(batchMember{}, "docs/b.md", destRef{target: "docs/c.md", path: "c.md"})
+	assert.Zero(t, r.batch.withheld, "refused in place, or not a member")
+	r.countMisread(refused, "docs/b.md", destRef{target: "docs/c.md", path: "c.md"})
+	assert.Equal(t, 1, r.batch.withheld, "reaches x/c.md silently")
 }
 
 func TestCountShadowed(t *testing.T) {
