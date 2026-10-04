@@ -57,6 +57,7 @@ func (s *Server) rebuildSession(cfg *config.Config, cfgPath string) {
 	s.sessionMu.Lock()
 	s.session = sess
 	s.workspace = ws
+	s.sessionRoot = root
 	s.sessionMu.Unlock()
 	// Do NOT Dispose the superseded session. A lint/fix goroutine may
 	// still hold it (obtained from currentSession() before this swap),
@@ -93,6 +94,20 @@ func (s *Server) currentSession() (*mdsmith.Session, *mdsmith.OverlayWorkspace) 
 	s.sessionMu.RLock()
 	defer s.sessionMu.RUnlock()
 	return s.session, s.workspace
+}
+
+// sessionAt returns the current session when it was built at root, or
+// nil when there is none or a reload rebuilt it at another root, so a
+// reader of the session's root-keyed caches never gets another
+// directory's answer.
+func (s *Server) sessionAt(root string) *mdsmith.Session {
+	s.currentSession() // build one on demand, as every reader does
+	s.sessionMu.RLock()
+	defer s.sessionMu.RUnlock()
+	if s.sessionRoot != root {
+		return nil
+	}
+	return s.session
 }
 
 // snapshotConfig returns the cached config, its source path, and the

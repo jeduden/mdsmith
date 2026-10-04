@@ -56,8 +56,8 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 		return
 	}
 	_, _, root := s.snapshotConfig()
-	// The batch shares one wikilink index, walked at the root its move
-	// paths are spelled against.
+	// The batch shares one wikilink index, read for the root its move
+	// paths are spelled against (see moveWikilinkIndex).
 	ws := s.moveWorkspace(root)
 
 	batch := planRenameBatch(ws, root, p.Files)
@@ -113,11 +113,17 @@ func planRenameBatch(ws refactor.MoveWorkspace, root string, files []fileRename)
 // notification: it swaps each renamed file's path in the warm index so
 // later navigation and rename requests resolve against the new
 // location. The client has already performed the rename and applied the
-// willRename edits, so this only keeps the index consistent.
+// willRename edits, so this only keeps the indexes consistent. A rename
+// changes the file set, so the session's cached wikilink index drops
+// now rather than when the watcher's delete and create events arrive:
+// a move planned in between would otherwise read the old paths.
 func (s *Server) handleDidRenameFiles(params json.RawMessage) {
 	var p renameFilesParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return
+	}
+	if sess, _ := s.currentSession(); sess != nil {
+		sess.InvalidateWikilinks()
 	}
 	_, _, root := s.snapshotConfig()
 	idx := s.ensureIndex()

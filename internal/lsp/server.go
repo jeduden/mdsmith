@@ -121,6 +121,10 @@ type Server struct {
 	sessionMu sync.RWMutex
 	session   *mdsmith.Session
 	workspace *mdsmith.OverlayWorkspace
+	// sessionRoot is the root session was built at, so a reader that
+	// spelled its paths against a root can tell whether the session's
+	// root-keyed caches (the wikilink index) answer for it.
+	sessionRoot string
 	// newSession constructs the per-workspace Session. It is a test seam
 	// — production uses mdsmith.NewSession. NewSession only fails when its
 	// ConfigSource fails to load, and rebuildSession always passes a
@@ -129,8 +133,8 @@ type Server struct {
 	// branch (and the nil-session guards downstream of it) red/green.
 	newSession func(mdsmith.SessionOptions) (*mdsmith.Session, error)
 	// watchingFiles is set once the server asks the client to watch
-	// files (registerWatchers) or receives a watched-file event: from
-	// then on a file create or delete reaches
+	// files (registerWatchers) or receives a watched-file event for a
+	// non-config file: from then on a file create or delete reaches
 	// session.InvalidateWikilinks, so the session's cached wikilink
 	// index is fresh and a move reads it instead of walking the root.
 	watchingFiles atomic.Bool

@@ -369,11 +369,13 @@ func (s *Server) moveWorkspace(root string) lspMoveWorkspace {
 // moveWikilinkIndex returns the wikilink index a move at root reads.
 // Once the server watches files, every create and delete drops the
 // session's cached index, so that index is fresh and is read without
-// a walk (the session walks only when nothing is cached yet).
+// a walk (the session walks only when nothing is cached yet). The
+// session answers only for the root it was built at; a move spelled
+// against another root (a config reload in between) walks that root.
 // Otherwise the cache may be stale, so root is walked fresh.
 func (s *Server) moveWikilinkIndex(root string) *linkgraph.WikilinkIndex {
 	if s.watchingFiles.Load() {
-		if sess, _ := s.currentSession(); sess != nil {
+		if sess := s.sessionAt(root); sess != nil {
 			return sess.WikilinkIndex()
 		}
 	}

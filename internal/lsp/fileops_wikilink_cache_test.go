@@ -135,3 +135,91 @@ func TestMoveWikilinkIndexWalksWhenSessionMissing(t *testing.T) {
 	assert.Equal(t, []string{"guide.md"}, idx.StemPaths("guide"))
 	assert.Equal(t, int32(1), walks.Load())
 }
+
+// TestMoveWikilinkIndexWalksWhenSessionRootDiffers locks that a watching
+// server reads the session's cached index only for the root the session
+// was built at. A move spelled against another root (a config reload
+// moved it between the request's snapshot and the read) walks that root
+// fresh rather than reading an index keyed to the old directory.
+func TestMoveWikilinkIndexWalksWhenSessionRootDiffers(t *testing.T) {
+	t.Parallel()
+	oldRoot := writeWikilinkTree(t, map[string]string{"old.md": "# Old\n"})
+	newRoot := writeWikilinkTree(t, map[string]string{"guide.md": "# G\n"})
+	s := New(Options{Writer: io.Discard})
+	s.rootDir = oldRoot
+	walks := countWikilinkWalks(s)
+	s.registerWatchers()
+	sess, _ := s.currentSession()
+	require.NotNil(t, sess)
+	require.NotNil(t, sess.WikilinkIndex(), "warm the old root's index")
+
+	idx := s.moveWikilinkIndex(newRoot)
+	require.NotNil(t, idx)
+	assert.Equal(t, []string{"guide.md"}, idx.StemPaths("guide"))
+	assert.Empty(t, idx.StemPaths("old"))
+	assert.Equal(t, int32(1), walks.Load())
+}
+
+// TestDidRenameFilesDropsCachedWikilinkIndex locks that an editor rename
+// drops the session's cached wikilink index at once, so a move planned
+// before the watcher's delete and create events arrive does not read the
+// pre-rename file set.
+func TestDidRenameFilesDropsCachedWikilinkIndex(t *testing.T) {
+	t.Parallel()
+	root := writeWikilinkTree(t, map[string]string{"api.md": "# API\n"})
+	s := New(Options{Writer: io.Discard})
+	s.rootDir = root
+	s.registerWatchers()
+	sess, _ := s.currentSession()
+	require.NotNil(t, sess)
+	require.Equal(t, []string{"api.md"}, sess.WikilinkIndex().StemPaths("api"))
+
+	oldPath, newPath := filepath.Join(root, "api.md"), filepath.Join(root, "service.md")
+	require.NoError(t, os.Rename(oldPath, newPath))
+	raw, err := json.Marshal(renameFilesParams{Files: []fileRename{{
+		OldURI: pathToURI(oldPath), NewURI: pathToURI(newPath),
+	}}})
+	require.NoError(t, err)
+	s.handleDidRenameFiles(raw)
+
+	idx := s.moveWikilinkIndex(root)
+	require.NotNil(t, idx)
+	assert.Empty(t, idx.StemPaths("api"))
+	assert.Equal(t, []string{"service.md"}, idx.StemPaths("service"))
+}
+
+// TestDidRenameFilesWithoutSession locks that a rename notification on a
+// server whose session constructor failed skips the wikilink drop rather
+// than reading through a nil session.
+func TestDidRenameFilesWithoutSession(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Writer: io.Discard})
+	s.rootDir = t.TempDir()
+	s.newSession = func(mdsmith.SessionOptions) (*mdsmith.Session, error) {
+		return nil, errors.New("boom")
+	}
+	raw, err := json.Marshal(renameFilesParams{})
+	require.NoError(t, err)
+	assert.NotPanics(t, func() { s.handleDidRenameFiles(raw) })
+}
+
+// TestConfigOnlyWatchedEventKeepsFreshWalk locks that a watched-file
+// batch reporting only `.mdsmith.yml` does not make a move trust the
+// cached index: a client that syncs just the config file (as the VS
+// Code extension's static watcher does) never reports a Markdown create
+// or delete, so the move keeps walking fresh.
+func TestConfigOnlyWatchedEventKeepsFreshWalk(t *testing.T) {
+	t.Parallel()
+	root := writeWikilinkTree(t, map[string]string{"guide.md": "# G\n"})
+	s := New(Options{Writer: io.Discard})
+	s.rootDir = root
+	walks := countWikilinkWalks(s)
+	raw, err := json.Marshal(didChangeWatchedFilesParams{Changes: []fileEvent{
+		{URI: pathToURI(filepath.Join(root, ".mdsmith.yml")), Type: fileChangeChanged},
+	}})
+	require.NoError(t, err)
+	s.handleDidChangeWatchedFiles(context.Background(), raw)
+
+	require.NotNil(t, s.moveWikilinkIndex(root))
+	assert.Equal(t, int32(1), walks.Load(), "a config-only batch proves no Markdown watch")
+}

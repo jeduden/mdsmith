@@ -131,9 +131,6 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return
 	}
-	// A watched-file event proves the client reports file changes, so
-	// a move may trust the session's wikilink index from now on.
-	s.watchingFiles.Store(true)
 	configChanged := false
 	mdChanges := make([]string, 0, len(p.Changes))
 	for _, c := range p.Changes {
@@ -153,6 +150,14 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		}
 	}
 	treeChanged := watchedFilesTreeChanged(p.Changes)
+	// A watched Markdown event, or a create or delete of another file,
+	// proves the client reports tree changes, so a move may trust the
+	// session's wikilink index from now on. A config-only batch proves
+	// nothing: a client may sync `.mdsmith.yml` alone, as the VS Code
+	// extension's static watcher does.
+	if len(mdChanges) > 0 || treeChanged {
+		s.watchingFiles.Store(true)
+	}
 	if configChanged {
 		s.reloadConfig()
 		// kind / ignore globs may have shifted — drop the index so
