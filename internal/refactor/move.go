@@ -886,7 +886,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 		return
 	}
 	idx := r.wikilinkIndex()
-	if !idx.StemResolvesTo(oldStem, src) {
+	if !r.winsStem(idx, oldStem, src) {
 		return
 	}
 	post := r.postIndex(idx)
@@ -978,17 +978,23 @@ func newStemTarget(oldStem, dst string) (stemTarget, bool) {
 // another letter case alone is checked here: on a case-insensitive
 // file system it may be dst, and then dst is not known to win.
 func (t stemTarget) reaches(post *linkgraph.WikilinkIndex) bool {
-	holders := post.NamePaths(t.key)
-	if t.isStem {
-		holders = post.StemPaths(t.key)
-	}
-	if slices.ContainsFunc(holders, func(q string) bool { return q != t.dst && strings.EqualFold(q, t.dst) }) {
+	if slices.ContainsFunc(t.holders(post), func(q string) bool { return q != t.dst && strings.EqualFold(q, t.dst) }) {
 		return false
 	}
 	if t.isStem {
 		return post.StemResolvesTo(t.key, t.dst)
 	}
 	return post.NameResolvesTo(t.key, t.dst)
+}
+
+// holders returns the files in post that a link keyed by t.key
+// reaches, in resolver order: the stem holders for a Markdown
+// destination, the exact-name holders for a typed one.
+func (t stemTarget) holders(post *linkgraph.WikilinkIndex) []string {
+	if t.isStem {
+		return post.StemPaths(t.key)
+	}
+	return post.NamePaths(t.key)
 }
 
 // keptStemTarget returns the target a `[[oldStem]]` link keeps when the
@@ -1028,21 +1034,34 @@ func (r *destResolver) siblingTarget(oldStem, sib string) (stemTarget, bool) {
 
 // countBlocked counts, in the batch, a `[[stem]]` rewrite to t that
 // is not planned because another batch member's destination wins
-// t.key in post. A file outside the batch that wins it is not counted:
-// a lone move leaves such a link alone too.
+// t.key in post, or spells t.dst in another letter case alone (on a
+// case-insensitive file system the two land on one file). A file
+// outside the batch that wins it is not counted: a lone move leaves
+// such a link alone too.
 func (r *destResolver) countBlocked(post *linkgraph.WikilinkIndex, t stemTarget) {
 	// t does not reach its file in post, so some other file holds
-	// t.key there and sorts first.
-	holders := post.StemPaths(t.key)
-	if !t.isStem {
-		holders = post.NamePaths(t.key)
-	}
+	// t.key there: it sorts first, or it is t.dst in another case.
+	first := t.holders(post)[0]
 	for _, m := range r.batch.members {
-		if m.dst == holders[0] && m.dst != t.dst {
+		if m.dst != t.dst && (m.dst == first || strings.EqualFold(m.dst, t.dst)) {
 			r.batch.withheld++
 			return
 		}
 	}
+}
+
+// winsStem reports whether a `[[oldStem]]` link reaches src before the
+// batch runs: src must sort before idx's holders and before every
+// other member source holding oldStem, which idx may lack (a file
+// under a symlinked or unreadable directory the walk skips). Without
+// the members, two sources idx lacks would each win the stem and plan
+// two edits for each link.
+func (r *destResolver) winsStem(idx *linkgraph.WikilinkIndex, oldStem, src string) bool {
+	if !idx.StemResolvesTo(oldStem, src) {
+		return false
+	}
+	members := r.batch.stemSources(oldStem)
+	return len(members) < 2 || linkgraph.NewWikilinkIndexFromPaths(members).StemResolvesTo(oldStem, src)
 }
 
 // wikilinkIndex returns ws.WikilinkIndex, read once per resolver. A

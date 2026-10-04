@@ -44,9 +44,9 @@ type BatchMove struct {
 // order. Withheld counts the links that get no edit yet may not
 // reach their file once the batch has run: one from a planned member
 // to a member whose move could not be planned, one inside such a
-// member that stops resolving, a `[[stem]]` whose new key another
-// member's destination wins, and every link to a shadowed path (see
-// countShadowed).
+// member to a planned member that stops resolving, a `[[stem]]` whose
+// new key another member's destination wins, and every link to a
+// shadowed path (see countShadowed).
 type BatchPlan struct {
 	Plan
 	Moves    []BatchMove
@@ -71,9 +71,11 @@ type BatchPlan struct {
 // source is readable: the host (an editor) moves it anyway. No path
 // edit is planned for a link between it and another member, except a
 // link inside it when it lands in its own folder, which reads the same
-// from there. A link to it from a planned member counts in Withheld;
-// any other link inside it counts when it stops resolving after the
-// batch. When a planned member lands on its path, every link to it
+// from there. A link to it from a planned member counts in Withheld,
+// and so does a link inside it to a planned member when that link
+// stops resolving after the batch. A link inside it to a file the
+// batch leaves in place is not counted: MDS027 flags it if it stops
+// resolving. When a planned member lands on its path, every link to it
 // counts too (see countShadowed): it then reaches the newcomer.
 //
 // Move is MoveAll with one pair.
@@ -223,30 +225,45 @@ type moveBatch struct {
 	shadowed map[string]bool   // see countShadowed
 	withheld int
 	post     *linkgraph.WikilinkIndex // postIndex, built on first use
-	stems    map[string]int           // stemHolders, built on first use
+	stems    map[string]int           // stemHolders, built by keyStems
+	srcStems map[string][]string      // stemSources, built by keyStems
 }
 
 // stemHolders returns how many members hold the stem key stem with
-// their source or their destination, each member counted once. The
-// counts are built on the first call, once every verdict is in, so a
-// batch of kept-stem moves reads its members once, not once per move.
+// their source or their destination, each member counted once.
 func (b *moveBatch) stemHolders(stem string) int {
-	if b.stems == nil {
-		b.stems = map[string]int{}
-		for src, m := range b.members {
-			s, ok := linkgraph.FileStemKey(path.Base(src))
-			if ok {
-				b.stems[s]++
-			}
-			if m.dst == "" {
-				continue
-			}
-			if d, dok := linkgraph.FileStemKey(path.Base(m.dst)); dok && (!ok || d != s) {
-				b.stems[d]++
-			}
+	b.keyStems()
+	return b.stems[stem]
+}
+
+// stemSources returns every member source whose stem key is stem, in
+// no set order.
+func (b *moveBatch) stemSources(stem string) []string {
+	b.keyStems()
+	return b.srcStems[stem]
+}
+
+// keyStems builds the stem keys stemHolders and stemSources read. It
+// runs on the first call, once every verdict is in, so a batch reads
+// its members once, not once per move.
+func (b *moveBatch) keyStems() {
+	if b.stems != nil {
+		return
+	}
+	b.stems, b.srcStems = map[string]int{}, map[string][]string{}
+	for src, m := range b.members {
+		s, ok := linkgraph.FileStemKey(path.Base(src))
+		if ok {
+			b.stems[s]++
+			b.srcStems[s] = append(b.srcStems[s], src)
+		}
+		if m.dst == "" {
+			continue
+		}
+		if d, dok := linkgraph.FileStemKey(path.Base(m.dst)); dok && (!ok || d != s) {
+			b.stems[d]++
 		}
 	}
-	return b.stems[stem]
 }
 
 // newMoveBatch returns an empty batch, ready for admit.

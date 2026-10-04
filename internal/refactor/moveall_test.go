@@ -286,6 +286,65 @@ func TestMoveAll_SharedNewStem(t *testing.T) {
 	assert.Equal(t, 1, bp.Withheld)
 }
 
+// TestMoveAll_CaseVariantDestinationsCounted covers two moves landing
+// on destinations that differ in letter case alone: on a
+// case-insensitive file system they are one file, so neither stem
+// rewrite is planned, and both links are counted.
+func TestMoveAll_CaseVariantDestinationsCounted(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"x/a.md": "# A\n",
+		"y/b.md": "# B\n",
+		"n.md":   "# N\n\n[[a]] [[b]]\n",
+	}, MovePair{"x/a.md", "docs/c.md"}, MovePair{"y/b.md", "Docs/C.md"})
+	assert.NotContains(t, bp.Edits, "n.md")
+	assert.Equal(t, 2, bp.Withheld)
+}
+
+// partialIndexWorkspace is a memWorkspace whose wikilink index holds
+// only indexed, as a walk that skips a symlinked or unreadable
+// directory leaves the rest out.
+type partialIndexWorkspace struct {
+	*memWorkspace
+	indexed []string
+}
+
+func (w partialIndexWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	return holderIndex(w.indexed...)
+}
+
+// TestMoveAll_UnindexedSameStemSourcesPlanOneEdit covers two members
+// sharing a stem that the wikilink index lacks, wholly or in part:
+// only the one that sorts first wins `[[guide]]`, so each link gets
+// one edit, not one per member.
+func TestMoveAll_UnindexedSameStemSourcesPlanOneEdit(t *testing.T) {
+	for name, indexed := range map[string][]string{
+		"neither indexed": {"n.md"},
+		"one indexed":     {"n.md", "y/guide.md"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bp := MoveAll(partialIndexWorkspace{memWorkspace: newMemWorkspace(map[string]string{
+				"x/guide.md": "# X\n",
+				"y/guide.md": "# Y\n",
+				"n.md":       "# N\n\n[[guide]]\n",
+			}), indexed: indexed}, []MovePair{{"x/guide.md", "x/manual.md"}, {"y/guide.md", "y/howto.md"}})
+			assertNoOverlap(t, bp.Edits)
+			assert.Equal(t, []string{"manual"}, texts(bp.Edits, "n.md"))
+		})
+	}
+}
+
+func TestDestResolver_WinsStem(t *testing.T) {
+	b := newMoveBatch()
+	b.members["x/guide.md"] = batchMember{dst: "x/manual.md", planned: true}
+	b.members["y/guide.md"] = batchMember{dst: "y/howto.md", planned: true}
+	r := &destResolver{batch: b}
+	none := holderIndex()
+	assert.True(t, r.winsStem(none, "guide", "x/guide.md"))
+	assert.False(t, r.winsStem(none, "guide", "y/guide.md"), "a member source outsorts it")
+	assert.False(t, r.winsStem(holderIndex("guide.md"), "guide", "x/guide.md"), "an indexed holder outsorts it")
+	assert.True(t, r.winsStem(none, "other", "z/other.md"), "no other member holds the stem")
+}
+
 // TestMoveAll_StemAndSiblingShareNewStem covers the file `[[Guide]]`
 // reaches and its same-stem sibling both moving to one new stem: the
 // sibling's destination wins `[[Manual]]`, so the bare link is
@@ -660,6 +719,16 @@ func TestMoveBatch_StemHolders(t *testing.T) {
 	assert.Zero(t, b.stemHolders("a"), "a non-Markdown member holds no stem")
 	b.members["n.md"] = batchMember{dst: "guide.md"}
 	assert.Equal(t, 3, b.stemHolders("guide"), "built once, on the first call")
+}
+
+func TestMoveBatch_StemSources(t *testing.T) {
+	b := newMoveBatch()
+	b.members["x/guide.md"] = batchMember{dst: "z/guide.md", planned: true}
+	b.members["y/Guide.md"] = batchMember{dst: "y/howto.md"}
+	b.members["q/other.md"] = batchMember{dst: "guide.md", planned: true}
+	assert.ElementsMatch(t, []string{"x/guide.md", "y/Guide.md"}, b.stemSources("guide"),
+		"sources only; a destination holding the stem is not one")
+	assert.Nil(t, b.stemSources("howto"))
 }
 
 func TestMoveBatch_ScanBases(t *testing.T) {

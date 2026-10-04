@@ -293,12 +293,12 @@ mdsmith move guide.md reference/guide.md --dry-run
   link-reference label inside a file.
 - [`mdsmith deps`](deps.md) — the dependency edges a move walks
   to find incoming references.
-- [`mdsmith lsp`](lsp.md) — the editor surface; an explorer
-  rename fires `workspace/willRenameFiles`, which runs the same
-  move engine. A rename of several files is planned as one
-  batch: a link between two moved files gets one rewrite,
-  from the holder's new folder to the target's new path. A link
-  to a refused move from a moved file, a link in a refused move
-  that leaves its folder, and a `[[stem]]` whose new stem another
-  moved file takes get none. The warning counts each that may miss
-  its file, plus every link to a refused move whose path a moved file takes.
+- [`mdsmith lsp`](lsp.md) — the editor surface; an explorer rename fires
+  `workspace/willRenameFiles`, which runs the same move engine. A rename of
+  several files is planned as one batch: a link between two moved files gets
+  one rewrite, from the holder's new folder to the target's new path. A link
+  to a refused move from a moved file, a link in a refused move that leaves
+  its folder, and a `[[stem]]` whose new stem another moved file takes get
+  none. The warning counts each that may miss its file, and every link to a
+  refused move whose path a moved file takes, but not a link from a refused
+  move to an unmoved file; MDS027 flags any of these that stop resolving.
