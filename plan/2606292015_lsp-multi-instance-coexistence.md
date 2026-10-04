@@ -236,7 +236,7 @@ the same workspace is unaffected.
    injected context type to expose `workspaceState`. A `bun:test`
    asserts the built client options carry the token and that the
    id is stable across two activations.
-5. [ ] Unit-test the supersede logic on the existing seams
+5. [x] Unit-test the supersede logic on the existing seams
    (`watchSingleton` / the key): same scope → newest wins, older
    emits `mdsmith/superseded`; different scopes → both stay; no
    scope → never claims. Leave `decideClose` unchanged.
@@ -247,24 +247,24 @@ the same workspace is unaffected.
 
 ## Acceptance Criteria
 
-- [ ] Two `mdsmith lsp` servers on one workspace with different
+- [x] Two `mdsmith lsp` servers on one workspace with different
       `singletonScope` tokens both stay alive; neither is
       superseded.
-- [ ] Two servers with the same `singletonScope`: the newest
+- [x] Two servers with the same `singletonScope`: the newest
       wins, the older sends `mdsmith/superseded` and exits.
-- [ ] A server that receives an empty or absent `singletonScope`
+- [x] A server that receives an empty or absent `singletonScope`
       never writes the owner registry and is never superseded;
       the absent / `null` `initializationOptions` decode is
       covered by a test.
-- [ ] The empty-scope no-op is driven red/green and is distinct
+- [x] The empty-scope no-op is driven red/green and is distinct
       from the pre-existing empty-root guard.
-- [ ] There is exactly one key function; an empty scope yields
+- [x] There is exactly one key function; an empty scope yields
       the legacy root-only key (a unit test pins this).
 - [ ] The VS Code extension sends
       `initializationOptions.mdsmith.singletonScope` = a UUID it
       persists in `workspaceState`; a `bun:test` asserts the
       token is sent and is stable across activations.
-- [ ] The VS Code upgrade hand-off still works — old server
+- [x] The VS Code upgrade hand-off still works — old server
       stops, new server starts — verified by a unit test that
       feeds one scope to two server instances.
 - [ ] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
