@@ -161,3 +161,38 @@ kind-assignment:
 		})
 	}
 }
+
+func TestForeignRegionValidationPositions(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		line int
+		col  int
+	}{
+		{"top-level empty start", `foreign-regions:
+  - start: "<!-- a -->"
+    end: "<!-- /a -->"
+  - start: " "
+    end: "<!-- /b -->"
+`, 4, 5},
+		{"top-level empty end", `foreign-regions:
+  - start: "<!-- a -->"
+    end: ""
+`, 3, 5},
+		{"override start equals end", `overrides:
+  - glob: ["a.md"]
+  - glob: ["b.md"]
+    foreign-regions:
+      - start: "<!-- x -->"
+        end: "<!-- x -->"
+`, 5, 9},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseBytes([]byte(tt.src))
+			line, col := issuePos(t, tt.src, err)
+			assert.Equal(t, tt.line, line, "err: %v", err)
+			assert.Equal(t, tt.col, col, "err: %v", err)
+		})
+	}
+}
