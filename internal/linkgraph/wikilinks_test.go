@@ -850,3 +850,68 @@ func TestWikilinkStemAt(t *testing.T) {
 	_, _, _, ok := WikilinkStemAt([]byte("[[a]]"), -1)
 	assert.False(t, ok)
 }
+
+// TestWikilinkIndex_Moved locks that Moved returns the index as it
+// reads once every listed move has run: each source leaves its stem and
+// name keys, each non-empty destination joins its own in resolver
+// order, a destination already present is held once, an empty
+// destination only removes, and the receiver is left unchanged.
+func TestWikilinkIndex_Moved(t *testing.T) {
+	idx := NewWikilinkIndexFromPaths([]string{"x/a.md", "y/b.md", "x/c.md", "img/a.png", "gone.md"})
+	moved := idx.Moved(map[string]string{
+		"x/a.md":  "y/c.md",
+		"y/b.md":  "b/c.md",
+		"x/c.md":  "x/c.md",
+		"gone.md": "",
+		"nope.md": "node_modules/c.md",
+	})
+	assert.Empty(t, moved.StemPaths("a"))
+	assert.Empty(t, moved.StemPaths("b"))
+	assert.Empty(t, moved.StemPaths("gone"))
+	assert.Equal(t, []string{"b/c.md", "x/c.md", "y/c.md"}, moved.StemPaths("c"))
+	assert.Equal(t, []string{"b/c.md", "x/c.md", "y/c.md"}, moved.NamePaths("c.md"))
+	assert.Equal(t, []string{"img/a.png"}, moved.NamePaths("a.png"))
+	assert.Equal(t, []string{"x/a.md"}, idx.StemPaths("a"), "receiver unchanged")
+	assert.Equal(t, []string{"x/c.md"}, idx.StemPaths("c"), "receiver unchanged")
+	assert.Equal(t, []string{"w/new.md"}, idx.Moved(map[string]string{"nope.md": "w/new.md"}).StemPaths("new"),
+		"a source idx lacks still lands at its destination")
+	assert.Nil(t, (*WikilinkIndex)(nil).Moved(map[string]string{"a.md": "b.md"}))
+}
+
+func TestAppendIf(t *testing.T) {
+	assert.Equal(t, []string{"a", "b"}, appendIf([]string{"a"}, "b", true))
+	assert.Equal(t, []string{"a"}, appendIf([]string{"a"}, "b", false))
+	assert.Nil(t, appendIf(nil, "b", false))
+}
+
+// TestMovedPaths locks that one key's holders lose every source and
+// gain each joining destination once, in resolver order.
+func TestMovedPaths(t *testing.T) {
+	moves := map[string]string{"x/a.md": "b/a.md", "y/a.md": "b/a.md"}
+	got := movedPaths([]string{"a.md", "x/a.md", "y/a.md"}, moves, []string{"b/a.md", "b/a.md", "a.md"})
+	assert.Equal(t, []string{"a.md", "b/a.md"}, got)
+}
+
+// TestWikilinkIndex_MovedSharesUntouchedKeys locks that Moved costs
+// what the moves touch, not the workspace: a key no move touches is
+// read from the receiver, Resolve reads through the overlay, and a
+// Moved index can be moved again.
+func TestWikilinkIndex_MovedSharesUntouchedKeys(t *testing.T) {
+	idx := NewWikilinkIndexFromPaths([]string{"x/a.md", "z.md", "img/z.png"})
+	moved := idx.Moved(map[string]string{"x/a.md": "b.md"})
+	require.NotEmpty(t, moved.StemPaths("z"))
+	assert.Same(t, &idx.StemPaths("z")[0], &moved.StemPaths("z")[0])
+	assert.Same(t, &idx.NamePaths("z.png")[0], &moved.NamePaths("z.png")[0])
+	got, ok := moved.Resolve("b")
+	assert.True(t, ok)
+	assert.Equal(t, "b.md", got)
+	_, ok = moved.Resolve("a")
+	assert.False(t, ok)
+	got, ok = moved.Resolve("z.png")
+	assert.True(t, ok)
+	assert.Equal(t, "img/z.png", got)
+	again := moved.Moved(map[string]string{"b.md": "", "z.md": "q/z.md"})
+	assert.Empty(t, again.StemPaths("b"))
+	assert.Equal(t, []string{"q/z.md"}, again.StemPaths("z"))
+	assert.Equal(t, []string{"img/z.png"}, again.NamePaths("z.png"))
+}

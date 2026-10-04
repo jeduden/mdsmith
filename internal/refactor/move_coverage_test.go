@@ -70,7 +70,21 @@ func holderIndex(files ...string) *linkgraph.WikilinkIndex {
 	return linkgraph.NewWikilinkIndexFromPaths(files)
 }
 
-func TestWikilinkRewriteSafe_OldStem(t *testing.T) {
+// srcWinsStem runs winsStem, the check appendWikilinkStemEdits makes
+// before it rewrites any `[[oldStem]]` link, for a lone move of src.
+func srcWinsStem(idx *linkgraph.WikilinkIndex, src, oldStem string) bool {
+	return soloResolver(nil, src, "z/z/z/dst.md").winsStem(idx, oldStem, src)
+}
+
+// dstReaches runs stemTarget.reaches, the check each rewrite must
+// pass, for a link keyed by key to dst once a lone move of src to dst
+// has run.
+func dstReaches(idx *linkgraph.WikilinkIndex, src, dst, key string, isStem bool) bool {
+	t := stemTarget{dst: dst, key: key, isStem: isStem}
+	return t.reaches(soloResolver(nil, src, dst).postIndex(idx))
+}
+
+func TestWinsStemAndReaches_StemKeys(t *testing.T) {
 	files := []string{"a.md", "docs/API.md", "api/api.md", "img/api.png", "notes/b.mdx", "notes/c.markdown"}
 	for name, tc := range map[string]struct {
 		files   []string
@@ -93,14 +107,14 @@ func TestWikilinkRewriteSafe_OldStem(t *testing.T) {
 			// The source sorts after every listed file, so any indexed
 			// holder of the stem is the file the link resolves to.
 			const src = "z/z/z/src.md"
-			assert.Equal(t, !tc.holders, wikilinkRewriteSafe(idx, src, "z/z/z/zzz.md", tc.stem, "zzz", true))
-			assert.Equal(t, !tc.holders, wikilinkRewriteSafe(idx, src, "z/z/z/dst.md", "zzz", tc.stem, true),
+			assert.Equal(t, !tc.holders, srcWinsStem(idx, src, tc.stem))
+			assert.Equal(t, !tc.holders, dstReaches(idx, src, "z/z/z/dst.md", tc.stem, true),
 				"a Markdown destination reads stems the same way")
 		})
 	}
 }
 
-func TestWikilinkRewriteSafe_NewName(t *testing.T) {
+func TestStemTargetReaches_NewName(t *testing.T) {
 	files := []string{"a.md", "img/api.png", "notes/b.mdx", "x/B.MDX"}
 	for name, tc := range map[string]struct {
 		files []string
@@ -117,29 +131,29 @@ func TestWikilinkRewriteSafe_NewName(t *testing.T) {
 			// The destination sorts after every listed file, so any
 			// holder of the name is the file the link would reach.
 			idx := holderIndex(tc.files...)
-			assert.Equal(t, tc.safe, wikilinkRewriteSafe(idx, "src.md", "z/z/z/"+tc.base, "zzz", tc.base, false))
+			assert.Equal(t, tc.safe, dstReaches(idx, "src.md", "z/z/z/"+tc.base, tc.base, false))
 		})
 	}
 }
 
-// TestWikilinkRewriteSafe_DestinationResolution locks that a file
+// TestStemTargetReaches_DestinationResolution locks that a file
 // already holding the new stem or name blocks the rewrite only when it,
 // not dst, is the file the rewritten link would reach.
-func TestWikilinkRewriteSafe_DestinationResolution(t *testing.T) {
+func TestStemTargetReaches_DestinationResolution(t *testing.T) {
 	idx := holderIndex("z/x/manual.md", "z/x/logo.png")
-	assert.True(t, wikilinkRewriteSafe(idx, "src.md", "a/manual.md", "src", "manual", true),
+	assert.True(t, dstReaches(idx, "src.md", "a/manual.md", "manual", true),
 		"dst is shallower than the stem holder")
-	assert.False(t, wikilinkRewriteSafe(idx, "src.md", "z/y/w/manual.md", "src", "manual", true),
+	assert.False(t, dstReaches(idx, "src.md", "z/y/w/manual.md", "manual", true),
 		"the stem holder is shallower than dst")
-	assert.True(t, wikilinkRewriteSafe(idx, "src.md", "a/logo.png", "src", "logo.png", false),
+	assert.True(t, dstReaches(idx, "src.md", "a/logo.png", "logo.png", false),
 		"dst is shallower than the name holder")
-	assert.False(t, wikilinkRewriteSafe(idx, "src.md", "z/y/w/logo.png", "src", "logo.png", false),
+	assert.False(t, dstReaches(idx, "src.md", "z/y/w/logo.png", "logo.png", false),
 		"the name holder is shallower than dst")
 }
 
-func TestWikilinkRewriteSafe_SourceResolution(t *testing.T) {
+func TestWinsStem_SourceResolution(t *testing.T) {
 	safe := func(idx *linkgraph.WikilinkIndex, src string) bool {
-		return wikilinkRewriteSafe(idx, src, "z/z/z/manual.md", "guide", "manual", true)
+		return srcWinsStem(idx, src, "guide")
 	}
 	files := []string{"docs/guide.md"}
 	assert.False(t, safe(holderIndex(files...), "z/guide.md"),
@@ -154,7 +168,7 @@ func TestWikilinkRewriteSafe_SourceResolution(t *testing.T) {
 	// The nil-index fallback indexes r.paths(), which normalizes the
 	// listing, so a source listed as `./z/guide.md` is found as itself,
 	// not as a second holder that outsorts it.
-	r := &destResolver{ws: stubWorkspace{files: []string{"./z/guide.md"}}, src: "z/guide.md"}
+	r := &destResolver{ws: stubWorkspace{files: []string{"./z/guide.md"}}}
 	assert.True(t, safe(linkgraph.NewWikilinkIndexFromPaths(r.paths()), "z/guide.md"),
 		"a source listed with a ./ prefix is still indexed")
 }
@@ -286,7 +300,7 @@ func TestOutboundEdit(t *testing.T) {
 		require.GreaterOrEqual(t, ps, 0)
 		return inlineDest{dest: []byte(dest), row: []byte(row), line: 4, ps: ps}
 	}
-	r := &destResolver{ws: stubWorkspace{}, src: "docs/a.md"}
+	r := soloResolver(stubWorkspace{}, "docs/a.md", "guide/x/a.md")
 	t.Run("relative path is re-spelled from dst", func(t *testing.T) {
 		e, ok := outboundEdit(r, located("![](./b.png)", "./b.png"), "docs/a.md", "guide/x/a.md")
 		require.True(t, ok)
@@ -348,26 +362,36 @@ func TestAppendReferrerEdits_DefensiveBranches(t *testing.T) {
 		},
 		unresolvable: map[string]bool{"gone.md": true},
 	}
-	r := &destResolver{ws: ws, src: "a.md"}
-	appendReferrerEdits(changes, ws, lint.NewParser(), r, "a.md", "docs/a.md")
+	r := soloResolver(ws, "a.md", "docs/a.md")
+	appendReferrerEdits(changes, ws, lint.NewParser(), r)
 	assert.Empty(t, changes, "every file hits a skip branch")
+
+	// A batch with no planned member reads no file.
+	counter := &resolveCounter{calls: map[string]int{}, stubWorkspace: ws}
+	r = &destResolver{ws: counter, batch: &moveBatch{members: map[string]batchMember{"a.md": {dst: "b.md"}}}}
+	appendReferrerEdits(changes, counter, lint.NewParser(), r)
+	assert.Empty(t, changes)
+	assert.Empty(t, counter.calls)
 }
 
-func TestMayName(t *testing.T) {
-	base := []byte("a.md")
+func TestMayNameAny(t *testing.T) {
+	bases := [][]byte{[]byte("a.md"), []byte("b.md")}
 	for name, tc := range map[string]struct {
 		source string
+		bases  [][]byte
 		want   bool
 	}{
-		"inline link":              {"[x](a.md)", true},
-		"ref-def":                  {"[r]: ./a.md", true},
-		"escaped name":             {"[x](%61.md)", true},
-		"link to another file":     {"[x](b.md)", false},
-		"name with no link mark":   {"See a.md.", false},
-		"escape with no link mark": {"100% a.md", false},
+		"inline link":              {"[x](a.md)", bases, true},
+		"second base":              {"[x](b.md)", bases, true},
+		"ref-def":                  {"[r]: ./a.md", bases, true},
+		"escaped name":             {"[x](%62.md)", bases, true},
+		"link to another file":     {"[x](c.md)", bases, false},
+		"name with no link mark":   {"See b.md.", bases, false},
+		"escape with no link mark": {"100% b.md", bases, false},
+		"no bases":                 {"[x](%62.md)", nil, false},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tc.want, mayName([]byte(tc.source), base))
+			assert.Equal(t, tc.want, mayNameAny([]byte(tc.source), tc.bases))
 		})
 	}
 }
@@ -388,7 +412,7 @@ func TestAppendWikilinkStemEdits_DefensiveBranches(t *testing.T) {
 	}
 	// Basename changes (api -> service) so the pass runs, but every edge
 	// hits a skip branch.
-	appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: "api.md"}, "api.md", "service.md")
+	appendWikilinkStemEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
 	assert.Empty(t, changes)
 }
 
@@ -406,8 +430,8 @@ func TestAppendReferrerEdits_RefDefShapesAndSkips(t *testing.T) {
 		},
 		unresolvable: map[string]bool{"gone.md": true},
 	}
-	r := &destResolver{ws: ws, src: "a.md"}
-	appendReferrerEdits(changes, ws, lint.NewParser(), r, "a.md", "docs/a.md")
+	r := soloResolver(ws, "a.md", "docs/a.md")
+	appendReferrerEdits(changes, ws, lint.NewParser(), r)
 	require.Len(t, changes["hit.md"], 1)
 	assert.Equal(t, "docs/a.md", changes["hit.md"][0].NewText)
 	assert.NotContains(t, changes, "local.md")
@@ -418,7 +442,7 @@ func TestAppendReferrerEdits_RefDefShapesAndSkips(t *testing.T) {
 // to dst over a workspace holding only src.
 func outbound(changes map[string][]Edit, src, dst string, source []byte) {
 	ws := stubWorkspace{files: []string{src}}
-	r := &destResolver{ws: ws, src: src}
+	r := soloResolver(ws, src, dst)
 	appendOutboundEdits(changes, lint.NewParser(), r, src, src, dst, source)
 }
 
@@ -561,19 +585,32 @@ func TestAppendWikilinkStemEdits_StaleEdgeKeyMismatch(t *testing.T) {
 				files:   []string{"api.md", "d.md"},
 				sources: map[string][]byte{"d.md": []byte(row + "\n")},
 			}
-			appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: "api.md"}, "api.md", "service.md")
+			appendWikilinkStemEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
 			assert.Len(t, changes["d.md"], want)
 		})
 	}
 }
 
-// TestWikilinkRewriteSafe_SourceInOtherCase locks that a source spelled
+// TestWinsStem_SourceInOtherCase locks that a source spelled
 // in another letter case than an indexed holder, as a case-insensitive
 // file system accepts, is not taken to win the stem: docs/guide.md may
 // be that very file, and it sorts after b/guide.md.
-func TestWikilinkRewriteSafe_SourceInOtherCase(t *testing.T) {
+func TestWinsStem_SourceInOtherCase(t *testing.T) {
 	idx := holderIndex("b/guide.md", "docs/guide.md")
-	assert.False(t, wikilinkRewriteSafe(idx, "Docs/guide.md", "docs/manual.md", "guide", "manual", true))
+	assert.False(t, srcWinsStem(idx, "Docs/guide.md", "guide"))
+}
+
+// TestStemTargetReaches_DestinationInOtherCase locks that a
+// destination an indexed file spells in another letter case is not
+// taken to win its key, though the post-move index holds the
+// destination too: on a case-insensitive file system docs/manual.md
+// may be that very file.
+func TestStemTargetReaches_DestinationInOtherCase(t *testing.T) {
+	idx := holderIndex("src.md", "docs/manual.md", "img/logo.png")
+	assert.False(t, dstReaches(idx, "src.md", "Docs/manual.md", "manual", true))
+	assert.False(t, dstReaches(idx, "src.md", "IMG/logo.png", "logo.png", false))
+	assert.True(t, dstReaches(idx, "src.md", "a/manual.md", "manual", true),
+		"a holder that differs in more than case still sorts after a/")
 }
 
 func TestStemSiblings(t *testing.T) {
@@ -583,7 +620,7 @@ func TestStemSiblings(t *testing.T) {
 	assert.Nil(t, stemSiblings([]string{"docs/guide.md"}, "docs/guide.md"))
 }
 
-func TestWikilinkNamesSibling(t *testing.T) {
+func TestWikilinkNamedSibling(t *testing.T) {
 	siblings := []string{"ref/guide.md", "x/api/v1/guide.md"}
 	for lead, want := range map[string]bool{
 		"[[":            false,
@@ -599,11 +636,15 @@ func TestWikilinkNamesSibling(t *testing.T) {
 		"[[y/x/api/v1/": false,
 	} {
 		t.Run(lead, func(t *testing.T) {
-			assert.Equal(t, want, wikilinkNamesSibling([]byte(lead), "docs/guide.md", siblings))
+			_, named := wikilinkNamedSibling([]byte(lead), "docs/guide.md", siblings)
+			assert.Equal(t, want, named)
 		})
 	}
-	assert.False(t, wikilinkNamesSibling([]byte("[[ref/"), "a/ref/guide.md", siblings),
-		"a prefix that names src's folder too reaches src")
+	_, named := wikilinkNamedSibling([]byte("[[ref/"), "a/ref/guide.md", siblings)
+	assert.False(t, named, "a prefix that names src's folder too reaches src")
+	sib, named := wikilinkNamedSibling([]byte("[[v1/"), "docs/guide.md", siblings)
+	assert.True(t, named)
+	assert.Equal(t, "x/api/v1/guide.md", sib)
 }
 
 func TestFolderNames(t *testing.T) {
