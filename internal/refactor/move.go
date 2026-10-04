@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -973,8 +974,17 @@ func newStemTarget(oldStem, dst string) (stemTarget, bool) {
 // post, the index as it reads once the move (or batch) has run. A
 // Markdown destination is looked up by stem; a typed non-Markdown one
 // (`guide.mdx`) by exact file name. dst counts as a holder even when
-// post lacks it.
+// post lacks it. post holds dst itself, so a holder spelling dst in
+// another letter case alone is checked here: on a case-insensitive
+// file system it may be dst, and then dst is not known to win.
 func (t stemTarget) reaches(post *linkgraph.WikilinkIndex) bool {
+	holders := post.NamePaths(t.key)
+	if t.isStem {
+		holders = post.StemPaths(t.key)
+	}
+	if slices.ContainsFunc(holders, func(q string) bool { return q != t.dst && strings.EqualFold(q, t.dst) }) {
+		return false
+	}
 	if t.isStem {
 		return post.StemResolvesTo(t.key, t.dst)
 	}

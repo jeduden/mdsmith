@@ -594,6 +594,19 @@ func TestWikilinkRewriteSafe_SourceInOtherCase(t *testing.T) {
 	assert.False(t, wikilinkRewriteSafe(idx, "Docs/guide.md", "docs/manual.md", "guide", "manual", true))
 }
 
+// TestWikilinkRewriteSafe_DestinationInOtherCase locks that a
+// destination an indexed file spells in another letter case is not
+// taken to win its key, though the post-move index holds the
+// destination too: on a case-insensitive file system docs/manual.md
+// may be that very file.
+func TestWikilinkRewriteSafe_DestinationInOtherCase(t *testing.T) {
+	idx := holderIndex("src.md", "docs/manual.md", "img/logo.png")
+	assert.False(t, wikilinkRewriteSafe(idx, "src.md", "Docs/manual.md", "src", "manual", true))
+	assert.False(t, wikilinkRewriteSafe(idx, "src.md", "IMG/logo.png", "src", "logo.png", false))
+	assert.True(t, wikilinkRewriteSafe(idx, "src.md", "a/manual.md", "src", "manual", true),
+		"a holder that differs in more than case still sorts after a/")
+}
+
 func TestStemSiblings(t *testing.T) {
 	holders := []string{"a/guide.md", "docs/guide.md", "ref/guide.md"}
 	assert.Equal(t, []string{"a/guide.md", "ref/guide.md"}, stemSiblings(holders, "docs/guide.md"))
