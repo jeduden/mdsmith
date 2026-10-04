@@ -54,7 +54,7 @@ done, so only the cancellation is missing.
 
 - [ ] Interrupting `mdsmith fix` during a recipe leaves no
       process from the recipe's group running (Unix test).
-- [ ] An interrupted build is reported as interrupted, not
+- [x] An interrupted build is reported as interrupted, not
       as timed out.
 - [ ] `GOOS=plan9 go vet ./...` and
       `GOOS=js GOARCH=wasm go build ./...` still pass.

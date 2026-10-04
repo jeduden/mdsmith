@@ -71,3 +71,10 @@ func TestRunBuildPass_CancelKillsRecipeChild(t *testing.T) {
 	assert.Eventually(t, func() bool { return pidGone(pid) },
 		5*time.Second, 20*time.Millisecond, "recipe child must be killed")
 }
+
+func TestRunBuildPass_CancelReportsInterruptNotTimeout(t *testing.T) {
+	code, out, _ := runInterruptedBuild(t)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, out, "INTERRUPTED out.txt")
+	assert.NotContains(t, out, "TIMEOUT")
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -117,6 +118,10 @@ func printStreamTail(label string, lines []string, w io.Writer) {
 // computation failed before dispatch), only the error is printed.
 func reportBuildFailure(bt buildTarget, res targetRunResult, w io.Writer) {
 	name := targetName(bt)
+	if res.TimedOut && errors.Is(res.Err, context.Canceled) {
+		reportInterrupt(name, res, w)
+		return
+	}
 	if res.TimedOut {
 		reportTimeout(name, res, w)
 		return
@@ -141,6 +146,14 @@ func reportBuildFailure(bt buildTarget, res targetRunResult, w io.Writer) {
 		return
 	}
 	printStreamTail("stderr", res.StderrTail, w)
+}
+
+// reportInterrupt prints the diagnostic for a recipe killed because the
+// build context was cancelled (CLI interrupt), not because it ran out of
+// time. The recipe's group was already killed before this is called.
+func reportInterrupt(name string, res targetRunResult, w io.Writer) {
+	_, _ = fmt.Fprintf(w, "INTERRUPTED %s after %s\n", name, res.Duration.Round(time.Millisecond))
+	_, _ = fmt.Fprintf(w, "  %s\n", buildexec.TimeoutKillAction)
 }
 
 // reportTimeout prints the hung-recipe diagnostic and names the kill
