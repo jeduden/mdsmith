@@ -471,7 +471,7 @@ func TestComputeSlugRemap(t *testing.T) {
 func TestWalkAllHeadings(t *testing.T) {
 	body := []byte("# A\n\nprose\n\n## B\n")
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	hs := walkAllHeadings(root, body)
+	hs := walkAllHeadings(root, body, newBodyLineIndex(body))
 	require.Len(t, hs, 2)
 	assert.Equal(t, "A", hs[0].text)
 	assert.Equal(t, "B", hs[1].text)
@@ -621,21 +621,18 @@ func TestAppendRefDefDestEditsForHeading_SkipsUnresolvable(t *testing.T) {
 }
 
 func TestRefDefDestEditForMatch_ColonAndEmptyDest(t *testing.T) {
-	// m is only read as m[2] (a body offset → line). A zero offset
-	// maps to the single fixture line, isolating the colon / empty-
-	// destination guards from regex-shape concerns.
-	m := []int{0, 0, 0, 0}
-
+	// bodyLine 1 maps to the single fixture line, isolating the colon /
+	// empty-destination guards from regex-shape concerns.
 	// No `[label]:` colon on the line.
 	_, ok := refDefDestEditForMatch(
-		[]byte("plain text"), [][]byte{[]byte("plain text")},
-		0, m, "b.md", "a.md", "setup", "x")
+		1, [][]byte{[]byte("plain text")},
+		0, "b.md", "a.md", "setup", "x")
 	assert.False(t, ok)
 
 	// Colon present but nothing after it — empty destination.
 	_, ok = refDefDestEditForMatch(
-		[]byte("[a]:"), [][]byte{[]byte("[a]:")},
-		0, m, "b.md", "a.md", "setup", "x")
+		1, [][]byte{[]byte("[a]:")},
+		0, "b.md", "a.md", "setup", "x")
 	assert.False(t, ok)
 }
 
@@ -720,20 +717,17 @@ func TestStableSortEdits(t *testing.T) {
 func TestRefDefDestEditForMatch_BadInputs(t *testing.T) {
 	body := []byte("[a]: a.md#setup\n")
 	lines := splitLines(body)
-	matches := index.RefDefRegexpMatches(body)
-	require.NotEmpty(t, matches)
-	m := matches[0]
 
 	// fileLine past the line table.
-	_, ok := refDefDestEditForMatch(body, [][]byte{}, 0, m, "b.md", "a.md", "setup", "x")
+	_, ok := refDefDestEditForMatch(1, [][]byte{}, 0, "b.md", "a.md", "setup", "x")
 	assert.False(t, ok)
 
 	// Destination doesn't point at the heading.
-	_, ok = refDefDestEditForMatch(body, lines, 0, m, "b.md", "z.md", "setup", "x")
+	_, ok = refDefDestEditForMatch(1, lines, 0, "b.md", "z.md", "setup", "x")
 	assert.False(t, ok)
 
 	// Happy path.
-	e, ok := refDefDestEditForMatch(body, lines, 0, m, "b.md", "a.md", "setup", "install")
+	e, ok := refDefDestEditForMatch(1, lines, 0, "b.md", "a.md", "setup", "install")
 	require.True(t, ok)
 	assert.Equal(t, "install", e.NewText)
 }

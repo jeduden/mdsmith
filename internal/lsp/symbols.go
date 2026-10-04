@@ -428,7 +428,17 @@ func isMarkdownExt(p string) bool {
 // bounds, and an out-of-range End.Line causes some clients to
 // reject or silently ignore the result.
 func rangeForLines(start, end int, source []byte) Range {
-	lines := splitLines(source)
+	return rangeInLines(start, end, splitLines(source))
+}
+
+// rangeInLines is rangeForLines over an already-split document, so
+// callers that build many ranges split the source once instead of
+// once per range. lines should come from splitLines; a nil table counts
+// as one empty line.
+func rangeInLines(start, end int, lines [][]byte) Range {
+	if len(lines) == 0 {
+		lines = [][]byte{nil}
+	}
 	// splitLines guarantees at least one entry (empty input yields
 	// a single empty line) so maxLine is always >= 1 and the
 	// clamp arithmetic below stays well-defined.

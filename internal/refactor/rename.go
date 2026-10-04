@@ -201,7 +201,6 @@ type validRefDefMatch struct {
 	bodyLine  int
 	rawLabel  string
 	normLabel string
-	matchIdx  []int
 }
 
 // validRefDefMatches returns the ref-def regex matches that fall
@@ -216,11 +215,11 @@ func validRefDefMatches(body []byte) []validRefDefMatch {
 
 // refDefMatchesIn is validRefDefMatches over body's already-parsed
 // root.
-func refDefMatchesIn(body []byte, root ast.Node) []validRefDefMatch {
-	consumed := contentBlockLines(root, body)
+func refDefMatchesIn(body []byte, root ast.Node, idx bodyLineIndex) []validRefDefMatch {
+	consumed := contentBlockLines(root, idx)
 	var out []validRefDefMatch
 	for _, m := range index.RefDefRegexpMatches(body) {
-		bodyLine := lineOfBodyOffset(body, m[2])
+		bodyLine := idx.lineOfOffset(m[2])
 		if _, ok := consumed[bodyLine]; ok {
 			continue
 		}
@@ -230,7 +229,6 @@ func refDefMatchesIn(body []byte, root ast.Node) []validRefDefMatch {
 			bodyLine:  bodyLine,
 			rawLabel:  string(raw),
 			normLabel: norm,
-			matchIdx:  m,
 		})
 	}
 	return out
@@ -242,7 +240,7 @@ func refDefMatchesIn(body []byte, root ast.Node) []validRefDefMatch {
 // is by definition not a def. The Document root and
 // LinkReferenceDefinition nodes are skipped: the former spans the
 // whole buffer, the latter IS the line a real def lives on.
-func contentBlockLines(root ast.Node, body []byte) map[int]struct{} {
+func contentBlockLines(root ast.Node, idx bodyLineIndex) map[int]struct{} {
 	out := map[int]struct{}{}
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -258,7 +256,7 @@ func contentBlockLines(root ast.Node, body []byte) map[int]struct{} {
 		ls := n.Lines()
 		for i := 0; i < ls.Len(); i++ {
 			seg := ls.At(i)
-			out[lineOfBodyOffset(body, seg.Start)] = struct{}{}
+			out[idx.lineOfOffset(seg.Start)] = struct{}{}
 		}
 		return ast.WalkContinue, nil
 	})
@@ -271,7 +269,7 @@ func linkRefEditsIn(ps *parsedSource, oldLabel, newName string) []Edit {
 	lines := splitLines(ps.source)
 	out := make([]Edit, 0, 8)
 	out = append(out, refDefEditsInBody(ps.refDefs(), lines, ps.fmOffset, oldLabel, newName)...)
-	out = append(out, refUseEditsInBody(ps.root(), ps.body, lines, ps.fmOffset, oldLabel, newName)...)
+	out = append(out, refUseEditsInBody(ps.root(), ps.body, ps.index(), lines, ps.fmOffset, oldLabel, newName)...)
 	return out
 }
 
@@ -312,10 +310,9 @@ func refDefEditsInBody(
 // refUseEditsInBody walks the AST for ast.Link and ast.Image nodes
 // whose Reference matches oldLabel and emits one Edit per use.
 func refUseEditsInBody(
-	root ast.Node, body []byte, lines [][]byte, fmOffset int,
+	root ast.Node, body []byte, idx bodyLineIndex, lines [][]byte, fmOffset int,
 	oldLabel, newName string,
 ) []Edit {
-	idx := newBodyLineIndex(body)
 	var out []Edit
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -620,20 +617,6 @@ func RefDefBracketBytes(row []byte) []int {
 	return []int{open, closeIdx}
 }
 
-// lineOfBodyOffset returns the 1-based line of byte offset off within
-// body. Linear; tight per-edit loops use bodyLineIndex instead.
-func lineOfBodyOffset(body []byte, off int) int {
-	if off < 0 {
-		return 1
-	}
-	if off > len(body) {
-		off = len(body)
-	}
-	// bytes.Count special-cases a one-byte separator to a SIMD byte count;
-	// a hand-rolled scan loop is not vectorized.
-	return 1 + bytes.Count(body[:off], []byte{'\n'})
-}
-
 // bodyLineIndex precomputes every line-start offset so a rename
 // emitting many per-link edits stays linear instead of quadratic.
 type bodyLineIndex struct {
@@ -641,23 +624,17 @@ type bodyLineIndex struct {
 }
 
 func newBodyLineIndex(body []byte) bodyLineIndex {
-	starts := make([]int, 1, 1+bodyNewlineCount(body))
-	for i, b := range body {
-		if b == '\n' {
-			starts = append(starts, i+1)
+	// bytes.Count and bytes.IndexByte are SIMD; a byte loop is not.
+	starts := make([]int, 1, 1+bytes.Count(body, []byte{'\n'}))
+	for off := 0; ; {
+		i := bytes.IndexByte(body[off:], '\n')
+		if i < 0 {
+			break
 		}
+		off += i + 1
+		starts = append(starts, off)
 	}
 	return bodyLineIndex{starts: starts}
-}
-
-func bodyNewlineCount(body []byte) int {
-	n := 0
-	for _, b := range body {
-		if b == '\n' {
-			n++
-		}
-	}
-	return n
 }
 
 func (b bodyLineIndex) lineOfOffset(off int) int {

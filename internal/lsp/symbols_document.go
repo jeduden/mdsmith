@@ -44,19 +44,25 @@ func buildOutline(source []byte) []documentSymbol {
 		return nil
 	}
 
+	// Split only when there is a symbol to range; a prose-only buffer
+	// needs no line table.
+	var lines [][]byte
+	if len(fe.Symbols) > 0 {
+		lines = splitLines(source)
+	}
 	var fmKids []documentSymbol
 	var dirRoot []documentSymbol
 	var headings []index.Symbol
 	for _, sym := range fe.Symbols {
 		switch sym.Kind {
 		case index.SymbolFrontMatter:
-			fmKids = append(fmKids, leafSymbol(sym, source))
+			fmKids = append(fmKids, leafSymbol(sym, lines))
 		case index.SymbolDirective:
-			dirRoot = append(dirRoot, leafSymbol(sym, source))
+			dirRoot = append(dirRoot, leafSymbol(sym, lines))
 		case index.SymbolHeading:
 			headings = append(headings, sym)
 		case index.SymbolLinkRef:
-			dirRoot = append(dirRoot, leafSymbol(sym, source))
+			dirRoot = append(dirRoot, leafSymbol(sym, lines))
 		}
 	}
 
@@ -66,13 +72,13 @@ func buildOutline(source []byte) []documentSymbol {
 		roots = append(roots, documentSymbol{
 			Name:           "front matter",
 			Kind:           symbolKindProperty,
-			Range:          rangeForLines(1, 1, source),
-			SelectionRange: rangeForLines(1, 1, source),
+			Range:          rangeInLines(1, 1, lines),
+			SelectionRange: rangeInLines(1, 1, lines),
 			Children:       fmKids,
 		})
 	}
 
-	hroots := buildHeadingTree(headings, source)
+	hroots := buildHeadingTree(headings, lines)
 	// Attach directives + link-refs whose line falls under a heading
 	// span; everything else hoists to the file root.
 	hroots, unattached := attachDirectives(hroots, dirRoot)
@@ -83,7 +89,7 @@ func buildOutline(source []byte) []documentSymbol {
 
 // buildHeadingTree turns a flat heading list into a nested
 // documentSymbol tree using a level-aware stack walk.
-func buildHeadingTree(headings []index.Symbol, source []byte) []documentSymbol {
+func buildHeadingTree(headings []index.Symbol, lines [][]byte) []documentSymbol {
 	var roots []documentSymbol
 	type stackEntry struct {
 		level int
@@ -95,8 +101,8 @@ func buildHeadingTree(headings []index.Symbol, source []byte) []documentSymbol {
 			Name:           headingDisplay(h),
 			Detail:         headingDetail(h),
 			Kind:           symbolKindString,
-			Range:          rangeForLines(h.StartLine, h.EndLine, source),
-			SelectionRange: rangeForLines(h.SelectionLine, h.SelectionLine, source),
+			Range:          rangeInLines(h.StartLine, h.EndLine, lines),
+			SelectionRange: rangeInLines(h.SelectionLine, h.SelectionLine, lines),
 		}
 		// Pop until we find a parent with a lower level.
 		for len(stack) > 0 && stack[len(stack)-1].level >= h.Level {
@@ -154,7 +160,7 @@ func attachInto(nodes []documentSymbol, leaf documentSymbol, startLine int) bool
 	return false
 }
 
-func leafSymbol(sym index.Symbol, source []byte) documentSymbol {
+func leafSymbol(sym index.Symbol, lines [][]byte) documentSymbol {
 	kind := symbolKindKey
 	switch sym.Kind {
 	case index.SymbolFrontMatter:
@@ -168,8 +174,8 @@ func leafSymbol(sym index.Symbol, source []byte) documentSymbol {
 		Name:           sym.Name,
 		Detail:         leafDetail(sym),
 		Kind:           kind,
-		Range:          rangeForLines(sym.StartLine, sym.EndLine, source),
-		SelectionRange: rangeForLines(sym.SelectionLine, sym.SelectionLine, source),
+		Range:          rangeInLines(sym.StartLine, sym.EndLine, lines),
+		SelectionRange: rangeInLines(sym.SelectionLine, sym.SelectionLine, lines),
 	}
 }
 

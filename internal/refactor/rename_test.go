@@ -55,13 +55,14 @@ func TestLinkRefPlan(t *testing.T) {
 
 func TestRefDefMatchesIn(t *testing.T) {
 	body := []byte("[Spec]: u\n\n```\n[fake]: v\n```\n")
-	got := refDefMatchesIn(body, parseBody(body))
+	got := refDefMatchesIn(body, parseBody(body), newBodyLineIndex(body))
 	// The fenced def-shaped line is consumed by the code block.
 	require.Len(t, got, 1)
 	assert.Equal(t, 1, got[0].bodyLine) // 1-based
 	assert.Equal(t, "Spec", got[0].rawLabel)
 	assert.Equal(t, "spec", got[0].normLabel)
-	assert.Nil(t, refDefMatchesIn([]byte("no defs\n"), parseBody([]byte("no defs\n"))))
+	none := []byte("no defs\n")
+	assert.Nil(t, refDefMatchesIn(none, parseBody(none), newBodyLineIndex(none)))
 }
 
 func TestLinkRef_PlanKeysUnderFileKeyNoFileOp(t *testing.T) {
@@ -273,7 +274,7 @@ func TestRefUseEditsInBody(t *testing.T) {
 	root := parseBody(body)
 	lines := splitLines(src)
 
-	edits := refUseEditsInBody(root, body, lines, off, "a", "z")
+	edits := refUseEditsInBody(root, body, newBodyLineIndex(body), lines, off, "a", "z")
 	// Shortcut [a] and full [t][A]; [b] is ignored.
 	require.Len(t, edits, 2)
 	assert.Equal(t, 0, edits[0].Range.Start.Line)
@@ -285,11 +286,11 @@ func TestRefUseEditsInBody(t *testing.T) {
 	assert.Equal(t, 20, edits[1].Range.Start.Character)
 	assert.Equal(t, 21, edits[1].Range.End.Character)
 
-	assert.Empty(t, refUseEditsInBody(root, body, lines, off, "ghost", "z"))
+	assert.Empty(t, refUseEditsInBody(root, body, newBodyLineIndex(body), lines, off, "ghost", "z"))
 	// An inline link carries no Reference and is skipped.
 	inline := []byte("[a](u)\n")
 	ib, io := bodyAndFMOffset(inline)
-	assert.Empty(t, refUseEditsInBody(parseBody(ib), ib, splitLines(inline), io, "a", "z"))
+	assert.Empty(t, refUseEditsInBody(parseBody(ib), ib, newBodyLineIndex(ib), splitLines(inline), io, "a", "z"))
 }
 
 func TestRefUseEdit(t *testing.T) {
@@ -372,13 +373,6 @@ func TestLinkTextBounds(t *testing.T) {
 		assert.Equal(t, -1, s, string(other))
 		assert.Equal(t, -1, e, string(other))
 	}
-}
-
-func TestBodyNewlineCount(t *testing.T) {
-	assert.Equal(t, 0, bodyNewlineCount(nil))
-	assert.Equal(t, 0, bodyNewlineCount([]byte("no newline")))
-	assert.Equal(t, 1, bodyNewlineCount([]byte("a\n")))
-	assert.Equal(t, 3, bodyNewlineCount([]byte("a\n\nb\nc")))
 }
 
 // TestLinkRef_RewritesUsesWithInlineMarkupInText covers reference

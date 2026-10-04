@@ -1014,7 +1014,7 @@ func TestLeafSymbolDirective(t *testing.T) {
 		EndLine:       7,
 		SelectionLine: 5,
 		SelectionCol:  1,
-	}, []byte(""))
+	}, splitLines(nil))
 	assert.Equal(t, "include", got.Name)
 	assert.Equal(t, "<?include?>", got.Detail)
 	assert.Equal(t, symbolKindEvent, got.Kind)
@@ -1028,7 +1028,7 @@ func TestLeafSymbolLinkRef(t *testing.T) {
 		StartLine:     1,
 		SelectionLine: 1,
 		SelectionCol:  1,
-	}, nil)
+	}, splitLines(nil))
 	assert.Equal(t, symbolKindKey, got.Kind)
 	assert.Equal(t, "[lab]:", got.Detail)
 }
@@ -1041,7 +1041,7 @@ func TestLeafSymbolFrontMatter(t *testing.T) {
 		StartLine:     1,
 		SelectionLine: 1,
 		SelectionCol:  1,
-	}, nil)
+	}, splitLines(nil))
 	assert.Equal(t, symbolKindProperty, got.Kind)
 	assert.Empty(t, got.Detail)
 }

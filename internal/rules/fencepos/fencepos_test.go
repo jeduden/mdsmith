@@ -392,3 +392,39 @@ func TestOpenLineRange_SyntheticBlockWithLines(t *testing.T) {
 	assert.Equal(t, 0, start)
 	assert.Equal(t, 4, end)
 }
+
+// TestCloseLineRange_NoTrailingNewline covers a closing fence that ends
+// the file with no newline: the range must stop at the end of the
+// source.
+func TestCloseLineRange_NoTrailingNewline(t *testing.T) {
+	for src, want := range map[string]string{
+		"```go\ncode\n```": "```",
+		"~~~\ncode\n~~~~~": "~~~~~",
+	} {
+		f, err := lint.NewFile("test.md", []byte(src))
+		require.NoError(t, err)
+		visited := false
+		_ = ast.Walk(f.AST, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+			if fcb, ok := n.(*ast.FencedCodeBlock); ok && entering {
+				visited = true
+				_, openEnd := OpenLineRange(f.Source, fcb)
+				s, e := CloseLineRange(f.Source, fcb, openEnd)
+				assert.Equal(t, want, string(f.Source[s:e]), src)
+				return ast.WalkStop, nil
+			}
+			return ast.WalkContinue, nil
+		})
+		assert.True(t, visited, "no fenced code block parsed from %q", src)
+	}
+}
+
+// TestCloseLineRange_SegmentPastSource covers a hand-built block whose
+// content segment ends beyond the source: the range clamps to an empty
+// range at that offset instead of slicing out of bounds.
+func TestCloseLineRange_SegmentPastSource(t *testing.T) {
+	fcb := ast.NewFencedCodeBlock(nil)
+	fcb.Lines().Append(text.NewSegment(5, 40))
+	s, e := CloseLineRange([]byte("```\n"), fcb, 3)
+	assert.Equal(t, 4, s)
+	assert.Equal(t, 4, e)
+}

@@ -1,6 +1,7 @@
 package refactor
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -110,14 +111,6 @@ func TestLabelBoundsInBody(t *testing.T) {
 	})
 }
 
-func TestLineOfBodyOffset(t *testing.T) {
-	body := []byte("a\nbb\nc")
-	assert.Equal(t, 1, lineOfBodyOffset(body, -5), "negative clamps to line 1")
-	assert.Equal(t, 1, lineOfBodyOffset(body, 0))
-	assert.Equal(t, 2, lineOfBodyOffset(body, 2))
-	assert.Equal(t, 3, lineOfBodyOffset(body, 99), "past end clamps to last line")
-}
-
 func TestBodyLineIndex(t *testing.T) {
 	idx := newBodyLineIndex([]byte("a\nbb\nccc"))
 	assert.Equal(t, 1, idx.lineOfOffset(-1), "negative clamps to line 1")
@@ -160,7 +153,7 @@ func TestContentBlockLines(t *testing.T) {
 	// line does not appear in the result.
 	body := []byte("paragraph text\n\n[label]: https://example.com\n")
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	got := contentBlockLines(root, body)
+	got := contentBlockLines(root, newBodyLineIndex(body))
 
 	_, hasPara := got[1]
 	assert.True(t, hasPara, "paragraph line should appear in content block lines")
@@ -172,7 +165,7 @@ func TestContentBlockLines(t *testing.T) {
 func TestContentBlockLines_EmptyBody(t *testing.T) {
 	body := []byte{}
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	got := contentBlockLines(root, body)
+	got := contentBlockLines(root, newBodyLineIndex(body))
 	assert.NotNil(t, got)
 	assert.Empty(t, got)
 }
@@ -182,7 +175,7 @@ func TestContentBlockLines_CodeBlockLinesConsumed(t *testing.T) {
 	// their lines appear in the result.
 	body := []byte("```\ncode line\n```\n\n[ref]: u\n")
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	got := contentBlockLines(root, body)
+	got := contentBlockLines(root, newBodyLineIndex(body))
 
 	_, hasCode := got[2]
 	assert.True(t, hasCode, "code block content line should appear in content block lines")
@@ -201,4 +194,24 @@ func TestLinkRef_EmptyTextReferenceUseRewritten(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assert.Len(t, edits, 3)
+}
+
+// TestBodyLineIndexAgreesWithNewlineCount pins the index the rename
+// scans share to a newline count, at every offset including
+// out-of-range ones.
+func TestBodyLineIndexAgreesWithNewlineCount(t *testing.T) {
+	for _, body := range [][]byte{
+		nil, []byte("a"), []byte("a\n"), []byte("\n\n"),
+		[]byte("one\ntwo\n\nfour"), []byte("trailing\n"),
+	} {
+		idx := newBodyLineIndex(body)
+		for off := -2; off <= len(body)+2; off++ {
+			want := 1
+			if off > 0 {
+				want += bytes.Count(body[:min(off, len(body))], []byte{'\n'})
+			}
+			assert.Equal(t, want, idx.lineOfOffset(off),
+				"body %q offset %d", body, off)
+		}
+	}
 }

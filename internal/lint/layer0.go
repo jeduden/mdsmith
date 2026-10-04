@@ -110,6 +110,19 @@ var piOpenMarker = []byte("<?")
 
 var piCloseMarker = []byte("?>")
 
+// markerRun returns the number of consecutive marker-led (`>`) lines from
+// lines[from]. A block quote takes every one of them, so it sizes the
+// quote's buffers; lazy-continuation lines after the run grow by append.
+// Counting stops at the first non-marker line, so one pass over a document
+// of alternating quotes and other blocks stays linear.
+func markerRun(lines [][]byte, from int) int {
+	n := 0
+	for from+n < len(lines) && paragraphLeadKind(lines[from+n]) == BlockQuote {
+		n++
+	}
+	return n
+}
+
 // maxBlockquoteDepth caps tryBlockquote's recursion into nested quote
 // bodies. Every level of `>` nesting recurses once (see tryBlockquote),
 // with no cap a single line of enough nested markers could exhaust the
@@ -298,13 +311,16 @@ func (s *scanner) tryBlockquote() bool {
 	start := s.i
 	depth := blockDepth(line)
 	// Collect the consecutive marker-led lines, stripping one quote level.
+	// Size the buffers by the marker-led run at the cursor, plus the
+	// phantom slot an open fence appends. Sizing by the lines left in the
+	// document would reserve the whole remainder for a few lines.
+	hint := markerRun(s.lines, s.i) + 1
+	body := make([][]byte, 0, hint)
+	parentLine := make([]int, 0, hint)
 	// codeCapable records whether any stripped line could open a code block
 	// (a fence or a >=4-column indent); the overwhelmingly common
 	// prose-only block quote sets it false and skips the recursive scan and
 	// its allocations entirely.
-	remaining := len(s.lines) - s.i
-	body := make([][]byte, 0, remaining)
-	parentLine := make([]int, 0, remaining)
 	codeCapable := false
 	// openFence tracks whether a fenced code block opened by a marker line
 	// is still open. A fenced code block inside a quote must keep its `>`
