@@ -404,6 +404,25 @@ func TestPlanRenameBatch(t *testing.T) {
 		assert.Len(t, batch.moves[0].own, 1)
 		assert.Equal(t, batch.edits["docs/a.md"], batch.moves[0].own)
 	})
+	t.Run("own holds only the moved file's outbound edits", func(t *testing.T) {
+		t.Parallel()
+		batch := planRenameBatch(ws, root, []fileRename{
+			{OldURI: uri("docs/a.md"), NewURI: uri("docs/z/a.md")},
+			{OldURI: uri("docs/b.md"), NewURI: uri("docs/z/c.md")},
+		})
+		require.Len(t, batch.moves, 2)
+		assert.Equal(t, []string{"c", "c.md"}, editTexts(batch.edits["docs/a.md"]))
+		assert.Equal(t, []string{"c.md"}, editTexts(batch.moves[0].own), "not the [[b]] stem rewrite")
+	})
+}
+
+// editTexts returns the NewText of each edit, in order.
+func editTexts(edits []refactor.Edit) []string {
+	out := make([]string, 0, len(edits))
+	for _, e := range edits {
+		out = append(out, e.NewText)
+	}
+	return out
 }
 
 func TestCompareTextEditsTopDown(t *testing.T) {

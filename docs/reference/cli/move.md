@@ -298,7 +298,7 @@ mdsmith move guide.md reference/guide.md --dry-run
   move engine. A rename of several files is planned as one
   batch: a link between two moved files gets one rewrite,
   from the holder's new folder to the target's new path. A
-  link to or from a refused move, unless that file stays in
-  its folder, or a `[[stem]]` link whose stem another moved
-  file takes, gets none; the server logs a warning with
-  their count, and MDS027 reports any that no longer resolve.
+  link to or from a refused move (unless it stays in its
+  folder), or a `[[stem]]` whose stem another moved file
+  takes, gets none, and the server's warning counts it; so
+  does a link to a refused move whose path a moved file takes.

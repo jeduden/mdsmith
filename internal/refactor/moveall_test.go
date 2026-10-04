@@ -68,6 +68,20 @@ func TestMoveAll_DifferentNewFolders(t *testing.T) {
 	assert.Equal(t, []string{"../y/b.md"}, texts(bp.Edits, "a.md"))
 	assert.Equal(t, []string{"../x/a.md"}, texts(bp.Edits, "b.md"))
 	assert.Zero(t, bp.Withheld)
+	assert.Equal(t, []string{"../y/b.md"}, texts(bp.Own, "a.md"))
+}
+
+// TestMoveAll_OwnExcludesStemEdits locks that Own holds only a moved
+// file's outbound path edits, not a `[[stem]]` rewrite another move
+// plans inside it.
+func TestMoveAll_OwnExcludesStemEdits(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"a.md": "# A\n\n[[b]] [b](b.md)\n",
+		"b.md": "# B\n",
+	}, MovePair{"a.md", "x/a.md"}, MovePair{"b.md", "y/c.md"})
+	assert.Equal(t, []string{"../y/c.md", "c"}, texts(bp.Edits, "a.md"))
+	assert.Equal(t, []string{"../y/c.md"}, texts(bp.Own, "a.md"))
+	assert.Equal(t, []string{"c"}, texts(bp.StemEdits, "a.md"))
 }
 
 func TestMoveAll_ThreeFileCycle(t *testing.T) {
@@ -124,6 +138,34 @@ func TestMoveAll_Chain(t *testing.T) {
 	}, MovePair{"b.md", "z.md"}, MovePair{"a.md", "b.md"})
 	assert.Equal(t, []string{"z.md"}, texts(bp.Edits, "a.md"))
 	assert.Equal(t, []string{"z.md", "b.md"}, texts(bp.Edits, "c.md"))
+}
+
+// TestMoveAll_ChainOntoRefusedMove covers a planned pair landing on a
+// path whose own move was refused: the host still vacates it, so every
+// link to the refused file then reaches the newcomer. No rule can flag
+// such a link, since it still resolves, so each one is counted.
+func TestMoveAll_ChainOntoRefusedMove(t *testing.T) {
+	bp := MoveAll(newMemWorkspace(map[string]string{
+		"a.md": "# A\n",
+		"b.md": "# B\n",
+		"c.md": "# C\n",
+		"n.md": "# N\n\n[b](b.md) [[b]] [a](a.md)\n",
+	}), []MovePair{{"b.md", "c.md"}, {"a.md", "b.md"}})
+	assert.Equal(t, DestinationExistsError{Dst: "c.md"}, bp.Moves[0].Err)
+	require.NoError(t, bp.Moves[1].Err)
+	assert.Equal(t, []string{"b.md"}, texts(bp.Edits, "n.md"))
+	assert.Equal(t, 2, bp.Withheld)
+
+	// A planned holder's link is counted once, by its outbound pass,
+	// and the refused file's link to itself is not counted.
+	bp = MoveAll(newMemWorkspace(map[string]string{
+		"a.md": "# A\n",
+		"b.md": "# B\n\n[self](b.md)\n",
+		"c.md": "# C\n",
+		"d.md": "# D\n\n[b](b.md)\n",
+	}), []MovePair{{"b.md", "c.md"}, {"a.md", "b.md"}, {"d.md", "e.md"}})
+	require.NoError(t, bp.Moves[2].Err)
+	assert.Equal(t, 1, bp.Withheld)
 }
 
 // TestMoveAll_Swap covers two files trading places.

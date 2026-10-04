@@ -103,8 +103,9 @@ func guardRenameEdits(batch renameBatch) (map[string][]textEdit, int) {
 // read against root. A pair with an empty or unchanged path is
 // skipped, and a pair listed twice is planned once. Every move whose
 // source is readable is recorded in request order, planned or not,
-// because the editor moves it anyway; a planned move keeps the edits
-// the batch planned inside the moved file, for dropCrossMoveEdits.
+// because the editor moves it anyway; a planned move keeps the path
+// edits its own outbound pass planned (refactor.BatchPlan.Own), for
+// dropCrossMoveEdits.
 func planRenameBatch(ws refactor.Workspace, root string, files []fileRename) renameBatch {
 	var pairs []refactor.MovePair
 	seen := map[refactor.MovePair]bool{}
@@ -127,7 +128,7 @@ func planRenameBatch(ws refactor.Workspace, root string, files []fileRename) ren
 		}
 		pm := plannedMove{key: m.Key, changesDir: path.Dir(m.Src) != path.Dir(m.Dst)}
 		if m.Err == nil {
-			pm.own = bp.Edits[m.Key]
+			pm.own = bp.Own[m.Key]
 		}
 		batch.moves = append(batch.moves, pm)
 	}

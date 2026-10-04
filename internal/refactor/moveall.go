@@ -8,6 +8,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdpath"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 )
 
 // ErrDuplicateSource is returned for a batch pair whose source an
@@ -45,10 +46,13 @@ type BatchMove struct {
 // same way. Withheld counts the links between two batch members that
 // stop resolving yet get no edit, because one end's move could not be
 // planned or because no `[[stem]]` spelling reaches the target once
-// the batch has run.
+// the batch has run. Own holds, per planned move's edit key, the
+// edits its outbound pass re-spelled for the file's new folder: the
+// only path edits inside a moved file the batch plans.
 type BatchPlan struct {
 	Plan
 	StemEdits map[string][]Edit
+	Own       map[string][]Edit
 	Moves     []BatchMove
 	Withheld  int
 }
@@ -72,7 +76,9 @@ type BatchPlan struct {
 // edit is planned for a link between it and another member, except a
 // link inside it when it lands in its own folder, which reads the same
 // from there; any other such link counts in Withheld when it stops
-// resolving after the batch.
+// resolving after the batch. When a planned member lands on its path,
+// every link to it counts too (see countShadowed): it then reaches the
+// newcomer.
 //
 // Move is MoveAll with one pair.
 func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
@@ -80,6 +86,7 @@ func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
 	bp := BatchPlan{
 		Plan:      Plan{Edits: map[string][]Edit{}},
 		StemEdits: map[string][]Edit{},
+		Own:       map[string][]Edit{},
 		Moves:     moves,
 	}
 	p := lint.NewParser()
@@ -92,16 +99,66 @@ func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
 		appendReferrerEdits(bp.Edits, ws, p, r, m.Src, m.Dst)
 		appendWikilinkStemEdits(bp.StemEdits, ws, r, m.Src, m.Dst)
 		if _, source, ok := ws.Resolve(m.Src); ok && (mdpath.HasMarkdownExt(path.Ext(m.Src)) || r.listed(m.Src)) {
-			appendOutboundEdits(bp.Edits, p, r, m.Key, m.Src, m.Dst, source)
+			appendOutboundEdits(bp.Own, p, r, m.Key, m.Src, m.Dst, source)
 		}
 	}
-	for key, edits := range bp.StemEdits {
-		bp.Edits[key] = append(bp.Edits[key], edits...)
+	for _, m := range moves {
+		if u, ok := b.members[m.Dst]; m.Err == nil && ok && !u.planned {
+			r.src = m.Dst
+			countShadowed(ws, p, r, m.Dst)
+		}
+	}
+	for _, part := range []map[string][]Edit{bp.Own, bp.StemEdits} {
+		for key, edits := range part {
+			bp.Edits[key] = append(bp.Edits[key], edits...)
+		}
 	}
 	stableSortEdits(bp.Edits)
 	stableSortEdits(bp.StemEdits)
+	stableSortEdits(bp.Own)
 	bp.Withheld = b.withheld
 	return bp
+}
+
+// countShadowed counts, in the batch, every link to vacated: a member
+// whose move was refused, whose path a planned member takes. The host
+// still moves vacated, so each such link then reaches the newcomer;
+// it still resolves, so no rule flags it, and the batch plans no edit
+// for it. A path link is counted unless its holder is a planned
+// member, whose outbound pass counts it (see countStale); a
+// `[[stem]]` link is counted when its stem reaches vacated today.
+func countShadowed(ws Workspace, p parser.Parser, r *destResolver, vacated string) {
+	base := []byte(path.Base(vacated))
+	for _, rel := range r.paths() {
+		if m, moved := r.member(rel); rel == vacated || moved && m.planned {
+			continue
+		}
+		_, source, ok := ws.Resolve(rel)
+		if !ok || !mayName(source, base) {
+			continue
+		}
+		for _, d := range locateDests(p, rel, source) {
+			if ref, ok := r.target(rel, d.dest); ok && ref.target == vacated {
+				r.batch.withheld++
+			}
+		}
+	}
+	stem, ok := linkgraph.FileStemKey(path.Base(vacated))
+	if !ok || !linkgraph.WikilinkIndexed(vacated) {
+		return
+	}
+	edges := ws.IncomingWikilinkEdges(stem)
+	if len(edges) == 0 || !r.wikilinkIndex().StemResolvesTo(stem, vacated) {
+		return
+	}
+	lines := edgeLines{ws: ws}
+	for _, e := range edges {
+		if _, row, ok := lines.row(e); ok {
+			if got, _, _, ok := linkgraph.WikilinkStemAt(row, e.SourceCol-1); ok && got == stem {
+				r.batch.withheld++
+			}
+		}
+	}
 }
 
 // validateBatch normalizes every pair, records each readable source as
