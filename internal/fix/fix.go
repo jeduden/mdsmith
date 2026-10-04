@@ -55,6 +55,12 @@ type Fixer struct {
 	// leaves this nil and continues to derive dirFS from each file's
 	// absolute path.
 	SourceFS fs.FS
+	// RootFS, when non-nil, is a view of RootDir the caller owns and
+	// lends: a file below RootDir borrows it as lint.File.RootFS instead
+	// of opening a root of its own, and the fix never closes it. It
+	// mirrors engine.Runner.RootFS, so a Session's Fix reuses the root
+	// its Checks already hold. With none, the fix opens and closes one.
+	RootFS fs.FS
 
 	// WriteFile, when non-nil, replaces atomicWriteFile for the
 	// final on-disk write step. Tests inject an error-returning
@@ -794,9 +800,9 @@ func (f *Fixer) prepareFile(path string, source []byte) (preparedFile, error) {
 // wireFileFS sets lf's FS, RootFS/RootDir, and gitignore hook and returns
 // its FS plus a release that closes exactly the roots it opened: its own
 // directory unless the caller lent SourceFS, and the project root for a
-// file below RootDir. A lent SourceFS stays open for its owner. It runs
-// after prepareFile's last error return, so no failed prepare holds a
-// root.
+// file below RootDir unless the caller lent RootFS. A lent SourceFS or
+// RootFS stays open for its owner. It runs after prepareFile's last
+// error return, so no failed prepare holds a root.
 func (f *Fixer) wireFileFS(lf *lint.File, path string) (fs.FS, func()) {
 	dir := filepath.Dir(path)
 	var ownFS, ownRoot fs.FS
@@ -811,11 +817,14 @@ func (f *Fixer) wireFileFS(lf *lint.File, path string) (fs.FS, func()) {
 	}
 	gitignoreDir := dir
 	if f.RootDir != "" {
-		if dir == f.RootDir {
+		lf.RootDir = f.RootDir
+		switch {
+		case dir == f.RootDir:
 			// Reuse the already-opened FS; avoid a second os.OpenRoot for the same dir.
-			lf.RootDir = f.RootDir
 			lf.RootFS = lf.FS
-		} else {
+		case f.RootFS != nil:
+			lf.RootFS = f.RootFS
+		default:
 			lf.SetRootDir(f.RootDir)
 			ownRoot = lf.RootFS
 		}

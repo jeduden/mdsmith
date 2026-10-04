@@ -369,6 +369,7 @@ func (s *Session) Fix(uri string, source []byte) (FixResult, error) {
 		StripFrontMatter: frontMatterEnabled(s.cfg),
 		MaxInputBytes:    s.maxBytes,
 		SourceFS:         src.FS,
+		RootFS:           s.lentRoot(),
 	})
 	src.release()
 	if err != nil {
@@ -421,6 +422,7 @@ func (s *Session) FixRule(uri string, source []byte, names []string) (FixResult,
 		StripFrontMatter: frontMatterEnabled(s.cfg),
 		MaxInputBytes:    s.maxBytes,
 		SourceFS:         src.FS,
+		RootFS:           s.lentRoot(),
 	}, names)
 	src.release()
 	if err != nil {

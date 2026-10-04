@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/lint/rootfstest"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
@@ -78,3 +79,52 @@ func TestSourceClosesItsProjectRoot(t *testing.T) {
 	_, err = fs.Stat(lent, ".")
 	assert.NoError(t, err, "the lent SourceFS is left alone")
 }
+
+// TestSourceBorrowsALentRootFS locks that Source, given a RootFS the
+// caller lends, reads a file below RootDir through it and opens no
+// project root of its own. Not parallel: it records lint.OpenRootFS.
+func TestSourceBorrowsALentRootFS(t *testing.T) {
+	root := t.TempDir()
+	opened := rootfstest.Record(t)
+	spy := &rootFSSpyRule{}
+
+	_, err := Source(SourceOptions{
+		Config:   &config.Config{Rules: map[string]config.RuleCfg{"root-spy": {Enabled: true}}},
+		Rules:    []rule.Rule{spy},
+		Path:     filepath.Join("sub", "b.md"),
+		Source:   []byte("# B\n"),
+		RootDir:  root,
+		SourceFS: os.DirFS(root),
+		RootFS:   spy.lent(root),
+	})
+	require.NoError(t, err)
+	assert.Empty(t, opened(), "a lent RootFS leaves no project root to open")
+	assert.True(t, *spy.sawLent, "the file reads its project root through the lent RootFS")
+}
+
+// rootFSSpyRule is a fixable rule that records whether the File it
+// checks carries the RootFS the test lent. sawLent is a pointer so the
+// clone Source checks reports into the test's flag.
+type rootFSSpyRule struct {
+	want    fs.FS
+	sawLent *bool
+}
+
+// lent returns the RootFS the test lends and arms the spy to look for
+// it. The view is a pointer of its own, so no other FS compares equal.
+func (r *rootFSSpyRule) lent(root string) fs.FS {
+	r.want = &struct{ fs.FS }{os.DirFS(root)}
+	r.sawLent = new(bool)
+	return r.want
+}
+
+func (*rootFSSpyRule) ID() string       { return "MDS997" }
+func (*rootFSSpyRule) Name() string     { return "root-spy" }
+func (*rootFSSpyRule) Category() string { return "test" }
+func (r *rootFSSpyRule) Check(f *lint.File) []lint.Diagnostic {
+	if f.RootFS == r.want {
+		*r.sawLent = true
+	}
+	return nil
+}
+func (*rootFSSpyRule) Fix(f *lint.File) []byte { return f.Source }

@@ -115,8 +115,8 @@ type Server struct {
 	// editor's unsaved bytes reach cross-file rules. reloadConfig
 	// rebuilds it when the compiled config changes (config is compiled
 	// once per session); sessionMu guards the rebuild against concurrent
-	// lint/fix readers. workspace is the session's overlay, held so
-	// document events can Set/Delete buffers on it.
+	// lint/fix readers. The session's overlay is held by sessionLease,
+	// which closes it once the session is retired and released.
 	//
 	// didChange/didSave/didClose/didChangeWatchedFiles push buffer edits
 	// and drop stale cache entries through session.Invalidate; a
@@ -125,7 +125,6 @@ type Server struct {
 	// starts fresh.
 	sessionMu sync.RWMutex
 	session   *mdsmith.Session
-	workspace *mdsmith.OverlayWorkspace
 	// sessionLease counts the callers holding session; currentSession
 	// and sessionAt hand out a release, and a rebuild retires the
 	// superseded lease so its handles close once the last holder is done.

@@ -37,6 +37,10 @@ type SourceOptions struct {
 	// neighbour-file lookups when the editor is launched from
 	// elsewhere.
 	SourceFS fs.FS
+	// RootFS, when non-nil, is a view of RootDir the caller owns and
+	// lends (see Fixer.RootFS): the fix borrows it instead of opening a
+	// project root of its own, and never closes it.
+	RootFS fs.FS
 }
 
 // Source applies every fixable rule allowed by the effective
@@ -87,11 +91,12 @@ func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 	}
 	f := &Fixer{
 		Config:           cfg,
-		Rules:            cloneRules(opts.Rules),
+		Rules:            opts.Rules,
 		StripFrontMatter: opts.StripFrontMatter,
 		RootDir:          opts.RootDir,
 		MaxInputBytes:    maxBytes,
 		SourceFS:         opts.SourceFS,
+		RootFS:           opts.RootFS,
 	}
 	pf, err := f.prepareFile(opts.Path, opts.Source)
 	if err != nil {
@@ -118,6 +123,7 @@ func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 		}
 		fixable = filtered
 	}
+	fixable = cloneFixable(fixable)
 	lf.GeneratedRanges = gensection.FindAllGeneratedRanges(lf)
 	// applyFixPasses' error sink is unreachable today: the only
 	// path that appends is `lint.NewFile`'s error return, and
@@ -130,15 +136,17 @@ func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 	return lf.FullSource(fixed), nil
 }
 
-// cloneRules returns a private copy of each rule instance, as
-// engine.Runner takes per worker. A caller such as a Session hands the
-// same instances to concurrent lints that clone them, and a rule that
-// sets lazy state in Check (catalog, toc) must not write it on the
-// shared instance: that races those clones and leaks into every copy.
-func cloneRules(rules []rule.Rule) []rule.Rule {
-	out := make([]rule.Rule, len(rules))
-	for i, rl := range rules {
-		out[i] = rule.CloneInstance(rl)
+// cloneFixable replaces each rule in fixable, in place, with a private
+// copy, as engine.Runner takes per worker. A caller such as a Session
+// hands the same instances to concurrent lints that clone them, and a
+// rule that sets lazy state in Check (catalog, toc) must not write it on
+// the shared instance: that races those clones and leaks into every
+// copy. Only the fixable rules are checked here, so only they are
+// cloned: a quick-fix (SourceWithRules with one name) copies one rule,
+// not the whole registry. fixable is fixableRules' own slice.
+func cloneFixable(fixable []rule.FixableRule) []rule.FixableRule {
+	for i, rl := range fixable {
+		fixable[i] = rule.CloneInstance(rl).(rule.FixableRule)
 	}
-	return out
+	return fixable
 }

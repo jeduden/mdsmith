@@ -58,7 +58,6 @@ func (s *Server) rebuildSession(cfg *config.Config, cfgPath string) {
 	s.sessionMu.Lock()
 	old := s.sessionLease
 	s.session = sess
-	s.workspace = ws
 	s.sessionRoot = root
 	s.sessionLease = &sessionLease{sess: sess, ws: ws}
 	s.sessionMu.Unlock()

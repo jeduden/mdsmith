@@ -57,6 +57,56 @@ func TestSessionLendsOneRootAndClosesItOnDispose(t *testing.T) {
 	}
 }
 
+// TestSessionFixBorrowsTheLentRoot locks that Fix and FixRule read the
+// project root through the root the session lends its Checks, rather
+// than opening (and closing) a root of their own on every call. Not
+// parallel: it records lint.OpenRootFS.
+func TestSessionFixBorrowsTheLentRoot(t *testing.T) {
+	dir := writeRootsTree(t)
+	s, err := NewSession(SessionOptions{Workspace: OSWorkspace{Root: dir}, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+	opened := rootfstest.Record(t)
+
+	res, err := s.Fix("a.md", []byte(rootsSrc))
+	require.NoError(t, err)
+	assert.Empty(t, res.Diagnostics, "b.md resolves through the lent root")
+	_, err = s.FixRule("a.md", []byte(rootsSrc), []string{"catalog"})
+	require.NoError(t, err)
+
+	got := opened()
+	assert.Len(t, got, 1, "Fix and FixRule borrow the one root the session lends")
+	for _, r := range got {
+		_, err := fs.Stat(r, "b.md")
+		assert.NoError(t, err, "the lent root stays open until Dispose")
+	}
+}
+
+// TestSessionMoveWalksTheLentRoot locks that an OSWorkspace session's
+// refactor walk reads through the source view the session already holds
+// for its Checks, so a Move opens no os.Root of its own, and that the
+// view stays open for the session's later operations. Not parallel: it
+// records lint.OpenRootFS.
+func TestSessionMoveWalksTheLentRoot(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "api.md"), []byte("# API\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "guide.md"), []byte("See [[api]].\n"), 0o644))
+	s, err := NewSession(SessionOptions{Workspace: OSWorkspace{Root: dir}, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+	opened := rootfstest.Record(t)
+
+	for range 2 {
+		plan, err := s.Move("api.md", "service.md")
+		require.NoError(t, err)
+		require.Len(t, plan.Edits["guide.md"], 1)
+	}
+	got := opened()
+	require.Len(t, got, 1, "every walk reads the one root the session lends")
+	_, err = fs.Stat(got[0], "guide.md")
+	assert.NoError(t, err, "the walk leaves the session's root open")
+}
+
 // TestSessionCheckVersionAfterDisposeReadsDisk locks that Dispose drops
 // the parse-cache entries that hold the roots it closes, so a
 // CheckVersion at an already-cached version still reads [b](b.md) from

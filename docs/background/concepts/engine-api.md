@@ -197,7 +197,8 @@ that allowlist.
 
 ## Caching
 
-The session owns four caches, all session-scoped:
+The session owns four caches, all session-scoped, plus the disk
+roots it lends:
 
 - **Check results.** One entry per URI, holding the last
   `(content-hash, diagnostics)` pair. The next `Check` on the same URI

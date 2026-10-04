@@ -9,7 +9,6 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/refactor"
 )
@@ -177,7 +176,9 @@ func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 // files on the first such query, reusing it after that; Resolve alone
 // reads only the file it names, so a label rename or a failed detection
 // never walks a large WASM vault. One walk of one FS snapshot (a
-// MemWorkspace copies every file's bytes per FS call) lists every file
+// MemWorkspace copies every file's bytes per FS call), taken through the
+// session's source view so an OSWorkspace walks the root the session
+// already holds, lists every file
 // for both the edge index and WikilinkIndex; keep picks which paths the
 // walk holds (isMarkdownPath for a symbol rename, which never builds a
 // wikilink index, isMovePath for a move). overlayURI, when set,
@@ -186,7 +187,11 @@ func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 func (s *Session) buildRefactorWorkspace(
 	overlayURI string, overlaySource []byte, keep func(string) bool,
 ) *sessionRefactorWorkspace {
-	paths := sync.OnceValue(func() []string { return walkWorkspacePaths(s.ws.FS(), ownsFS(s.ws), keep) })
+	paths := sync.OnceValue(func() []string {
+		src := s.sourceFS()
+		defer src.release()
+		return walkWorkspacePaths(src.FS, keep)
+	})
 	return &sessionRefactorWorkspace{
 		IndexEdges: refactor.NewLazyIndexEdges(func() *index.Index {
 			return s.indexRefactorWorkspace(paths(), overlayURI, overlaySource)
@@ -200,13 +205,10 @@ func (s *Session) buildRefactorWorkspace(
 
 // walkWorkspacePaths walks fsys once and returns the file paths keep
 // accepts. The walk callback swallows per-entry errors, so an unreadable
-// root or subtree just contributes no paths. When owned, the walk is
-// fsys's only use, so a closable fsys (an OSWorkspace's os.Root view) is
-// closed once it ends; an fsys the caller does not own is left open.
-func walkWorkspacePaths(fsys fs.FS, owned bool, keep func(string) bool) []string {
-	if owned {
-		defer lint.CloseFS(fsys)
-	}
+// root or subtree just contributes no paths. fsys is the session's
+// source view (sourceFS): an OSWorkspace's is the root the session
+// already lends its Checks, so the walk opens no handle of its own.
+func walkWorkspacePaths(fsys fs.FS, keep func(string) bool) []string {
 	var paths []string
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && keep(p) {

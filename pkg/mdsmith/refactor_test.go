@@ -390,12 +390,12 @@ func TestSession_IndexRefactorWorkspace(t *testing.T) {
 		"notes.txt": []byte("[b](sub/b.md#b)\n"),
 	})
 	t.Run("indexes only Markdown files", func(t *testing.T) {
-		idx := s.indexRefactorWorkspace(walkWorkspacePaths(s.ws.FS(), false, isMovePath), "", nil)
+		idx := s.indexRefactorWorkspace(walkWorkspacePaths(s.ws.FS(), isMovePath), "", nil)
 		assert.ElementsMatch(t, []string{"a.md", "sub/b.md"}, idx.Files())
 		assert.Empty(t, idx.IncomingEdges("sub/b.md", "b"))
 	})
 	t.Run("overlay replaces the saved bytes", func(t *testing.T) {
-		paths := walkWorkspacePaths(s.ws.FS(), false, isMovePath)
+		paths := walkWorkspacePaths(s.ws.FS(), isMovePath)
 		idx := s.indexRefactorWorkspace(paths, "./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
 		edges := idx.IncomingEdges("sub/b.md", "b")
 		require.Len(t, edges, 1)
@@ -526,25 +526,8 @@ func TestWalkWorkspacePaths(t *testing.T) {
 	})
 	assert.ElementsMatch(t,
 		[]string{"a.md", "sub/logo.png", "node_modules/pkg/README.md"},
-		walkWorkspacePaths(ws.FS(), false, isMovePath))
-	assert.Empty(t, walkWorkspacePaths(failFS{}, false, isMovePath))
-}
-
-// TestWalkWorkspacePaths_ClosesOnlyOwnedFS locks that the walk closes a
-// closable FS the caller owns (an OSWorkspace's fresh os.Root view) and
-// leaves one it does not own open for the workspace that handed it out.
-func TestWalkWorkspacePaths_ClosesOnlyOwnedFS(t *testing.T) {
-	mem := NewMemWorkspace(map[string][]byte{"a.md": []byte("# A\n")})
-	for _, owned := range []bool{true, false} {
-		closed := 0
-		got := walkWorkspacePaths(closeRecordingFS{mem.FS(), &closed}, owned, isMovePath)
-		assert.Equal(t, []string{"a.md"}, got)
-		want := 0
-		if owned {
-			want = 1
-		}
-		assert.Equal(t, want, closed, "owned=%v", owned)
-	}
+		walkWorkspacePaths(ws.FS(), isMovePath))
+	assert.Empty(t, walkWorkspacePaths(failFS{}, isMovePath))
 }
 
 // TestOwnsFS locks which workspaces hand a caller of FS a view it owns:

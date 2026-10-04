@@ -170,7 +170,12 @@ func (s *Server) registerWatchers(ctx context.Context) {
 // watch began (see dropPreWatchWikilinks). An error reply, a missing
 // reply within watchAckTimeout, or ctx ending leaves the flag unset. A
 // late reply is safe to trust: the drop happens when it arrives.
+//
+// It runs on its own goroutine, so like fetchClientSettings it recovers
+// a panic (here from the session's cache drop) rather than letting it
+// kill the whole server.
 func (s *Server) awaitWatchersAck(ctx context.Context, id string, ch chan rpcResponse) {
+	defer s.recoverPanic("watcher registration ack")
 	defer s.unregisterPendingResponse(id)
 	timeout := time.NewTimer(s.watchAckTimeout)
 	defer timeout.Stop()

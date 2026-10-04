@@ -151,3 +151,18 @@ decision on the limit first.
   makes the lints in between walk the tree again. Narrowing
   needs the index to skip ignored directories, which changes
   what MDS027 resolves.
+- [fix.go](../internal/fix/fix.go): `Fixer.Fix`
+  (`Session.FixPaths`) still checks the caller's shared rule
+  instances, so a catalog or toc Check there can race a
+  concurrent `Session.Check` clone. `fix.Source` already clones
+  the fixable rules it checks; the `Fixer` path needs the same
+  without breaking its spy-based tests.
+- [session.go](../pkg/mdsmith/session.go): a `CheckVersion`
+  that races `Dispose` can put a File holding a closed root
+  back into the parse cache after `InvalidateAll`. Fixing it
+  needs a generation-guarded `ParseCache.Put`.
+- [runner.go](../internal/engine/runner.go): `Run` opens one
+  project root per file, and four call sites (engine, fix,
+  export, extract) each wire their own directory and project
+  roots. One shared helper and one root per run would remove
+  the duplicated ownership logic.
