@@ -111,23 +111,32 @@ func TestE2E_Build_SignalKillsRecipeTree(t *testing.T) {
 // being swallowed until the lint-fix pass finishes.
 func TestE2E_Fix_NoBuildKeepsDefaultSignalAction(t *testing.T) {
 	dir := t.TempDir()
-	body := "# Title\n\n" + strings.Repeat("Some text with trailing spaces   \n\n", 40)
-	for i := range 1500 {
+	// An unbreakable 300-char line is an MDS001 finding fix cannot
+	// repair, so each file prints ~0.5 KB of diagnostics: far more than
+	// a pipe buffer holds in total.
+	body := "# Title\n\n" + strings.Repeat("x", 300) + "\n"
+	for i := range 500 {
 		writeFixture(t, dir, fmt.Sprintf("f%d.md", i), body)
 	}
 
+	// Nobody drains the output pipe, so fix blocks writing its
+	// diagnostics and cannot exit before the signal lands: a signal to
+	// an exited but unreaped child would succeed and hide the race.
+	pr, pw, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = pr.Close() })
 	cmd := exec.Command(binaryPath, "fix", "--no-color", "--no-build", ".")
 	cmd.Dir = dir
 	cmd.Env = envWithCoverDir(coverDir)
+	cmd.Stdout = pw
+	cmd.Stderr = pw
 	require.NoError(t, cmd.Start())
+	require.NoError(t, pw.Close())
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 
 	time.Sleep(100 * time.Millisecond)
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		_ = cmd.Wait()
-		t.Skipf("fix finished before the signal was sent: %v", err)
-	}
-	err := cmd.Wait()
+	require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
+	err = cmd.Wait()
 	var ee *exec.ExitError
 	require.True(t, errors.As(err, &ee), "fix must not survive SIGTERM, got %v", err)
 	ws, ok := ee.Sys().(syscall.WaitStatus)
