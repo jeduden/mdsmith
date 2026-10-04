@@ -152,9 +152,12 @@ func extractBacklinksFromSource(
 	// Wikilink resolution needs the workspace root: ResolveWikiLink
 	// walks the fs.FS to find candidates. Standard Markdown link
 	// resolution operates on the source-relative path and never reads
-	// f.RootFS, so this is a wikilink-only requirement.
+	// f.RootFS, so this is a wikilink-only requirement. The root is
+	// closed once this file's records are built.
 	if rootDir != "" {
-		f.SetRootDir(rootDir)
+		root := openRootFS(rootDir)
+		defer func() { _ = root.Close() }()
+		f.RootDir, f.RootFS = rootDir, root
 	}
 	var out []Record
 	for _, link := range linkgraph.ExtractLinks(f) {
@@ -272,6 +275,11 @@ func wikilinkTargetString(wl linkgraph.WikiLink) string {
 // otherwise untestable on the platform this project's coverage gate
 // runs on.
 var relFn = filepath.Rel
+
+// openRootFS opens the root a source file's wikilinks resolve against.
+// A test seam — production uses lint.OpenRootFS — so a test can check
+// the handle is closed.
+var openRootFS = lint.OpenRootFS
 
 // relPath returns p relative to rootDir using forward slashes. When
 // rootDir is empty or relFn cannot relate the paths, p is returned
