@@ -77,3 +77,87 @@ func TestYAMLResolverUnparseable(t *testing.T) {
 		assert.False(t, ok, "src %q", src)
 	}
 }
+
+// issuePos resolves err's Issue against the YAML source src the way the
+// load boundary does: a pre-resolved line wins, else the key path.
+func issuePos(t *testing.T, src string, err error) (int, int) {
+	t.Helper()
+	require.Error(t, err)
+	var iss *Issue
+	require.True(t, errors.As(err, &iss), "error is not a config Issue: %v", err)
+	if iss.Line > 0 {
+		return iss.Line, iss.Column
+	}
+	line, col, ok := newYAMLResolver([]byte(src)).Resolve(iss.Path)
+	require.True(t, ok, "path %s did not resolve", iss.Path)
+	return line, col
+}
+
+func TestIssueWrapKeepsCause(t *testing.T) {
+	cause := errors.New("boom")
+	iss := issueWrap(KeyPath{"kinds", "a"}, cause)
+	assert.Equal(t, "boom", iss.Error())
+	assert.ErrorIs(t, iss, cause)
+	assert.Nil(t, issueWrap(KeyPath{"x"}, nil))
+}
+
+func TestKindValidationPositions(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		line int
+		col  int
+	}{
+		{"path-pattern", `kinds:
+  plan:
+    path-pattern: "plan/[a"
+`, 3, 5},
+		{"extends undeclared", `kinds:
+  plan:
+    extends: nope
+`, 3, 5},
+		{"schema both inline and file", `kinds:
+  plan:
+    schema:
+      frontmatter:
+        id: int
+    rules:
+      required-structure:
+        schema: plan/proto.md
+`, 3, 5},
+		{"schema file and inline-schema", `kinds:
+  plan:
+    rules:
+      required-structure:
+        schema: plan/proto.md
+        inline-schema:
+          frontmatter:
+            id: int
+`, 4, 7},
+		{"kind-assignment undeclared", `kinds:
+  plan: {}
+kind-assignment:
+  - glob: ["a.md"]
+    kinds: [plan, ghost]
+`, 5, 19},
+		{"extends incompatible frontmatter", `kinds:
+  base:
+    schema:
+      frontmatter:
+        id: int
+  plan:
+    extends: base
+    schema:
+      frontmatter:
+        id: string
+`, 8, 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseBytes([]byte(tt.src))
+			line, col := issuePos(t, tt.src, err)
+			assert.Equal(t, tt.line, line, "err: %v", err)
+			assert.Equal(t, tt.col, col, "err: %v", err)
+		})
+	}
+}

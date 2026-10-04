@@ -52,6 +52,10 @@ type Issue struct {
 	Severity lint.Severity
 	Path     KeyPath
 
+	// Err is the underlying cause, when the issue wraps one, so
+	// errors.Is and errors.As still see through the issue.
+	Err error
+
 	// Line and Column, when Line > 0, are a 1-based position in the
 	// YAML text that was decoded. They take precedence over Path.
 	Line   int
@@ -60,6 +64,23 @@ type Issue struct {
 
 // Error returns the issue message.
 func (i *Issue) Error() string { return i.Message }
+
+// Unwrap returns the underlying cause, if any.
+func (i *Issue) Unwrap() error { return i.Err }
+
+// issueWrap attaches path to err, keeping err's message verbatim and
+// err itself as the cause. A nil err yields nil.
+func issueWrap(path KeyPath, err error) *Issue {
+	if err == nil {
+		return nil
+	}
+	return &Issue{
+		Message:  err.Error(),
+		Severity: lint.Error,
+		Path:     path,
+		Err:      err,
+	}
+}
 
 // issueAt builds an error-severity Issue at path with a formatted
 // message.
