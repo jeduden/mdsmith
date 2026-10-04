@@ -1530,3 +1530,18 @@ func TestBuildPassOpts_RunsProcesses(t *testing.T) {
 	assert.False(t, buildPassOpts{checkStale: true}.runsProcesses())
 	assert.False(t, buildPassOpts{explain: "out.txt"}.runsProcesses())
 }
+
+// TestRunOneTarget_CancelledContextStartsNoRecipe covers an interrupt
+// that lands after the dispatch-time check, while the ActionID is
+// computed: runOneTarget itself must not start the recipe.
+func TestRunOneTarget_CancelledContextStartsNoRecipe(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	bt := buildTarget{file: "doc.md", line: 1, target: buildexec.Target{
+		Recipe: "cp", Root: t.TempDir(), Outputs: []string{"out.txt"},
+	}}
+	var buf strings.Builder
+	res := runOneTarget(refuseBuilder(t), bt, "", buildPassOpts{ctx: ctx}, time.Second, nil, &buf)
+	assert.ErrorIs(t, res.Err, context.Canceled)
+	assert.Empty(t, buf.String())
+}
