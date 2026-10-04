@@ -546,8 +546,6 @@ func extractSchemaHeadings(
 	return headings, filenamePatterns, includes, nil
 }
 
-// expandSchemaInclude resolves a single <?include?> PI in a schema file,
-// reads the fragment, and returns its headings and any filename pattern.
 // resolveSchemaIncludePath extracts and validates the file parameter from
 // an include PI, returning the resolved filesystem path.
 func resolveSchemaIncludePath(

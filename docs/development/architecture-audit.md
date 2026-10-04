@@ -15,11 +15,14 @@ solid-architecture skill in audit mode.
 The oldest entries have moved to the
 [archive shards](architecture-audit-archive.md) to stay
 under the file-length budget; every finding there is
-resolved.
+resolved. The first archive had no room for the 2026-08-23
+and 2026-08-30 entries, so they went to
+[the fifth archive](architecture-audit-archive-5.md); two
+2026-08-30 nice-to-haves there are still open.
 
 ## Audit 2026-10-04 (range: 979bb7f..25f7afe)
 
-755 commits, ~200 production files touched.
+1125 commits, ~200 production files touched.
 
 Clean surfaces, verified:
 
@@ -152,6 +155,8 @@ None.
   into `fieldpatterncache.go`, `runcache_wiring.go`, and
   `scope_rules.go` beside it — worth a maintainer's eye if it
   keeps growing, not a violation today. No plan filed.
+  Resolved: the 2026-10-04 tax entry splits it into five
+  files; `rule.go` is now 722 lines.
 
 [audit-checklist]: architecture/audit-checklist.md
 [engine-api]: ../background/concepts/engine-api.md

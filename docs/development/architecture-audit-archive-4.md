@@ -14,8 +14,7 @@ links here for entries it no longer has room for — this is
 its second overflow shard; [the third
 archive](architecture-audit-archive-3.md) is its first,
 holding an unrelated set of entries. Entries below are
-moved, not summarized — nothing was reworded. It overflowed
-into [the fifth archive](architecture-audit-archive-5.md).
+moved, not summarized — nothing was reworded.
 
 ## Audit 2026-06-26 (range: 3d35b77..fe7141b)
 

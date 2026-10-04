@@ -3,10 +3,9 @@ package requiredstructure
 import (
 	"fmt"
 
-	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
-
 	"github.com/jeduden/mdsmith/internal/placeholders"
 	"github.com/jeduden/mdsmith/internal/rule"
+	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
 	"github.com/jeduden/mdsmith/internal/schema"
 )
 

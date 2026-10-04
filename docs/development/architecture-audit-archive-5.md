@@ -1,17 +1,19 @@
 ---
 title: Architecture audit log archive (5)
 summary: >-
-  Third overflow shard for architecture-audit-archive-2.md
-  (2026-10-04, holding the 2026-08-23 and 2026-08-30
-  entries), which hit the project's file-length budget a
-  third time. Every finding here is resolved; the linked
-  plans are the detailed record.
+  Overflow shard for architecture-audit.md, holding the
+  2026-08-23 and 2026-08-30 entries it moved here on
+  2026-10-04 because architecture-audit-archive.md had no
+  room. The linked plans are the detailed record; two
+  2026-08-30 nice-to-haves are still open.
 ---
 # Architecture audit log archive (5)
 
-[The fourth archive](architecture-audit-archive-4.md) links
-here for entries it no longer has room for. Entries below
-are moved, not summarized — nothing was reworded.
+[The current audit log](architecture-audit.md) moved the
+entries below here on 2026-10-04: [the first
+archive](architecture-audit-archive.md) had no room left
+for them. Entries below are moved, not summarized —
+nothing was reworded.
 
 ## Audit 2026-08-30 (range: b706d76..0ca0d2f)
 

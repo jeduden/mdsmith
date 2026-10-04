@@ -244,9 +244,9 @@ func pathPatternDiag(
 // resolved through filepath.Abs first so the relative computation
 // works when the CLI was invoked with a relative `--config` path
 // (e.g. `--config sub/.mdsmith.yml` makes RootDir relative). The
-// `_ :=` discards mirror isSchemaFile's pattern above: filepath.Abs
-// only fails when os.Getwd fails, which the engine would already
-// have surfaced during file discovery.
+// `_ :=` discards mirror isSchemaFileAt's pattern in rule.go:
+// filepath.Abs only fails when os.Getwd fails, which the engine
+// would already have surfaced during file discovery.
 func workspaceRelPath(f *lint.File) string {
 	if f.RootDir == "" {
 		return filepath.ToSlash(f.Path)
