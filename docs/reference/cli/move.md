@@ -297,8 +297,8 @@ mdsmith move guide.md reference/guide.md --dry-run
   rename fires `workspace/willRenameFiles`, which runs the same
   move engine. A rename of several files is planned as one
   batch: a link between two moved files gets one rewrite,
-  from the holder's new folder to the target's new path. A
-  link to or from a refused move (unless it stays in its
-  folder), or a `[[stem]]` whose stem another moved file
-  takes, gets none, and the server's warning counts it; so
-  does a link to a refused move whose path a moved file takes.
+  from the holder's new folder to the target's new path. A link
+  to a refused move from a moved file, a link in a refused move
+  that leaves its folder, and a `[[stem]]` whose new stem another
+  moved file takes get none. The warning counts each that may miss
+  its file, plus every link to a refused move whose path a moved file takes.

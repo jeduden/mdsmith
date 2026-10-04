@@ -64,7 +64,7 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 	batch := planRenameBatch(ws, root, p.Files)
 	merged, dropped := guardRenameEdits(batch)
 	if withheld := batch.withheld + dropped; withheld > 0 {
-		warn := fmt.Sprintf("mdsmith: withheld %d link rewrite(s) between files renamed together; "+
+		warn := fmt.Sprintf("mdsmith: withheld %d link rewrite(s) for files renamed together; "+
 			"re-check those links (MDS027 flags any that no longer resolve)", withheld)
 		s.logger.Printf("%s", warn)
 		_ = s.t.writeNotification("window/logMessage", logMessageParams{
