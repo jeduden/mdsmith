@@ -82,6 +82,7 @@ func runExtract(args []string) int {
 	if code != 0 {
 		return code
 	}
+	defer closeFileRoots(f)
 	sch, code := composedSchemaFor(f, res, kindName)
 	if code != 0 {
 		return code
