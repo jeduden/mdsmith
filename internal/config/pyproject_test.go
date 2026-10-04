@@ -376,6 +376,14 @@ func TestTOMLNestingExceeds(t *testing.T) {
 		{"spaced dotted key", "a . b . c . d . e = 1", true},
 		{"dotted key in an inline table", "a = { b.c.d.e = 1 }", true},
 		{"dotted key in an inline table at the limit", "a = { b.c.d = 1 }", false},
+		// A dotted key's tables stay open inside the inline table or
+		// array that is its value, so its dots add to the depth there.
+		{"dotted key opening an inline table", "a.b = { c.d.e = 1 }", true},
+		{"dotted key opening an inline table at the limit", "a.b = { c.d = 1 }", false},
+		{"dotted keys of nested inline tables add up", "a.b = { c.d = { e = 1 } }", true},
+		{"dotted key opening an array", "a.b = [[[1]]]", true},
+		{"a closed inline table gives its depth back", "a.b = { c = 1 }\nd = [[[1]]]\n", false},
+		{"a stray closer is ignored", "] }\na = [[[1]]]\n", false},
 		{"floats in an array do not add up", "a = [1.5, 2.5, 3.5, 4.5, 5.5]", false},
 		{"dotted keys on separate lines", "a.b.c = 1\na.b.d = 2\nx.y.z = 3\n", false},
 		{"date-time fraction", "a = 1979-05-27T07:32:00.999999", false},
@@ -436,6 +444,17 @@ func TestPyproject_DeepDottedKeyIsRejected(t *testing.T) {
 	assert.ErrorContains(t, err, "nest deeper than")
 }
 
+// Short dotted keys that each open an inline table nest as deep as one
+// long key: a few hundred levels of nine-dot keys build a table chain
+// far past maxTOMLNesting although no single key or bracket run does.
+func TestPyproject_DottedInlineTableChainIsRejected(t *testing.T) {
+	const levels = maxTOMLNesting/10 + 1
+	body := strings.Repeat("a.a.a.a.a.a.a.a.a.a = { ", levels) + "x = 1" + strings.Repeat(" }", levels)
+	p := writeCfg(t, t.TempDir(), "pyproject.toml", "[tool.mdsmith.rules]\nr = "+"{ "+body+" }\n")
+	_, err := Load(p)
+	assert.ErrorContains(t, err, "nest deeper than")
+}
+
 // Quoted keys reach the config verbatim: `Get` would split `"a.b"` on
 // its dot and lose the value, and return the table itself for `""`,
 // recursing without end.
@@ -490,7 +509,9 @@ func TestIsConfigFile(t *testing.T) {
 func TestSidecarOwnerDir(t *testing.T) {
 	p := filepath.Join(string(filepath.Separator), "p")
 	for _, sub := range []string{"kinds", "conventions", "schemas", "wordlists"} {
-		for _, ext := range []string{".yml", ".yaml"} {
+		// The loaders match the extension in any case, so a `.YAML`
+		// sidecar is read and must count too.
+		for _, ext := range []string{".yml", ".yaml", ".YML", ".Yaml"} {
 			dir, ok := SidecarOwnerDir(filepath.Join(p, ".mdsmith", sub, "x"+ext))
 			assert.True(t, ok, sub+ext)
 			assert.Equal(t, p, dir, sub+ext)
@@ -566,16 +587,29 @@ func TestLoadPyproject_PluralOnlyErrorCarriesHint(t *testing.T) {
 }
 
 // countTOMLParses swaps the go-toml parse for one that counts its calls.
+// It empties the loadTOML cache first, so a parse an earlier test left
+// there for the same bytes cannot hide a parse from the count.
 func countTOMLParses(t *testing.T) *int {
 	t.Helper()
+	resetTOMLCache()
 	n := 0
 	orig := parseTOMLBytes
 	parseTOMLBytes = func(b []byte) (*toml.Tree, error) {
 		n++
 		return orig(b)
 	}
-	t.Cleanup(func() { parseTOMLBytes = orig })
+	t.Cleanup(func() {
+		parseTOMLBytes = orig
+		resetTOMLCache()
+	})
 	return &n
+}
+
+// resetTOMLCache empties the single-entry loadTOML cache.
+func resetTOMLCache() {
+	lastTOML.Lock()
+	defer lastTOML.Unlock()
+	lastTOML.data, lastTOML.tree, lastTOML.err = nil, nil, nil
 }
 
 // Discovery's probe and the Load that follows parse the chosen

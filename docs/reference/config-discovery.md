@@ -35,9 +35,9 @@ The first selected file ends the walk. These rules follow:
 
 A `pyproject.toml` that fails to parse is still selected when a
 line opens a `[tool.mdsmith` header or sets a `tool.mdsmith.`
-dotted key. Loading it then reports the syntax error. Arrays and
-inline tables nested more than 1000 levels deep count as a parse
-failure.
+dotted key. Loading it then reports the syntax error. Arrays,
+inline tables, and dotted keys that nest more than 1000 levels
+deep count as a parse failure.
 
 The editor integration (`mdsmith lsp`), the build pass, and the
 merge driver's glob set read the same file. The language server

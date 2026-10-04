@@ -103,15 +103,21 @@ func loadTOML(data []byte) (*toml.Tree, error) {
 }
 
 // tomlNestingExceeds reports whether nesting outside strings and
-// comments in data goes deeper than limit. The depth at a point is the
-// count of open `[`/`{` plus the dots of the dotted run it is in: key
-// segments — bare, quoted, or space-padded — joined by `.`, each dot one
-// more table. Any other byte (`=`, `,`, a bracket, a newline) ends the
-// run, so the one dot of each float in an array never adds up. Table
-// headers count as brackets and a float's dot as a segment, so the bound
-// is conservative.
+// comments in data goes deeper than limit. The depth at a point is what
+// the open `[`/`{` add up to plus the dots of the dotted run it is in:
+// key segments — bare, quoted, or space-padded — joined by `.`, each dot
+// one more table. A bracket that opens the value of a dotted key adds
+// one plus that key's dots, since the key's tables stay open around the
+// value: `a.b = { c.d = { … } }` nests as deep as `a.b.c.d.…`. Any other
+// byte (`,`, a bracket, a newline) ends the run, so the one dot of each
+// float in an array never adds up. Table headers count as brackets and
+// a float's dot as a segment, so the bound is conservative.
 func tomlNestingExceeds(data []byte, limit int) bool {
-	depth, run := 0, 0
+	// key holds the dots of the key an `=` just closed, for the bracket
+	// that may open its value; opened holds what each open bracket
+	// added, for its closer to take back.
+	depth, run, key := 0, 0, 0
+	var opened []int
 	for i := 0; i < len(data); i++ {
 		switch c := data[i]; {
 		case c == '"' || c == '\'':
@@ -122,24 +128,29 @@ func tomlNestingExceeds(data []byte, limit int) bool {
 				return true
 			}
 		case tomlKeyByte(c):
+		case c == '=':
+			key, run = run, 0
 		case c == '#':
-			run = 0
+			run, key = 0, 0
 			for i < len(data) && data[i] != '\n' {
 				i++
 			}
 		case c == '[' || c == '{':
-			run = 0
-			depth++
+			add := 1 + key
+			run, key = 0, 0
+			depth += add
 			if depth > limit {
 				return true
 			}
+			opened = append(opened, add)
 		case c == ']' || c == '}':
-			run = 0
-			if depth > 0 {
-				depth--
+			run, key = 0, 0
+			if n := len(opened); n > 0 {
+				depth -= opened[n-1]
+				opened = opened[:n-1]
 			}
 		default:
-			run = 0
+			run, key = 0, 0
 		}
 	}
 	return false
