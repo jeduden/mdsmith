@@ -1,7 +1,7 @@
 ---
 id: 2610040512
 title: Refused-move policy in willRenameFiles batches
-status: "🔳"
+status: "✅"
 summary: >-
   Decide how a workspace/willRenameFiles batch spells a link to or
   from a file whose own move refactor.MoveAll refused, given that the
@@ -95,22 +95,37 @@ the link stops resolving, where MDS027 flags it.
    file: overwrite, prompt, or fail. Record whether the
    request carries anything (such as `ignoreIfExists` or
    `overwrite`) that tells the server. See Survey.
-2. If the client tells the server, spell links to and from a
+2. [x] If the client tells the server, spell links to and from a
    refused move as if the move runs when the client will
    overwrite. Keep the withhold-and-count policy otherwise.
-3. If no client tells it, record the withhold-and-count
+   Not applicable: no client tells the server (see Survey).
+3. [x] If no client tells it, record the withhold-and-count
    policy in [`docs/reference/cli/move.md`](../docs/reference/cli/move.md)
-   as the settled behavior and close the plan.
-4. Unit tests in
+   as the settled behavior and close the plan. Recorded in
+   that page's `mdsmith lsp` entry under See also. The page
+   is at its file-length budget, so the entry was reworded in
+   place, not given a section of its own.
+4. [x] Unit tests in
    [`moveall_test.go`](../internal/refactor/moveall_test.go)
-   for each refused-move case under the chosen policy.
+   for each refused-move case under the chosen policy. The
+   cases settled by plan 2610030438 were already covered.
+   The survey of cases found one gap: a link inside a refused
+   move that leaves its folder, to a file the batch does not
+   plan to move, got no count. If the host moves the file
+   anyway, the link reads from the new folder and can reach
+   another existing file silently.
+   `TestMoveAll_RefusedHolderMisreads` covers it, and
+   `countMisread` now counts it.
 
 ## Acceptance Criteria
 
-- [ ] A link touching a refused move either gets the spelling
+- [x] A link touching a refused move either gets the spelling
       the client's rename outcome makes right, or is left to
-      stop resolving and is counted in the warning.
-- [ ] No link touching a refused move silently resolves to a
+      stop resolving and is counted in the warning. Read as
+      "fails loudly": a link that may reach a different file
+      is counted, and one that only stops resolving is left
+      to MDS027, as plan 2610030438 settled.
+- [x] No link touching a refused move silently resolves to a
       different file than it did before the batch.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

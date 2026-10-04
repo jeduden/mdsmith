@@ -293,12 +293,12 @@ mdsmith move guide.md reference/guide.md --dry-run
 - [`mdsmith deps`](deps.md) — the dependency edges a move walks
   to find incoming references.
 - [`mdsmith lsp`](lsp.md) — the editor surface; an explorer rename fires
-  `workspace/willRenameFiles`, which runs the same move engine. A rename of
-  several files is planned as one batch: a link between two moved files gets
-  one rewrite, from the holder's new folder to the target's new path. A link
-  to a refused move from a moved file, a link in a refused move that leaves its
-  folder, and a wikilink whose new name another moved file takes get none. The
-  warning counts each that may miss its file, an unedited wikilink a moved file
-  takes, and a link to a refused move a moved file displaces, not one from a
-  refused move to an unmoved file. MDS027 flags any that break. The hook
-  fires only for Markdown files, which no typed wikilink names.
+  `workspace/willRenameFiles`, which runs the same move engine as one batch:
+  a link between two moved files gets one rewrite, from the holder's new
+  folder to the target's new path. A rename onto an existing file is refused,
+  but the editor may still overwrite it, and the request does not say. So a
+  link to or from that refused move gets no edit unless it reads the same
+  either way, and a wikilink whose new name another moved file takes gets
+  none. The warning counts each such link that may reach a different file;
+  any other still reaches its file or stops resolving, where MDS027 flags it.
+  The hook fires only for Markdown files, which no typed wikilink names.
