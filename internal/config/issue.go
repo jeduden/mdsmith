@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -56,6 +57,11 @@ type Issue struct {
 	// errors.Is and errors.As still see through the issue.
 	Err error
 
+	// File, when non-empty, names the file the issue's position refers
+	// to when that is not the main config — a `.mdsmith/` sidecar such
+	// as a kind or convention file.
+	File string
+
 	// Line and Column, when Line > 0, are a 1-based position in the
 	// YAML text that was decoded. They take precedence over Path.
 	Line   int
@@ -89,6 +95,31 @@ func issueAt(path KeyPath, format string, args ...any) *Issue {
 		Message:  fmt.Sprintf(format, args...),
 		Severity: lint.Error,
 		Path:     path,
+	}
+}
+
+// attachFile records path as the File of the first Issue in err's
+// chain, unless that issue already names a file. Sidecar loaders call
+// it so a decoder issue positioned inside a kind or convention file is
+// not mistaken for a position in the main config. err is returned
+// unchanged.
+func attachFile(path string, err error) error {
+	var iss *Issue
+	if errors.As(err, &iss) && iss.File == "" {
+		iss.File = path
+	}
+	return err
+}
+
+// issueAtNode builds an error-severity Issue pre-resolved to node's
+// position. Custom yaml.v3 decoders use it: they see the node they are
+// decoding but not the key path that leads to it.
+func issueAtNode(node *yaml.Node, format string, args ...any) *Issue {
+	return &Issue{
+		Message:  fmt.Sprintf(format, args...),
+		Severity: lint.Error,
+		Line:     node.Line,
+		Column:   node.Column,
 	}
 }
 

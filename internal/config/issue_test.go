@@ -3,6 +3,9 @@ package config
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -195,4 +198,79 @@ func TestForeignRegionValidationPositions(t *testing.T) {
 			assert.Equal(t, tt.col, col, "err: %v", err)
 		})
 	}
+}
+
+func TestDecoderIssuePositions(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		line int
+		col  int
+	}{
+		{"rule scalar not bool", `rules:
+  line-length: 42
+`, 2, 16},
+		{"rule sequence", `rules:
+  line-length:
+    - 1
+`, 3, 5},
+		{"kind rule scalar", `kinds:
+  plan:
+    rules:
+      no-bare-urls: maybe
+`, 4, 21},
+		{"schema sequence", `kinds:
+  plan:
+    schema: [a]
+`, 3, 13},
+		{"schema bad name", `kinds:
+  plan:
+    schema: "bad name!"
+`, 3, 13},
+		{"schema empty name", `kinds:
+  plan:
+    schema: ""
+`, 3, 13},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseBytes([]byte(tt.src))
+			line, col := issuePos(t, tt.src, err)
+			assert.Equal(t, tt.line, line, "err: %v", err)
+			assert.Equal(t, tt.col, col, "err: %v", err)
+		})
+	}
+}
+
+func TestSidecarDecoderIssueNamesItsFile(t *testing.T) {
+	for _, tc := range []struct{ dir, body string }{
+		{"kinds", "rules:\n  line-length: 42\n"},
+		{"conventions", "flavor: commonmark\nrules:\n  line-length: 42\n"},
+	} {
+		t.Run(tc.dir, func(t *testing.T) {
+			root := t.TempDir()
+			cfgPath := filepath.Join(root, ".mdsmith.yml")
+			require.NoError(t, os.WriteFile(cfgPath, []byte("{}\n"), 0o644))
+			dir := filepath.Join(root, ".mdsmith", tc.dir)
+			require.NoError(t, os.MkdirAll(dir, 0o755))
+			side := filepath.Join(dir, "x.yml")
+			require.NoError(t, os.WriteFile(side, []byte(tc.body), 0o644))
+
+			_, err := Load(cfgPath)
+			var iss *Issue
+			require.True(t, errors.As(err, &iss), "err: %v", err)
+			assert.Equal(t, side, iss.File)
+			assert.Equal(t, strings.Count(tc.body, "\n"), iss.Line)
+			assert.Equal(t, 16, iss.Column)
+		})
+	}
+}
+
+func TestAttachFileKeepsExisting(t *testing.T) {
+	iss := &Issue{Message: "m", File: "first.yml"}
+	err := attachFile("second.yml", fmt.Errorf("wrap: %w", iss))
+	assert.Equal(t, "first.yml", iss.File)
+	assert.EqualError(t, err, "wrap: m")
+	plain := errors.New("plain")
+	assert.Same(t, plain, attachFile("x.yml", plain))
 }
