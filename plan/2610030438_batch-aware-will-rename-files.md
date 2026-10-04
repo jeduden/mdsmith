@@ -102,6 +102,16 @@ then reports it.
     `docs/b.md` onto an existing `x/b.md`. The move of `a.md`
     spells its `b.md` link as `../docs/b.md`, a path the batch
     empties. The edit is kept and the warning stays silent.
+12. [x] Count a link a chain shadows. One request moves `b.md`
+    onto an existing `c.md`, which is refused, and `a.md` to
+    `b.md`. Every link to the old `b.md` then reaches the
+    former `a.md` and still resolves, so MDS027 cannot flag
+    it. The warning counts each such link.
+13. [x] Keep the batch's cost proportional to the batch. Scan
+    the workspace for incoming links once, not once per
+    planned move. Read each moved file once. Build the
+    post-batch wikilink index as an overlay on the keys the
+    moves touch.
 
 ## Acceptance Criteria
 

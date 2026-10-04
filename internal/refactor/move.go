@@ -246,7 +246,12 @@ func outboundEdit(r *destResolver, d inlineDest, src, dst string) (Edit, bool) {
 	// old (now vacated) location.
 	tgt := ref.target
 	// A target the batch also moves is named at its new path; one whose
-	// move could not be planned gets no edit (see countStale).
+	// move could not be planned gets no edit (see countStale). No
+	// spelling is right both ways: the old path breaks if the host does
+	// move it, and its destination may name the file a refused overwrite
+	// leaves there. Left as written, the link stops resolving, so the
+	// warning counts it and MDS027 flags it rather than letting it reach
+	// the wrong file.
 	if m, moved := r.member(tgt); tgt == src {
 		tgt = dst
 	} else if moved {
