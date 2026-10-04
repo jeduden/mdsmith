@@ -9,6 +9,9 @@ import "testing"
 // be allocated once via make([]string, 0, len(all)) instead of growing
 // from a nil slice across repeated append calls.
 func TestExtractPlaceholderFields_PresizedAllocs(t *testing.T) {
+	if raceEnabled {
+		t.Skip("alloc gate skipped under -race")
+	}
 	row := "- [{summary}]({filename}) by {author}, tagged {tag}"
 	allocs := testing.AllocsPerRun(200, func() {
 		_ = extractPlaceholderFields(row)
