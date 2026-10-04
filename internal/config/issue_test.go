@@ -309,3 +309,60 @@ func TestWordlistValidationPositions(t *testing.T) {
 		})
 	}
 }
+
+func TestConventionValidationPositions(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		line int
+		col  int
+	}{
+		{"unknown convention", `rules: {}
+convention: nope
+`, 2, 1},
+		{"convention not a string", `convention: 3
+`, 1, 13},
+		{"convention a mapping", `convention:
+  a: b
+`, 2, 3},
+		{"flavor not a string", `convention: portable
+rules:
+  markdown-flavor:
+    flavor: 7
+`, 4, 5},
+		{"flavor mismatch", `convention: portable
+rules:
+  markdown-flavor:
+    flavor: gfm
+`, 4, 5},
+		{"reserved name", `conventions:
+  portable:
+    flavor: gfm
+`, 2, 3},
+		{"unknown flavor", `conventions:
+  mine:
+    flavor: nope
+`, 3, 5},
+		{"unknown rule", `conventions:
+  mine:
+    flavor: gfm
+    rules:
+      no-such-rule: true
+`, 5, 7},
+		{"bad rule settings", `conventions:
+  mine:
+    flavor: gfm
+    rules:
+      line-length:
+        max: abc
+`, 5, 7},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseBytes([]byte(tt.src))
+			line, col := issuePos(t, tt.src, err)
+			assert.Equal(t, tt.line, line, "err: %v", err)
+			assert.Equal(t, tt.col, col, "err: %v", err)
+		})
+	}
+}

@@ -45,20 +45,19 @@ func applyConvention(cfg *Config) error {
 	}
 	conv, err := convention.Lookup(cfg.Convention, userMap)
 	if err != nil {
-		return fmt.Errorf("convention: %w", err)
+		return issueWrap(KeyPath{"convention"}, fmt.Errorf("convention: %w", err))
 	}
 	if rc, ok := cfg.Rules["markdown-flavor"]; ok && conv.Flavor != convention.FlavorAny {
 		// A convention with FlavorAny is renderer-agnostic (e.g.
 		// no-llm-tells); it imposes no flavor and never conflicts with a
 		// user's markdown-flavor selection, so the guard is skipped.
-		userFlavor, err := stringSetting(
-			rc.Settings, "flavor", "rules.markdown-flavor.flavor",
-		)
+		flavorPath := KeyPath{"rules", "markdown-flavor", "flavor"}
+		userFlavor, err := stringSetting(rc.Settings, "flavor", flavorPath)
 		if err != nil {
 			return err
 		}
 		if userFlavor != "" && userFlavor != conv.Flavor.String() {
-			return fmt.Errorf(
+			return issueAt(flavorPath,
 				"rules.markdown-flavor: convention %q requires flavor %q, but flavor is set to %q",
 				conv.Name, conv.Flavor, userFlavor,
 			)
@@ -78,16 +77,16 @@ func applyConvention(cfg *Config) error {
 
 // stringSetting reads a string-typed setting from a settings map. A
 // missing key returns "" with no error; a present key with a
-// non-string value returns an error naming the offending field path
-// so users see the problem at config load time.
-func stringSetting(settings map[string]any, key, fieldPath string) (string, error) {
+// non-string value returns an issue at the offending field path so
+// users see the problem at config load time.
+func stringSetting(settings map[string]any, key string, fieldPath KeyPath) (string, error) {
 	v, ok := settings[key]
 	if !ok {
 		return "", nil
 	}
 	s, ok := v.(string)
 	if !ok {
-		return "", fmt.Errorf("%s: must be a string, got %T", fieldPath, v)
+		return "", issueAt(fieldPath, "%s: must be a string, got %T", fieldPath, v)
 	}
 	return s, nil
 }
@@ -129,7 +128,7 @@ func buildUserConventionMap(cfg *Config) (map[string]convention.Convention, erro
 	result := make(map[string]convention.Convention, len(cfg.Conventions))
 	for name, uc := range cfg.Conventions {
 		if reserved[name] {
-			return nil, fmt.Errorf(
+			return nil, issueAt(KeyPath{"conventions", name},
 				"conventions.%s: name is reserved by a built-in convention",
 				name,
 			)
@@ -137,7 +136,7 @@ func buildUserConventionMap(cfg *Config) (map[string]convention.Convention, erro
 
 		fl, ok := convention.ParseFlavor(uc.Flavor)
 		if !ok {
-			return nil, fmt.Errorf(
+			return nil, issueAt(KeyPath{"conventions", name, "flavor"},
 				"convention %q: unknown flavor %q",
 				name, uc.Flavor,
 			)
@@ -147,14 +146,14 @@ func buildUserConventionMap(cfg *Config) (map[string]convention.Convention, erro
 		for ruleName, rc := range uc.Rules {
 			r := rule.ByName(ruleName)
 			if r == nil {
-				return nil, fmt.Errorf(
+				return nil, issueAt(KeyPath{"conventions", name, "rules", ruleName},
 					"convention %q: unknown rule %q",
 					name, ruleName,
 				)
 			}
 			if len(rc.Settings) > 0 {
 				if err := validateConventionRuleSettings(r, name, ruleName, rc.Settings); err != nil {
-					return nil, err
+					return nil, issueWrap(KeyPath{"conventions", name, "rules", ruleName}, err)
 				}
 			}
 			rules[ruleName] = convention.RulePreset{
@@ -227,10 +226,10 @@ func validateConventionScalar(data []byte) error {
 		}
 		v := mapping.Content[i+1]
 		if v.Kind != yaml.ScalarNode {
-			return fmt.Errorf("convention: must be a string scalar")
+			return issueAtNode(v, "convention: must be a string scalar")
 		}
 		if v.Tag != "" && v.Tag != "!!str" {
-			return fmt.Errorf(
+			return issueAtNode(v,
 				"convention: must be a string, got %s",
 				strings.TrimPrefix(v.Tag, "!!"),
 			)
