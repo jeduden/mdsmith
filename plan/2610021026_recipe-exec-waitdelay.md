@@ -1,7 +1,7 @@
 ---
 id: 2610021026
 title: Replace runRecipe's hand-rolled pipe reaping with Cmd.WaitDelay
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   `runRecipe` in `internal/build` builds its own output
@@ -47,9 +47,13 @@ behaviour change and needs its own plan.
 
 ## Tasks
 
-1. Write a failing test: a recipe like `sleep 30 &
+1. [x] Write a failing test: a recipe like `sleep 30 &
    exit 2` with captured output, timed out, must report
-   exit code 2 and still say it timed out.
+   exit code 2 and still say it timed out. A non-zero
+   exit already kept its code (its `ExitError` reached
+   `timeoutResult`), so the test also covers `exit 0`,
+   which reported -1. `timeoutResult` now takes the code
+   from `cmd.ProcessState`.
 2. Build the command with `exec.CommandContext`, setting
    `Cancel` to `killGroup` and `WaitDelay` to
    `reapWait`. Remove the parts of `recipeOutput` and the
@@ -65,7 +69,7 @@ behaviour change and needs its own plan.
 
 ## Acceptance Criteria
 
-- [ ] A timed-out recipe whose leader has already exited
+- [x] A timed-out recipe whose leader has already exited
       reports the leader's exit code.
 - [ ] Timeout handling uses `Cmd.Cancel` and
       `Cmd.WaitDelay` rather than hand-rolled timers.

@@ -343,7 +343,7 @@ func TestRunRecipe_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "recipe timed out")
 	assert.True(t, timedOut)
-	assert.Equal(t, -1, code, "a leader that exited 0 carries no ExitError")
+	assert.Equal(t, 0, code, "the leader's own exit status, not -1")
 	assert.Less(t, time.Since(start), 3*time.Second)
 	assert.Contains(t, out.String(), "started")
 
@@ -353,6 +353,33 @@ func TestRunRecipe_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
 	require.NoError(t, perr)
 	assert.Eventually(t, func() bool { return !processAlive(pid) },
 		5*time.Second, 50*time.Millisecond, "the group kill must reach the child")
+}
+
+func TestRunRecipe_TimedOutAfterLeaderExitKeepsExitCode(t *testing.T) {
+	// The leader exits before the deadline; a child it backgrounded
+	// holds the captured pipe past it. The run still times out, and
+	// the code is the leader's own exit status: 0 included, which
+	// carries no ExitError.
+	old := gracePeriod
+	gracePeriod = 50 * time.Millisecond
+	t.Cleanup(func() { gracePeriod = old })
+	for _, want := range []int{0, 2} {
+		t.Run(strconv.Itoa(want), func(t *testing.T) {
+			script := writeScript(t, t.TempDir(), "exit.sh",
+				`sleep 30 & echo started; exit `+strconv.Itoa(want))
+			ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+			defer cancel()
+			code, timedOut, err := runRecipe(ctx, runOpts{
+				argv:    []string{script},
+				dir:     t.TempDir(),
+				defExec: defaultExecConfig(),
+				stdout:  &lockedBuffer{},
+			})
+			require.ErrorContains(t, err, "recipe timed out")
+			assert.True(t, timedOut)
+			assert.Equal(t, want, code)
+		})
+	}
 }
 
 func TestTimeoutKillAction_Unix(t *testing.T) {

@@ -119,7 +119,7 @@ func TestTimeoutResult(t *testing.T) {
 	t.Cleanup(ro.closeChildEnds)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	code, timedOut, err := timeoutResult(ctx, ro, nil, false)
+	code, timedOut, err := timeoutResult(ctx, ro, -1, false)
 	assert.Equal(t, -1, code)
 	assert.True(t, timedOut)
 	require.ErrorContains(t, err, "recipe cancelled")
@@ -131,7 +131,7 @@ func TestTimeoutResult(t *testing.T) {
 	dctx, dcancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer dcancel()
 	<-dctx.Done()
-	_, timedOut, err = timeoutResult(dctx, ro, nil, false)
+	_, timedOut, err = timeoutResult(dctx, ro, -1, false)
 	assert.True(t, timedOut)
 	require.ErrorContains(t, err, "recipe timed out")
 	assert.NotErrorIs(t, err, ErrForceKilled)
@@ -140,7 +140,7 @@ func TestTimeoutResult(t *testing.T) {
 	// the SIGKILL, as a cancel does.
 	ro = &recipeOutput{}
 	require.NoError(t, ro.attach(&exec.Cmd{}, nil, nil))
-	_, timedOut, err = timeoutResult(dctx, ro, nil, true)
+	_, timedOut, err = timeoutResult(dctx, ro, -1, true)
 	assert.True(t, timedOut)
 	require.ErrorContains(t, err, "recipe timed out")
 	assert.ErrorIs(t, err, context.DeadlineExceeded)

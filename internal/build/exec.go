@@ -196,7 +196,10 @@ var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
 // It returns the process exit code, whether the run timed out, and any
 // error. On success it returns (0, false, nil). On non-zero exit it
 // returns the exit code and a non-nil error. On timeout it returns the
-// exit code (or -1 if unavailable), timedOut=true, and a non-nil error.
+// leader's exit status, timedOut=true, and a non-nil error: a leader
+// that exited before the deadline (a child held a captured pipe past
+// it) keeps its own code, 0 included; one the kill ended, or that was
+// never reaped, reports -1.
 func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	// A context already done at entry (a CLI interrupt that landed while
 	// the target was staged, or a spent deadline) starts no recipe:
@@ -264,11 +267,11 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 			return exitResult(err)
 		case <-ctx.Done():
 			forced := killer.kill(force)
-			return timeoutResult(ctx, ro, err, forced)
+			return timeoutResult(ctx, ro, cmd.ProcessState.ExitCode(), forced)
 		}
 	case <-ctx.Done():
 		forced := killer.kill(force)
-		reaped, waitErr := waitAtMost(done, reapWait, force)
+		reaped, _ := waitAtMost(done, reapWait, force)
 		if !reaped {
 			// The group kill left the leader running (Windows when the
 			// Job Object could not be set up and the recipe ignores
@@ -278,9 +281,15 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 			// one. done is buffered, so the Wait goroutine exits
 			// whenever the leader does.
 			killer.forceLeader()
-			_, waitErr = waitAtMost(done, reapWait, force)
+			reaped, _ = waitAtMost(done, reapWait, force)
 		}
-		return timeoutResult(ctx, ro, waitErr, forced)
+		// ProcessState is safe to read only once Wait returned; a
+		// leader still running reports -1.
+		exitCode := -1
+		if reaped {
+			exitCode = cmd.ProcessState.ExitCode()
+		}
+		return timeoutResult(ctx, ro, exitCode, forced)
 	}
 }
 
@@ -306,14 +315,14 @@ func exitResult(err error) (int, bool, error) {
 // waits at most reapWait (forcedReapWait once a second interrupt closed
 // the WithForceKill channel) for captured output to drain, abandons the
 // pipes if a survivor still holds them, and reports the timeout or
-// cancellation with the exit code waitErr carries. forced (a second
+// cancellation with exitCode, the leader's exit status (-1 when it was
+// not reaped or died of a signal). forced (a second
 // interrupt escalated the kill) wraps ErrForceKilled into either one:
 // a timed-out recipe still in its grace is cut short by it too.
-func timeoutResult(ctx context.Context, ro *recipeOutput, waitErr error, forced bool) (int, bool, error) {
+func timeoutResult(ctx context.Context, ro *recipeOutput, exitCode int, forced bool) (int, bool, error) {
 	if drained, _ := waitAtMost(ro.drained, reapWait, forceKillFrom(ctx)); !drained {
 		ro.abandon()
 	}
-	exitCode := exitCodeOf(waitErr)
 	what := "recipe cancelled"
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		what = "recipe timed out"
