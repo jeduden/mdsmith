@@ -268,7 +268,8 @@ grace, `SIGKILL`; at once elsewhere): a `TERM` trap runs, a server survives.
 The exit code priority: lint-fix errors → `before`-fail → recipe-fail →
 `after`-fail → 0. A failing `before` hook means setup is incomplete and
 recipes would produce garbage; a failing `after` hook means teardown is
-broken but artifacts are already written. An interrupt skips the `after` hooks.
+broken but artifacts are already written. An interrupt skips every `after` hook
+not yet started, silently; one it cuts short reports `FAIL`.
 
 ### Hook argv rules
 
@@ -287,14 +288,13 @@ pass and hooks together.
 
 ## Build safety
 
-The build pass is the only part of mdsmith that runs an external
-process. It treats `.mdsmith.yml` and the `<?build?>` directives as
-untrusted input, so a freshly cloned repository cannot silently run a
-recipe. Four layers cooperate: a trust gate gates execution, a
-hermetic environment bounds what a recipe can read and how it is
-killed, atomic-write hardening protects the project tree from a hostile
-staging path, and output post-conditions reject any write outside the
-declared `outputs:`.
+The build pass is the only part of mdsmith that runs an external process. It
+treats `.mdsmith.yml` and the `<?build?>` directives as untrusted input, so a
+freshly cloned repository cannot silently run a recipe. Four layers cooperate:
+a trust gate gates execution, a hermetic environment bounds what a recipe can
+read and how it is killed, atomic-write hardening protects the project tree
+from a hostile staging path, and output post-conditions reject any write
+outside the declared `outputs:`.
 
 These layers raise the cost of an accidental or hostile recipe; they
 are **not** a sandbox. PATH allowlisting and the staging working

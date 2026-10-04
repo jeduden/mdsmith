@@ -59,10 +59,16 @@ func RunHooks(ctx context.Context, hooks []HookEntry, root string, w io.Writer) 
 // RunAfterHooks runs the supplied after-hooks in order. Unlike RunHooks,
 // a failure does not stop subsequent hooks — all after-hooks run, and the
 // first non-zero exit code is returned at the end. If all succeed nil is
-// returned.
+// returned. A cancelled ctx (a CLI interrupt) skips every hook not yet
+// started, with no output for them: a hook the interrupt cut short
+// still reports its FAIL. A spent deadline (the hook timeout) is not an
+// interrupt, so each later hook still reports as timed out.
 func RunAfterHooks(ctx context.Context, hooks []HookEntry, root string, w io.Writer) *HookResult {
 	var first *HookResult
 	for _, h := range hooks {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return first
+		}
 		if len(h.Tokens) == 0 {
 			continue
 		}

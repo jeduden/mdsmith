@@ -141,17 +141,35 @@ func TestAnnounceHook(t *testing.T) {
 	assert.Empty(t, w.String(), "a done context starts no hook, so none is announced")
 }
 
-func TestRunAfterHooks_CancelledContextPrintsNoRunning(t *testing.T) {
-	// After an interrupt the after-hooks are refused before they start:
-	// each reports FAIL, and none claims to be running.
+func TestRunAfterHooks_InterruptSkipsUnstartedHooks(t *testing.T) {
+	// After an interrupt the after-hooks are skipped: none starts, and
+	// none prints a FAIL line for a hook that never ran.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var w bytes.Buffer
-	hook := HookEntry{Tokens: []string{"sleep", "999"}, Name: "teardown"}
-	result := RunAfterHooks(ctx, []HookEntry{hook}, t.TempDir(), &w)
+	hooks := []HookEntry{
+		{Tokens: []string{"sleep", "999"}, Name: "teardown"},
+		{Tokens: []string{"sleep", "999"}, Name: "notify"},
+	}
+	assert.Nil(t, RunAfterHooks(ctx, hooks, t.TempDir(), &w))
+	assert.Empty(t, w.String())
+}
+
+func TestRunAfterHooks_SpentDeadlineStillReportsEachHook(t *testing.T) {
+	// A spent hook timeout is not an interrupt: every after-hook still
+	// reports, as a timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	<-ctx.Done()
+	var w bytes.Buffer
+	hooks := []HookEntry{
+		{Tokens: []string{"sleep", "999"}, Name: "teardown"},
+		{Tokens: []string{"sleep", "999"}, Name: "notify"},
+	}
+	result := RunAfterHooks(ctx, hooks, t.TempDir(), &w)
 	require.NotNil(t, result)
-	assert.Contains(t, w.String(), "teardown: FAIL")
-	assert.NotContains(t, w.String(), "teardown: running")
+	assert.Contains(t, w.String(), "hook teardown: FAIL (exit 1): context deadline exceeded (timed out)")
+	assert.Contains(t, w.String(), "hook notify: FAIL")
 }
 
 func TestRunHooks_ExpiredDeadline(t *testing.T) {

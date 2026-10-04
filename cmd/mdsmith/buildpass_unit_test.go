@@ -925,6 +925,39 @@ func TestDispatchWithHooks_AfterHookFails_ReturnsNonZero(t *testing.T) {
 	assert.NotEqual(t, 0, code, "after-hook failure exit code must be propagated")
 }
 
+// TestDispatchWithHooks_InterruptSkipsAfterHooks covers an interrupt
+// that lands during the recipe pass: the after-hooks do not start and
+// print nothing, as the build guide says, instead of a FAIL line each.
+func TestDispatchWithHooks_InterruptSkipsAfterHooks(t *testing.T) {
+	root := t.TempDir()
+	cfg := &config.Config{
+		Build: config.BuildConfig{
+			Hooks: config.HooksCfg{
+				After: []config.HookCfg{
+					{Command: "touch after.txt", Name: "teardown"},
+					{Command: "touch notify.txt", Name: "notify"},
+				},
+			},
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	builder := &mockBuilder{fn: func(context.Context, buildexec.Target) error {
+		cancel()
+		return context.Canceled
+	}}
+	bt := buildTarget{file: "doc.md", line: 1, target: buildexec.Target{
+		Recipe: "cp", Root: root, Outputs: []string{"out.txt"},
+	}}
+	var buf strings.Builder
+	code := dispatchWithHooks(builder, []buildTarget{bt}, cfg, root,
+		buildPassOpts{ctx: ctx, noCache: true}, buildexec.NewCache(), time.Second, nil, &buf)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, buf.String(), "INTERRUPTED out.txt")
+	assert.NotContains(t, buf.String(), "hook ")
+	assert.NoFileExists(t, filepath.Join(root, "after.txt"))
+}
+
 // --- S002: MDS040 gate hardening ---
 
 // TestCheckMDS040Gate_DisabledRule_WithShellRecipe_ReturnsFalse is the RED

@@ -3,6 +3,7 @@
 package build
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -211,4 +212,31 @@ func TestRunHook_ForceSkipsHookGrace(t *testing.T) {
 	require.NotNil(t, result)
 	assert.False(t, processAlive(pid), "the hook leader must be killed")
 	assert.Less(t, took, 5*time.Second, "the second interrupt must skip the grace")
+}
+
+// TestRunAfterHooks_InterruptDuringHookSkipsTheRest checks that an
+// interrupt landing while one after-hook runs reports that hook as
+// interrupted and starts and prints nothing for the hooks after it.
+func TestRunAfterHooks_InterruptDuringHookSkipsTheRest(t *testing.T) {
+	dir := t.TempDir()
+	ready := filepath.Join(dir, "ready.pid")
+	first := writeScript(t, t.TempDir(), "first.sh", `echo $$ > "`+ready+`"; exec sleep 60`)
+	marker := filepath.Join(dir, "second-ran")
+	second := writeScript(t, t.TempDir(), "second.sh", `: > "`+marker+`"`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		waitForPID(ready)
+		cancel()
+	}()
+	var w bytes.Buffer
+	result := RunAfterHooks(ctx, []HookEntry{
+		{Tokens: []string{first}, Name: "first"},
+		{Tokens: []string{second}, Name: "second"},
+	}, dir, &w)
+	require.NotNil(t, result)
+	assert.Contains(t, w.String(), "hook first: FAIL (exit 1): context canceled (interrupted)")
+	assert.NotContains(t, w.String(), "hook second")
+	assert.NoFileExists(t, marker)
 }
