@@ -109,6 +109,11 @@ type runOpts struct {
 	sharedGroup bool
 }
 
+// ErrNotStarted marks a run runRecipe refused because its context was
+// already done at entry: no process started and no kill ran, so a
+// report must not name one. It is wrapped with the context's error.
+var ErrNotStarted = errors.New("before start")
+
 // runRecipe executes argv with a hermetic environment, a fixed working
 // directory, and process-group isolation. No shell is invoked: argv[0]
 // is the program and argv[1:] its arguments.
@@ -154,7 +159,8 @@ type runOpts struct {
 // directly, so a survivor can still reach it after the return.
 //
 // A ctx already done at entry starts nothing: a cancel returns
-// (-1, false, err) and a spent deadline returns (-1, true, err).
+// (-1, false, err) and a spent deadline returns (-1, true, err), err
+// wrapping ErrNotStarted.
 //
 // It returns the process exit code, whether the run timed out, and any
 // error. On success it returns (0, false, nil). On non-zero exit it
@@ -167,9 +173,9 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	// kill it at once. No kill path runs, so a cancel is not timedOut.
 	if err := ctx.Err(); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return -1, true, fmt.Errorf("recipe timed out: %w", err)
+			return -1, true, fmt.Errorf("recipe timed out %w: %w", ErrNotStarted, err)
 		}
-		return -1, false, fmt.Errorf("recipe cancelled before start: %w", err)
+		return -1, false, fmt.Errorf("recipe cancelled %w: %w", ErrNotStarted, err)
 	}
 	// We manage the timeout and kill path ourselves (process group), so the
 	// command itself is not bound to a context-cancel kill — that would

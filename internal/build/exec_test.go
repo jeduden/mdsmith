@@ -143,6 +143,8 @@ func TestRunRecipe_CancelledBeforeStartSpawnsNothing(t *testing.T) {
 	assert.NotContains(t, err.Error(), "starting recipe")
 	assert.False(t, timedOut, "no kill path ran, so the run is not reported as killed")
 	assert.Equal(t, -1, code)
+	assert.ErrorIs(t, err, ErrNotStarted)
+	assert.Contains(t, err.Error(), "recipe cancelled before start")
 }
 
 // TestRunRecipe_ExpiredDeadlineBeforeStartSpawnsNothing checks that a
@@ -161,6 +163,7 @@ func TestRunRecipe_ExpiredDeadlineBeforeStartSpawnsNothing(t *testing.T) {
 	assert.NotContains(t, err.Error(), "starting recipe")
 	assert.Contains(t, err.Error(), "timed out")
 	assert.True(t, timedOut)
+	assert.ErrorIs(t, err, ErrNotStarted, "the report must not claim a kill")
 }
 
 func TestWithForceKill_RoundTrip(t *testing.T) {

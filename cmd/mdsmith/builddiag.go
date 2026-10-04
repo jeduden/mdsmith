@@ -167,8 +167,15 @@ func reportInterrupt(name string, res targetRunResult, w io.Writer) {
 }
 
 // reportTimeout prints the hung-recipe diagnostic and names the kill
-// the timeout sent on this platform (buildexec.TimeoutKillAction).
+// the timeout sent on this platform (buildexec.TimeoutKillAction). A
+// deadline already spent when the recipe was reached
+// (buildexec.ErrNotStarted) started and killed nothing, so only the
+// TIMEOUT line prints.
 func reportTimeout(name string, res targetRunResult, w io.Writer) {
+	if errors.Is(res.Err, buildexec.ErrNotStarted) {
+		_, _ = fmt.Fprintf(w, "TIMEOUT %s before start\n", name)
+		return
+	}
 	_, _ = fmt.Fprintf(w, "TIMEOUT %s after %s\n", name, res.Duration.Round(time.Millisecond))
 	printStreamTail("stdout", res.StdoutTail, w)
 	printStreamTail("stderr", res.StderrTail, w)

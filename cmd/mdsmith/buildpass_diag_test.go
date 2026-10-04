@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -726,6 +727,16 @@ func TestReportTimeout_NamesThisPlatformsKill(t *testing.T) {
 	var buf strings.Builder
 	reportTimeout("book.html", targetRunResult{}, &buf)
 	assert.Contains(t, buf.String(), "  "+buildexec.TimeoutKillAction+"\n")
+}
+
+func TestReportBuildFailure_DeadlineSpentBeforeStart(t *testing.T) {
+	// A deadline already spent when the recipe was reached started no
+	// process: the report must not claim a kill was sent.
+	var buf strings.Builder
+	err := fmt.Errorf("recipe timed out %w: %w", buildexec.ErrNotStarted, context.DeadlineExceeded)
+	res := targetRunResult{Result: buildexec.Result{TimedOut: true, Err: err}}
+	reportBuildFailure(buildTarget{target: buildexec.Target{Outputs: []string{"book.html"}}}, res, &buf)
+	assert.Equal(t, "TIMEOUT book.html before start\n", buf.String())
 }
 
 func TestReportInterrupt_PrintsStreamTails(t *testing.T) {
