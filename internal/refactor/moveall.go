@@ -45,18 +45,20 @@ type BatchMove struct {
 // BatchPlan is the merged result of MoveAll. Its Plan holds every
 // edit, keyed per output target with one edit per range, and no
 // FileOp: Moves lists each pair's relocation and verdict in request
-// order. Withheld counts the links that get no edit yet may not
-// reach their file once the batch has run: one from a planned member
-// to a member whose move could not be planned, one inside such a
-// member to a planned member that stops resolving or whose old path
-// another member takes, one inside such a member to any other file
-// that may name another file from the member's new folder (see
-// countMisread), a wikilink (a
-// `[[stem]]` or a typed `[[name.ext]]`) whose new key another member's
-// destination wins, a wikilink left as written that another member's
-// destination takes (see stolen), and every path link and wikilink to
-// a shadowed path (see countShadowed) or to a file a refused member
-// lands on (moveBatch.overwritten), from any file but that one.
+// order. Withheld counts the links that may not reach their file once
+// the batch has run. Each gets no edit, except a planned member's link
+// to a file a refused member lands on, which is still re-spelled from
+// the member's new folder and counted too. They are: one from a
+// planned member to a member whose move could not be planned, one
+// inside such a member to a planned member that stops resolving or
+// whose old path another member takes, one inside such a member to
+// any other file that may name another file from the member's new
+// folder (see countMisread), a wikilink (a `[[stem]]` or a typed
+// `[[name.ext]]`) whose new key another member's destination wins, a
+// wikilink left as written that another member's destination takes
+// (see stolen), and every path link and wikilink to a shadowed path
+// (see countShadowed) or to a file a refused member lands on
+// (moveBatch.overwritten), from any file but that one.
 type BatchPlan struct {
 	Plan
 	Moves    []BatchMove
@@ -125,8 +127,8 @@ func planBatch(ws MoveWorkspace, moves []BatchMove, b *moveBatch) BatchPlan {
 			countShadowed(ws, r, m.Dst)
 		}
 	}
-	for p := range b.overwritten {
-		countShadowed(ws, r, p)
+	for dst := range b.overwritten {
+		countShadowed(ws, r, dst)
 	}
 	stableSortEdits(bp.Edits)
 	bp.Withheld = b.withheld
@@ -137,13 +139,15 @@ func planBatch(ws MoveWorkspace, moves []BatchMove, b *moveBatch) BatchPlan {
 // member whose move was refused, whose path a planned member takes
 // (moveBatch.shadowed), or a file a refused member lands on
 // (moveBatch.overwritten). The host still moves vacated, or may
-// replace it, so each link to it then reaches the newcomer; it still resolves, so no rule flags
-// it, and the batch plans no edit for it. A wikilink is counted when
-// its key reaches vacated today: a `[[stem]]` link for a Markdown
-// file, a typed `[[name.ext]]` link for any other (see wikilinkKey). A
-// path link to it is counted in the referrer scan (see
-// appendReferrerEdits), or, in a planned member, by its outbound pass
-// (see outboundEdit), so the workspace is still read once.
+// replace it, so each link to it then reaches the newcomer; it still
+// resolves, so no rule flags it, and the batch plans no edit for it. A
+// wikilink is counted when its key reaches vacated today: a `[[stem]]`
+// link for a Markdown file, a typed `[[name.ext]]` link for any other
+// (see wikilinkKey). An overwritten file's link to itself is not
+// counted: once replaced, the file holding it is gone. A path link to
+// it is counted in the referrer scan (see appendReferrerEdits), or, in
+// a planned member, by its outbound pass (see outboundEdit), so the
+// workspace is still read once.
 func countShadowed(ws MoveWorkspace, r *destResolver, vacated string) {
 	if !linkgraph.WikilinkIndexed(vacated) {
 		return
@@ -155,6 +159,9 @@ func countShadowed(ws MoveWorkspace, r *destResolver, vacated string) {
 	}
 	lines := r.edgeReader()
 	for _, e := range edges {
+		if r.batch.overwritten[vacated] && index.NormalizePath(e.SourceFile) == vacated {
+			continue
+		}
 		if _, row, ok := lines.row(e); ok {
 			if _, _, ok := k.at(row, e.SourceCol-1); ok {
 				r.batch.withheld++

@@ -301,15 +301,18 @@ func refusedLeaving(m batchMember, rel string) bool {
 // link to rel itself that names holder.dst from there reaches the file
 // either way. One that names the same path from both folders is
 // counted only when a member lands there, since that move may replace
-// the file it reaches. A directory link is counted when a file may sit
-// under the directory it names from there (see mayHoldDir).
+// the file it reaches. So is one that names rel from there: the link
+// is read from holder.dst only once the file has left rel, so only a
+// member landing on rel can be there. A directory link is counted when
+// a file may sit under the directory it names from there (see
+// mayHoldDir).
 func (r *destResolver) countMisread(holder batchMember, rel string, ref destRef) {
 	if !refusedLeaving(holder, rel) {
 		return
 	}
 	switch p := linkgraph.ResolveRelTarget(holder.dst, ref.path); {
 	case ref.target == rel && p == holder.dst:
-	case p == ref.target:
+	case p == ref.target, p == rel:
 		if r.batch.dsts[p] {
 			r.batch.withheld++
 		}
@@ -321,10 +324,14 @@ func (r *destResolver) countMisread(holder batchMember, rel string, ref destRef)
 // mayHoldDir is mayOccupy for a directory link: it reports whether a
 // file may sit under the workspace directory p once the batch has run,
 // as a member landing there or any file the wikilink index holds there,
-// whether or not the workspace lists it. A file there whose move the
-// batch plans may still leave, so the answer is "may".
+// whether or not the workspace lists it. `.` is the workspace root,
+// under which every member landing in the workspace sits. A file there
+// whose move the batch plans may still leave, so the answer is "may".
 func (r *destResolver) mayHoldDir(p string) bool {
 	prefix := p + "/"
+	if p == "." {
+		prefix = ""
+	}
 	for d := range r.batch.dsts {
 		if strings.HasPrefix(d, prefix) {
 			return true

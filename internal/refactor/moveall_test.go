@@ -991,6 +991,45 @@ func TestMoveBatch_ScanBases(t *testing.T) {
 	assert.Equal(t, [][]byte{[]byte("a.md")}, b.scanBases(), "each planned base once; unplanned left out")
 	b.shadowed["b.md"] = true
 	assert.ElementsMatch(t, [][]byte{[]byte("a.md"), []byte("b.md")}, b.scanBases(), "a shadowed path is scanned")
+	b.overwritten["x/o.md"], b.overwritten["y/a.md"] = true, true
+	assert.ElementsMatch(t, [][]byte{[]byte("a.md"), []byte("b.md"), []byte("o.md")}, b.scanBases(),
+		"an overwritten path is scanned, its base once")
+}
+
+// TestValidateBatch_Overwritten locks that an existing file outside the
+// batch that a refused member lands on is recorded as overwritten,
+// whether the move is refused for that file or as a duplicate, and that
+// a vacated destination or one no file holds is not.
+func TestValidateBatch_Overwritten(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"a.md": "# A\n", "b.md": "# B\n", "c.md": "# C\n", "d.md": "# D\n", "e.md": "# E\n",
+		"x.md": "# X\n", "y.md": "# Y\n",
+	})
+	moves, b := validateBatch(ws, []MovePair{
+		{"a.md", "x.md"}, {"b.md", "y.md"}, {"c.md", "y.md"}, {"d.md", "z.md"}, {"e.md", "w.md"}, {"z2.md", "q.md"},
+	})
+	require.Equal(t, DestinationExistsError{Dst: "x.md"}, moves[0].Err)
+	require.Equal(t, ErrDuplicateDestination, moves[1].Err)
+	require.Equal(t, ErrDuplicateDestination, moves[2].Err)
+	require.NoError(t, moves[3].Err)
+	assert.Equal(t, map[string]bool{"x.md": true, "y.md": true}, b.overwritten,
+		"a missing source, a free destination and a planned move record none")
+}
+
+// TestPlanBatch covers planBatch on the verdicts validateBatch gave: a
+// planned move's edits are planned, and a link and a wikilink to the
+// file a refused move lands on are counted, not the file's own.
+func TestPlanBatch(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"docs/q/b.md": "# B\n", "x/b.md": "# Old\n\n[[b]]\n", "r.md": "# R\n\n[o](x/b.md) [[b]] [m](m.md)\n",
+		"m.md": "# M\n",
+	})
+	moves, b := validateBatch(ws, []MovePair{{"docs/q/b.md", "x/b.md"}, {"m.md", "n/m.md"}})
+	bp := planBatch(ws, moves, b)
+	require.Equal(t, DestinationExistsError{Dst: "x/b.md"}, bp.Moves[0].Err)
+	require.NoError(t, bp.Moves[1].Err)
+	assert.Equal(t, []string{"n/m.md"}, texts(bp.Edits, "r.md"))
+	assert.Equal(t, 2, bp.Withheld, "r.md's path link and wikilink to x/b.md")
 }
 
 // TestValidateBatch_Shadowed locks that a refused member whose path a
@@ -1144,6 +1183,16 @@ func TestDestResolver_CountMisread(t *testing.T) {
 	r.batch.dsts["x/b.md"] = true
 	r.countMisread(refused, "docs/b.md", destRef{target: "x/b.md", path: "../x/b.md"})
 	assert.Equal(t, 3, r.batch.withheld, "the file it names may be overwritten")
+
+	// Read from docs/b.md, `sub/b.md` names docs/sub/b.md, the holder's
+	// own old path: it has left it, so nothing is there.
+	r.batch.members["docs/sub/b.md"] = batchMember{dst: "docs/b.md"}
+	inner := destRef{target: "docs/sub/sub/b.md", path: "sub/b.md"}
+	r.countMisread(batchMember{dst: "docs/b.md"}, "docs/sub/b.md", inner)
+	assert.Equal(t, 3, r.batch.withheld, "the holder's own vacated path")
+	r.batch.dsts["docs/sub/b.md"] = true
+	r.countMisread(batchMember{dst: "docs/b.md"}, "docs/sub/b.md", inner)
+	assert.Equal(t, 4, r.batch.withheld, "a member landing on the vacated path")
 }
 
 func TestCountShadowed(t *testing.T) {
@@ -1249,6 +1298,9 @@ func TestMoveAll_OverwrittenDestinationReferrers(t *testing.T) {
 		"its own self-link": {map[string]string{
 			"docs/b.md": "# B\n", "x/b.md": "# Old\n\n[me](b.md)\n",
 		}, []MovePair{{"docs/b.md", "x/b.md"}}, 0, nil},
+		"its own self-wikilink": {map[string]string{
+			"docs/q/b.md": "# B\n", "x/b.md": "# Old\n\n[[b]]\n",
+		}, []MovePair{{"docs/q/b.md", "x/b.md"}}, 0, nil},
 	} {
 		t.Run(name, func(t *testing.T) {
 			bp := MoveAll(newMemWorkspace(tc.files), tc.pairs)
@@ -1308,4 +1360,17 @@ func TestDestResolver_MayHoldDir(t *testing.T) {
 	assert.True(t, r.mayHoldDir("x/sub"), "an indexed file is there")
 	assert.False(t, r.mayHoldDir("x/su"), "a name prefix is not the directory")
 	assert.False(t, r.mayHoldDir("y"))
+	assert.True(t, r.mayHoldDir("."), "the root holds every member landing in the workspace")
+}
+
+// TestMoveAll_RefusedHolderMisreadsRoot covers a directory link in a
+// refused move that leaves its folder and that, read from the new
+// folder, names the workspace root: a different directory that always
+// holds files, so the link is counted.
+func TestMoveAll_RefusedHolderMisreadsRoot(t *testing.T) {
+	bp := MoveAll(newMemWorkspace(map[string]string{
+		"docs/sub/b.md": "# B\n\n[up](../)\n", "docs/x.md": "# X\n", "x/b.md": "# Old\n",
+	}), []MovePair{{"docs/sub/b.md", "x/b.md"}})
+	require.Equal(t, DestinationExistsError{Dst: "x/b.md"}, bp.Moves[0].Err)
+	assert.Equal(t, 1, bp.Withheld)
 }
