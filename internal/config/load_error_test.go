@@ -45,6 +45,10 @@ foreign-regions:
 	// The full wrapped text stays the error string.
 	assert.Equal(t, "validating config: foreign-regions[0]: end marker must not be empty", err.Error())
 
+	src, err2 := os.ReadFile(p)
+	require.NoError(t, err2)
+	assert.Equal(t, src, le.Source, "the bytes the position was resolved in")
+
 	d := le.Diagnostic()
 	assert.Equal(t, lint.Diagnostic{
 		File: p, Line: 5, Column: 5, RuleID: "config", RuleName: "config",
@@ -56,16 +60,18 @@ func TestPositionedDiagnostic(t *testing.T) {
 	positioned := &LoadError{
 		File: "c.yml", Message: "m", Severity: lint.Error, Err: errors.New("w: m"), Line: 2, Column: 3,
 	}
-	d, ok := PositionedDiagnostic(fmt.Errorf("loading config: %w", positioned))
+	positioned.Source = []byte("src")
+	d, src, ok := PositionedDiagnostic(fmt.Errorf("loading config: %w", positioned))
 	require.True(t, ok)
 	assert.Equal(t, positioned.Diagnostic(), d)
+	assert.Equal(t, []byte("src"), src)
 
 	for name, err := range map[string]error{
 		"not a LoadError": errors.New("plain"),
 		"no position":     &LoadError{File: "c.yml", Message: "m", Err: errors.New("m")},
 		"no file":         &LoadError{Message: "m", Err: errors.New("m"), Line: 2, Column: 3},
 	} {
-		_, ok := PositionedDiagnostic(err)
+		_, _, ok := PositionedDiagnostic(err)
 		assert.False(t, ok, name)
 	}
 }
@@ -130,6 +136,8 @@ func TestLoad_FileConventionYAMLErrorPointsIntoConventionFile(t *testing.T) {
 	assert.Equal(t, cf, le.File)
 	assert.Equal(t, 2, le.Line)
 	assert.Equal(t, 1, le.Column)
+	// Source holds the sidecar's bytes, not the config file's.
+	assert.Equal(t, []byte("flavor: commonmark\nnope: 1\n"), le.Source)
 }
 
 func TestLoad_FileConventionIssuePointsIntoConventionFile(t *testing.T) {
@@ -158,7 +166,7 @@ func TestSidecarPosition(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			line, col := sidecarPosition(tc.iss)
+			line, col, _ := sidecarPosition(tc.iss)
 			assert.Equal(t, tc.line, line)
 			assert.Equal(t, tc.col, col)
 		})
@@ -178,7 +186,7 @@ func TestYAMLErrorIssue(t *testing.T) {
 }
 
 func TestPositionError_UnresolvedPathStaysUnpositioned(t *testing.T) {
-	err := positionError(issueAt(KeyPath{"nope"}, "m"), "c.yml",
+	err := positionError(issueAt(KeyPath{"nope"}, "m"), "c.yml", nil,
 		yamlResolverFor([]byte("rules: {}\n")))
 	le := requireLoadError(t, err)
 	assert.False(t, le.Positioned())
@@ -195,5 +203,5 @@ func TestParseBytes_ErrorIsPositionedWithoutFile(t *testing.T) {
 }
 
 func TestLoadErrorNil(t *testing.T) {
-	assert.NoError(t, positionError(nil, "x", nil))
+	assert.NoError(t, positionError(nil, "x", nil, nil))
 }

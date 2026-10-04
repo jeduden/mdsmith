@@ -71,6 +71,7 @@ convention = "nope"
 			assert.Equal(t, p, le.File)
 			assert.Equal(t, tc.line, le.Line, "err: %v", err)
 			assert.Equal(t, tc.col, le.Column, "err: %v", err)
+			assert.Equal(t, []byte(tc.body), le.Source)
 		})
 	}
 }

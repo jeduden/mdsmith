@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jeduden/mdsmith/internal/config"
-	"github.com/jeduden/mdsmith/internal/lint"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
@@ -183,7 +182,7 @@ func (s *Server) reloadConfig() {
 // surfaced an error worth logging; cfgDiag is the load
 // failure as a diagnostic on the config file when it has a position.
 func (s *Server) resolveConfig(override string) (
-	cfg *config.Config, cfgPath, loadErr string, cfgDiag *lint.Diagnostic,
+	cfg *config.Config, cfgPath, loadErr string, cfgDiag *configDiag,
 ) {
 	defaults := config.Defaults()
 	fallback := config.Merge(defaults, nil)

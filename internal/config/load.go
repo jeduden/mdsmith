@@ -40,7 +40,7 @@ func Load(path string) (*Config, error) {
 	}
 	data, err := readLimitedConfig(path)
 	if err != nil {
-		return nil, positionError(fmt.Errorf("reading config file: %w", err), path, nil)
+		return nil, positionError(fmt.Errorf("reading config file: %w", err), path, nil, nil)
 	}
 	cfg, err := loadFromBytes(data, path, true)
 	if err != nil {

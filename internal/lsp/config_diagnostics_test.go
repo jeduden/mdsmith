@@ -482,3 +482,29 @@ func TestReloadConfigConcurrentReloadsPublishInOrder(t *testing.T) {
 	require.NotEmpty(t, pubs)
 	assert.Empty(t, pubs[len(pubs)-1].Diagnostics, "the fixed file's reload publishes last")
 }
+
+// The squiggle's columns are measured against the bytes Load read,
+// not a second read of the file: the file may change after the load,
+// and a second read would be uncapped.
+func TestReloadConfigDiagnosticUsesLoadedBytes(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, writeFile(cfgPath, "kinds:\n  plan:\n    extends: ghost\n"))
+
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	// The file changes on disk between the load and the publish.
+	s.afterResolveConfig = func() {
+		require.NoError(t, writeFile(cfgPath, "kinds:\n  plan:\n    extends: ghost # a much longer line now\n"))
+	}
+	s.reloadConfig()
+
+	pubs := publishedFor(t, buf.String(), pathToURI(cfgPath))
+	require.Len(t, pubs, 1)
+	require.Len(t, pubs[0].Diagnostics, 1)
+	assert.Equal(t, len("    extends: ghost"), pubs[0].Diagnostics[0].Range.End.Character)
+}

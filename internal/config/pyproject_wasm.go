@@ -10,7 +10,7 @@ import "fmt"
 func loadPyproject(path string) (*Config, error) {
 	return nil, positionError(
 		fmt.Errorf("%s: pyproject.toml config is not supported in the WebAssembly build", path),
-		path, nil)
+		path, nil, nil)
 }
 
 // probePyproject never reports a config source or a hint in the

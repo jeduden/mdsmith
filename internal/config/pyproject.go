@@ -34,20 +34,20 @@ var pluralTable = []string{"tools", "mdsmith"}
 func loadPyproject(path string) (*Config, error) {
 	data, err := readLimitedConfig(path)
 	if err != nil {
-		return nil, positionError(fmt.Errorf("reading config file: %w", err), path, nil)
+		return nil, positionError(fmt.Errorf("reading config file: %w", err), path, nil, nil)
 	}
 	tree, err := loadTOML(data)
 	if err != nil {
-		return nil, positionError(fmt.Errorf("parsing %s: %w", path, tomlErrorIssue(err, data)), path, nil)
+		return nil, positionError(fmt.Errorf("parsing %s: %w", path, tomlErrorIssue(err, data)), path, data, nil)
 	}
 	table, err := mdsmithTable(tree, path)
 	if err != nil {
-		return nil, positionError(err, path, nil)
+		return nil, positionError(err, path, data, nil)
 	}
 	doc := tomlTableToDoc(table, data)
 	cfg, err := loadFromNode(doc, path, true)
 	if err != nil {
-		return nil, positionError(err, path, func() PositionResolver { return pyprojectResolver(doc) })
+		return nil, positionError(err, path, data, func() PositionResolver { return pyprojectResolver(doc) })
 	}
 	return cfg, nil
 }

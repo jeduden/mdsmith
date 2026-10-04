@@ -44,15 +44,18 @@ func TestSidecarPosition_ColumnIsByteOffset(t *testing.T) {
 	kf := writeCfg(t, t.TempDir(), "plan.yml", body)
 	want := byteColOf(t, body, 2, "b:")
 
-	line, col := sidecarPosition(&Issue{File: kf, Path: KeyPath{"kinds", "plan", "meta", "b"}})
+	line, col, data := sidecarPosition(&Issue{File: kf, Path: KeyPath{"kinds", "plan", "meta", "b"}})
+	assert.Equal(t, []byte(body), data)
 	assert.Equal(t, 2, line)
 	assert.Equal(t, want, col, "a path-resolved sidecar column")
 
-	line, col = sidecarPosition(&Issue{File: kf, Line: 2, Column: want - 2})
+	line, col, data = sidecarPosition(&Issue{File: kf, Line: 2, Column: want - 2})
+	assert.Equal(t, []byte(body), data)
 	assert.Equal(t, 2, line)
 	assert.Equal(t, want, col, "a pre-resolved sidecar (decoder) column")
 
-	line, col = sidecarPosition(&Issue{File: filepath.Join(t.TempDir(), "gone.yml"), Line: 3, Column: 4})
+	line, col, data = sidecarPosition(&Issue{File: filepath.Join(t.TempDir(), "gone.yml"), Line: 3, Column: 4})
+	assert.Nil(t, data)
 	assert.Equal(t, 3, line)
 	assert.Equal(t, 4, col, "an unreadable sidecar keeps the parser column")
 }

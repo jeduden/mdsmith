@@ -8,51 +8,59 @@ import (
 	"github.com/jeduden/mdsmith/internal/lint"
 )
 
+// configDiag is a positioned config-load failure: the diagnostic and
+// the content of its file the position was resolved in (nil when the
+// loader did not read it).
+type configDiag struct {
+	diag   lint.Diagnostic
+	source []byte
+}
+
 // configLoadDiagnostic returns the diagnostic for a config load failure
 // that carries a position in a config file, or nil when err has none.
-func configLoadDiagnostic(err error) *lint.Diagnostic {
-	d, ok := config.PositionedDiagnostic(err)
+func configLoadDiagnostic(err error) *configDiag {
+	d, source, ok := config.PositionedDiagnostic(err)
 	if !ok {
 		return nil
 	}
-	return &d
+	return &configDiag{diag: d, source: source}
 }
 
-// publishConfigDiagnostic shows d as a squiggle on the config file it
+// publishConfigDiagnostic shows cd as a squiggle on the config file it
 // names, and clears the squiggle a previous reload left on a config
-// file that no longer has one (d nil, or d on a different file). The
+// file that no longer has one (cd nil, or cd on a different file). The
 // column is measured against the open buffer when the file is open in
-// the editor, else against the bytes on disk.
-func (s *Server) publishConfigDiagnostic(d *lint.Diagnostic) {
+// the editor, else against the bytes the loader read — never a second
+// read of the file, which could be uncapped or see newer content than
+// the position came from.
+func (s *Server) publishConfigDiagnostic(cd *configDiag) {
 	s.configDiagMu.Lock()
 	defer s.configDiagMu.Unlock()
 
 	uri := ""
-	if d != nil {
-		uri = pathToURI(d.File)
+	if cd != nil {
+		uri = pathToURI(cd.diag.File)
 	}
 	if prev := s.configDiagURI; prev != "" && prev != uri {
 		_ = s.t.writeNotification("textDocument/publishDiagnostics",
 			publishDiagnosticsParams{URI: prev, Diagnostics: []Diagnostic{}})
 	}
 	s.configDiagURI = uri
-	if d == nil {
+	if cd == nil {
 		return
 	}
 
-	var source []byte
+	// Missing bytes only cost the squiggle its columns: it then spans
+	// the start of the reported line.
+	source := cd.source
 	if doc, ok := s.docs.get(uri); ok {
 		source = doc.text
-	} else {
-		// Missing bytes only cost the squiggle its columns: it then
-		// spans the start of the reported line.
-		source, _ = symbolWorkspace.ReadFile(d.File)
 	}
 	s.configMu.RLock()
 	root := s.rootDir
 	s.configMu.RUnlock()
 	_ = s.t.writeNotification("textDocument/publishDiagnostics",
-		publishDiagnosticsParams{URI: uri, Diagnostics: toLSPAll([]lint.Diagnostic{*d}, source, root)})
+		publishDiagnosticsParams{URI: uri, Diagnostics: toLSPAll([]lint.Diagnostic{cd.diag}, source, root)})
 }
 
 // logDiscoverHints reports, as warnings, the hints a config discovery

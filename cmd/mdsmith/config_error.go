@@ -18,7 +18,7 @@ import (
 // jump to the offending value; any other error keeps the plain
 // `mdsmith: <error>` line. The caller still exits 2.
 func printConfigError(w io.Writer, err error) {
-	d, ok := config.PositionedDiagnostic(err)
+	d, _, ok := config.PositionedDiagnostic(err)
 	if !ok {
 		_, _ = fmt.Fprintf(w, "mdsmith: %v\n", err)
 		return

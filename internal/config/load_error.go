@@ -34,6 +34,12 @@ type LoadError struct {
 	// diagnostic's.
 	Line   int
 	Column int
+
+	// Source is the content of File that Line and Column were resolved
+	// in, when Load read it (capped at maxConfigBytes), so a consumer
+	// measures columns against the same bytes instead of reading the
+	// file again. nil when the bytes are not known.
+	Source []byte
 }
 
 // Error returns the full wrapped error text.
@@ -59,28 +65,31 @@ func (e *LoadError) Diagnostic() lint.Diagnostic {
 }
 
 // PositionedDiagnostic returns the diagnostic for a config load failure
-// that carries a position in a named config file. ok is false for any
-// other error, which callers report as plain text. The CLI prints the
-// diagnostic and the language server publishes it on the config file.
-func PositionedDiagnostic(err error) (d lint.Diagnostic, ok bool) {
+// that carries a position in a named config file, with the file content
+// the position was resolved in (LoadError.Source, possibly nil). ok is
+// false for any other error, which callers report as plain text. The
+// CLI prints the diagnostic and the language server publishes it on the
+// config file.
+func PositionedDiagnostic(err error) (d lint.Diagnostic, source []byte, ok bool) {
 	var le *LoadError
 	if !errors.As(err, &le) || !le.Positioned() || le.File == "" {
-		return lint.Diagnostic{}, false
+		return lint.Diagnostic{}, nil, false
 	}
-	return le.Diagnostic(), true
+	return le.Diagnostic(), le.Source, true
 }
 
 // positionError wraps a load failure in a LoadError, resolving the
 // position of the Issue in err's chain. file is the config the bytes
-// came from; resolver lazily builds the PositionResolver over those
+// came from and data those bytes (nil when unread), kept as the
+// LoadError's Source; resolver lazily builds the PositionResolver over those
 // bytes (only an issue addressed by key path needs it). An issue that
 // names a different file — a `.mdsmith/` sidecar — is resolved in that
 // file instead.
-func positionError(err error, file string, resolver func() PositionResolver) error {
+func positionError(err error, file string, data []byte, resolver func() PositionResolver) error {
 	if err == nil {
 		return nil
 	}
-	le := &LoadError{File: file, Message: err.Error(), Severity: lint.Error, Err: err}
+	le := &LoadError{File: file, Message: err.Error(), Severity: lint.Error, Err: err, Source: data}
 	var iss *Issue
 	if !errors.As(err, &iss) {
 		return le
@@ -91,7 +100,7 @@ func positionError(err error, file string, resolver func() PositionResolver) err
 	}
 	if iss.File != "" && iss.File != file {
 		le.File = iss.File
-		le.Line, le.Column = sidecarPosition(iss)
+		le.Line, le.Column, le.Source = sidecarPosition(iss)
 		return le
 	}
 	switch {
@@ -110,25 +119,27 @@ func positionError(err error, file string, resolver func() PositionResolver) err
 // map — `.mdsmith/kinds/plan.yml` is the body of `kinds.plan` — so the
 // first two key-path elements are dropped and the rest resolved inside
 // the file. An issue addressed at the entry itself anchors on line 1.
-func sidecarPosition(iss *Issue) (line, col int) {
+// data is the sidecar's content the position was resolved in, nil when
+// it was not read.
+func sidecarPosition(iss *Issue) (line, col int, data []byte) {
 	if iss.Line <= 0 && len(iss.Path) <= 2 {
-		return 1, 1
+		return 1, 1, nil
 	}
 	data, err := readLimitedConfig(iss.File)
 	if err != nil {
 		if iss.Line > 0 {
-			return iss.Line, iss.Column
+			return iss.Line, iss.Column, nil
 		}
-		return 0, 0
+		return 0, 0, nil
 	}
 	if iss.Line > 0 {
-		return iss.Line, byteColumn(data, iss.Line, iss.Column)
+		return iss.Line, byteColumn(data, iss.Line, iss.Column), data
 	}
 	line, col, ok := newYAMLResolver(data).Resolve(iss.Path[2:])
 	if !ok {
-		return 1, 1
+		return 1, 1, data
 	}
-	return line, byteColumn(data, line, col)
+	return line, byteColumn(data, line, col), data
 }
 
 // yamlPositionError is positionError for a config read from YAML text
@@ -137,7 +148,7 @@ func sidecarPosition(iss *Issue) (line, col int) {
 // multi-byte characters earlier on the line does not shift it. A
 // position in a sidecar file is converted by sidecarPosition.
 func yamlPositionError(err error, file string, data []byte) error {
-	perr := positionError(err, file, yamlResolverFor(data))
+	perr := positionError(err, file, data, yamlResolverFor(data))
 	var le *LoadError
 	if errors.As(perr, &le) && le.Positioned() && le.File == file {
 		le.Column = byteColumn(data, le.Line, le.Column)
