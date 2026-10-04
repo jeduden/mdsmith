@@ -343,7 +343,7 @@ func willRename(t *testing.T, h *testHarness, rootURI string, pairs ...string) w
 
 // TestWillRenameFilesBatchWithholdsEditInsideUnplannedMove locks that
 // a batch member whose own move cannot be planned still counts as a
-// moved file. refactor.Move refuses docs/a.md because x/y/a.md exists
+// moved file. refactor.MoveAll refuses docs/a.md because x/y/a.md exists
 // (the editor still moves it, overwriting), yet moving docs/b.md to
 // x/y/b.md would spell docs/a.md's `b.md` as `../x/y/b.md` from docs/,
 // which names x/x/y/b.md once a.md sits in x/y/ — where `b.md`, left

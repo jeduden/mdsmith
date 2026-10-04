@@ -76,10 +76,10 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 // guardRenameEdits converts a batch's edits, keyed by edit key, to LSP
 // text edits and runs dropConflictingTextEdits over each file's,
 // returning the kept edits and how many the guard dropped.
-func guardRenameEdits(edits map[string][]refactor.Edit) (map[string][]textEdit, int) {
+func guardRenameEdits(planned map[string][]refactor.Edit) (map[string][]textEdit, int) {
 	merged := map[string][]textEdit{}
 	dropped := 0
-	for key, edits := range edits {
+	for key, edits := range planned {
 		kept := dropConflictingTextEdits(toTextEdits(edits))
 		dropped += len(edits) - len(kept)
 		if len(kept) > 0 {
