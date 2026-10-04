@@ -109,8 +109,10 @@ func (s *Server) handleInitialized(ctx context.Context) {
 // registerWatchers asks the client to watch project files we depend
 // on:
 //
-//   - `**/.mdsmith.yml` invalidates cached config and the symbol
-//     index (kind / ignore globs may shift scope).
+//   - `**/.mdsmith.yml` and `**/pyproject.toml` (the config sources)
+//     invalidate cached config and the symbol index (kind / ignore
+//     globs may shift scope); isWatchedConfigChange decides which
+//     events reload.
 //   - `**/*.md` keeps the symbol index in sync when files change
 //     outside of any open buffer (sibling editor, VCS checkout).
 //

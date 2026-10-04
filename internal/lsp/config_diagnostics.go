@@ -46,7 +46,8 @@ func (s *Server) publishConfigDiagnostic(d *lint.Diagnostic) {
 	if doc, ok := s.docs.get(uri); ok {
 		source = doc.text
 	} else {
-		// Missing bytes only lose the squiggle's end column.
+		// Missing bytes only cost the squiggle its columns: it then
+		// spans the start of the reported line.
 		source, _ = symbolWorkspace.ReadFile(d.File)
 	}
 	s.configMu.RLock()
