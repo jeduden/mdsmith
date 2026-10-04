@@ -99,6 +99,12 @@ for the edge index and once for `WikilinkIndex`.
    walked paths in the edge-index walk and build the index
    with `linkgraph.NewWikilinkIndexFromPaths`.
 8. [x] Run `go test ./...` and the linter.
+9. [x] Write failing tests that record every root
+   `lint.OpenRootFS` opens (one `rootfstest.Record` hook) and
+   close each at its owner: `lintFile` for an on-disk lint,
+   `RunSource` for a call no parse cache keeps, the `Session`
+   (in `Dispose`) for the root it lends its runners, and the
+   fix, export, and extract calls for their file.
 
 ## Acceptance Criteria
 
@@ -107,8 +113,9 @@ for the edge index and once for `WikilinkIndex`.
 - [x] An LSP move with no file-watch registration still
       walks fresh and counts a gitignored same-stem file
 - [x] No wikilink walk leaves its `os.Root` open after the
-      walk ends (the per-file lint, fix, export and extract
-      roots are listed under Follow-up)
+      walk ends, and the per-file lint, fix, export and
+      extract roots close when their file is released (the
+      LSP's roots are listed under Follow-up)
 - [x] `refactor.Heading` accepts a workspace with no
       `WikilinkIndex` method, and an LSP heading rename builds
       no wikilink closure
@@ -120,25 +127,20 @@ for the edge index and once for `WikilinkIndex`.
 
 ## Follow-up
 
-These `lint.OpenRootFS` callers still drop the handle, so it
-stays open until garbage collection. They were out of scope
-here because closing them changes how long a `lint.File` FS or
-a `Session` lives. They need their own plan; PLAN.md sits at
-its 300-line file-length limit, so filing it needs a maintainer
+These items need their own plan; PLAN.md sits at its
+300-line file-length limit, so filing it needs a maintainer
 decision on the limit first.
 
-- [runner.go](../internal/engine/runner.go): one root per linted
-  file (`f.FS` and `SetRootDir`). The runner always sets
-  `f.RootFS`, so MDS027's close of its own root (taken only when
-  `RootFS` is nil) never runs in production; its wikilink walk
-  reads this unclosed root. `populateFileFields` publishes the
-  `*lint.File` to the parse cache, so the runner cannot close the
-  root when the file is released. The parse cache, or `lint.File`
-  itself, must own the root and close it.
-- [fix.go](../internal/fix/fix.go): one root per fixed file.
-- [export.go](../cmd/mdsmith/export.go) and
-  [extract.go](../cmd/mdsmith/extract.go): one root per file.
-- [session.go](../pkg/mdsmith/session.go): `s.ws.FS()` opens a
-  new root on every `Check` and `Fix` of an `OSWorkspace`.
-- [overlay.go](../pkg/mdsmith/overlay.go): one cached disk root
-  that `Session.Dispose` never closes.
+- [overlay.go](../pkg/mdsmith/overlay.go) and
+  [server_session.go](../internal/lsp/server_session.go): the
+  overlay's cached disk root, and the root an LSP session lends
+  its runners, stay open until garbage collection. The LSP
+  never disposes a superseded session, because a lint may
+  still hold it, so closing either needs an in-flight count
+  on the session first.
+- [server_lifecycle.go](../internal/lsp/server_lifecycle.go):
+  an accepted `**/*` registration can still miss events
+  (`files.watcherExclude`, exhausted inotify watches), so a
+  move may read a stale wikilink index. A bound on how long
+  the cache is trusted, or a cheap freshness probe, needs a
+  design decision.

@@ -211,6 +211,10 @@ The session owns four caches, all session-scoped:
 - **Compiled config.** Built once at `NewSession`. A config change
   needs `Dispose()` plus a new `NewSession`; there is no in-place
   reconfigure.
+- **Disk roots.** On disk, a session opens one `os.Root` view of
+  its root, plus one of an `OSWorkspace`, and lends them to every
+  operation, since a parsed file it caches keeps its root past the
+  call. `Dispose()` closes them.
 
 `Invalidate(uri)` signals that `uri` changed. With a `content` argument
 it rewrites that file through the workspace's mutable overlay, so the
