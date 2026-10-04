@@ -52,6 +52,10 @@ func dispatchInterruptible(opts buildPassOpts, dispatch func(buildPassOpts) int)
 	}
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, watch...)
+	// Before any recipe starts, not once the watcher sees the signal:
+	// the Ctrl-C ends a `| tee` reader at once, and a write landing
+	// before the watcher runs would otherwise die of SIGPIPE.
+	holdBrokenPipe()
 
 	force := make(chan struct{})
 	ctx, cancel := context.WithCancel(buildexec.WithForceKill(opts.context(), force))
@@ -61,7 +65,7 @@ func dispatchInterruptible(opts buildPassOpts, dispatch func(buildPassOpts) int)
 	var first os.Signal
 	go func() {
 		defer close(watched)
-		first = watchInterrupts(sigs, func() { holdBrokenPipe(); cancel() }, force, done)
+		first = watchInterrupts(sigs, cancel, force, done)
 	}()
 	// Stop before the watcher ends, so a signal that lands after dispatch
 	// returned takes its default action instead of sitting unread in sigs.
@@ -85,14 +89,17 @@ func dispatchInterruptible(opts buildPassOpts, dispatch func(buildPassOpts) int)
 var notifySignal = signal.Notify
 
 // holdBrokenPipe catches brokenPipeSignals (SIGPIPE on Unix) for the
-// rest of the process once an interrupt arrives. A Ctrl-C often also
-// ends the reader of mdsmith's output (`mdsmith fix 2>&1 | tee log`),
-// and Go dies of SIGPIPE on a write to a broken stdout or stderr: one
-// worker's INTERRUPTED report would then end mdsmith while another
-// waits out its grace, orphaning that recipe group. Caught, the write
-// just fails and mdsmith reaps every group, then dies of the interrupt.
-// The hold is never released: the run is ending. With no signal to
-// catch it does nothing, since Notify with none catches them all.
+// rest of the process from the start of an interruptible dispatch. A
+// Ctrl-C often also ends the reader of mdsmith's output
+// (`mdsmith fix 2>&1 | tee log`), and Go dies of SIGPIPE on a write to
+// a broken stdout or stderr: a --build-stream line, or one worker's
+// report, written before the watcher handles the interrupt would then
+// end mdsmith with recipe groups still running, orphaning them. Caught,
+// the write just fails and mdsmith reaps every group, then dies of the
+// interrupt; a reader that goes away with no interrupt no longer ends
+// the dispatch midway either. The hold is never released: the build
+// pass is the run's last step. With no signal to catch it does
+// nothing, since Notify with none catches them all.
 func holdBrokenPipe() {
 	if len(brokenPipeSignals) == 0 {
 		return

@@ -81,6 +81,7 @@ func TestDispatchInterruptible_RecordsFirstSignal(t *testing.T) {
 	// (nohup): the test sends it, so it must not be left out.
 	stubSignalIgnored(t)
 	stubRaise(t)
+	stubNotify(t) // keep the test binary's SIGPIPE action
 	pendingInterrupt = nil
 	code := dispatchInterruptible(buildPassOpts{interruptible: true}, func(o buildPassOpts) int {
 		require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGHUP))

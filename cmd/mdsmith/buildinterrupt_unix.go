@@ -13,7 +13,7 @@ import (
 // terminal or a dropped SSH session must reap the recipe groups too.
 var hangupSignals = []os.Signal{syscall.SIGHUP}
 
-// brokenPipeSignals is what holdBrokenPipe catches after an interrupt.
+// brokenPipeSignals is what holdBrokenPipe catches during dispatch.
 var brokenPipeSignals = []os.Signal{syscall.SIGPIPE}
 
 // killSelf sends s to this process. It is a var so a test can observe

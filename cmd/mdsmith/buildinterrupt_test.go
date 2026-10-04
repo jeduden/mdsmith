@@ -218,6 +218,7 @@ func TestDispatchInterruptible_UninterruptedKeepsCode(t *testing.T) {
 	// stands and nothing is left to re-raise.
 	stubSignalIgnored(t)
 	stubRaise(t)
+	stubNotify(t) // keep the test binary's SIGPIPE action
 	pendingInterrupt = nil
 	code := dispatchInterruptible(buildPassOpts{interruptible: true}, func(o buildPassOpts) int {
 		assert.NoError(t, o.context().Err())
@@ -235,6 +236,29 @@ func stubNotify(t *testing.T) *[][]os.Signal {
 	notifySignal = func(_ chan<- os.Signal, sigs ...os.Signal) { calls = append(calls, sigs) }
 	t.Cleanup(func() { notifySignal = old })
 	return &calls
+}
+
+// TestDispatchInterruptible_HoldsBrokenPipeBeforeDispatch covers
+// `mdsmith fix --build-stream 2>&1 | tee log` and a Ctrl-C that ends
+// tee too: a live recipe line written before the watcher sees the
+// signal would hit the broken pipe, and Go would die of SIGPIPE with
+// the recipe groups still running. The hold must already be in place
+// when dispatch starts, not installed once the interrupt is handled.
+func TestDispatchInterruptible_HoldsBrokenPipeBeforeDispatch(t *testing.T) {
+	stubSignalIgnored(t)
+	stubRaise(t)
+	calls := stubNotify(t)
+	old := brokenPipeSignals
+	t.Cleanup(func() { brokenPipeSignals = old })
+	brokenPipeSignals = []os.Signal{syscall.SIGTERM} // stubNotify catches nothing for real
+	pendingInterrupt = nil
+
+	code := dispatchInterruptible(buildPassOpts{interruptible: true}, func(buildPassOpts) int {
+		assert.Equal(t, [][]os.Signal{{syscall.SIGTERM}}, *calls,
+			"the broken-pipe hold must be installed before any recipe starts")
+		return 0
+	})
+	assert.Equal(t, 0, code)
 }
 
 func TestHoldBrokenPipe_CatchesBrokenPipeSignals(t *testing.T) {

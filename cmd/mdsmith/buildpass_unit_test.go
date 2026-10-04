@@ -1500,6 +1500,7 @@ func TestRunBuildPassInterruptible_InterruptedExitsTwo(t *testing.T) {
 	p := filepath.Join(root, "doc.md")
 	require.NoError(t, os.WriteFile(p, []byte(buildPassDirective("mk", "out.txt")), 0o644))
 
+	stubNotify(t) // keep the test binary's SIGPIPE action
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var buf strings.Builder

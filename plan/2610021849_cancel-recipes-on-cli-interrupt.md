@@ -71,11 +71,12 @@ done, so only the cancellation is missing.
    (`escalateAfter`) is a duplicated delivery of the same
    interrupt (`npm run` forwarding SIGINT, bash resending
    SIGHUP) and keeps the grace. mdsmith still waits for
-   the reap, so no recipe is orphaned. After the first
-   signal mdsmith catches SIGPIPE (`holdBrokenPipe`), so
-   a report written to a reader the Ctrl-C also ended
-   (`2>&1 | tee log`) cannot end it before every group
-   is reaped.
+   the reap, so no recipe is orphaned. From the start of
+   dispatch mdsmith catches SIGPIPE (`holdBrokenPipe`), so
+   a report or `--build-stream` line written to a reader
+   the Ctrl-C also ended (`2>&1 | tee log`) cannot end it
+   before every group is reaped, even when the write
+   beats the watcher to the signal.
 6. Run hooks through `runRecipe` (keeping mdsmith's
    environment), so a done context starts no hook and an
    interrupted hook reports as interrupted. Keep hooks in
