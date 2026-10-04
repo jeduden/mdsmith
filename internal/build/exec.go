@@ -93,6 +93,12 @@ type runOpts struct {
 	defExec ExecConfig // compiled defaults to fall back to
 	stdout  io.Writer  // nil means os.Stderr
 	stderr  io.Writer  // nil means os.Stderr
+	// inheritEnv keeps mdsmith's own environment instead of the
+	// hermetic buildEnv one. Hooks set it: they are developer tooling
+	// (dev servers, deploy steps), not reproducible builds.
+	inheritEnv bool
+	// label names the process in start errors; empty means "recipe".
+	label string
 }
 
 // runRecipe executes argv with a hermetic environment, a fixed working
@@ -168,16 +174,18 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	ro := &recipeOutput{}
 	defer ro.gate.close()
 	if err := ro.attach(cmd, o.stdout, o.stderr); err != nil {
-		return -1, false, fmt.Errorf("capturing recipe output: %w", err)
+		return -1, false, fmt.Errorf("capturing %s output: %w", o.processLabel(), err)
 	}
-	cmd.Env = buildEnv(o.exec, o.defExec)
+	if !o.inheritEnv {
+		cmd.Env = buildEnv(o.exec, o.defExec)
+	}
 	configureProcessGroup(cmd)
 
 	err := cmd.Start()
 	ro.closeChildEnds()
 	if err != nil {
 		ro.abandon()
-		return -1, false, fmt.Errorf("starting recipe: %w", err)
+		return -1, false, fmt.Errorf("starting %s: %w", o.processLabel(), err)
 	}
 
 	jobCleanup := afterStartFn(cmd)
@@ -220,6 +228,14 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		}
 		return timeoutResult(ctx, ro, waitErr)
 	}
+}
+
+// processLabel returns o.label, or "recipe" when it is empty.
+func (o runOpts) processLabel() string {
+	if o.label == "" {
+		return "recipe"
+	}
+	return o.label
 }
 
 // exitResult maps a finished recipe's Wait (or output copy) error to

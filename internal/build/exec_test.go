@@ -171,3 +171,18 @@ func TestWithForceKill_RoundTrip(t *testing.T) {
 	// A child context (the per-target timeout) still carries the channel.
 	assert.Equal(t, (<-chan struct{})(force), forceKillFrom(ctx))
 }
+
+func TestRunOpts_ProcessLabel(t *testing.T) {
+	assert.Equal(t, "recipe", runOpts{}.processLabel())
+	assert.Equal(t, "hook", runOpts{label: "hook"}.processLabel())
+}
+
+func TestRunRecipe_StartErrorNamesLabel(t *testing.T) {
+	_, _, err := runRecipe(context.Background(), runOpts{
+		argv:  []string{filepath.Join(t.TempDir(), "no-such-hook")},
+		dir:   t.TempDir(),
+		label: "hook",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "starting hook")
+}

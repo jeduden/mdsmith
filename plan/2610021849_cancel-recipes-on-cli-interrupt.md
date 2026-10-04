@@ -62,9 +62,12 @@ done, so only the cancellation is missing.
    `build.WithForceKill` channel so the Unix kill sends
    SIGKILL at once. mdsmith still waits for the reap, so
    no recipe is orphaned.
-6. Print the last stdout and stderr lines in the
+6. Run hooks through `runRecipe` (keeping mdsmith's
+   environment), so a cancelled or timed-out hook gets the
+   same group kill and its children die with it.
+7. Print the last stdout and stderr lines in the
    `INTERRUPTED` report, as the timeout report does.
-7. Document the behavior next to the timeout paragraph in
+8. Document the behavior next to the timeout paragraph in
    [build.md](../docs/guides/directives/build.md).
 
 ## Acceptance Criteria
@@ -73,6 +76,8 @@ done, so only the cancellation is missing.
       process from the recipe's group running (Unix test).
 - [x] An interrupted build is reported as interrupted, not
       as timed out.
+- [x] Interrupting a hook also kills the children it
+      spawned (Unix test).
 - [x] A second Ctrl-C ends a run whose recipe ignores
       SIGTERM before the 5 s grace period runs out.
 - [x] `GOOS=plan9 go vet ./...` and

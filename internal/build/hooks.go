@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -86,31 +85,34 @@ func RunAfterHooks(ctx context.Context, hooks []HookEntry, root string, w io.Wri
 }
 
 // runHook executes a single hook and returns a HookResult on failure, nil
-// on success.
+// on success. It runs through runRecipe, so a hook gets a recipe's
+// process-group isolation and group kill: a cancel (CLI interrupt) or
+// the hook timeout ends the hook's children too, not only its leader.
+// Unlike a recipe it keeps mdsmith's environment and runs in root.
 func runHook(ctx context.Context, tokens []string, root string) *HookResult {
-	cmd := exec.CommandContext(ctx, tokens[0], tokens[1:]...) //nolint:gosec // argv is explicit; user-declared hook
-	cmd.Dir = root
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		code := 1
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			// A deadline is the hook timeout; a cancel is a CLI interrupt.
-			reason := "timed out"
-			if errors.Is(ctxErr, context.Canceled) {
-				reason = "interrupted"
-			}
-			return &HookResult{ExitCode: code, Err: fmt.Errorf("%w (%s)", ctxErr, reason)}
-		}
-		if ee, ok := err.(*exec.ExitError); ok {
-			code = ee.ExitCode()
-			if code < 0 {
-				code = 1
-			}
-		}
-		return &HookResult{ExitCode: code, Err: err}
+	code, _, err := runRecipe(ctx, runOpts{
+		argv:       tokens,
+		dir:        root,
+		stdout:     os.Stderr,
+		stderr:     os.Stderr,
+		inheritEnv: true,
+		label:      "hook",
+	})
+	if err == nil {
+		return nil
 	}
-	return nil
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		// A deadline is the hook timeout; a cancel is a CLI interrupt.
+		reason := "timed out"
+		if errors.Is(ctxErr, context.Canceled) {
+			reason = "interrupted"
+		}
+		return &HookResult{ExitCode: 1, Err: fmt.Errorf("%w (%s)", ctxErr, reason)}
+	}
+	if code < 0 {
+		code = 1 // killed by a signal, or never started
+	}
+	return &HookResult{ExitCode: code, Err: err}
 }
 
 // TokenizeHook splits a hook command on whitespace and substitutes {param}

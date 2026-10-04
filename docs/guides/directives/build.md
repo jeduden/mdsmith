@@ -244,8 +244,8 @@ Each hook entry has three fields:
 | `params`  | no       | Map of param name to literal string value                        |
 | `name`    | no       | Display label for `OK`/`FAIL` output; defaults to the executable |
 
-Hooks have no directive surface. They are config-level and run once
-per `mdsmith fix` build pass, not once per directive.
+Hooks are config-level: once per build pass, in mdsmith's environment, each
+in its own process group, so the recipe kill path also ends a hook's children.
 
 ### Execution order
 
