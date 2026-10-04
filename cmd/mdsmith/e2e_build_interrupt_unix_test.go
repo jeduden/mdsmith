@@ -19,6 +19,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// waitPIDFile polls path for up to 10 s until it holds a pid and
+// returns it, or 0 when none was recorded in time.
+func waitPIDFile(path string) int {
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if b, err := os.ReadFile(path); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil && pid > 0 {
+				return pid
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return 0
+}
+
 // startBuildWithChild starts `mdsmith fix --build-only` in a fresh build
 // repo whose one recipe runs prelude, then spawns a long-lived child
 // that records its pid, then sleeps. It returns the running CLI, its
@@ -43,14 +58,7 @@ func startBuildWithChild(t *testing.T, prelude string) (*exec.Cmd, *bytes.Buffer
 	cmd.Stderr = stderr
 	require.NoError(t, cmd.Start())
 
-	var childPID int
-	deadline := time.Now().Add(10 * time.Second)
-	for childPID == 0 && time.Now().Before(deadline) {
-		if b, err := os.ReadFile(pidFile); err == nil {
-			childPID, _ = strconv.Atoi(strings.TrimSpace(string(b)))
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	childPID := waitPIDFile(pidFile)
 	t.Cleanup(func() {
 		if !t.Failed() {
 			return
@@ -180,18 +188,7 @@ func TestE2E_Build_BrokenStderrAfterInterruptStillReaps(t *testing.T) {
 	require.NoError(t, cmd.Start())
 	require.NoError(t, pw.Close())
 
-	readPID := func(path string) int {
-		var pid int
-		deadline := time.Now().Add(10 * time.Second)
-		for pid == 0 && time.Now().Before(deadline) {
-			if b, err := os.ReadFile(path); err == nil {
-				pid, _ = strconv.Atoi(strings.TrimSpace(string(b)))
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-		return pid
-	}
-	pgid := readPID(stuckPGID)
+	pgid := waitPIDFile(stuckPGID)
 	t.Cleanup(func() {
 		_ = cmd.Process.Kill()
 		if pgid > 0 {
@@ -199,7 +196,7 @@ func TestE2E_Build_BrokenStderrAfterInterruptStillReaps(t *testing.T) {
 		}
 	})
 	require.NotZero(t, pgid, "stuck recipe pid should have been recorded")
-	require.NotZero(t, readPID(quickPID), "quick recipe pid should have been recorded")
+	require.NotZero(t, waitPIDFile(quickPID), "quick recipe pid should have been recorded")
 
 	require.NoError(t, pr.Close()) // the reader (tee) is gone
 	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))
