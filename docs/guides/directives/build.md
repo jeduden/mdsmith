@@ -381,8 +381,8 @@ the group `SIGTERM`, then `SIGKILL` after up to 5 s; plan9 writes `kill` to its
 `notepg`, then each member's and the leader's `ctl` (an rc `&` job escapes);
 Windows sends `CTRL_BREAK_EVENT` and ends its Job Object; without one, a daemon
 can survive. Each later wait caps at 5 s. Ctrl-C or `SIGTERM` (DEL on plan9)
-in the `mdsmith fix` build pass takes this path; mdsmith exits 2 after recipes
-die, reporting `INTERRUPTED` and both streams' last lines, not `TIMEOUT`.
+in the `mdsmith fix` build pass takes this path; a second Ctrl-C skips the
+grace. Once recipes die, mdsmith exits 2 and reports `INTERRUPTED` with tails.
 
 ### Atomic-write hardening
 

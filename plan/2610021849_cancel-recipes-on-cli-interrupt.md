@@ -54,7 +54,17 @@ done, so only the cancellation is missing.
    not a timeout, and that mdsmith exits 2 after the
    recipes are reaped. This covers a target not yet
    started, a `--build-verify` re-run, and a hook.
-4. Document the behavior next to the timeout paragraph in
+4. Make `runRecipe` start no recipe when its context is
+   already done at entry, so every `BuildWithResult`
+   caller (build pass and verify re-run) is covered.
+5. Escalate on a second signal: the first cancels the
+   build (SIGTERM plus grace), the second closes a
+   `build.WithForceKill` channel so the Unix kill sends
+   SIGKILL at once. mdsmith still waits for the reap, so
+   no recipe is orphaned.
+6. Print the last stdout and stderr lines in the
+   `INTERRUPTED` report, as the timeout report does.
+7. Document the behavior next to the timeout paragraph in
    [build.md](../docs/guides/directives/build.md).
 
 ## Acceptance Criteria
@@ -63,6 +73,8 @@ done, so only the cancellation is missing.
       process from the recipe's group running (Unix test).
 - [x] An interrupted build is reported as interrupted, not
       as timed out.
+- [x] A second Ctrl-C ends a run whose recipe ignores
+      SIGTERM before the 5 s grace period runs out.
 - [x] `GOOS=plan9 go vet ./...` and
       `GOOS=js GOARCH=wasm go build ./...` still pass.
 - [x] All tests pass: `go test ./...`

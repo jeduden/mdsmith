@@ -104,3 +104,58 @@ func TestE2E_Fix_NoBuildKeepsDefaultSignalAction(t *testing.T) {
 	require.True(t, ok)
 	assert.True(t, ws.Signaled(), "fix must die of SIGTERM, got %v", err)
 }
+
+// TestE2E_Build_SecondSignalSkipsGrace checks that a second Ctrl-C
+// escalates the kill: a recipe tree that ignores SIGTERM would hold
+// mdsmith for the 5 s grace period, but the second SIGINT sends SIGKILL
+// at once. The tree still dies, so nothing is orphaned.
+func TestE2E_Build_SecondSignalSkipsGrace(t *testing.T) {
+	dir := writeBuildRepo(t, "")
+	pidFile := filepath.Join(dir, "child.pid")
+	script := "#!/bin/sh\ntrap '' TERM\nsleep 120 & echo $! > \"" + pidFile + "\"\nsleep 120\ntouch \"$1\"\n"
+	scriptPath := filepath.Join(dir, "stubborn.sh")
+	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
+	reconfigureRecipe(t, dir, "    stubborn:\n      command: "+scriptPath+" {outputs}\n")
+	writeFixture(t, dir, "doc.md", buildDirective("stubborn", "", "out.txt"))
+
+	cmd := exec.Command(binaryPath, "fix", "--no-color", "--build-only", "doc.md")
+	cmd.Dir = dir
+	cmd.Env = envWithCoverDir(coverDir)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	require.NoError(t, cmd.Start())
+
+	var childPID int
+	deadline := time.Now().Add(10 * time.Second)
+	for childPID == 0 && time.Now().Before(deadline) {
+		if b, err := os.ReadFile(pidFile); err == nil {
+			childPID, _ = strconv.Atoi(strings.TrimSpace(string(b)))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		_ = cmd.Process.Kill()
+		if childPID > 0 {
+			_ = syscall.Kill(childPID, syscall.SIGKILL)
+		}
+	})
+	require.NotZero(t, childPID, "child pid should have been recorded")
+
+	start := time.Now()
+	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))
+	time.Sleep(300 * time.Millisecond)
+	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))
+
+	err := cmd.Wait()
+	elapsed := time.Since(start)
+	ee, ok := err.(*exec.ExitError)
+	require.True(t, ok, "expected non-zero exit, got %v", err)
+	assert.Equal(t, 2, ee.ExitCode(), stderr.String())
+	assert.Less(t, elapsed, 4*time.Second, "second SIGINT must skip the 5 s SIGTERM grace")
+	assert.Contains(t, stderr.String(), "INTERRUPTED")
+	assert.Eventually(t, func() bool { return !unixProcessAlive(childPID) },
+		6*time.Second, 100*time.Millisecond, "recipe child must not be orphaned")
+}
