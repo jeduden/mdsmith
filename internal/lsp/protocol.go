@@ -4,7 +4,10 @@
 // code actions, and watched-file notifications.
 package lsp
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // JSON-RPC 2.0 framing.
 
@@ -79,16 +82,29 @@ type initializeParams struct {
 // singleton (see startSingletonWatch). Any other shape — absent, null,
 // a non-object options value or namespace, a non-string scope — yields
 // "", which is the opt-out: the server then never claims the registry.
+//
+// Keys are matched exactly. encoding/json struct decoding folds case,
+// so "MDSMITH" would opt a client in and a case-variant sibling of the
+// wrong type would fail the whole decode; map lookups avoid both. A
+// scope containing a NUL byte is also an opt-out, because workspaceKey
+// frames root and scope with NUL and must stay unambiguous.
 func (p initializeParams) singletonScope() string {
-	var opts struct {
-		Mdsmith struct {
-			SingletonScope string `json:"singletonScope"`
-		} `json:"mdsmith"`
-	}
-	if err := json.Unmarshal(p.InitializationOptions, &opts); err != nil {
+	var opts map[string]json.RawMessage
+	if json.Unmarshal(p.InitializationOptions, &opts) != nil {
 		return ""
 	}
-	return opts.Mdsmith.SingletonScope
+	var ns map[string]json.RawMessage
+	if json.Unmarshal(opts["mdsmith"], &ns) != nil {
+		return ""
+	}
+	var scope string
+	if json.Unmarshal(ns["singletonScope"], &scope) != nil {
+		return ""
+	}
+	if strings.IndexByte(scope, 0) >= 0 {
+		return ""
+	}
+	return scope
 }
 
 type workspaceFolder struct {

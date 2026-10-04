@@ -277,6 +277,10 @@ server records one owner per workspace root plus scope. When a newer
 server claims the same pair, the older one sends `mdsmith/superseded`
 and exits.
 
+Keys match exactly (case-sensitive). The scope must be a non-empty
+string with no NUL byte; any other value counts as no scope. Only the
+first `initialize` decides.
+
 A client that sends no scope never claims and is never superseded, so
 Neovim, Helix, and the Claude Code plugin coexist with any other server.
 The VS Code extension sends a stored per-workspace UUID; see the

@@ -102,6 +102,38 @@ func TestStartSingletonWatchNoopWithoutScope(t *testing.T) {
 	assert.False(t, exited.Load(), "a scope-less server must never be superseded")
 }
 
+// The first initialize decides singleton participation for the whole
+// session: a scope-less (or root-less) first call must use up the Once,
+// so a stray later initialize carrying a scope cannot start claiming
+// mid-session.
+func TestStartSingletonWatchFirstCallDecides(t *testing.T) {
+	t.Parallel()
+	for _, first := range []struct{ name, root, scope string }{
+		{"no scope", "/work/space", ""},
+		{"no root", "", "scope"},
+	} {
+		t.Run(first.name, func(t *testing.T) {
+			t.Parallel()
+			s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			s.runCtx = ctx
+			s.instanceID = "me"
+			s.singletonInterval = time.Millisecond
+			var claimed atomic.Bool
+			s.singletonClaim = func(string, string) error {
+				claimed.Store(true)
+				return nil
+			}
+			s.singletonCurrent = func(string) string { return "me" }
+			s.startSingletonWatch(first.root, first.scope)
+			s.startSingletonWatch("/work/space", "scope")
+			time.Sleep(20 * time.Millisecond)
+			assert.False(t, claimed.Load(), "a second initialize must not claim after the first opted out")
+		})
+	}
+}
+
 func TestStartSingletonWatchNoopWithoutInstanceID(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})

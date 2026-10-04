@@ -89,17 +89,16 @@ func watchSingleton(
 // protection rather than risking it stepping itself aside on a
 // transient registry error.
 func (s *Server) startSingletonWatch(root, scope string) {
-	if scope == "" {
-		return
-	}
-	if root == "" || s.instanceID == "" || s.singletonClaim == nil {
-		return
-	}
-	// Claim and watch exactly once. A spec-compliant client sends a
-	// single initialize, but guarding the claim with the watcher's Once
-	// means a stray second initialize cannot re-assert this (possibly
-	// already-superseded) server's ownership and invert newest-wins.
+	// Decide exactly once. A spec-compliant client sends a single
+	// initialize, but guarding the whole decision with the watcher's
+	// Once means a stray second initialize can neither re-assert this
+	// (possibly already-superseded) server's ownership and invert
+	// newest-wins, nor opt a server in mid-session after the first
+	// initialize opted out (no scope or no root).
 	s.singletonWatchOnce.Do(func() {
+		if scope == "" || root == "" || s.instanceID == "" || s.singletonClaim == nil {
+			return
+		}
 		key := workspaceKey(root, scope)
 		// Claim the workspace under this instance's id, overwriting any
 		// previous owner. Whichever server initialized most recently —
@@ -137,7 +136,9 @@ type supersededParams struct {
 // different scopes on one workspace get different records and coexist.
 //
 // A non-empty scope is framed as root + "\x00" + scope, so a split is
-// unambiguous for any root and scope free of NUL bytes. An empty scope
+// unambiguous for any root and scope free of NUL bytes; singletonScope
+// turns a NUL-bearing scope into the opt-out, so none reaches here and
+// a NUL-free root cannot be split two ways. An empty scope
 // hashes the cleaned root alone — the legacy root-only key, byte for
 // byte — so there is one derivation, not two. startSingletonWatch never
 // claims with an empty scope, so that branch pins the format only: a

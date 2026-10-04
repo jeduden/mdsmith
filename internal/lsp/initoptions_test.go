@@ -26,6 +26,13 @@ func TestInitializeParamsSingletonScope(t *testing.T) {
 		{"null scope", `{"initializationOptions":{"mdsmith":{"singletonScope":null}}}`, ""},
 		{"non-string scope", `{"initializationOptions":{"mdsmith":{"singletonScope":42}}}`, ""},
 		{"top-level scope is ignored", `{"initializationOptions":{"singletonScope":"x"}}`, ""},
+		{"namespace key is case-sensitive", `{"initializationOptions":{"MDSMITH":{"singletonScope":"x"}}}`, ""},
+		{"scope key is case-sensitive", `{"initializationOptions":{"mdsmith":{"SingletonScope":"x"}}}`, ""},
+		{"case-variant namespace sibling is ignored",
+			`{"initializationOptions":{"mdsmith":{"singletonScope":"x"},"Mdsmith":7}}`, "x"},
+		{"case-variant scope sibling is ignored",
+			`{"initializationOptions":{"mdsmith":{"singletonScope":"x","singletonscope":7}}}`, "x"},
+		{"scope with NUL byte opts out", `{"initializationOptions":{"mdsmith":{"singletonScope":"a\u0000b"}}}`, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
