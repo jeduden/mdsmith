@@ -1,7 +1,7 @@
 ---
 id: 2606292015
 title: Scope the LSP workspace singleton per client so instances coexist
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   Make the newest-wins LSP workspace singleton opt-in.
@@ -252,7 +252,7 @@ short. Room comes from re-wrapping its narrow prose paragraphs to
    [vscode.md](../docs/guides/editors/vscode.md), and the
    troubleshooting note in
    [vscode-extension.md](../docs/reference/vscode-extension.md).
-7. [ ] On completion, flip the front-matter status and run
+7. [x] On completion, flip the front-matter status and run
    `mdsmith fix PLAN.md`.
 
 ## Acceptance Criteria
@@ -282,11 +282,11 @@ short. Room comes from re-wrapping its narrow prose paragraphs to
       [VS Code guide](../docs/guides/editors/vscode.md) and the
       [extension reference](../docs/reference/vscode-extension.md)
       note reflect the per-workspace scope.
-- [ ] All tests pass: `go test ./...` and the extension
+- [x] All tests pass: `go test ./...` and the extension
       `bun:test` suite.
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run` reports no
+- [x] `go tool -modfile=tools/go.mod golangci-lint run` reports no
       issues.
-- [ ] `mdsmith check .` passes.
+- [x] `mdsmith check .` passes.
 
 ## ...
 
