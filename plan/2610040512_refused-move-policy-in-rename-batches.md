@@ -137,6 +137,9 @@ the link stops resolving, where MDS027 flags it.
    leaves its folder counts when a file, listed or not, may
    sit under the directory it names from there
    (`TestMoveAll_RefusedHolderMisreadsDirectory`).
+   A refused member whose path refused duplicate members
+   name is treated as taken too, so a link to it counts
+   (`TestMoveAll_ShadowedByDuplicates`).
 
 ## Acceptance Criteria
 
@@ -150,3 +153,28 @@ the link stops resolving, where MDS027 flags it.
       different file than it did before the batch.
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues
+
+## Follow-ups
+
+Review round 2 left two changes that are too big for this PR.
+Each one should get its own plan. `PLAN.md` is already at the
+300-line limit that MDS022 sets, so no new plan file fits yet
+(see the follow-up in plan 2610030438).
+
+1. One set for paths a member may replace. Today
+   `moveBatch.shadowed` and `moveBatch.overwritten` in
+   [`moveall.go`](../internal/refactor/moveall.go) each get a
+   branch in `referrerEdit`, `outboundEdit`, `scanBases`,
+   `planBatch` and `countShadowed`. The two branches differ
+   only in how they read the replaced file's link to itself.
+   Merge the sets into one map that records that rule, so a
+   new case needs one edit, not five.
+2. An existence check that does not read the file.
+   `mayOccupy` in [`move.go`](../internal/refactor/move.go)
+   reads a whole file to learn that it exists. This PR reads
+   each path once per plan. An `Exists` method on
+   `MoveWorkspace` that only stats the path would drop the
+   reads. It would also let `mayHoldDir` and `mayOccupy` use
+   the same source. Without a readable root, `mayHoldDir`
+   falls back to the Markdown list and misses an unlisted
+   image.
