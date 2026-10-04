@@ -4208,3 +4208,19 @@ func TestWithinRoot_SymlinkEscapeRejected(t *testing.T) {
 	assert.False(t, withinRoot(root, link),
 		"an in-root symlink resolving outside the root is rejected")
 }
+
+// TestSplitWatchedChangesDedupesPaths pins that a Markdown path named
+// twice in one batch is reloaded once. The `**/*` create/delete watcher
+// overlaps the Markdown globs, so a client that does not merge events
+// across watchers reports one create from each.
+func TestSplitWatchedChangesDedupesPaths(t *testing.T) {
+	t.Parallel()
+	uri := "file:///proj/notes.md"
+	cfg, md := splitWatchedChanges([]fileEvent{
+		{URI: uri, Type: fileChangeCreated},
+		{URI: "file:///proj/a.png", Type: fileChangeCreated},
+		{URI: uri, Type: fileChangeCreated},
+	})
+	assert.False(t, cfg)
+	assert.Equal(t, []string{uriToPath(uri)}, md)
+}

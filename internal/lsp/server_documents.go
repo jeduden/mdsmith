@@ -134,24 +134,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return
 	}
-	configChanged := false
-	mdChanges := make([]string, 0, len(p.Changes))
-	for _, c := range p.Changes {
-		path := uriToPath(c.URI)
-		if strings.HasSuffix(path, ".mdsmith.yml") {
-			configChanged = true
-			continue
-		}
-		// Use isMarkdownExt for case-insensitive extension match
-		// — the rest of the navigation surface (docTextOrFile,
-		// indexReloadFromDisk) treats `.MD` / `.Markdown` as
-		// Markdown, and the watcher must agree or a rename to a
-		// case-shifted extension would silently stop refreshing
-		// the index.
-		if isMarkdownExt(path) {
-			mdChanges = append(mdChanges, path)
-		}
-	}
+	configChanged, mdChanges := splitWatchedChanges(p.Changes)
 	_, _, root := s.snapshotConfig()
 	treeChanged := watchedFilesTreeChanged(p.Changes, root)
 	// No event here makes a move trust the session's wikilink index: a
@@ -195,6 +178,34 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		s.dropPath(path)
 		s.indexReloadFromDisk(path)
 	}
+}
+
+// splitWatchedChanges reports whether changes touch a `.mdsmith.yml`
+// and returns the Markdown paths they name, each once, in first-seen
+// order: the `**/*` create/delete watcher overlaps the Markdown globs,
+// so a client that does not merge events across watchers reports a
+// Markdown create twice, and each report would re-read the file.
+func splitWatchedChanges(changes []fileEvent) (configChanged bool, mdChanges []string) {
+	mdChanges = make([]string, 0, len(changes))
+	seen := make(map[string]struct{}, len(changes))
+	for _, c := range changes {
+		path := uriToPath(c.URI)
+		if strings.HasSuffix(path, ".mdsmith.yml") {
+			configChanged = true
+			continue
+		}
+		// Use isMarkdownExt for case-insensitive extension match
+		// — the rest of the navigation surface (docTextOrFile,
+		// indexReloadFromDisk) treats `.MD` / `.Markdown` as
+		// Markdown, and the watcher must agree or a rename to a
+		// case-shifted extension would silently stop refreshing
+		// the index.
+		if _, dup := seen[path]; isMarkdownExt(path) && !dup {
+			seen[path] = struct{}{}
+			mdChanges = append(mdChanges, path)
+		}
+	}
+	return configChanged, mdChanges
 }
 
 // watchedFilesTreeChanged reports whether a watched-file batch creates
