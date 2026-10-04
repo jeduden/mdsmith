@@ -457,7 +457,7 @@ func TestDestResolver_Target(t *testing.T) {
 		`what\?.md`:      {target: "what", path: "what", tokLen: 4},
 	} {
 		t.Run(dest, func(t *testing.T) {
-			r := &destResolver{ws: ws, src: "a.md"}
+			r := soloResolver(ws, "a.md", "moved/a.md")
 			got, ok := r.target("a.md", []byte(dest))
 			require.True(t, ok)
 			assert.Equal(t, want, got)
@@ -468,7 +468,7 @@ func TestDestResolver_Target(t *testing.T) {
 		`a\_b.md`, "a&amp;b.md", "a&#35;b.md", `a.md\\#x`, `\#x`, "a:b.md",
 	} {
 		t.Run(dest+" is not read", func(t *testing.T) {
-			r := &destResolver{ws: ws, src: "a.md"}
+			r := soloResolver(ws, "a.md", "moved/a.md")
 			_, ok := r.target("a.md", []byte(dest))
 			assert.False(t, ok)
 		})

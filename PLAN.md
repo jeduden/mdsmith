@@ -1,12 +1,10 @@
 # Plans
 
 <?catalog
-glob: ["plan/*.md", "!plan/proto.md"]
-sort: numeric:id
-header: "\n| ID  | Status | Model | Title |\n|-----|--------|-------|-------|\n"
-row: "| {id} | {status} | {model} | [{title}]({filename}) |"
+{glob: ["plan/*.md", "!plan/proto.md"], sort: "numeric:id",
+row: "| {id} | {status} | {model} | [{title}]({filename}) |",
+header: "| ID | Status | Model | Title |\n|-----|--------|-------|-------|\n"}
 ?>
-
 | ID         | Status | Model  | Title                                                                                                                                                   |
 | ---------- | ------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 52         | ✅     |        | [Archetype / Template Library for Agentic Patterns](plan/52_archetype-template-library.md)                                                              |
@@ -291,10 +289,12 @@ row: "| {id} | {status} | {model} | [{title}]({filename}) |"
 | 2610030015 | ✅     | sonnet | [Publish release notes on mdsmith.dev](plan/2610030015_website-release-notes.md)                                                                        |
 | 2610030243 | ✅     | sonnet | [Vet the internal/build spawn tests for plan9](plan/2610030243_plan9-vet-unix-windows-build-tests.md)                                                   |
 | 2610030244 | ✅     | sonnet | [Run internal/build under js/wasm once in CI](plan/2610030244_dedupe-build-js-wasm-ci-run.md)                                                           |
-| 2610030438 | 🔲     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
+| 2610030438 | ✅     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
 | 2610030846 | ✅     | sonnet | [Silence wasm session finalizers after the Go program exits](plan/2610030846_wasm-finalizer-after-exit.md)                                              |
 | 2610031253 | ✅     | sonnet | [Free the session when a then getter rejects the create](plan/2610031253_wasm-create-then-getter-leak.md)                                               |
 | 2610031420 | ✅     | sonnet | [Free the func when js.FuncOf's wrapper call throws](plan/2610031420_wasm-funcof-wrapper-throw-leak.md)                                                 |
 | 2610031831 | ✅     | sonnet | [List only a candidate's own changes in its release notes](plan/2610031831_candidate-notes-since-previous-candidate.md)                                 |
 | 2610032327 | 🔲     | opus   | [Reuse the cached wikilink index for LSP moves and close its root](plan/2610032327_lsp-move-reuse-cached-wikilink-index.md)                             |
+| 2610040512 | 🔲     | opus   | [Refused-move policy in willRenameFiles batches](plan/2610040512_refused-move-policy-in-rename-batches.md)                                              |
+| 2610040606 | 🔲     | opus   | [Rewrite and count typed wikilinks on move](plan/2610040606_move-typed-wikilinks.md)                                                                    |
 <?/catalog?>

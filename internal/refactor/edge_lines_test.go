@@ -36,7 +36,7 @@ func TestAppendWikilinkStemEdits_ReadsEachSourceOnce(t *testing.T) {
 		sources: map[string][]byte{"index.md": []byte("[[api]]\n[[api]]\n[[api]]\n")},
 	}}
 	changes := map[string][]Edit{}
-	appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: "api.md"}, "api.md", "service.md")
+	appendWikilinkStemEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
 	require.Len(t, changes["index.md"], 3)
 	assert.Equal(t, 1, ws.calls["index.md"])
 }
@@ -81,4 +81,96 @@ func TestEdgeLines(t *testing.T) {
 		assert.False(t, ok)
 	}
 	assert.Equal(t, map[string]int{"a.md": 1, "b.md": 1, "gone.md": 1}, ws.calls)
+}
+
+// TestMoveAll_ReadsEachFileOnce locks that a batch scans the workspace
+// for incoming links once, not once per planned move: a hub linking
+// every member is read once, and a moved file once, by validation.
+func TestMoveAll_ReadsEachFileOnce(t *testing.T) {
+	ws := &resolveCounter{calls: map[string]int{}, stubWorkspace: stubWorkspace{
+		files: []string{"a.md", "b.md", "c.md", "hub.md"},
+		sources: map[string][]byte{
+			"a.md":   []byte("[b](b.md)\n"),
+			"b.md":   []byte("# B\n"),
+			"c.md":   []byte("# C\n"),
+			"hub.md": []byte("[a](a.md) [b](b.md) [c](c.md)\n"),
+		},
+	}}
+	bp := MoveAll(ws, []MovePair{{"a.md", "x/a.md"}, {"b.md", "x/b.md"}, {"c.md", "y/c.md"}})
+	assert.Equal(t, []string{"y/c.md", "x/b.md", "x/a.md"}, texts(bp.Edits, "hub.md"))
+	assert.Empty(t, bp.Edits["a.md"])
+	assert.Equal(t, 1, ws.calls["hub.md"])
+	assert.Equal(t, 1, ws.calls["a.md"])
+}
+
+// TestMoveAll_ShadowedPathReadsEachFileOnce locks that counting the
+// links to a shadowed path rides on the referrer scan: b.md's refused
+// move to the existing c.md lets a.md take its path, and hub.md, which
+// links both, is still read once.
+func TestMoveAll_ShadowedPathReadsEachFileOnce(t *testing.T) {
+	ws := &resolveCounter{calls: map[string]int{}, stubWorkspace: stubWorkspace{
+		files: []string{"a.md", "b.md", "c.md", "hub.md"},
+		sources: map[string][]byte{
+			"a.md":   []byte("# A\n"),
+			"b.md":   []byte("# B\n"),
+			"c.md":   []byte("# C\n"),
+			"hub.md": []byte("[a](a.md) [b](b.md)\n"),
+		},
+	}}
+	bp := MoveAll(ws, []MovePair{{"b.md", "c.md"}, {"a.md", "b.md"}})
+	require.Equal(t, DestinationExistsError{Dst: "c.md"}, bp.Moves[0].Err)
+	assert.Equal(t, []string{"b.md"}, texts(bp.Edits, "hub.md"))
+	assert.Equal(t, 1, bp.Withheld)
+	assert.Equal(t, 1, ws.calls["hub.md"])
+}
+
+// memResolveCounter counts Resolve calls on a memWorkspace.
+type memResolveCounter struct {
+	*memWorkspace
+	calls map[string]int
+}
+
+func (w memResolveCounter) Resolve(file string) (string, []byte, bool) {
+	w.calls[file]++
+	return w.memWorkspace.Resolve(file)
+}
+
+// TestMoveAll_StemPassesReadEachFileOnce locks that the `[[stem]]`
+// passes of one batch share their reads: hub.md, holding a link to
+// each of three moved files, is read once by the referrer scan and
+// once by every stem pass together, not once per move.
+func TestMoveAll_StemPassesReadEachFileOnce(t *testing.T) {
+	ws := memResolveCounter{calls: map[string]int{}, memWorkspace: newMemWorkspace(map[string]string{
+		"a.md":   "# A\n",
+		"b.md":   "# B\n",
+		"c.md":   "# C\n",
+		"hub.md": "# Hub\n\n[[a]] [[b]] [[c]]\n",
+	})}
+	bp := MoveAll(ws, []MovePair{{"a.md", "a2.md"}, {"b.md", "b2.md"}, {"c.md", "c2.md"}})
+	assert.ElementsMatch(t, []string{"a2", "b2", "c2"}, texts(bp.Edits, "hub.md"))
+	assert.Equal(t, 2, ws.calls["hub.md"])
+}
+
+// TestEdgeLines_Memo locks that a reader with a memo resolves a file
+// once even when its edges are not consecutive, and that one without
+// re-reads it.
+func TestEdgeLines_Memo(t *testing.T) {
+	edges := []index.Edge{
+		{SourceFile: "a.md", SourceLine: 1}, {SourceFile: "b.md", SourceLine: 1}, {SourceFile: "a.md", SourceLine: 1},
+	}
+	for memo, want := range map[bool]int{true: 1, false: 2} {
+		ws := &resolveCounter{calls: map[string]int{}, stubWorkspace: stubWorkspace{
+			sources: map[string][]byte{"a.md": []byte("x\n"), "b.md": []byte("y\n")},
+		}}
+		r := &edgeLines{ws: ws}
+		if memo {
+			r.memo = map[string]edgeFile{}
+		}
+		for _, e := range edges {
+			_, row, ok := r.row(e)
+			require.True(t, ok)
+			assert.NotEmpty(t, row)
+		}
+		assert.Equal(t, want, ws.calls["a.md"], "memo %v", memo)
+	}
 }
