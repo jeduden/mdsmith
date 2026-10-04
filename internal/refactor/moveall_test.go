@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
+	"github.com/jeduden/mdsmith/internal/lint"
 )
 
 // soloResolver returns a resolver for a batch of one planned move,
@@ -552,6 +553,12 @@ func TestMoveAll_RefusedHolderMisreads(t *testing.T) {
 		{"another refused move", map[string]string{
 			"docs/a.md": "# A\n\n[b](b.md)\n", "docs/b.md": "# B\n", "x/a.md": "# OldA\n", "x/b.md": "# OldB\n",
 		}, []MovePair{{"docs/a.md", "x/a.md"}, {"docs/b.md", "x/b.md"}}, 1},
+		{"a link to itself", map[string]string{
+			"docs/b.md": "# B\n\n[me](b.md#b)\n", "x/b.md": "# Old\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}}, 0},
+		{"the file it would overwrite", map[string]string{
+			"docs/b.md": "# B\n\n[old](../x/b.md)\n", "x/b.md": "# Old\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}}, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bp := MoveAll(newMemWorkspace(tc.files), tc.pairs)
@@ -568,6 +575,73 @@ func TestMoveAll_RefusedHolderMisreads(t *testing.T) {
 			assert.Equal(t, tc.want, bp.Withheld)
 		})
 	}
+}
+
+// markdownListedWorkspace lists only the Markdown files outside ign/,
+// as the LSP index lists the files the config matches: an image or an
+// ignored Markdown file still resolves.
+type markdownListedWorkspace struct{ *memWorkspace }
+
+func (w markdownListedWorkspace) Files() []string {
+	var out []string
+	for _, f := range w.memWorkspace.Files() {
+		if strings.HasSuffix(f, ".md") && !strings.HasPrefix(f, "ign/") {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// TestMoveAll_RefusedHolderMisreadsUnlisted covers a refused move that
+// leaves its folder where the workspace list leaves out a file: the
+// holder itself, or the file its link reaches from the new folder. The
+// link is counted either way.
+func TestMoveAll_RefusedHolderMisreadsUnlisted(t *testing.T) {
+	for name, tc := range map[string]struct {
+		files map[string]string
+		src   string
+	}{
+		"an unlisted image there": {map[string]string{
+			"docs/b.md": "# B\n\n![i](i.png)\n", "docs/i.png": "x\n", "x/b.md": "# Old\n", "x/i.png": "y\n",
+		}, "docs/b.md"},
+		"an unlisted holder": {map[string]string{
+			"ign/b.md": "# B\n\n[c](c.md)\n", "ign/c.md": "# C\n", "x/b.md": "# Old\n", "x/c.md": "# X\n",
+		}, "ign/b.md"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bp := MoveAll(markdownListedWorkspace{newMemWorkspace(tc.files)}, []MovePair{{tc.src, "x/b.md"}})
+			require.Error(t, bp.Moves[0].Err)
+			assert.Equal(t, 1, bp.Withheld)
+		})
+	}
+}
+
+// TestMoveAll_RefusedHolderLeftInPlace covers a link inside a refused
+// move that leaves its folder, to a planned member another member
+// takes the place of. If the host leaves the file where it is, the
+// link reaches the newcomer, so it is counted, though from the new
+// folder it reaches the member.
+func TestMoveAll_RefusedHolderLeftInPlace(t *testing.T) {
+	bp := MoveAll(newMemWorkspace(map[string]string{
+		"docs/b.md": "# B\n\n[c](c.md)\n", "docs/c.md": "# C\n", "docs/z.md": "# Z\n", "x/b.md": "# Old\n",
+	}), []MovePair{{"docs/b.md", "x/b.md"}, {"docs/c.md", "x/c.md"}, {"docs/z.md", "docs/c.md"}})
+	require.Error(t, bp.Moves[0].Err)
+	require.NoError(t, bp.Moves[1].Err)
+	require.NoError(t, bp.Moves[2].Err)
+	assert.NotContains(t, bp.Edits, "docs/b.md")
+	assert.Equal(t, 1, bp.Withheld)
+}
+
+// TestMove_RefusedListsNoFile locks that a lone move onto an existing
+// file fails without listing the workspace: the CLI's lazy index is
+// never built for it.
+func TestMove_RefusedListsNoFile(t *testing.T) {
+	ws := &countingWorkspace{memWorkspace: newMemWorkspace(map[string]string{
+		"docs/b.md": "# B\n\n[c](c.md) [me](b.md)\n", "docs/c.md": "# C\n", "x/b.md": "# Old\n",
+	})}
+	_, err := Move(ws, "docs/b.md", "x/b.md")
+	require.Equal(t, DestinationExistsError{Dst: "x/b.md"}, err)
+	assert.Zero(t, ws.files)
 }
 
 // TestMoveAll_KeptStemTakenByMember covers a move that keeps its stem
@@ -874,6 +948,14 @@ func TestDestResolver_ReferrerEdit(t *testing.T) {
 	e, ok = r.referrerEdit(dest("t.md"), "docs/h.md", batchMember{dst: "docs/h2.md"}, true)
 	require.True(t, ok, "a refused holder kept in its folder")
 	assert.Equal(t, "../z/t.md", e.NewText)
+
+	_, ok = r.referrerEdit(dest("t.md"), "docs/h.md", batchMember{dst: "z/h.md"}, true)
+	assert.False(t, ok)
+	assert.Equal(t, 3, b.withheld, "it reaches z/t.md from z/")
+	b.dsts["docs/t.md"] = true
+	_, ok = r.referrerEdit(dest("t.md"), "docs/h.md", batchMember{dst: "z/h.md"}, true)
+	assert.False(t, ok)
+	assert.Equal(t, 4, b.withheld, "left in place, it reaches the member landing on docs/t.md")
 }
 
 func TestMoveBatch_KeyHolders(t *testing.T) {
@@ -994,14 +1076,29 @@ func TestRefusedLeaving(t *testing.T) {
 	assert.False(t, refusedLeaving(batchMember{}, "docs/b.md"), "a file leaving the workspace")
 }
 
-func TestMoveBatch_AnyRefusedLeaving(t *testing.T) {
+// TestDestResolver_CountRefusedHolders covers the pass that reads a
+// refused member leaving its folder from the text admit read: it lists
+// and reads no workspace file, reads a member the workspace does not
+// list, and parses a non-Markdown member only when the workspace lists
+// it.
+func TestDestResolver_CountRefusedHolders(t *testing.T) {
+	ws := &resolveCounter{calls: map[string]int{}, stubWorkspace: stubWorkspace{
+		files: []string{"docs/n.mdx"},
+		sources: map[string][]byte{
+			"docs/c.md": []byte("# C\n"), "x/c.md": []byte("# X\n"),
+		},
+	}}
 	b := newMoveBatch()
-	assert.False(t, b.anyRefusedLeaving(), "no members")
-	b.members["docs/a.md"] = batchMember{dst: "x/a.md", planned: true}
-	b.members["docs/b.md"] = batchMember{dst: "docs/c.md"}
-	assert.False(t, b.anyRefusedLeaving(), "planned, or refused in place")
-	b.members["docs/d.md"] = batchMember{dst: "x/d.md"}
-	assert.True(t, b.anyRefusedLeaving())
+	link := []byte("[c](c.md)\n")
+	for src, dst := range map[string]string{
+		"docs/b.md": "x/b.md", "docs/i.png": "x/i.png", "docs/n.mdx": "x/n.mdx", "docs/k.md": "docs/l.md",
+	} {
+		b.members[src], b.sources[src] = batchMember{dst: dst}, link
+	}
+	r := &destResolver{ws: ws, batch: b}
+	r.countRefusedHolders(lint.NewParser())
+	assert.Equal(t, 2, b.withheld, "docs/b.md and the listed docs/n.mdx reach x/c.md")
+	assert.Equal(t, map[string]int{"x/c.md": 2}, ws.calls, "only the misread candidate is read")
 }
 
 func TestDestResolver_MayOccupy(t *testing.T) {
@@ -1018,6 +1115,11 @@ func TestDestResolver_MayOccupy(t *testing.T) {
 	assert.False(t, r.mayOccupy("gone.md"), "a planned move vacates it")
 	assert.False(t, r.mayOccupy("none.md"), "nothing is there")
 	assert.False(t, r.mayOccupy(""), "outside the workspace")
+
+	// The workspace lists no file: an unlisted image is read.
+	r = &destResolver{ws: stubWorkspace{sources: map[string][]byte{"i.png": nil, "": nil}}, batch: newMoveBatch()}
+	assert.True(t, r.mayOccupy("i.png"), "an unlisted file that resolves")
+	assert.False(t, r.mayOccupy(""), "outside the workspace, though the root resolves")
 }
 
 func TestDestResolver_CountMisread(t *testing.T) {
@@ -1032,8 +1134,15 @@ func TestDestResolver_CountMisread(t *testing.T) {
 	r.countMisread(batchMember{dst: "docs/z.md"}, "docs/b.md", destRef{target: "docs/c.md", path: "c.md"})
 	r.countMisread(batchMember{}, "docs/b.md", destRef{target: "docs/c.md", path: "c.md"})
 	assert.Zero(t, r.batch.withheld, "refused in place, or not a member")
+	r.countMisread(refused, "docs/b.md", destRef{target: "docs/b.md", path: "b.md"})
+	assert.Zero(t, r.batch.withheld, "a link to itself reaches it from either folder")
 	r.countMisread(refused, "docs/b.md", destRef{target: "docs/c.md", path: "c.md"})
 	assert.Equal(t, 1, r.batch.withheld, "reaches x/c.md silently")
+	r.countMisread(batchMember{dst: "x/c.md"}, "docs/b.md", destRef{target: "docs/b.md", path: "b.md"})
+	assert.Equal(t, 2, r.batch.withheld, "a link to itself that reaches x/b.md")
+	r.batch.dsts["x/b.md"] = true
+	r.countMisread(refused, "docs/b.md", destRef{target: "x/b.md", path: "../x/b.md"})
+	assert.Equal(t, 3, r.batch.withheld, "the file it names may be overwritten")
 }
 
 func TestCountShadowed(t *testing.T) {

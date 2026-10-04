@@ -48,9 +48,10 @@ type BatchMove struct {
 // order. Withheld counts the links that get no edit yet may not
 // reach their file once the batch has run: one from a planned member
 // to a member whose move could not be planned, one inside such a
-// member to a planned member that stops resolving, one inside such a
-// member to any other file that names another file from the member's
-// new folder (see countMisread), a wikilink (a
+// member to a planned member that stops resolving or whose old path
+// another member takes, one inside such a member to any other file
+// that may name another file from the member's new folder (see
+// countMisread), a wikilink (a
 // `[[stem]]` or a typed `[[name.ext]]`) whose new key another member's
 // destination wins, a wikilink left as written that another member's
 // destination takes (see stolen), and every path link and wikilink to
@@ -81,7 +82,9 @@ type BatchPlan struct {
 // link inside it when it lands in its own folder, which reads the same
 // from there. A link to it from a planned member counts in Withheld,
 // and so does a link inside it to a planned member when that link
-// stops resolving after the batch. A link inside it to a file the
+// stops resolving after the batch, or when another member lands on
+// that member's old path, which the link reaches if the host leaves
+// the file in place. A link inside it to a file the
 // batch does not plan to move counts only when the member leaves its
 // folder and the link, read from there, names another file that may
 // be there after the batch (see countMisread); one that stops
@@ -294,18 +297,6 @@ func newMoveBatch() *moveBatch {
 type batchMember struct {
 	dst     string
 	planned bool
-}
-
-// anyRefusedLeaving reports whether a member's move could not be
-// planned and leaves its folder (see refusedLeaving): the referrer
-// scan reads that member's links even when no base name is scanned.
-func (b *moveBatch) anyRefusedLeaving() bool {
-	for src, m := range b.members {
-		if refusedLeaving(m, src) {
-			return true
-		}
-	}
-	return false
 }
 
 // scanBases returns, each once, the base name of every planned

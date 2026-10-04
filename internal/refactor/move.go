@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
@@ -150,26 +151,27 @@ var (
 // including one to itself, from its new folder. A holder whose move
 // could not be planned gets no edit unless the host keeps it in its
 // folder, where the link is spelled from the same directory whether or
-// not the move runs; otherwise the link counts as withheld when it
-// stops resolving. The same scan counts each link to a shadowed path
-// (see countShadowed) from any file but that path's own and a planned
-// member's.
+// not the move runs; one that leaves its folder is read by
+// countRefusedHolders instead. The same scan counts each link to a
+// shadowed path (see countShadowed) from any file but that path's own
+// and a planned member's.
 //
 // Every file is read, but only one mayNameAny admits is parsed. The
 // index is not consulted: it records no edge for an image or a
 // ref-def, and it reads a literal `what?.md` as `what`.
 func appendReferrerEdits(changes map[string][]Edit, ws MoveWorkspace, p parser.Parser, r *destResolver) {
+	r.countRefusedHolders(p)
 	bases := r.batch.scanBases()
-	if len(bases) == 0 && !r.batch.anyRefusedLeaving() {
+	if len(bases) == 0 {
 		return
 	}
 	for _, rel := range r.paths() {
 		holder, moved := r.member(rel)
-		if moved && holder.planned {
+		if moved && (holder.planned || refusedLeaving(holder, rel)) {
 			continue
 		}
 		key, source, ok := ws.Resolve(rel)
-		if !ok || !refusedLeaving(holder, rel) && !mayNameAny(source, bases) {
+		if !ok || !mayNameAny(source, bases) {
 			continue
 		}
 		for _, d := range locateDests(p, rel, source) {
@@ -180,13 +182,33 @@ func appendReferrerEdits(changes map[string][]Edit, ws MoveWorkspace, p parser.P
 	}
 }
 
+// countRefusedHolders reads every link in each member whose move could
+// not be planned and that leaves its folder (see refusedLeaving), with
+// the text admit read for it. Such a member gets no edit, so
+// referrerEdit only counts its links. The workspace is neither listed
+// nor read for it, so a refused lone Move reads no other file, and a
+// member the workspace does not list is still read. As in a planned
+// member's outbound pass, only a Markdown or listed file is parsed.
+func (r *destResolver) countRefusedHolders(p parser.Parser) {
+	for src, m := range r.batch.members {
+		if !refusedLeaving(m, src) || !mdpath.HasMarkdownExt(path.Ext(src)) && !r.listed(src) {
+			continue
+		}
+		for _, d := range locateDests(p, src, r.batch.sources[src]) {
+			_, _ = r.referrerEdit(d, src, m, true)
+		}
+	}
+}
+
 // referrerEdit is appendReferrerEdits for one destination d in the
 // workspace file rel, whose batch entry is holder when moved. It
 // returns the edit that repoints d at a planned member's new path, and
 // counts d instead when it names a shadowed path (see countShadowed),
 // when holder's refused move takes d out of the folder it is spelled
 // from, or when that move makes d name another file (see
-// countMisread).
+// countMisread). A link in such a holder to a planned member is also
+// counted when another member lands on that member's old path: left
+// where it is, the holder's link reaches the newcomer.
 func (r *destResolver) referrerEdit(d inlineDest, rel string, holder batchMember, moved bool) (Edit, bool) {
 	ref, ok := r.target(rel, d.dest)
 	if !ok {
@@ -209,7 +231,11 @@ func (r *destResolver) referrerEdit(d inlineDest, rel string, holder batchMember
 		return Edit{}, false
 	}
 	if moved && !unplannedInPlace(holder, rel) {
-		r.countStale(holder.dst, ref.path, tgt.dst)
+		if r.batch.dsts[ref.target] {
+			r.batch.withheld++
+		} else {
+			r.countStale(holder.dst, ref.path, tgt.dst)
+		}
 		return Edit{}, false
 	}
 	return destEdit(d, ref, rel, tgt.dst)
@@ -258,12 +284,22 @@ func refusedLeaving(m batchMember, rel string) bool {
 // plan to move. The link gets no edit. Read from where the host may
 // put the file, it may name another file that is there after the
 // batch: it then reaches that file silently, so it is counted. One
-// that names nothing there stops resolving, where MDS027 flags it.
+// that names nothing there stops resolving, where MDS027 flags it. A
+// link to rel itself that names holder.dst from there reaches the file
+// either way. One that names the same path from both folders is
+// counted only when a member lands there, since that move may replace
+// the file it reaches.
 func (r *destResolver) countMisread(holder batchMember, rel string, ref destRef) {
 	if !refusedLeaving(holder, rel) {
 		return
 	}
-	if p := linkgraph.ResolveRelTarget(holder.dst, ref.path); p != ref.target && r.mayOccupy(p) {
+	switch p := linkgraph.ResolveRelTarget(holder.dst, ref.path); {
+	case ref.target == rel && p == holder.dst:
+	case p == ref.target:
+		if r.batch.dsts[p] {
+			r.batch.withheld++
+		}
+	case r.mayOccupy(p):
 		r.batch.withheld++
 	}
 }
@@ -271,6 +307,9 @@ func (r *destResolver) countMisread(holder batchMember, rel string, ref destRef)
 // mayOccupy reports whether a file may sit at the workspace path p
 // once the batch has run: a member lands there, or a file there stays,
 // which a planned move from p rules out and a refused one does not.
+// Such a file is read, not looked up in the workspace list: the list
+// may leave out a file a link reaches, such as an image or an ignored
+// Markdown file.
 func (r *destResolver) mayOccupy(p string) bool {
 	if r.batch.dsts[p] {
 		return true
@@ -278,7 +317,7 @@ func (r *destResolver) mayOccupy(p string) bool {
 	if m, moved := r.member(p); moved {
 		return !m.planned
 	}
-	return r.listed(p)
+	return p != "" && resolves(r.ws, p)
 }
 
 // appendOutboundEdits recomputes every relative inline link, image and

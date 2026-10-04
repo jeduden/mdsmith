@@ -115,7 +115,16 @@ the link stops resolving, where MDS027 flags it.
    anyway, the link reads from the new folder and can reach
    another existing file silently.
    `TestMoveAll_RefusedHolderMisreads` covers it, and
-   `countMisread` now counts it.
+   `countMisread` now counts it. A link to the file itself
+   is not counted, and one to a path a refused move may
+   overwrite is. A file the workspace does not list, such
+   as an image, is read to see whether it is there.
+   `countRefusedHolders` reads each such member from the
+   text the batch already holds, so a refused lone move
+   lists no file. A link in such a member to a planned
+   member whose old path another member takes is counted
+   too (`TestMoveAll_RefusedHolderLeftInPlace`): left in
+   place, the file's link reaches the newcomer.
 
 ## Acceptance Criteria
 
