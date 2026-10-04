@@ -264,6 +264,8 @@ func (r fileRegistry) prune(id string) {
 // Keys are per root and scope, and a deleted or moved workspace leaves
 // its records behind, so without this the directory would grow without
 // bound. It is best effort: any error just leaves the entry in place.
+// It skips a dir that registryDirSafe rejects, and touches only regular
+// files, so a planted symlink entry is never moved or removed.
 // Production passes no hooks; tests pass hooks[0], run after an entry
 // is judged stale, and hooks[1], run after it is quarantined, to land a
 // concurrent claim in each window.
@@ -284,6 +286,9 @@ func pruneStale(dir, id string, cutoff time.Time, hooks ...func(string)) {
 			hooks[i](p)
 		}
 	}
+	if !registryDirSafe(dir) {
+		return
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
@@ -298,7 +303,7 @@ func pruneStale(dir, id string, cutoff time.Time, hooks ...func(string)) {
 		// re-claimed since would still read as present and stale.
 		p := filepath.Join(dir, name)
 		info, err := os.Lstat(p)
-		if err != nil || !info.ModTime().Before(cutoff) {
+		if err != nil || !info.Mode().IsRegular() || !info.ModTime().Before(cutoff) {
 			continue
 		}
 		hook(0, p)
@@ -313,7 +318,7 @@ func pruneStale(dir, id string, cutoff time.Time, hooks ...func(string)) {
 			continue
 		}
 		hook(1, p)
-		if qi, err := os.Lstat(q); err == nil && qi.ModTime().Before(cutoff) {
+		if qi, err := os.Lstat(q); err == nil && qi.Mode().IsRegular() && qi.ModTime().Before(cutoff) {
 			_ = os.Remove(q)
 			continue
 		}
@@ -322,6 +327,24 @@ func pruneStale(dir, id string, cutoff time.Time, hooks ...func(string)) {
 		}
 		_ = os.Remove(q)
 	}
+}
+
+// registryDirSafe reports whether prune may walk dir. Both dir and its
+// parent (the "mdsmith" dir) must be real directories, not symlinks,
+// and, where the platform exposes an owner, belong to the current user
+// and not be world-writable. Without a user cache dir the registry
+// falls back to a shared temp dir, where another local user could plant
+// either path as a symlink, or own the parent and swap the registry dir
+// mid-prune, to make prune delete old *.owner, *.tmp and *.prune files
+// somewhere else. Claims are unaffected; only the prune is skipped.
+func registryDirSafe(dir string) bool {
+	for _, p := range []string{dir, filepath.Dir(dir)} {
+		info, err := os.Lstat(p)
+		if err != nil || info.Mode().Type() != fs.ModeDir || !registryDirOwned(info) {
+			return false
+		}
+	}
+	return true
 }
 
 // isRegistryRecord reports whether name is a file the registry writes:
