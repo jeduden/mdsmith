@@ -1,6 +1,7 @@
 package refactor
 
 import (
+	"path"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -658,4 +659,27 @@ func TestValidateBatch_Shadowed(t *testing.T) {
 		require.NoError(t, m.Err)
 	}
 	assert.Equal(t, map[string]bool{"b.md": true}, b.shadowed)
+}
+
+// TestMoveAll_ShadowedWithoutStem covers a shadowed file that no
+// `[[stem]]` link can name: a non-Markdown file, and a Markdown file
+// under a directory the wikilink index skips. Its path links are
+// still counted, by the referrer scan.
+func TestMoveAll_ShadowedWithoutStem(t *testing.T) {
+	for _, tc := range []struct{ old, taken, newcomer string }{
+		{"img.png", "img2.png", "a.png"},
+		{"node_modules/b.md", "node_modules/c.md", "node_modules/a.md"},
+	} {
+		t.Run(tc.old, func(t *testing.T) {
+			bp := MoveAll(newMemWorkspace(map[string]string{
+				tc.old:      "x\n",
+				tc.taken:    "x\n",
+				tc.newcomer: "x\n",
+				"n.md":      "# N\n\n[o](" + tc.old + ") [[" + path.Base(tc.old) + "]]\n",
+			}), []MovePair{{tc.old, tc.taken}, {tc.newcomer, tc.old}})
+			assert.Equal(t, DestinationExistsError{Dst: tc.taken}, bp.Moves[0].Err)
+			require.NoError(t, bp.Moves[1].Err)
+			assert.Equal(t, 1, bp.Withheld)
+		})
+	}
 }
