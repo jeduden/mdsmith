@@ -27,9 +27,9 @@ const windowsCreateNewProcessGroup = 0x00000200
 
 // jobKiller is the groupKiller on Windows. job is the Job Object
 // afterStart assigned the recipe to, or 0 when it could not set one up;
-// then kill sends CTRL_BREAK alone. The embedded leaderKill supplies
-// forceLeader, which covers a recipe that ignored CTRL_BREAK when no
-// Job Object could be set up.
+// then kill sends CTRL_BREAK alone, and a recipe that ignores it is
+// left to os/exec's WaitDelay, whose Process.Kill is TerminateProcess.
+// The embedded leaderKill holds the command.
 type jobKiller struct {
 	leaderKill
 	job syscall.Handle

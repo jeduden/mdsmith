@@ -186,11 +186,6 @@ func killIfInGroup(dir, id string) bool {
 	return err == nil
 }
 
-// forceLeader does nothing: kill already ends in forceKillLeader, the
-// uncatchable leader kill, so a second one after a failed first would
-// only repeat it.
-func (k *noteKiller) forceLeader() {}
-
 // kill kills the recipe's whole note group, so a recipe's
 // children that stayed in the group die with it. There is no grace
 // period. When afterStart captured the group, it first writes "kill"
@@ -216,8 +211,7 @@ func (k *noteKiller) kill(<-chan struct{}) bool {
 
 // sharedGroupKiller returns the killer for a hook, which stays in
 // mdsmith's own note group (no RFNOTEG): a noteKiller with no group, so
-// kill force-kills the hook's leader alone through its ctl file, and
-// forceLeader, as for any noteKiller, does not repeat that kill.
+// kill force-kills the hook's leader alone through its ctl file.
 func sharedGroupKiller(cmd *exec.Cmd) groupKiller { return &noteKiller{cmd: cmd} }
 
 // forceKillLeader writes "kill" to the leader's ctl file. Unlike the

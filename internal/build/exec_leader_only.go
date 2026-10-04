@@ -8,9 +8,8 @@ import "os/exec"
 // is afterStart's killer on targets with no group to kill
 // (exec_other.go), and the killer for a hook (sharedGroup) on Windows
 // and those targets. There is no grace period, so kill ignores the
-// WithForceKill channel and reports false. The embedded leaderKill
-// supplies forceLeader, the same kill as kill, so after kill it only
-// finds the leader gone and ignores the error.
+// WithForceKill channel and reports false. The kill itself is the
+// embedded leaderKill's forceLeader.
 type leaderKiller struct{ leaderKill }
 
 // sharedGroupKiller returns the killer for a hook, which stays in

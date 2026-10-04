@@ -17,15 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// stubKiller is a groupKiller whose kill, close, and forceLeader run
-// the given funcs; a nil func does nothing.
-type stubKiller struct{ killFn, closeFn, forceFn func() }
-
-func (k stubKiller) forceLeader() {
-	if k.forceFn != nil {
-		k.forceFn()
-	}
-}
+// stubKiller is a groupKiller whose kill and close run the given
+// funcs; a nil func does nothing.
+type stubKiller struct{ killFn, closeFn func() }
 
 // kill runs killFn and reports false: a stub never escalates.
 func (k stubKiller) kill(<-chan struct{}) bool {
@@ -51,7 +45,6 @@ func TestRunRecipe_ClosesKillerOnReturn(t *testing.T) {
 		return stubKiller{
 			closeFn: func() { ran.Store(true) },
 			killFn:  func() { killed.Store(true) },
-			forceFn: func() { killed.Store(true) },
 		}
 	}
 	t.Cleanup(func() { afterStartFn = old })
@@ -86,7 +79,6 @@ func TestRunRecipe_ClosesKillerOnTimeout(t *testing.T) {
 		inner := afterStart(cmd)
 		return stubKiller{
 			killFn:  func() { killed.Store(true); inner.kill(nil) },
-			forceFn: inner.forceLeader,
 			closeFn: func() { closedAfterKill.Store(killed.Load()); inner.close() },
 		}
 	}
@@ -193,6 +185,53 @@ func TestRunRecipe_CancellationReported(t *testing.T) {
 	require.Error(t, err)
 	// A non-deadline cancellation reports "cancelled", not "timed out".
 	assert.Contains(t, err.Error(), "cancelled")
+}
+
+// doneByStartCtx is a context whose deadline passes between
+// runRecipe's entry check and Start: Done is closed from the outset,
+// but Err reports nil on its first call and DeadlineExceeded after.
+type doneByStartCtx struct {
+	context.Context
+	done  chan struct{}
+	calls atomic.Int32
+}
+
+func (c *doneByStartCtx) Done() <-chan struct{} { return c.done }
+
+func (c *doneByStartCtx) Err() error {
+	if c.calls.Add(1) == 1 {
+		return nil
+	}
+	return context.DeadlineExceeded
+}
+
+func TestRunRecipe_DeadlineBeforeStartSpawnsNothing(t *testing.T) {
+	// The deadline passes after the entry check but before Start:
+	// Start must refuse to fork, and the report must say the recipe
+	// never started rather than name a kill or a start failure.
+	var startedKiller atomic.Bool
+	old := afterStartFn
+	afterStartFn = func(cmd *exec.Cmd) groupKiller {
+		startedKiller.Store(true)
+		return afterStart(cmd)
+	}
+	t.Cleanup(func() { afterStartFn = old })
+
+	done := make(chan struct{})
+	close(done)
+	ctx := &doneByStartCtx{Context: context.Background(), done: done}
+	// The test binary itself is a program every platform can start;
+	// -test.run=^$ makes it exit at once should Start fork it anyway.
+	code, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{os.Args[0], "-test.run=^$"},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	require.ErrorIs(t, err, ErrNotStarted)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Equal(t, -1, code)
+	assert.True(t, timedOut)
+	assert.False(t, startedKiller.Load(), "no process may start")
 }
 
 // skipOnPlan9 skips a test that runs a `#!/bin/sh` script on plan9,

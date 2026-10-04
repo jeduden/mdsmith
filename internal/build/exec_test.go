@@ -225,3 +225,44 @@ func TestRunRecipe_StartErrorNamesLabel(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "starting hook")
 }
+
+func TestStartFailure(t *testing.T) {
+	// A Start that failed for its own reason is a start failure, even
+	// with ctx still live.
+	boom := errors.New("boom")
+	code, timedOut, err := startFailure(context.Background(), "hook", boom)
+	assert.Equal(t, -1, code)
+	assert.False(t, timedOut)
+	require.ErrorIs(t, err, boom)
+	assert.ErrorContains(t, err, "starting hook")
+	assert.NotErrorIs(t, err, ErrNotStarted)
+
+	// Start returned the done ctx's Err: the run never started.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	code, timedOut, err = startFailure(ctx, "recipe", ctx.Err())
+	assert.Equal(t, -1, code)
+	assert.False(t, timedOut, "a cancel is not a timeout")
+	require.ErrorIs(t, err, ErrNotStarted)
+	assert.ErrorIs(t, err, context.Canceled)
+
+	dctx, dcancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer dcancel()
+	<-dctx.Done()
+	_, timedOut, err = startFailure(dctx, "recipe", dctx.Err())
+	assert.True(t, timedOut)
+	require.ErrorIs(t, err, ErrNotStarted)
+
+	// A done ctx does not claim an unrelated start error.
+	_, timedOut, err = startFailure(dctx, "recipe", boom)
+	assert.False(t, timedOut)
+	assert.NotErrorIs(t, err, ErrNotStarted)
+}
+
+func TestForceFired(t *testing.T) {
+	assert.False(t, forceFired(nil), "a nil force never fires")
+	force := make(chan struct{})
+	assert.False(t, forceFired(force))
+	close(force)
+	assert.True(t, forceFired(force))
+}

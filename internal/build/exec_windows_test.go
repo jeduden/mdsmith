@@ -14,10 +14,6 @@ func TestKill_Windows_NilProcess(t *testing.T) {
 	assert.NotPanics(t, func() { afterStart(&exec.Cmd{}).kill(nil) })
 }
 
-func TestForceLeader_Windows_NilProcess(t *testing.T) {
-	assert.NotPanics(t, afterStart(&exec.Cmd{}).forceLeader)
-}
-
 func TestClose_Windows_NoJobIsNoOp(t *testing.T) {
 	// afterStart sets up no Job Object for a command that never
 	// started, so close has no handle to close.

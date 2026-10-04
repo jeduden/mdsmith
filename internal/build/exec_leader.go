@@ -7,16 +7,16 @@ import (
 	"os/exec"
 )
 
-// leaderKill is embedded in each !plan9 groupKiller to supply its
-// forceLeader: pgKiller (Unix), jobKiller (Windows), and leaderKiller
-// (exec_other.go). plan9's noteKiller has its own, as kill already
-// ends in an uncatchable leader kill there.
+// leaderKill is embedded in each !plan9 groupKiller to hold the
+// recipe's command: pgKiller and leaderTermKiller (Unix), jobKiller
+// (Windows), and leaderKiller (exec_leader_only.go), whose kill is
+// forceLeader. plan9's noteKiller kills through the ctl file instead.
 type leaderKill struct{ cmd *exec.Cmd }
 
 // forceLeader kills only the recipe's leader with killLeader: SIGKILL
 // on Unix, TerminateProcess on Windows, neither of which the leader can
-// catch. It is the shared leader kill on Unix and Windows, and the
-// whole kill on targets with no group (exec_other.go). It ignores the
+// catch. It is leaderKiller's whole kill: a hook's on Windows and the
+// recipe's on targets with no group (exec_other.go). It ignores the
 // error, as the leader may already have exited. A nil Process (the
 // command never started) is a no-op.
 func (k leaderKill) forceLeader() {

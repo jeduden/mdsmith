@@ -25,8 +25,8 @@ func configureProcessGroup(cmd *exec.Cmd) {
 }
 
 // pgKiller is the groupKiller on Unix. The process group needs no state
-// beyond the leader's pid, which is the pgid. The embedded leaderKill
-// supplies forceLeader.
+// beyond the leader's pid, which is the pgid, held by the embedded
+// leaderKill.
 type pgKiller struct{ leaderKill }
 
 // afterStart holds no state on Unix; the Job Object equivalent is
@@ -54,8 +54,8 @@ func (k pgKiller) kill(force <-chan struct{}) bool {
 }
 
 // leaderTermKiller is the Unix groupKiller for a run in mdsmith's own
-// process group (a hook, sharedGroup). The embedded leaderKill supplies
-// forceLeader.
+// process group (a hook, sharedGroup). The embedded leaderKill holds
+// the command.
 type leaderTermKiller struct{ leaderKill }
 
 // sharedGroupKiller returns the killer for a hook: it holds no state,
