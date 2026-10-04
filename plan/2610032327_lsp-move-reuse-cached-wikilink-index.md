@@ -81,7 +81,7 @@ for the edge index and once for `WikilinkIndex`.
 3. [x] Write a failing test: `lint.OpenRootFS` returns a
    handle that a caller can close, and a read after close
    fails.
-4. Close the root in `linkgraph.WikilinkIndexAtDir`,
+4. [x] Close the root in `linkgraph.WikilinkIndexAtDir`,
    backlinks, and the MDS027 run cache.
 5. Write a failing compile-level test: a heading-rename
    stub with no `WikilinkIndex` method satisfies the seam
