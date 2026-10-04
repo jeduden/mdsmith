@@ -206,7 +206,10 @@ func verifyTarget(
 	b buildexec.Builder, bt buildTarget, id string,
 	opts buildPassOpts, timeout time.Duration, res *targetRunResult, w io.Writer,
 ) bool {
-	if refuseIfInterrupted(bt, opts, w) {
+	if opts.context().Err() != nil {
+		// The first run finished and committed its outputs; only the
+		// re-run is skipped, so this is not "before start".
+		_, _ = fmt.Fprintf(w, "INTERRUPTED %s before verify re-run\n", targetName(bt))
 		return false
 	}
 	first := snapshotOutputs(bt)

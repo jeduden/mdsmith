@@ -1481,7 +1481,10 @@ func TestDispatchOne_VerifyAfterInterrupt_StartsNoReRun(t *testing.T) {
 		buildexec.NewCache(), time.Second, &buf)
 	assert.Equal(t, outcomeFailed, outcome)
 	assert.Equal(t, 1, calls, "the verify re-run must not start")
-	assert.Contains(t, buf.String(), "INTERRUPTED out.txt")
+	// The first run did start and commit its outputs: only the re-run
+	// was cut, so the report must not claim the recipe never started.
+	assert.Contains(t, buf.String(), "INTERRUPTED out.txt before verify re-run")
+	assert.NotContains(t, buf.String(), "before start")
 }
 
 // TestRunBuildPassInterruptible_InterruptedExitsTwo covers an interrupt
