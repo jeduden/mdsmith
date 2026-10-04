@@ -145,6 +145,24 @@ func TestIncomingWikilinkNameEdges(t *testing.T) {
 	assert.Nil(t, nilIdx.IncomingWikilinkNameEdges("diagram.png"))
 }
 
+// TestCollectWikilinkEdges_SkipsRefusedTarget locks that a wikilink
+// the resolver refuses gets no edge: `[[.md]]` has an empty stem and is
+// no typed name, so linkgraph.WikilinkKey reports !ok. Only the
+// `[[api]]` beside it is indexed.
+func TestCollectWikilinkEdges_SkipsRefusedTarget(t *testing.T) {
+	idx := New("/root")
+	idx.Update("a.md", []byte("See [[.md]] and [[api]].\n"))
+	var wl []Edge
+	for _, e := range idx.OutgoingEdges("a.md") {
+		if e.Kind.IsWikilink() {
+			wl = append(wl, e)
+		}
+	}
+	require.Len(t, wl, 1)
+	assert.Equal(t, EdgeWikilink, wl[0].Kind)
+	assert.Equal(t, "api", wl[0].TargetLabel)
+}
+
 // TestEdgeKind_IsWikilink locks which kinds are wikilink edges: the
 // stem and the exact-name kind, and no other.
 func TestEdgeKind_IsWikilink(t *testing.T) {
