@@ -142,9 +142,10 @@ func toRefactorPlan(p refactor.Plan) RefactorPlan {
 type sessionRefactorWorkspace struct {
 	refactor.IndexEdges
 	s *Session
-	// paths lists every file in the workspace FS, walked once on first
-	// use and shared by the edge index (its Markdown files) and
-	// WikilinkIndex (all of them), so a move walks the FS once.
+	// paths lists the workspace FS's files, walked once on first use
+	// and shared by the edge index (its Markdown files) and
+	// WikilinkIndex (those outside `.git` and `node_modules`), so a
+	// move walks the FS once (see walkWorkspacePaths).
 	paths         func() []string
 	overlayURI    string
 	overlaySource []byte
@@ -192,9 +193,13 @@ func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte
 	}
 }
 
-// walkWorkspacePaths walks fsys once and returns every file path in it.
-// The walk callback swallows per-entry errors, so an unreadable root or
-// subtree just contributes no paths. When owned, the walk is fsys's only
+// walkWorkspacePaths walks fsys once and returns the file paths its two
+// readers use: every Markdown file (the edge index) and every file
+// WikilinkIndex keys, which leaves out `.git` and `node_modules`. A
+// non-Markdown file under those directories is read by neither, so a
+// large `node_modules` adds no held paths. The walk callback swallows
+// per-entry errors, so an unreadable root or subtree just contributes
+// no paths. When owned, the walk is fsys's only
 // use, so a closable fsys (an OSWorkspace's os.Root view) is closed once
 // it ends; an fsys the caller does not own is left open.
 func walkWorkspacePaths(fsys fs.FS, owned bool) []string {
@@ -203,7 +208,8 @@ func walkWorkspacePaths(fsys fs.FS, owned bool) []string {
 	}
 	var paths []string
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
+		if err == nil && !d.IsDir() &&
+			(mdpath.HasMarkdownExt(path.Ext(p)) || linkgraph.WikilinkIndexed(p)) {
 			paths = append(paths, p)
 		}
 		return nil

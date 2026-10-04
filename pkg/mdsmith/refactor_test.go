@@ -511,15 +511,22 @@ func TestSession_Move_WalksOnce(t *testing.T) {
 }
 
 // TestWalkWorkspacePaths locks the one walk a refactor workspace makes:
-// it lists every file, Markdown or not and at any depth, and an
-// unreadable root lists none.
+// it lists every file its two readers use — every Markdown file at any
+// depth for the edge index, and every other file outside `.git` and
+// `node_modules` for WikilinkIndex — and an unreadable root lists none.
+// A non-Markdown file under a pruned directory is read by neither, so
+// the walk does not hold its path.
 func TestWalkWorkspacePaths(t *testing.T) {
 	ws := NewMemWorkspace(map[string][]byte{
-		"a.md":         []byte("# A\n"),
-		"sub/logo.png": []byte("png"),
-		".git/HEAD":    []byte("ref\n"),
+		"a.md":                       []byte("# A\n"),
+		"sub/logo.png":               []byte("png"),
+		".git/HEAD":                  []byte("ref\n"),
+		"node_modules/pkg/index.js":  []byte("x\n"),
+		"node_modules/pkg/README.md": []byte("# R\n"),
 	})
-	assert.ElementsMatch(t, []string{"a.md", "sub/logo.png", ".git/HEAD"}, walkWorkspacePaths(ws.FS(), false))
+	assert.ElementsMatch(t,
+		[]string{"a.md", "sub/logo.png", "node_modules/pkg/README.md"},
+		walkWorkspacePaths(ws.FS(), false))
 	assert.Empty(t, walkWorkspacePaths(failFS{}, false))
 }
 
