@@ -95,6 +95,36 @@ func TestWillRenameReusesCachedWikilinkIndexWhenWatching(t *testing.T) {
 	assert.Zero(t, walks.Load(), "a watched move reads the cached index")
 }
 
+// TestWatcherAckDropsIndexBuiltBeforeWatch locks that the session's
+// cached wikilink index is dropped when the client accepts the watcher
+// registration: an index a lint built before the watch began may miss a
+// file created in between, and no event will ever report that create,
+// so a move must not trust it.
+func TestWatcherAckDropsIndexBuiltBeforeWatch(t *testing.T) {
+	t.Parallel()
+	root := writeWikilinkTree(t, map[string]string{"guide.md": "# G\n"})
+	s := New(Options{Writer: io.Discard})
+	s.rootDir = root
+	sess, _ := s.currentSession()
+	require.NotNil(t, sess)
+	require.Empty(t, sess.WikilinkIndex().StemPaths("api"), "warm the index before the watch")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "api.md"), []byte("# API\n"), 0o644))
+
+	ackWatchers(t, s)
+	assert.Equal(t, []string{"api.md"}, s.moveWikilinkIndex(root).StemPaths("api"))
+}
+
+// TestDropPreWatchWikilinksWithoutSession locks that an accepted watch
+// on a server with no session yet builds none and drops nothing.
+func TestDropPreWatchWikilinksWithoutSession(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Writer: io.Discard})
+	assert.NotPanics(t, s.dropPreWatchWikilinks)
+	s.sessionMu.RLock()
+	defer s.sessionMu.RUnlock()
+	assert.Nil(t, s.session, "dropping builds no session")
+}
+
 // TestRegisterWatchersTrustsOnlyAcceptedRegistration locks that sending
 // the registration request alone does not make a move trust the cached
 // index: a client may reject it, or never answer. Only a success reply

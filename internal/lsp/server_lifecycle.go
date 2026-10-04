@@ -166,8 +166,9 @@ func (s *Server) registerWatchers(ctx context.Context) {
 
 // awaitWatchersAck waits for the client's reply to the watcher
 // registration with id and marks the server as watching only on a
-// success reply. An error reply, a missing reply within fetchTimeout,
-// or ctx ending leaves the flag unset.
+// success reply, first dropping any wikilink index cached before the
+// watch began (see dropPreWatchWikilinks). An error reply, a missing
+// reply within fetchTimeout, or ctx ending leaves the flag unset.
 func (s *Server) awaitWatchersAck(ctx context.Context, id string, ch chan rpcResponse) {
 	defer s.unregisterPendingResponse(id)
 	timeout := time.NewTimer(s.fetchTimeout)
@@ -175,9 +176,25 @@ func (s *Server) awaitWatchersAck(ctx context.Context, id string, ch chan rpcRes
 	select {
 	case resp := <-ch:
 		if resp.Error == nil {
+			s.dropPreWatchWikilinks()
 			s.watchingFiles.Store(true)
 		}
 	case <-timeout.C:
 	case <-ctx.Done():
+	}
+}
+
+// dropPreWatchWikilinks drops the current session's cached wikilink
+// index when the client accepts the watcher registration. A lint may
+// have built that index before the watch began, and a file created or
+// deleted in between is never reported, so the index cannot be trusted
+// once moves start reading it. It reads the session without building
+// one: with none, nothing is cached yet.
+func (s *Server) dropPreWatchWikilinks() {
+	s.sessionMu.RLock()
+	sess := s.session
+	s.sessionMu.RUnlock()
+	if sess != nil {
+		sess.InvalidateWikilinks()
 	}
 }
