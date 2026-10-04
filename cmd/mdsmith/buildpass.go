@@ -42,6 +42,19 @@ type buildPassOpts struct {
 	verify             bool          // --build-verify: run each recipe twice and diff outputs
 	jobs               int           // --build-jobs N: concurrent recipe dispatch (default 1)
 	explain            string        // --build-explain TARGET: print ActionID inputs; run nothing
+
+	// ctx, when non-nil, is the parent of every recipe and hook context.
+	// Cancelling it (CLI interrupt) kills the running recipes' process
+	// groups. Nil means context.Background().
+	ctx context.Context
+}
+
+// context returns the parent context for recipe and hook runs.
+func (o buildPassOpts) context() context.Context {
+	if o.ctx == nil {
+		return context.Background()
+	}
+	return o.ctx
 }
 
 // buildTarget pairs a resolved build.Target with the file and line it
@@ -251,7 +264,7 @@ func dispatchWithHooks(
 	// block the build pass indefinitely.
 	if runHooks && len(cfg.Build.Hooks.Before) > 0 {
 		before := resolveHooks(cfg.Build.Hooks.Before)
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(opts.context(), timeout)
 		result := buildexec.RunHooks(ctx, before, root, w)
 		cancel()
 		if result != nil {
@@ -279,7 +292,7 @@ func dispatchWithHooks(
 	afterCode := 0
 	if runHooks && len(cfg.Build.Hooks.After) > 0 {
 		after := resolveHooks(cfg.Build.Hooks.After)
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(opts.context(), timeout)
 		result := buildexec.RunAfterHooks(ctx, after, root, w)
 		cancel()
 		if result != nil {
@@ -619,7 +632,7 @@ func runOneTarget(
 	if opts.stream {
 		bopts.LiveSink = w
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(opts.context(), timeout)
 	defer cancel()
 	return targetRunResult{Result: b.BuildWithResult(ctx, bt.target, bopts)}
 }

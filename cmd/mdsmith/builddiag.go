@@ -182,7 +182,7 @@ func verifyTarget(
 ) {
 	first := snapshotOutputs(bt)
 
-	vctx, cancel := context.WithTimeout(context.Background(), timeout)
+	vctx, cancel := context.WithTimeout(opts.context(), timeout)
 	defer cancel()
 	verifyOpts := buildexec.Options{TargetName: targetName(bt)}
 	if id != "" {

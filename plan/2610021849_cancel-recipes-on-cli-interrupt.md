@@ -1,7 +1,7 @@
 ---
 id: 2610021849
 title: Kill running build recipes when the CLI is interrupted
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   `mdsmith fix` builds recipes under `context.Background()`, and
