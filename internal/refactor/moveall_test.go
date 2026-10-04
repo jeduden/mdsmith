@@ -1168,7 +1168,7 @@ func TestDestResolver_CountRefusedHolders(t *testing.T) {
 	r := &destResolver{ws: ws, batch: b}
 	r.countRefusedHolders(lint.NewParser())
 	assert.Equal(t, 2, b.withheld, "docs/b.md and the listed docs/n.mdx reach x/c.md")
-	assert.Equal(t, map[string]int{"x/c.md": 2}, ws.calls, "only the misread candidate is read")
+	assert.Equal(t, map[string]int{"x/c.md": 1}, ws.calls, "only the misread candidate is read, once")
 }
 
 func TestDestResolver_MayOccupy(t *testing.T) {
@@ -1391,6 +1391,48 @@ func TestDestResolver_MayHoldDir(t *testing.T) {
 	assert.False(t, r.mayHoldDir("x/su"), "a name prefix is not the directory")
 	assert.False(t, r.mayHoldDir("y"))
 	assert.True(t, r.mayHoldDir("."), "the root holds every member landing in the workspace")
+}
+
+// lookupCountingWorkspace counts the Resolve and WikilinkIndex calls a
+// planner makes on the memWorkspace it wraps.
+type lookupCountingWorkspace struct {
+	*memWorkspace
+	resolves, indexes int
+}
+
+func (w *lookupCountingWorkspace) Resolve(file string) (string, []byte, bool) {
+	w.resolves++
+	return w.memWorkspace.Resolve(file)
+}
+
+func (w *lookupCountingWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	w.indexes++
+	return w.memWorkspace.WikilinkIndex()
+}
+
+// TestDestResolver_MayHoldDirMemoized locks that the directories the
+// wikilink index holds are read once per resolver, not once per link.
+func TestDestResolver_MayHoldDirMemoized(t *testing.T) {
+	ws := &lookupCountingWorkspace{memWorkspace: newMemWorkspace(map[string]string{"x/sub/i.png": "y\n"})}
+	r := &destResolver{ws: ws, batch: newMoveBatch()}
+	require.Nil(t, r.dirs, "built on first use only")
+	assert.True(t, r.mayHoldDir("x/sub"))
+	assert.False(t, r.mayHoldDir("y"))
+	assert.True(t, r.mayHoldDir("x"))
+	assert.Equal(t, 1, ws.indexes)
+	assert.Len(t, r.dirs, 3)
+}
+
+// TestDestResolver_MayOccupyMemoized locks that a path mayOccupy reads
+// is read once per resolver, however many links name it.
+func TestDestResolver_MayOccupyMemoized(t *testing.T) {
+	ws := &lookupCountingWorkspace{memWorkspace: newMemWorkspace(map[string]string{"i.png": "y\n"})}
+	r := &destResolver{ws: ws, batch: newMoveBatch()}
+	for range 3 {
+		assert.True(t, r.mayOccupy("i.png"))
+		assert.False(t, r.mayOccupy("none.png"))
+	}
+	assert.Equal(t, 2, ws.resolves, "each path read once")
 }
 
 // TestMoveAll_RefusedHolderMisreadsRoot covers a directory link in a

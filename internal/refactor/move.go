@@ -337,7 +337,10 @@ func (r *destResolver) mayHoldDir(p string) bool {
 			return true
 		}
 	}
-	return r.wikilinkIndex().HasDir(p)
+	if r.dirs == nil {
+		r.dirs = r.wikilinkIndex().Dirs()
+	}
+	return r.dirs[p]
 }
 
 // mayOccupy reports whether a file may sit at the workspace path p
@@ -345,7 +348,8 @@ func (r *destResolver) mayHoldDir(p string) bool {
 // which a planned move from p rules out and a refused one does not.
 // Such a file is read, not looked up in the workspace list: the list
 // may leave out a file a link reaches, such as an image or an ignored
-// Markdown file.
+// Markdown file. Each path is read once per plan (see
+// destResolver.readable).
 func (r *destResolver) mayOccupy(p string) bool {
 	if r.batch.dsts[p] {
 		return true
@@ -353,7 +357,18 @@ func (r *destResolver) mayOccupy(p string) bool {
 	if m, moved := r.member(p); moved {
 		return !m.planned
 	}
-	return p != "" && resolves(r.ws, p)
+	if p == "" {
+		return false
+	}
+	ok, seen := r.readable[p]
+	if !seen {
+		if r.readable == nil {
+			r.readable = map[string]bool{}
+		}
+		ok = resolves(r.ws, p)
+		r.readable[p] = ok
+	}
+	return ok
 }
 
 // appendOutboundEdits recomputes every relative inline link, image and
@@ -466,6 +481,11 @@ type destResolver struct {
 	// from ws.Files() instead (see wikilinkIndex).
 	wlListed bool
 	lines    *edgeLines // see edgeReader
+	// dirs is wl.Dirs, built on mayHoldDir's first call; readable
+	// holds each path mayOccupy has read, so a path is read once per
+	// plan.
+	dirs     map[string]bool
+	readable map[string]bool
 }
 
 // edgeReader returns the one edgeLines the resolver's wikilink
