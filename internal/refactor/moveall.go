@@ -49,10 +49,12 @@ type BatchMove struct {
 // reach their file once the batch has run: one from a planned member
 // to a member whose move could not be planned, one inside such a
 // member to a planned member that stops resolving, a `[[stem]]` whose
-// new key another member's destination wins, and every path link and
-// `[[stem]]` link to a shadowed path (see countShadowed). A typed
-// `[[name.ext]]` link to a shadowed non-Markdown file is not counted:
-// the index has no edge lookup for it (plan 2610040606).
+// new key another member's destination wins, a `[[stem]]` left as
+// written that another member's destination takes (see stolen), and
+// every path link and `[[stem]]` link to a shadowed path (see
+// countShadowed). A typed `[[name.ext]]` link to a shadowed
+// non-Markdown file is not counted: the index has no edge lookup for
+// it (plan 2610040606).
 type BatchPlan struct {
 	Plan
 	Moves    []BatchMove
@@ -177,10 +179,11 @@ func validateBatch(ws Workspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
 
 // admit normalizes pr and records its source as a batch member when it
 // is readable, recording the member's destination in b.dsts and
-// counting it in landing, keyed by foldPath. The returned move carries the checks Move runs first, in Move's order: a
-// traversal path, an equal source and destination, then a missing
-// source; a source an earlier pair moves fails as well. A pair that
-// passes still awaits the destination checks in validateBatch.
+// counting it in landing, keyed by foldPath. The returned move carries
+// the checks Move runs first, in Move's order: a traversal path, an
+// equal source and destination, then a missing source; a source an
+// earlier pair moves fails as well. A pair that passes still awaits
+// the destination checks in validateBatch.
 func (b *moveBatch) admit(ws Workspace, pr MovePair, landing map[string]int) BatchMove {
 	m := BatchMove{Src: index.NormalizePath(pr.Src), Dst: index.NormalizePath(pr.Dst)}
 	_, seen := b.members[m.Src]

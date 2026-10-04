@@ -139,6 +139,12 @@ then reports it.
     a shadowed file, not a typed `[[name.ext]]` link. The
     index has no edge lookup for a typed link. Plan
     [2610040606](2610040606_move-typed-wikilinks.md) adds it.
+21. [x] Count a `[[stem]]` left as written that another
+    member's destination then takes. `[[y/b]]` names
+    `y/b.md` but reaches `x/b.md` once `x/z/b.md` lands
+    there, and a blocked `[[b]]` reaches the file that
+    takes `b.md`'s path. Both still resolve, so MDS027
+    cannot flag them.
 
 ## Acceptance Criteria
 

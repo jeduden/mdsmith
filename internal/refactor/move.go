@@ -889,7 +889,9 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	// applied. When a file outside the batch takes the new key, the
 	// link is left alone, as a lone move always has; when another
 	// batch member's destination takes it, the link is counted as
-	// withheld.
+	// withheld. So is a link left as written, for a named sibling or a
+	// blocked rewrite, that another member's destination then takes
+	// (see destResolver.stolen): it still resolves, so no rule flags it.
 	//
 	// Most moves have no `[[oldStem]]` link at all, so the edges are
 	// fetched first and the workspace walk that builds the index is
@@ -921,12 +923,13 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 		if len(siblings) > 0 {
 			if sib, named := wikilinkNamedSibling(row[e.SourceCol-1:start], src, siblings); named {
 				if t, needed = r.siblingTarget(oldStem, sib); !needed {
+					r.countStolen(post, oldStem, dst, r.landing(sib))
 					continue
 				}
 			}
 		}
 		if !t.reaches(post) {
-			r.countBlocked(post, t)
+			r.countBlocked(post, t, oldStem, dst)
 			continue
 		}
 		if !needed {
@@ -1045,19 +1048,50 @@ func (r *destResolver) siblingTarget(oldStem, sib string) (stemTarget, bool) {
 	return newStemTarget(oldStem, m.dst)
 }
 
-// countBlocked counts, in the batch, a `[[stem]]` rewrite to t that
-// is not planned because another batch member's destination wins
-// t.key in post. A file outside the batch that wins it, or that
-// spells t.dst in another letter case alone, is not counted: a lone
-// move leaves such a link alone too. No member destination spells
-// t.dst in another case: validateBatch refuses both such pairs, and t
-// is always a planned member's destination.
-func (r *destResolver) countBlocked(post *linkgraph.WikilinkIndex, t stemTarget) {
+// countBlocked counts, in the batch, a `[[oldStem]]` rewrite to t that
+// is not planned because of another batch member: its destination
+// wins t.key in post, or the link, left as written, reaches it there
+// (see stolen). dst is where the moving file lands. A file outside the
+// batch that wins t.key, or that spells t.dst in another letter case
+// alone, is not counted: a lone move leaves such a link alone too. No
+// member destination spells t.dst in another case: validateBatch
+// refuses both such pairs, and t is always a planned member's
+// destination.
+func (r *destResolver) countBlocked(post *linkgraph.WikilinkIndex, t stemTarget, oldStem, dst string) {
 	// t does not reach its file in post, so some other file holds
 	// t.key there: it sorts first, or it is t.dst in another case.
-	if first := t.holders(post)[0]; first != t.dst && r.batch.dsts[first] {
+	if first := t.holders(post)[0]; first != t.dst && r.batch.dsts[first] || r.stolen(post, oldStem, dst, t.dst) {
 		r.batch.withheld++
 	}
+}
+
+// stolen reports whether a `[[oldStem]]` link left as written reaches,
+// in post, a batch member's destination that is neither dst, where the
+// file it reached before the batch lands, nor want, the file it was
+// written for. The link still resolves, so no rule flags it: a
+// newcomer on a vacated path, or a member landing ahead of a named
+// sibling, takes it. A lone move cannot cause that.
+func (r *destResolver) stolen(post *linkgraph.WikilinkIndex, oldStem, dst, want string) bool {
+	holders := post.StemPaths(oldStem)
+	return len(holders) > 0 && holders[0] != dst && holders[0] != want && r.batch.dsts[holders[0]]
+}
+
+// countStolen counts, in the batch, a `[[oldStem]]` link left as
+// written for want that stolen reports another member takes.
+func (r *destResolver) countStolen(post *linkgraph.WikilinkIndex, oldStem, dst, want string) {
+	if r.stolen(post, oldStem, dst, want) {
+		r.batch.withheld++
+	}
+}
+
+// landing returns where the workspace file p sits once the batch has
+// run: its member's destination (empty when it leaves the workspace),
+// or p itself when the batch does not move it.
+func (r *destResolver) landing(p string) string {
+	if m, moved := r.member(p); moved {
+		return m.dst
+	}
+	return p
 }
 
 // winsStem reports whether a `[[oldStem]]` link reaches src before the

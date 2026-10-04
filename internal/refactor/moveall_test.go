@@ -532,6 +532,54 @@ func TestMoveAll_KeptStemFollowsRenamedSibling(t *testing.T) {
 	assert.Zero(t, bp.Withheld)
 }
 
+// TestMoveAll_NewcomerTakesBlockedStem covers a `[[b]]` whose rewrite
+// a file outside the batch blocks (c.md wins `c`) while another member
+// lands on the path b.md vacates: the link, left as written, then
+// reaches the newcomer and still resolves, so no rule can flag it. A
+// lone move would leave it dangling instead, so it is counted.
+func TestMoveAll_NewcomerTakesBlockedStem(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"a.md": "# A\n",
+		"b.md": "# B\n",
+		"c.md": "# C\n",
+		"n.md": "# N\n\n[[b]]\n",
+	}, MovePair{"b.md", "x/c.md"}, MovePair{"a.md", "b.md"})
+	assert.NotContains(t, bp.Edits, "n.md")
+	assert.Equal(t, 1, bp.Withheld)
+}
+
+// TestMoveAll_NamedSiblingOutsortedByMember covers a `[[y/b]]` left as
+// written for the sibling y/b.md it names: once the batch has run,
+// x/z/b.md lands at x/b.md and outsorts y/b.md, so the link silently
+// reaches that member and is counted. Where the named sibling, or the
+// file the link reached before the batch, still wins, nothing is.
+func TestMoveAll_NamedSiblingOutsortedByMember(t *testing.T) {
+	files := map[string]string{
+		"b.md":     "# B\n",
+		"x/z/b.md": "# XZB\n",
+		"y/b.md":   "# YB\n",
+		"n.md":     "# N\n\n[[y/b]]\n",
+	}
+	for _, tc := range []struct {
+		name string
+		kept string // where x/z/b.md lands, keeping its stem
+		want int
+	}{
+		{"member outsorts the sibling", "x/b.md", 1},
+		{"sibling still wins", "x/q/b.md", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bp := moveAll(t, files, MovePair{"x/z/b.md", tc.kept}, MovePair{"b.md", "a.md"})
+			assert.NotContains(t, bp.Edits, "n.md")
+			assert.Equal(t, tc.want, bp.Withheld)
+		})
+	}
+	// b.md keeps its stem and still outsorts y/b.md: the link reaches
+	// the file it reached before the batch, so it is not counted.
+	bp := moveAll(t, files, MovePair{"b.md", "a/b.md"}, MovePair{"x/z/b.md", "x/z/q.md"})
+	assert.Zero(t, bp.Withheld)
+}
+
 func TestDestResolver_KeptStemTarget(t *testing.T) {
 	batch := func(members map[string]batchMember) *destResolver {
 		return &destResolver{batch: &moveBatch{members: members}}
@@ -609,6 +657,38 @@ func TestDestResolver_SiblingTarget(t *testing.T) {
 	assert.False(t, ok, "an unplanned sibling")
 	_, ok = r.siblingTarget("guide", "v/guide.md")
 	assert.False(t, ok, "a sibling the batch does not move")
+}
+
+func TestDestResolver_Stolen(t *testing.T) {
+	r := &destResolver{batch: &moveBatch{dsts: map[string]bool{"b.md": true, "a/b.md": true}}}
+	post := linkgraph.NewWikilinkIndexFromPaths([]string{"b.md", "y/b.md"})
+	assert.True(t, r.stolen(post, "b", "x/c.md", "y/b.md"), "a member's destination wins")
+	assert.False(t, r.stolen(post, "b", "b.md", "y/b.md"), "the moving file's own landing wins")
+	assert.False(t, r.stolen(post, "b", "x/c.md", "b.md"), "the file the link names wins")
+	assert.False(t, r.stolen(post, "q", "x/c.md", "y/b.md"), "no file holds the stem")
+	unmoved := linkgraph.NewWikilinkIndexFromPaths([]string{"c/b.md", "y/b.md"})
+	assert.False(t, r.stolen(unmoved, "b", "x/c.md", "y/b.md"), "a file outside the batch wins")
+}
+
+func TestDestResolver_CountStolen(t *testing.T) {
+	r := &destResolver{batch: &moveBatch{dsts: map[string]bool{"b.md": true}}}
+	post := linkgraph.NewWikilinkIndexFromPaths([]string{"b.md", "y/b.md"})
+	r.countStolen(post, "b", "x/c.md", "y/b.md")
+	assert.Equal(t, 1, r.batch.withheld, "a member's destination takes the link")
+	r.countStolen(post, "b", "x/c.md", "b.md")
+	assert.Equal(t, 1, r.batch.withheld, "the link reaches the file it names")
+}
+
+func TestDestResolver_Landing(t *testing.T) {
+	r := &destResolver{batch: &moveBatch{members: map[string]batchMember{
+		"a.md": {dst: "x/a.md", planned: true},
+		"b.md": {dst: "y/b.md"},
+		"c.md": {},
+	}}}
+	assert.Equal(t, "x/a.md", r.landing("a.md"))
+	assert.Equal(t, "y/b.md", r.landing("b.md"), "an unplanned member lands where the host moves it")
+	assert.Empty(t, r.landing("c.md"), "a member leaving the workspace")
+	assert.Equal(t, "d.md", r.landing("d.md"), "a file the batch does not move")
 }
 
 func TestDestResolver_Member(t *testing.T) {
@@ -790,4 +870,82 @@ func TestMoveAll_ShadowedWithoutStem(t *testing.T) {
 			assert.Equal(t, 1, bp.Withheld)
 		})
 	}
+}
+
+func TestMoveBatch_KeyStems(t *testing.T) {
+	b := newMoveBatch()
+	b.members["x/guide.md"] = batchMember{dst: "x/Guide.md"}
+	b.members["a.md"] = batchMember{dst: "guide.md"}
+	b.members["gone.md"] = batchMember{}
+	b.keyStems()
+	assert.Equal(t, map[string]int{"guide": 2, "a": 1, "gone": 1}, b.stems,
+		"a member holding one stem at both ends counts once")
+	assert.Equal(t, map[string][]string{"guide": {"x/guide.md"}, "a": {"a.md"}, "gone": {"gone.md"}}, b.srcStems)
+	b.members["n.md"] = batchMember{}
+	b.keyStems()
+	assert.NotContains(t, b.stems, "n", "built once")
+}
+
+func TestDestResolver_CountStale(t *testing.T) {
+	r := &destResolver{batch: newMoveBatch()}
+	r.countStale("x/a.md", "b.md", "x/b.md")
+	assert.Zero(t, r.batch.withheld, "the link still names its target")
+	r.countStale("x/a.md", "b.md", "y/b.md")
+	assert.Equal(t, 1, r.batch.withheld, "the link stops resolving")
+	r.countStale("", "b.md", "b.md")
+	r.countStale("a.md", "b.md", "")
+	assert.Equal(t, 3, r.batch.withheld, "an end leaves the workspace")
+}
+
+func TestUnplannedInPlace(t *testing.T) {
+	assert.True(t, unplannedInPlace(batchMember{dst: "docs/c.md"}, "docs/a.md"))
+	assert.False(t, unplannedInPlace(batchMember{dst: "z/c.md"}, "docs/a.md"), "another folder")
+	assert.False(t, unplannedInPlace(batchMember{dst: "docs/c.md", planned: true}, "docs/a.md"), "a planned move")
+	assert.False(t, unplannedInPlace(batchMember{}, "a.md"), "a file leaving the workspace")
+}
+
+func TestCountShadowed(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"b.md":    "# B\n",
+		"x/c.md":  "# C\n",
+		"c.md":    "# C\n",
+		"img.png": "png",
+		"n.md":    "# N\n\n[[b]] [[x/b]] [[c]]\n",
+	})
+	for vacated, want := range map[string]int{
+		"b.md":    2, // wins `b`: both `[[b]]` links are counted
+		"x/c.md":  0, // c.md wins `c`
+		"img.png": 0, // no stem key
+		"q.md":    0, // no `[[q]]` link
+	} {
+		r := &destResolver{ws: ws, batch: newMoveBatch()}
+		countShadowed(ws, r, vacated)
+		assert.Equal(t, want, r.batch.withheld, vacated)
+	}
+}
+
+func TestDestResolver_EdgeReader(t *testing.T) {
+	r := &destResolver{ws: stubWorkspace{}}
+	lines := r.edgeReader()
+	require.NotNil(t, lines.memo, "the shared reader keeps every file it reads")
+	assert.Same(t, lines, r.edgeReader())
+}
+
+func TestStemTarget_Holders(t *testing.T) {
+	post := holderIndex("a/guide.md", "guide.md", "img/guide.png")
+	assert.Equal(t, []string{"guide.md", "a/guide.md"}, stemTarget{key: "guide", isStem: true}.holders(post))
+	assert.Equal(t, []string{"img/guide.png"}, stemTarget{key: "guide.png"}.holders(post))
+}
+
+func TestDestResolver_CountBlocked(t *testing.T) {
+	b := newMoveBatch()
+	b.dsts["c.md"], b.dsts["x/c.md"], b.dsts["b.md"] = true, true, true
+	r := &destResolver{batch: b}
+	t1 := stemTarget{dst: "x/c.md", key: "c", isStem: true}
+	r.countBlocked(holderIndex("c.md", "x/c.md"), t1, "a", "x/c.md")
+	assert.Equal(t, 1, b.withheld, "a member's destination wins the new key")
+	r.countBlocked(holderIndex("y/c.md", "x/c.md"), t1, "a", "x/c.md")
+	assert.Equal(t, 1, b.withheld, "a file outside the batch wins it")
+	r.countBlocked(holderIndex("y/c.md", "x/c.md", "b.md"), t1, "b", "x/c.md")
+	assert.Equal(t, 2, b.withheld, "the link left as written reaches a member's destination")
 }
