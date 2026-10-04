@@ -1,3 +1,7 @@
+// The test spawns `go list`, so it cannot run under GOOS=js.
+
+//go:build unix || windows || plan9
+
 package main
 
 import (
