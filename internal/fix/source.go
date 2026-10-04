@@ -97,6 +97,7 @@ func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer f.releaseRoots(lf, opts.Path)
 	effective := f.effectiveWithCategories(opts.Path, fmKinds, fmFields)
 	// Surface configuration errors (invalid rule settings, etc.)
 	// instead of silently producing a fix that omits the affected

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -393,6 +394,7 @@ func (f *Fixer) fixFile(path string) (
 	if prepErr != nil {
 		return nil, nil, "", false, []error{prepErr}
 	}
+	defer f.releaseRoots(lf, path)
 
 	effective, key := f.effectiveCachedForFix(path, fmKinds, fmFields)
 
@@ -763,17 +765,33 @@ func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []st
 	}
 	lf.MaxInputBytes = f.MaxInputBytes
 	lf.DryRun = f.DryRun
+	kinds, err := lint.ParseFrontMatterKinds(lf.FrontMatter)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err)
+	}
+	if err := config.ValidateFrontMatterKinds(f.Config, path, kinds); err != nil {
+		return nil, nil, nil, nil, err
+	}
+	fields, err := parseFieldsForSelector(f.Config, path, lf.FrontMatter)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return lf, f.wireFileFS(lf, path), kinds, fields, nil
+}
+
+// wireFileFS sets lf's FS, RootFS/RootDir, and gitignore hook and returns
+// its FS. It runs after prepareFile's last error return, so no failed
+// prepare holds a root; the caller defers releaseRoots once lf's fix ends.
+func (f *Fixer) wireFileFS(lf *lint.File, path string) fs.FS {
 	dir := filepath.Dir(path)
-	var dirFS fs.FS
 	if f.SourceFS != nil {
 		// In-memory callers (LSP) supply an explicit FS rooted at the
 		// document's real on-disk directory; the path itself can be
 		// workspace-relative for config glob matching.
-		dirFS = f.SourceFS
+		lf.FS = f.SourceFS
 	} else {
-		dirFS = lint.OpenRootFS(dir)
+		lf.FS = lint.OpenRootFS(dir)
 	}
-	lf.FS = dirFS
 	gitignoreDir := dir
 	if f.RootDir != "" {
 		if dir == f.RootDir {
@@ -789,18 +807,26 @@ func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []st
 	lf.GitignoreFunc = func() *gitignore.Matcher {
 		return f.cachedGitignore(gd)
 	}
-	kinds, err := lint.ParseFrontMatterKinds(lf.FrontMatter)
-	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err)
+	return lf.FS
+}
+
+// releaseRoots closes the roots wireFileFS opened for lf at path: its
+// own directory unless the caller lent SourceFS, and the project root
+// for a file below RootDir. A lent SourceFS stays open for its owner.
+func (f *Fixer) releaseRoots(lf *lint.File, path string) {
+	if f.SourceFS == nil {
+		closeFS(lf.FS)
 	}
-	if err := config.ValidateFrontMatterKinds(f.Config, path, kinds); err != nil {
-		return nil, nil, nil, nil, err
+	if f.RootDir != "" && filepath.Dir(path) != f.RootDir {
+		closeFS(lf.RootFS)
 	}
-	fields, err := parseFieldsForSelector(f.Config, path, lf.FrontMatter)
-	if err != nil {
-		return nil, nil, nil, nil, err
+}
+
+// closeFS closes fsys when it holds a handle.
+func closeFS(fsys fs.FS) {
+	if c, ok := fsys.(io.Closer); ok {
+		_ = c.Close()
 	}
-	return lf, dirFS, kinds, fields, nil
 }
 
 // parseFieldsForSelector decodes the full front-matter mapping only when
