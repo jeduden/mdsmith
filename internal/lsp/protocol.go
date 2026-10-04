@@ -61,11 +61,34 @@ const (
 // failing — a non-pointer int would otherwise return
 // "cannot unmarshal null into int" and the server would reject
 // the very first request.
+//
+// InitializationOptions is spec'd as `LSPAny`, so it stays raw here:
+// a client that sends a string, array, or null must not fail the
+// initialize decode. singletonScope reads the one field mdsmith
+// understands from it.
 type initializeParams struct {
-	ProcessID        *int               `json:"processId,omitempty"`
-	RootURI          *string            `json:"rootUri,omitempty"`
-	WorkspaceFolders []workspaceFolder  `json:"workspaceFolders,omitempty"`
-	Capabilities     clientCapabilities `json:"capabilities"`
+	ProcessID             *int               `json:"processId,omitempty"`
+	RootURI               *string            `json:"rootUri,omitempty"`
+	WorkspaceFolders      []workspaceFolder  `json:"workspaceFolders,omitempty"`
+	Capabilities          clientCapabilities `json:"capabilities"`
+	InitializationOptions json.RawMessage    `json:"initializationOptions,omitempty"`
+}
+
+// singletonScope returns initializationOptions.mdsmith.singletonScope,
+// the client-supplied token that opts this server into the workspace
+// singleton (see startSingletonWatch). Any other shape — absent, null,
+// a non-object options value or namespace, a non-string scope — yields
+// "", which is the opt-out: the server then never claims the registry.
+func (p initializeParams) singletonScope() string {
+	var opts struct {
+		Mdsmith struct {
+			SingletonScope string `json:"singletonScope"`
+		} `json:"mdsmith"`
+	}
+	if err := json.Unmarshal(p.InitializationOptions, &opts); err != nil {
+		return ""
+	}
+	return opts.Mdsmith.SingletonScope
 }
 
 type workspaceFolder struct {

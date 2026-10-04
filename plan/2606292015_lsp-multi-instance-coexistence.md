@@ -1,7 +1,7 @@
 ---
 id: 2606292015
 title: Scope the LSP workspace singleton per client so instances coexist
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Make the newest-wins LSP workspace singleton opt-in.
@@ -212,7 +212,7 @@ the same workspace is unaffected.
 
 ## Tasks
 
-1. [ ] Capture `initializationOptions` in `initializeParams`
+1. [x] Capture `initializationOptions` in `initializeParams`
    ([protocol.go](../internal/lsp/protocol.go)); read
    `mdsmith.singletonScope` as an optional string. Unit-test the
    unmarshal, including the absent / `null` / non-object case,
