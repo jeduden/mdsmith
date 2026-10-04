@@ -727,3 +727,35 @@ func WikilinkReaches(spelling, base string) bool {
 	stem, ok := FileStemKey(base)
 	return ok && stem != "" && FileNameKey(wantStem) == stem
 }
+
+// HasDir reports whether the index holds a file, of any type, under
+// the workspace-relative directory dir at any depth. It reads every
+// key, so a caller asks it only for a rare lookup. A key a Moved
+// overlay holds hides the same key in the index below it. A nil index
+// or an empty dir holds none.
+func (idx *WikilinkIndex) HasDir(dir string) bool {
+	if idx == nil || dir == "" {
+		return false
+	}
+	prefix := dir + "/"
+	var seen map[string]bool
+	for ix := idx; ix != nil; ix = ix.base {
+		for key, paths := range ix.names {
+			if seen[key] {
+				continue
+			}
+			if ix.base != nil {
+				if seen == nil {
+					seen = map[string]bool{}
+				}
+				seen[key] = true
+			}
+			for _, p := range paths {
+				if strings.HasPrefix(p, prefix) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}

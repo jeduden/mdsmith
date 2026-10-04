@@ -1,6 +1,7 @@
 package refactor
 
 import (
+	"maps"
 	"path"
 	"strings"
 	"testing"
@@ -1268,4 +1269,43 @@ func TestMoveAll_DuplicateOntoExisting(t *testing.T) {
 	}), []MovePair{{"a/b.md", "x/b.md"}, {"c/b.md", "x/b.md"}})
 	require.Equal(t, ErrDuplicateDestination, bp.Moves[0].Err)
 	assert.Equal(t, 1, bp.Withheld)
+}
+
+// TestMoveAll_RefusedHolderMisreadsDirectory covers a directory link
+// inside a refused move that leaves its folder. Read from the new
+// folder, `sub/` names x/sub/: when a file is there, even one the
+// workspace does not list, the link reaches that directory silently
+// and is counted. When none is there, it stops resolving.
+func TestMoveAll_RefusedHolderMisreadsDirectory(t *testing.T) {
+	for name, tc := range map[string]struct {
+		files    map[string]string
+		withheld int
+	}{
+		"a listed file there":    {map[string]string{"x/sub/y.md": "# Y\n"}, 1},
+		"an unlisted file there": {map[string]string{"x/sub/i.png": "y\n"}, 1},
+		"a member lands there":   {map[string]string{"m.md": "# M\n"}, 1},
+		"nothing there":          {map[string]string{"x/other.md": "# O\n"}, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			files := map[string]string{"docs/b.md": "# B\n\n[s](sub/)\n", "docs/sub/a.md": "# A\n", "x/b.md": "# Old\n"}
+			maps.Copy(files, tc.files)
+			pairs := []MovePair{{"docs/b.md", "x/b.md"}}
+			if _, ok := files["m.md"]; ok {
+				pairs = append(pairs, MovePair{"m.md", "x/sub/m.md"})
+			}
+			bp := MoveAll(markdownListedWorkspace{newMemWorkspace(files)}, pairs)
+			require.Equal(t, DestinationExistsError{Dst: "x/b.md"}, bp.Moves[0].Err)
+			assert.Equal(t, tc.withheld, bp.Withheld)
+		})
+	}
+}
+
+func TestDestResolver_MayHoldDir(t *testing.T) {
+	b := newMoveBatch()
+	b.dsts["x/new/m.md"] = true
+	r := &destResolver{ws: newMemWorkspace(map[string]string{"x/sub/i.png": "y\n"}), batch: b}
+	assert.True(t, r.mayHoldDir("x/new"), "a member lands there")
+	assert.True(t, r.mayHoldDir("x/sub"), "an indexed file is there")
+	assert.False(t, r.mayHoldDir("x/su"), "a name prefix is not the directory")
+	assert.False(t, r.mayHoldDir("y"))
 }

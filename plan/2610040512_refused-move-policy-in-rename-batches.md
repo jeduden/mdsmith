@@ -133,6 +133,10 @@ the link stops resolving, where MDS027 flags it.
    second acceptance criterion. A planned member's link to
    that file is still re-spelled. `Move` now validates its
    one pair first, so a refused lone move reads no file.
+   A directory link such as `sub/` in a refused member that
+   leaves its folder counts when a file, listed or not, may
+   sit under the directory it names from there
+   (`TestMoveAll_RefusedHolderMisreadsDirectory`).
 
 ## Acceptance Criteria
 
