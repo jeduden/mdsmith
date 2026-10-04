@@ -338,7 +338,7 @@ func TestSessionRefactorWorkspace_Resolve(t *testing.T) {
 		"a.md":     []byte("# A\n"),
 		"sub/b.md": []byte("# B\n"),
 	})
-	ws := s.buildRefactorWorkspace("a.md", []byte("# Buffer\n"))
+	ws := s.buildRefactorWorkspace("a.md", []byte("# Buffer\n"), isMovePath)
 
 	// The overlay URI resolves to the supplied buffer, not the file.
 	rel, src, ok := ws.Resolve("./a.md")
@@ -356,7 +356,7 @@ func TestSessionRefactorWorkspace_Resolve(t *testing.T) {
 	assert.False(t, ok)
 
 	// Without an overlay the file's own bytes are returned.
-	_, src, ok = s.buildRefactorWorkspace("", nil).Resolve("a.md")
+	_, src, ok = s.buildRefactorWorkspace("", nil, isMovePath).Resolve("a.md")
 	require.True(t, ok)
 	assert.Equal(t, "# A\n", string(src))
 }
@@ -368,14 +368,14 @@ func TestSession_BuildRefactorWorkspace(t *testing.T) {
 		"sub/b.md":  []byte("# B\n"),
 		"notes.txt": []byte("not markdown"),
 	})
-	plain := s.buildRefactorWorkspace("", nil)
+	plain := s.buildRefactorWorkspace("", nil, isMovePath)
 	assert.ElementsMatch(t, []string{"a.md", "c.md", "sub/b.md"}, plain.Files())
 	// a.md has no "Other" heading on disk, but c.md already links to it.
 	assert.Len(t, plain.IncomingAnchorEdges("a.md", "other"), 1)
 
 	// With an overlay the index reads the unsaved buffer for a.md. The
 	// buffer's link to b.md#b shows up only when the overlay is used.
-	overlay := s.buildRefactorWorkspace("a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
+	overlay := s.buildRefactorWorkspace("a.md", []byte("# A\n\n[b](sub/b.md#b)\n"), isMovePath)
 	assert.Len(t, overlay.IncomingAnchorEdges("sub/b.md", "b"), 1)
 	assert.Empty(t, plain.IncomingAnchorEdges("sub/b.md", "b"))
 }
@@ -390,12 +390,12 @@ func TestSession_IndexRefactorWorkspace(t *testing.T) {
 		"notes.txt": []byte("[b](sub/b.md#b)\n"),
 	})
 	t.Run("indexes only Markdown files", func(t *testing.T) {
-		idx := s.indexRefactorWorkspace(walkWorkspacePaths(s.ws.FS(), false), "", nil)
+		idx := s.indexRefactorWorkspace(walkWorkspacePaths(s.ws.FS(), false, isMovePath), "", nil)
 		assert.ElementsMatch(t, []string{"a.md", "sub/b.md"}, idx.Files())
 		assert.Empty(t, idx.IncomingEdges("sub/b.md", "b"))
 	})
 	t.Run("overlay replaces the saved bytes", func(t *testing.T) {
-		paths := walkWorkspacePaths(s.ws.FS(), false)
+		paths := walkWorkspacePaths(s.ws.FS(), false, isMovePath)
 		idx := s.indexRefactorWorkspace(paths, "./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
 		edges := idx.IncomingEdges("sub/b.md", "b")
 		require.Len(t, edges, 1)
@@ -428,7 +428,7 @@ func TestBuildRefactorWorkspace_IndexesOnFirstQuery(t *testing.T) {
 	t.Cleanup(s.Dispose)
 
 	ws.reads = 0
-	w := s.buildRefactorWorkspace("", nil)
+	w := s.buildRefactorWorkspace("", nil, isMovePath)
 	assert.Zero(t, ws.reads, "building reads no workspace file")
 
 	_, _, ok := w.Resolve("b.md")
@@ -526,8 +526,8 @@ func TestWalkWorkspacePaths(t *testing.T) {
 	})
 	assert.ElementsMatch(t,
 		[]string{"a.md", "sub/logo.png", "node_modules/pkg/README.md"},
-		walkWorkspacePaths(ws.FS(), false))
-	assert.Empty(t, walkWorkspacePaths(failFS{}, false))
+		walkWorkspacePaths(ws.FS(), false, isMovePath))
+	assert.Empty(t, walkWorkspacePaths(failFS{}, false, isMovePath))
 }
 
 // TestWalkWorkspacePaths_ClosesOnlyOwnedFS locks that the walk closes a
@@ -537,7 +537,7 @@ func TestWalkWorkspacePaths_ClosesOnlyOwnedFS(t *testing.T) {
 	mem := NewMemWorkspace(map[string][]byte{"a.md": []byte("# A\n")})
 	for _, owned := range []bool{true, false} {
 		closed := 0
-		got := walkWorkspacePaths(closeRecordingFS{mem.FS(), &closed}, owned)
+		got := walkWorkspacePaths(closeRecordingFS{mem.FS(), &closed}, owned, isMovePath)
 		assert.Equal(t, []string{"a.md"}, got)
 		want := 0
 		if owned {
@@ -595,4 +595,19 @@ func TestSession_Move_LeavesHostFSOpen(t *testing.T) {
 	_, err = s.Move("api.md", "service.md")
 	require.NoError(t, err)
 	assert.Zero(t, ws.closed)
+}
+
+// TestBuildRefactorWorkspace_KeepsAssetsOnlyForMove locks that a symbol
+// rename's walk holds only Markdown paths: a heading or label rename
+// never builds a wikilink index, so an asset-heavy vault's image paths
+// are dead weight there. A move's walk keeps them for WikilinkIndex.
+func TestBuildRefactorWorkspace_KeepsAssetsOnlyForMove(t *testing.T) {
+	s := newRefactorSession(t, map[string][]byte{
+		"a.md":         []byte("# A\n"),
+		"sub/logo.png": []byte("png"),
+	})
+	assert.Equal(t, []string{"a.md"},
+		s.buildRefactorWorkspace("", nil, isMarkdownPath).paths())
+	assert.ElementsMatch(t, []string{"a.md", "sub/logo.png"},
+		s.buildRefactorWorkspace("", nil, isMovePath).paths())
 }

@@ -68,7 +68,7 @@ func (s *Session) Rename(uri string, source []byte, as, oldName, newName string)
 	// The workspace indexes lazily: only a heading rename queries
 	// incoming edges, so a label rename or a failed detection never
 	// walks a large WASM vault.
-	ws := s.buildRefactorWorkspace(uri, source)
+	ws := s.buildRefactorWorkspace(uri, source, isMarkdownPath)
 	key := index.NormalizePath(uri)
 	p, err := refactor.Rename(ws, key, source, kind, oldName, newName)
 	if err != nil {
@@ -84,7 +84,7 @@ func (s *Session) Rename(uri string, source []byte, as, oldName, newName string)
 // equal src/dst, a missing source, or an existing destination is
 // returned as an error.
 func (s *Session) Move(src, dst string) (RefactorPlan, error) {
-	ws := s.buildRefactorWorkspace("", nil)
+	ws := s.buildRefactorWorkspace("", nil, isMovePath)
 	p, err := refactor.Move(ws, src, dst)
 	if err != nil {
 		return RefactorPlan{}, err
@@ -142,10 +142,11 @@ func toRefactorPlan(p refactor.Plan) RefactorPlan {
 type sessionRefactorWorkspace struct {
 	refactor.IndexEdges
 	s *Session
-	// paths lists the workspace FS's files, walked once on first use
-	// and shared by the edge index (its Markdown files) and
-	// WikilinkIndex (those outside `.git` and `node_modules`), so a
-	// move walks the FS once (see walkWorkspacePaths).
+	// paths lists the workspace FS's files the walk keeps, walked once
+	// on first use and shared by the edge index (its Markdown files)
+	// and, for a move, WikilinkIndex (those outside `.git` and
+	// `node_modules`), so a move walks the FS once (see
+	// walkWorkspacePaths).
 	paths         func() []string
 	overlayURI    string
 	overlaySource []byte
@@ -177,11 +178,13 @@ func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 // reads only the file it names, so a label rename or a failed detection
 // never walks a large WASM vault. One walk of one FS snapshot (a
 // MemWorkspace copies every file's bytes per FS call) lists every file
-// for both the edge index and WikilinkIndex. overlayURI, when set,
+// for both the edge index and WikilinkIndex; keep picks which paths the
+// walk holds (isMarkdownPath for a symbol rename, which never builds a
+// wikilink index, isMovePath for a move). overlayURI, when set,
 // substitutes overlaySource for that file's bytes so a rename computes
 // against the caller's current buffer rather than the last-saved file.
-func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte) *sessionRefactorWorkspace {
-	paths := sync.OnceValue(func() []string { return walkWorkspacePaths(s.ws.FS(), ownsFS(s.ws)) })
+func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte, keep func(string) bool) *sessionRefactorWorkspace {
+	paths := sync.OnceValue(func() []string { return walkWorkspacePaths(s.ws.FS(), ownsFS(s.ws), keep) })
 	return &sessionRefactorWorkspace{
 		IndexEdges: refactor.NewLazyIndexEdges(func() *index.Index {
 			return s.indexRefactorWorkspace(paths(), overlayURI, overlaySource)
@@ -193,28 +196,38 @@ func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte
 	}
 }
 
-// walkWorkspacePaths walks fsys once and returns the file paths its two
-// readers use: every Markdown file (the edge index) and every file
-// WikilinkIndex keys, which leaves out `.git` and `node_modules`. A
-// non-Markdown file under those directories is read by neither, so a
-// large `node_modules` adds no held paths. The walk callback swallows
-// per-entry errors, so an unreadable root or subtree just contributes
-// no paths. When owned, the walk is fsys's only
-// use, so a closable fsys (an OSWorkspace's os.Root view) is closed once
-// it ends; an fsys the caller does not own is left open.
-func walkWorkspacePaths(fsys fs.FS, owned bool) []string {
+// walkWorkspacePaths walks fsys once and returns the file paths keep
+// accepts. The walk callback swallows per-entry errors, so an unreadable
+// root or subtree just contributes no paths. When owned, the walk is
+// fsys's only use, so a closable fsys (an OSWorkspace's os.Root view) is
+// closed once it ends; an fsys the caller does not own is left open.
+func walkWorkspacePaths(fsys fs.FS, owned bool, keep func(string) bool) []string {
 	if c, ok := fsys.(io.Closer); ok && owned {
 		defer func() { _ = c.Close() }()
 	}
 	var paths []string
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() &&
-			(mdpath.HasMarkdownExt(path.Ext(p)) || linkgraph.WikilinkIndexed(p)) {
+		if err == nil && !d.IsDir() && keep(p) {
 			paths = append(paths, p)
 		}
 		return nil
 	})
 	return paths
+}
+
+// isMarkdownPath keeps the files a symbol rename's edge index reads:
+// every Markdown file, at any depth.
+func isMarkdownPath(p string) bool {
+	return mdpath.HasMarkdownExt(path.Ext(p))
+}
+
+// isMovePath keeps the files a move reads: every Markdown file (the
+// edge index) and every file WikilinkIndex keys, which leaves out
+// `.git` and `node_modules`. A non-Markdown file under those
+// directories is read by neither, so a large `node_modules` adds no
+// held paths.
+func isMovePath(p string) bool {
+	return isMarkdownPath(p) || linkgraph.WikilinkIndexed(p)
 }
 
 // ownsFS reports whether a caller of ws.FS owns the view it gets, and so
@@ -236,7 +249,7 @@ func ownsFS(ws Workspace) bool {
 func (s *Session) indexRefactorWorkspace(paths []string, overlayURI string, overlaySource []byte) *index.Index {
 	var rels []string
 	for _, p := range paths {
-		if mdpath.HasMarkdownExt(path.Ext(p)) {
+		if isMarkdownPath(p) {
 			rels = append(rels, index.NormalizePath(p))
 		}
 	}
