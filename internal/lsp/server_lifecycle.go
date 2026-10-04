@@ -119,6 +119,8 @@ func (s *Server) handleInitialized(ctx context.Context) {
 //   - `**/*`, creates and deletes only, drops the session's wikilink
 //     index on any file-set change: the index keys every file (images,
 //     `.MD` spellings), which the Markdown globs alone do not report.
+//     A non-Markdown file under `.git` or `node_modules`, which the
+//     index prunes, is ignored (see watchedFilesTreeChanged).
 //
 // The request is best-effort: clients that don't support dynamic
 // registration silently ignore it. There is no polling fallback;

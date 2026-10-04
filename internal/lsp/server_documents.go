@@ -3,8 +3,11 @@ package lsp
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 )
 
 // textDocument/* document-sync handlers — didOpen, didChange, didSave,
@@ -149,7 +152,8 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 			mdChanges = append(mdChanges, path)
 		}
 	}
-	treeChanged := watchedFilesTreeChanged(p.Changes)
+	_, _, root := s.snapshotConfig()
+	treeChanged := watchedFilesTreeChanged(p.Changes, root)
 	// A watched Markdown event, or a create or delete of another file,
 	// proves the client reports tree changes, so a move may trust the
 	// session's wikilink index from now on. A config-only batch proves
@@ -205,9 +209,12 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 // extension, so a binary asset add counts too). A pure-change batch (no
 // create/delete) leaves the candidate set intact. Per LSP spec:
 // 1=Created, 2=Changed, 3=Deleted; a rename arrives as a Deleted+Created
-// pair. Pulled out of handleDidChangeWatchedFiles so the decision is
-// unit-testable without a live session and its caches.
-func watchedFilesTreeChanged(changes []fileEvent) bool {
+// pair. A non-Markdown file under a directory the index prunes (`.git`,
+// `node_modules`, read relative to root) is skipped: the `**/*` watcher
+// reports git's lock-file churn on every git command, and none of it
+// changes what the index keys. Pulled out of handleDidChangeWatchedFiles
+// so the decision is unit-testable without a live session and its caches.
+func watchedFilesTreeChanged(changes []fileEvent, root string) bool {
 	for _, c := range changes {
 		path := uriToPath(c.URI)
 		if path == "" {
@@ -219,7 +226,11 @@ func watchedFilesTreeChanged(changes []fileEvent) bool {
 		if strings.HasSuffix(path, ".mdsmith.yml") {
 			continue
 		}
-		if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {
+		if c.Type != fileChangeCreated && c.Type != fileChangeDeleted {
+			continue
+		}
+		if isMarkdownExt(path) ||
+			linkgraph.WikilinkIndexed(filepath.ToSlash(workspaceRelative(root, path))) {
 			return true
 		}
 	}
