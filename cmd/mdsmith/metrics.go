@@ -185,7 +185,7 @@ func executeMetricsRank(opts metricsRankOptions, fileArgs []string) int {
 
 	cfg, _, err := loadConfig(opts.configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		printConfigError(os.Stderr, err)
 		return 2
 	}
 

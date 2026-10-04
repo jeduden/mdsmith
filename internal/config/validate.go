@@ -28,13 +28,13 @@ func ValidateKinds(cfg *Config) error {
 	for _, name := range names {
 		body := cfg.Kinds[name]
 		if err := validateKindSchemaSources(name, body); err != nil {
-			return err
+			return attachFile(body.SourcePath, err)
 		}
 		if err := validateKindPathPattern(name, body); err != nil {
-			return err
+			return attachFile(body.SourcePath, err)
 		}
 		if err := validateKindExtends(cfg.Kinds, name); err != nil {
-			return err
+			return attachFile(body.SourcePath, err)
 		}
 	}
 	// Walk extends chains a second time, now that every chain is
@@ -52,13 +52,13 @@ func ValidateKinds(cfg *Config) error {
 			continue
 		}
 		if err := ValidateKindInlineSchema(cfg.Kinds, name); err != nil {
-			return err
+			return attachFile(body.SourcePath, issueWrap(KeyPath{"kinds", name, "schema"}, err))
 		}
 	}
 	for i, entry := range cfg.KindAssignment {
-		for _, name := range entry.Kinds {
+		for j, name := range entry.Kinds {
 			if _, ok := cfg.Kinds[name]; !ok {
-				return fmt.Errorf(
+				return issueAt(KeyPath{"kind-assignment", i, "kinds", j},
 					"kind-assignment[%d]: references undeclared kind %q", i, name,
 				)
 			}
@@ -81,7 +81,7 @@ func validateKindExtends(kinds map[string]KindBody, name string) error {
 	for current != "" {
 		if _, ok := visited[current]; ok {
 			chain = append(chain, current)
-			return fmt.Errorf(
+			return issueAt(KeyPath{"kinds", name, "extends"},
 				"kind %q: extends cycle detected: %s",
 				name, strings.Join(chain, " -> "))
 		}
@@ -89,7 +89,7 @@ func validateKindExtends(kinds map[string]KindBody, name string) error {
 		chain = append(chain, current)
 		body, ok := kinds[current]
 		if !ok {
-			return fmt.Errorf(
+			return issueAt(KeyPath{"kinds", name, "extends"},
 				"kind %q: extends references undeclared kind %q",
 				name, current)
 		}
@@ -115,7 +115,7 @@ func validateKindPathPattern(name string, body KindBody) error {
 	// a `?*` wildcard: a reference resolves per document, and its own
 	// bytes are not glob syntax.
 	if !doublestar.ValidatePattern(schema.PathPatternSyntaxForm(body.PathPattern)) {
-		return fmt.Errorf(
+		return issueAt(KeyPath{"kinds", name, "path-pattern"},
 			"kind %q: path-pattern %q is not a valid doublestar glob",
 			name, body.PathPattern)
 	}
@@ -144,21 +144,21 @@ func validateKindSchemaSources(name string, body KindBody) error {
 	// conflict message points at the right line. Both forms conflict
 	// with a file-path or inline-schema source under required-structure.
 	if len(body.Schema.Map()) > 0 && pathSet {
-		return fmt.Errorf(
+		return issueAt(KeyPath{"kinds", name, "schema"},
 			"kind %q: schema is declared both via %s "+
 				"and as a file (kinds.%s.rules.required-structure.schema: %q); "+
 				"pick one source",
 			name, schemaSourceDescription(name, body), name, pathSetting)
 	}
 	if len(body.Schema.Map()) > 0 && inlineSet {
-		return fmt.Errorf(
+		return issueAt(KeyPath{"kinds", name, "schema"},
 			"kind %q: schema is declared both via %s "+
 				"and under kinds.%s.rules.required-structure.inline-schema:; "+
 				"pick one source — keep the top-level kinds.%s.schema: declaration",
 			name, schemaSourceDescription(name, body), name, name)
 	}
 	if pathSet && inlineSet {
-		return fmt.Errorf(
+		return issueAt(KeyPath{"kinds", name, "rules", "required-structure"},
 			"kind %q: required-structure has both `schema:` (%q) and "+
 				"`inline-schema:` set under kinds.%s.rules.required-structure; "+
 				"pick one source",

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -78,34 +77,39 @@ func validateConfigSemantics(cfg *Config) error {
 // (the scanner could never tell which line opens and which closes a
 // region). It checks the top-level list and every override's list.
 func validateForeignRegions(cfg *Config) error {
-	if err := checkForeignRegionList("foreign-regions", cfg.ForeignRegions); err != nil {
+	if err := checkForeignRegionList(KeyPath{"foreign-regions"}, cfg.ForeignRegions); err != nil {
 		return err
 	}
 	for i := range cfg.Overrides {
-		label := fmt.Sprintf("overrides[%d].foreign-regions", i)
-		if err := checkForeignRegionList(label, cfg.Overrides[i].ForeignRegions); err != nil {
+		path := KeyPath{"overrides", i, "foreign-regions"}
+		if err := checkForeignRegionList(path, cfg.Overrides[i].ForeignRegions); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// checkForeignRegionList validates one marker-pair list. label names the
-// list's location in the config ("foreign-regions" or
-// "overrides[i].foreign-regions") so an error points at the offending
-// override rather than an ambiguous top-level index.
-func checkForeignRegionList(label string, regions []ForeignRegion) error {
+// checkForeignRegionList validates one marker-pair list. list is the
+// key path of the list in the config (`foreign-regions` or
+// `overrides[i].foreign-regions`) so an error points at the offending
+// override rather than an ambiguous top-level index; each issue is
+// addressed at the offending entry (or its blank `start`/`end` key).
+func checkForeignRegionList(list KeyPath, regions []ForeignRegion) error {
+	label := list.String()
 	for i, r := range regions {
 		start := strings.TrimSpace(r.Start)
 		end := strings.TrimSpace(r.End)
+		entry := append(append(KeyPath{}, list...), i)
 		if start == "" {
-			return fmt.Errorf("%s[%d]: start marker must not be empty", label, i)
+			return issueAt(append(entry, "start"),
+				"%s[%d]: start marker must not be empty", label, i)
 		}
 		if end == "" {
-			return fmt.Errorf("%s[%d]: end marker must not be empty", label, i)
+			return issueAt(append(entry, "end"),
+				"%s[%d]: end marker must not be empty", label, i)
 		}
 		if start == end {
-			return fmt.Errorf(
+			return issueAt(entry,
 				"%s[%d]: start and end markers must differ (both %q)",
 				label, i, start)
 		}

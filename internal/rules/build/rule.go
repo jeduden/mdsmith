@@ -7,7 +7,6 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -30,15 +29,10 @@ type recipeSchema struct {
 // defaultBodyTemplate is the fallback body-template for recipes that omit body-template.
 const defaultBodyTemplate = "[{output}]({output})"
 
-// Rule implements MDS039 (build).
-//
-// engineOnce serialises lazy engine init; the rule is a registered
-// singleton and concurrent LSP-side callers would otherwise race on
-// the engine field.
+// Rule implements MDS039 (build). It holds only its configured
+// recipes; see getEngine.
 type Rule struct {
-	engineOnce sync.Once
-	engine     *gensection.Engine
-	recipes    map[string]recipeSchema // user-declared recipes from config
+	recipes map[string]recipeSchema // user-declared recipes from config
 }
 
 // ID implements rule.Rule.
@@ -78,11 +72,14 @@ func (r *Rule) ApplySettings(settings map[string]any) error {
 	return nil
 }
 
+// getEngine returns a gensection engine bound to r. It is built per
+// call rather than cached in the struct: the rule is a shared
+// singleton that rule.CloneInstance copies (per worker) while another
+// goroutine may be running Fix, so a lazily written field would race
+// with that copy, and a copied engine would stay bound to the source
+// rule instead of the clone. NewEngine only wraps r.
 func (r *Rule) getEngine() *gensection.Engine {
-	r.engineOnce.Do(func() {
-		r.engine = gensection.NewEngine(r)
-	})
-	return r.engine
+	return gensection.NewEngine(r)
 }
 
 // Check implements rule.Rule.

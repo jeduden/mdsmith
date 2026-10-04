@@ -1,8 +1,6 @@
 package config
 
 import (
-	"fmt"
-
 	"gopkg.in/yaml.v3"
 
 	"github.com/jeduden/mdsmith/internal/mdpath"
@@ -293,14 +291,14 @@ func (r *RuleCfg) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind == yaml.MappingNode {
 		var m map[string]any
 		if err := value.Decode(&m); err != nil {
-			return fmt.Errorf("invalid rule config: %w", err)
+			return issueAtNode(value, "invalid rule config: %v", err)
 		}
 		r.Enabled = true
 		r.Settings = m
 		return nil
 	}
 
-	return fmt.Errorf("rule config must be a bool or a mapping, got %v", value.Kind)
+	return issueAtNode(value, "rule config must be a bool or a mapping, got %s", nodeKindName(value.Kind))
 }
 
 // MarshalYAML implements custom YAML marshalling for RuleCfg.

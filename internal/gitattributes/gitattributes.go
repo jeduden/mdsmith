@@ -164,13 +164,18 @@ func isRepresentableGitattributesPattern(pattern string) bool {
 	return !strings.ContainsAny(pattern, " \t\r\n")
 }
 
-// LoadGlobs reads .mdsmith.yml from repoRoot and returns the merge-
-// driver glob set. A missing or unparseable config falls back to the
-// default include set with no exclusions. Skipped (unrepresentable)
-// ignore patterns are silently discarded — callers that need to
-// surface them should use GlobsFromConfig directly.
+// LoadGlobs reads the config at repoRoot (.mdsmith.yml, or a
+// pyproject.toml [tool.mdsmith] table) and returns the merge-driver
+// glob set. A missing or unparseable config falls back to the default
+// include set with no exclusions. Skipped (unrepresentable) ignore
+// patterns are silently discarded — callers that need to surface them
+// should use GlobsFromConfig directly.
 func LoadGlobs(repoRoot string) Globs {
-	cfg, err := config.Load(config.DefaultConfigPath(repoRoot))
+	path := config.FileIn(repoRoot)
+	if path == "" {
+		path = config.DefaultConfigPath(repoRoot)
+	}
+	cfg, err := config.Load(path)
 	if err != nil {
 		g, _ := GlobsFromConfig(nil)
 		return g

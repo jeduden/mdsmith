@@ -257,7 +257,7 @@ func loadAndResolve(
 
 	cfg, cfgPath, err := loadConfig(configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		printConfigError(os.Stderr, err)
 		return nil, "", nil, nil, 0, 2
 	}
 	if cfgPath != "" {
@@ -349,7 +349,7 @@ func discoverFiles(
 
 	cfg, cfgPath, err := loadConfig(configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		printConfigError(os.Stderr, err)
 		return nil, "", nil, nil, 2
 	}
 	if cfgPath != "" {
@@ -499,7 +499,7 @@ func discoverConfigPath(configPath string) string {
 	if err != nil {
 		return config.DefaultConfigPath("")
 	}
-	if discovered, derr := config.Discover(cwd); derr == nil && discovered != "" {
+	if discovered := config.Discover(cwd); discovered != "" {
 		return discovered
 	}
 	return config.DefaultConfigPath(cwd)
@@ -552,9 +552,9 @@ func loadConfigRaw(configPath string) (*config.Config, string, error) {
 		return config.Merge(defaults, nil), "", nil
 	}
 
-	discovered, err := config.Discover(cwd)
-	if err != nil {
-		return config.Merge(defaults, nil), "", nil
+	discovered, hints := config.DiscoverWithHints(cwd)
+	for _, hint := range hints {
+		fmt.Fprintf(os.Stderr, "mdsmith: hint: %s\n", hint)
 	}
 
 	if discovered == "" {

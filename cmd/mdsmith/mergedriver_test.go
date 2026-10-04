@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/gitattributes"
 	"github.com/jeduden/mdsmith/internal/githooks"
 	"github.com/jeduden/mdsmith/internal/rule"
@@ -272,7 +273,9 @@ func TestRunMergeDriverInstall_LoadConfigError(t *testing.T) {
 	got := captureStderr(func() {
 		assert.Equal(t, 2, runMergeDriverInstall(nil))
 	})
-	assert.Contains(t, got, "loading config")
+	// A syntax error in the config is reported as a positioned
+	// diagnostic on the config file.
+	assert.Contains(t, got, ".mdsmith.yml:1:1 config ")
 }
 
 func TestRunMergeDriverInstall_RejectsWhitespacePath(t *testing.T) {
@@ -1051,12 +1054,12 @@ func TestFixMergedContent_FixFails_ExitsTwo(t *testing.T) {
 
 	orig := fixSourceFn
 	t.Cleanup(func() { fixSourceFn = orig })
-	fixSourceFn = func(string, []byte, int64) ([]byte, error) {
+	fixSourceFn = func(*config.Config, string, []byte, int64) ([]byte, error) {
 		return nil, fmt.Errorf("mock fix failure")
 	}
 
 	got := captureStderr(func() {
-		_, code := fixMergedContent([]byte("# Hello\n"), ours, "PLAN.md", 1<<20)
+		_, code := fixMergedContent(config.Defaults(), []byte("# Hello\n"), ours, "PLAN.md", 1<<20)
 		assert.Equal(t, 2, code)
 	})
 	assert.Contains(t, got, "fix failed")
@@ -1069,7 +1072,7 @@ func TestFixMergedContent_GuardOursFails_ExitsTwo(t *testing.T) {
 
 	origFix := fixSourceFn
 	t.Cleanup(func() { fixSourceFn = origFix })
-	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+	fixSourceFn = func(_ *config.Config, _ string, src []byte, _ int64) ([]byte, error) {
 		return src, nil
 	}
 
@@ -1080,7 +1083,7 @@ func TestFixMergedContent_GuardOursFails_ExitsTwo(t *testing.T) {
 	}
 
 	got := captureStderr(func() {
-		_, code := fixMergedContent([]byte("# Hello\n"), ours, "PLAN.md", 1<<20)
+		_, code := fixMergedContent(config.Defaults(), []byte("# Hello\n"), ours, "PLAN.md", 1<<20)
 		assert.Equal(t, 2, code)
 	})
 	assert.Contains(t, got, "injected pre-ours-write guard")
@@ -1093,7 +1096,7 @@ func TestFixMergedContent_WriteToOursFails_ExitsTwo(t *testing.T) {
 
 	origFix := fixSourceFn
 	t.Cleanup(func() { fixSourceFn = origFix })
-	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+	fixSourceFn = func(_ *config.Config, _ string, src []byte, _ int64) ([]byte, error) {
 		return src, nil
 	}
 
@@ -1104,7 +1107,7 @@ func TestFixMergedContent_WriteToOursFails_ExitsTwo(t *testing.T) {
 	}
 
 	got := captureStderr(func() {
-		_, code := fixMergedContent([]byte("# Hello\n"), ours, "PLAN.md", 1<<20)
+		_, code := fixMergedContent(config.Defaults(), []byte("# Hello\n"), ours, "PLAN.md", 1<<20)
 		assert.Equal(t, 2, code)
 	})
 	assert.Contains(t, got, "writing merge output")
@@ -1124,11 +1127,11 @@ func TestFixMergedContent_DoesNotTouchWorktreePathname(t *testing.T) {
 
 	origFix := fixSourceFn
 	t.Cleanup(func() { fixSourceFn = origFix })
-	fixSourceFn = func(_ string, _ []byte, _ int64) ([]byte, error) {
+	fixSourceFn = func(_ *config.Config, _ string, _ []byte, _ int64) ([]byte, error) {
 		return []byte("# Fixed\n"), nil
 	}
 
-	fixed, code := fixMergedContent([]byte("# Hello\n"), ours, pathname, 1<<20)
+	fixed, code := fixMergedContent(config.Defaults(), []byte("# Hello\n"), ours, pathname, 1<<20)
 	require.Equal(t, 0, code)
 	assert.Equal(t, "# Fixed\n", string(fixed))
 
@@ -1157,11 +1160,11 @@ func TestFixMergedContent_PathnameNotExist_Succeeds(t *testing.T) {
 
 	origFix := fixSourceFn
 	t.Cleanup(func() { fixSourceFn = origFix })
-	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+	fixSourceFn = func(_ *config.Config, _ string, src []byte, _ int64) ([]byte, error) {
 		return src, nil
 	}
 
-	fixed, code := fixMergedContent([]byte("# Hello\n"), ours, pathname, 1<<20)
+	fixed, code := fixMergedContent(config.Defaults(), []byte("# Hello\n"), ours, pathname, 1<<20)
 	assert.Equal(t, 0, code)
 	assert.NotEmpty(t, fixed)
 	_, statErr := os.Stat(pathname)
@@ -1180,11 +1183,11 @@ func TestFixMergedContent_PreservesOursFileMode(t *testing.T) {
 
 	origFix := fixSourceFn
 	t.Cleanup(func() { fixSourceFn = origFix })
-	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+	fixSourceFn = func(_ *config.Config, _ string, src []byte, _ int64) ([]byte, error) {
 		return src, nil
 	}
 
-	fixed, code := fixMergedContent([]byte("# Hello\n"), ours, "PLAN.md", 1<<20)
+	fixed, code := fixMergedContent(config.Defaults(), []byte("# Hello\n"), ours, "PLAN.md", 1<<20)
 	require.Equal(t, 0, code)
 	assert.NotEmpty(t, fixed)
 
@@ -1211,7 +1214,9 @@ func TestFixMergedSource_RegeneratesCatalog_NoDiskWrites(t *testing.T) {
 	source := "# Doc\n\n<?catalog\nglob: \"plans/*.md\"\nsort: title\n" +
 		"row: \"- [{title}]({filename})\"\n?>\n<?/catalog?>\n"
 
-	fixed, err := fixMergedSource("CATALOG.md", []byte(source), 1<<20)
+	cfg, _, err := loadConfig("")
+	require.NoError(t, err)
+	fixed, err := fixMergedSource(cfg, "CATALOG.md", []byte(source), 1<<20)
 	require.NoError(t, err)
 	assert.Contains(t, string(fixed), "- [Alpha](plans/alpha.md)",
 		"catalog must regenerate from neighbour files on disk")
@@ -1219,21 +1224,6 @@ func TestFixMergedSource_RegeneratesCatalog_NoDiskWrites(t *testing.T) {
 	_, statErr := os.Stat(filepath.Join(dir, "CATALOG.md"))
 	assert.True(t, os.IsNotExist(statErr),
 		"fixMergedSource must not create the file on disk")
-}
-
-func TestFixMergedSource_ConfigLoadFails(t *testing.T) {
-	dir := t.TempDir()
-	origWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(dir))
-	t.Cleanup(func() { _ = os.Chdir(origWd) })
-
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
-		[]byte(":\tnot yaml"), 0o644))
-
-	_, err = fixMergedSource("PLAN.md", []byte("# Hello\n"), 1<<20)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "loading config")
 }
 
 // --- merge-driver ci-install (npm-ci-style: verify, never write) ---
@@ -1404,7 +1394,9 @@ func TestRunMergeDriver_CIInstall_LoadConfigError(t *testing.T) {
 	got := captureStderr(func() {
 		assert.Equal(t, 2, runMergeDriver([]string{"ci-install"}))
 	})
-	assert.Contains(t, got, "loading config")
+	// A syntax error in the config is reported as a positioned
+	// diagnostic on the config file.
+	assert.Contains(t, got, ".mdsmith.yml:1:1 config ")
 }
 
 // pathWithOnlyGit points PATH at a temp dir holding just a `git` symlink

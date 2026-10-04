@@ -8,7 +8,6 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/convention"
 	"github.com/jeduden/mdsmith/internal/rule"
-	"github.com/jeduden/mdsmith/internal/yamlutil"
 )
 
 // applyConvention reads the top-level Convention selector from the
@@ -45,20 +44,19 @@ func applyConvention(cfg *Config) error {
 	}
 	conv, err := convention.Lookup(cfg.Convention, userMap)
 	if err != nil {
-		return fmt.Errorf("convention: %w", err)
+		return issueWrap(KeyPath{"convention"}, fmt.Errorf("convention: %w", err))
 	}
 	if rc, ok := cfg.Rules["markdown-flavor"]; ok && conv.Flavor != convention.FlavorAny {
 		// A convention with FlavorAny is renderer-agnostic (e.g.
 		// no-llm-tells); it imposes no flavor and never conflicts with a
 		// user's markdown-flavor selection, so the guard is skipped.
-		userFlavor, err := stringSetting(
-			rc.Settings, "flavor", "rules.markdown-flavor.flavor",
-		)
+		flavorPath := KeyPath{"rules", "markdown-flavor", "flavor"}
+		userFlavor, err := stringSetting(rc.Settings, "flavor", flavorPath)
 		if err != nil {
 			return err
 		}
 		if userFlavor != "" && userFlavor != conv.Flavor.String() {
-			return fmt.Errorf(
+			return issueAt(flavorPath,
 				"rules.markdown-flavor: convention %q requires flavor %q, but flavor is set to %q",
 				conv.Name, conv.Flavor, userFlavor,
 			)
@@ -78,16 +76,16 @@ func applyConvention(cfg *Config) error {
 
 // stringSetting reads a string-typed setting from a settings map. A
 // missing key returns "" with no error; a present key with a
-// non-string value returns an error naming the offending field path
-// so users see the problem at config load time.
-func stringSetting(settings map[string]any, key, fieldPath string) (string, error) {
+// non-string value returns an issue at the offending field path so
+// users see the problem at config load time.
+func stringSetting(settings map[string]any, key string, fieldPath KeyPath) (string, error) {
 	v, ok := settings[key]
 	if !ok {
 		return "", nil
 	}
 	s, ok := v.(string)
 	if !ok {
-		return "", fmt.Errorf("%s: must be a string, got %T", fieldPath, v)
+		return "", issueAt(fieldPath, "%s: must be a string, got %T", fieldPath, v)
 	}
 	return s, nil
 }
@@ -128,48 +126,62 @@ func buildUserConventionMap(cfg *Config) (map[string]convention.Convention, erro
 
 	result := make(map[string]convention.Convention, len(cfg.Conventions))
 	for name, uc := range cfg.Conventions {
-		if reserved[name] {
-			return nil, fmt.Errorf(
-				"conventions.%s: name is reserved by a built-in convention",
-				name,
-			)
+		conv, err := userConvention(name, uc, reserved)
+		if err != nil {
+			// A file-defined convention's issue positions resolve in
+			// its `.mdsmith/conventions/` file, not the main config.
+			return nil, attachFile(uc.SourcePath, err)
 		}
-
-		fl, ok := convention.ParseFlavor(uc.Flavor)
-		if !ok {
-			return nil, fmt.Errorf(
-				"convention %q: unknown flavor %q",
-				name, uc.Flavor,
-			)
-		}
-
-		rules := make(map[string]convention.RulePreset, len(uc.Rules))
-		for ruleName, rc := range uc.Rules {
-			r := rule.ByName(ruleName)
-			if r == nil {
-				return nil, fmt.Errorf(
-					"convention %q: unknown rule %q",
-					name, ruleName,
-				)
-			}
-			if len(rc.Settings) > 0 {
-				if err := validateConventionRuleSettings(r, name, ruleName, rc.Settings); err != nil {
-					return nil, err
-				}
-			}
-			rules[ruleName] = convention.RulePreset{
-				Enabled:  rc.Enabled,
-				Settings: cloneSettings(rc.Settings),
-			}
-		}
-
-		result[name] = convention.Convention{
-			Name:   name,
-			Flavor: fl,
-			Rules:  rules,
-		}
+		result[name] = conv
 	}
 	return result, nil
+}
+
+// userConvention validates one user-declared convention and converts
+// it for Lookup. See buildUserConventionMap for the checks.
+func userConvention(
+	name string, uc UserConvention, reserved map[string]bool,
+) (convention.Convention, error) {
+	if reserved[name] {
+		return convention.Convention{}, issueAt(KeyPath{"conventions", name},
+			"conventions.%s: name is reserved by a built-in convention",
+			name,
+		)
+	}
+
+	fl, ok := convention.ParseFlavor(uc.Flavor)
+	if !ok {
+		return convention.Convention{}, issueAt(KeyPath{"conventions", name, "flavor"},
+			"convention %q: unknown flavor %q",
+			name, uc.Flavor,
+		)
+	}
+
+	rules := make(map[string]convention.RulePreset, len(uc.Rules))
+	for ruleName, rc := range uc.Rules {
+		r := rule.ByName(ruleName)
+		if r == nil {
+			return convention.Convention{}, issueAt(KeyPath{"conventions", name, "rules", ruleName},
+				"convention %q: unknown rule %q",
+				name, ruleName,
+			)
+		}
+		if len(rc.Settings) > 0 {
+			if err := validateConventionRuleSettings(r, name, ruleName, rc.Settings); err != nil {
+				return convention.Convention{}, issueWrap(KeyPath{"conventions", name, "rules", ruleName}, err)
+			}
+		}
+		rules[ruleName] = convention.RulePreset{
+			Enabled:  rc.Enabled,
+			Settings: cloneSettings(rc.Settings),
+		}
+	}
+
+	return convention.Convention{
+		Name:   name,
+		Flavor: fl,
+		Rules:  rules,
+	}, nil
 }
 
 // validateConventionRuleSettings clones the rule and calls
@@ -193,27 +205,13 @@ func validateConventionRuleSettings(
 	return nil
 }
 
-// validateConventionScalar rejects YAML that uses anchors or
-// aliases anywhere in the document, then returns an error when
-// the top-level `convention:` value in the raw YAML is not a
-// string scalar. yaml.v3 silently coerces bare ints and bools
-// into string fields, which would surface as "unknown
-// convention 123" instead of a clean type error. Inspecting the
-// raw node tag is the only way to catch the type mismatch before
-// that coercion happens.
-func validateConventionScalar(data []byte) error {
-	// Reject anchors/aliases up front, as the kind-file and
-	// convention-file loaders do. The direct yaml.Unmarshal
-	// below is deliberate: its parse errors must stay swallowed
-	// so the caller's follow-up UnmarshalSafe (Load and
-	// ParseBytes share that pipeline) reports them instead.
-	if err := yamlutil.RejectYAMLAliases(data); err != nil {
-		return err
-	}
-	var node yaml.Node
-	if err := yaml.Unmarshal(data, &node); err != nil {
-		return nil
-	}
+// validateConventionNode returns an error when the top-level
+// `convention:` value of an already-parsed, alias-free document node
+// is not a string scalar. yaml.v3 silently coerces bare ints and bools
+// into string fields, which would surface as "unknown convention 123"
+// instead of a clean type error. Inspecting the node tag is the only
+// way to catch the type mismatch before that coercion happens.
+func validateConventionNode(node *yaml.Node) error {
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
 		return nil
 	}
@@ -227,10 +225,10 @@ func validateConventionScalar(data []byte) error {
 		}
 		v := mapping.Content[i+1]
 		if v.Kind != yaml.ScalarNode {
-			return fmt.Errorf("convention: must be a string scalar")
+			return issueAtNode(v, "convention: must be a string scalar")
 		}
 		if v.Tag != "" && v.Tag != "!!str" {
-			return fmt.Errorf(
+			return issueAtNode(v,
 				"convention: must be a string, got %s",
 				strings.TrimPrefix(v.Tag, "!!"),
 			)

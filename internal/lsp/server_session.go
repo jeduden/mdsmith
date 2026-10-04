@@ -121,11 +121,17 @@ func (s *Server) snapshotConfig() (*config.Config, string, string) {
 // misconfiguration instead of silently seeing stale or default
 // diagnostics.
 func (s *Server) reloadConfig() {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
+
 	s.settingsMu.RLock()
 	override := s.settings.ConfigPath
 	s.settingsMu.RUnlock()
 
-	cfg, cfgPath, loadErr := s.resolveConfig(override)
+	cfg, cfgPath, loadErr, cfgDiag := s.resolveConfig(override)
+	if s.afterResolveConfig != nil {
+		s.afterResolveConfig()
+	}
 
 	s.configMu.Lock()
 	pathChanged := s.configPath != cfgPath
@@ -152,6 +158,15 @@ func (s *Server) reloadConfig() {
 		}
 	}
 
+	// A positioned load failure squiggles the config file; a clean
+	// load clears a squiggle a previous reload left there, and so does
+	// mdsmith.run: off, which publishes nothing (the log summary below
+	// still reports the failure).
+	if s.runMode() == runOff {
+		cfgDiag = nil
+	}
+	s.publishConfigDiagnostic(cfgDiag)
+
 	if loadErr != "" {
 		s.logger.Printf("config: %s", loadErr)
 		_ = s.t.writeNotification("window/logMessage",
@@ -163,9 +178,12 @@ func (s *Server) reloadConfig() {
 // reloadConfig so the caller can release configMu before notifying
 // the client. The returned cfg is always non-nil (defaults on
 // failure); cfgPath is empty when no config was successfully
-// loaded; loadErr is a human-readable message when load or
-// discover surfaced an error worth logging.
-func (s *Server) resolveConfig(override string) (cfg *config.Config, cfgPath, loadErr string) {
+// loaded; loadErr is a human-readable message when the load
+// surfaced an error worth logging; cfgDiag is the load
+// failure as a diagnostic on the config file when it has a position.
+func (s *Server) resolveConfig(override string) (
+	cfg *config.Config, cfgPath, loadErr string, cfgDiag *configDiag,
+) {
 	defaults := config.Defaults()
 	fallback := config.Merge(defaults, nil)
 
@@ -179,29 +197,27 @@ func (s *Server) resolveConfig(override string) (cfg *config.Config, cfgPath, lo
 		}
 		loaded, err := config.Load(path)
 		if err != nil {
-			return fallback, "", fmt.Sprintf("loading %q: %v", path, err)
+			return fallback, "", fmt.Sprintf("loading %q: %v", path, err), configLoadDiagnostic(err)
 		}
-		return config.Merge(defaults, loaded), path, ""
+		return config.Merge(defaults, loaded), path, "", nil
 	}
 
 	s.configMu.RLock()
 	root := s.rootDir
 	s.configMu.RUnlock()
 	if root == "" {
-		return fallback, "", ""
+		return fallback, "", "", nil
 	}
-	discovered, err := s.discoverConfig(root)
-	if err != nil {
-		return fallback, "", fmt.Sprintf("discovering config under %q: %v", root, err)
-	}
+	discovered, hints := s.discoverConfig(root)
+	s.logDiscoverHints(hints)
 	if discovered == "" {
-		return fallback, "", ""
+		return fallback, "", "", nil
 	}
 	loaded, err := config.Load(discovered)
 	if err != nil {
-		return fallback, "", fmt.Sprintf("loading %q: %v", discovered, err)
+		return fallback, "", fmt.Sprintf("loading %q: %v", discovered, err), configLoadDiagnostic(err)
 	}
-	return config.Merge(defaults, loaded), discovered, ""
+	return config.Merge(defaults, loaded), discovered, "", nil
 }
 
 // fetchClientSettings asks the client for its `mdsmith` configuration

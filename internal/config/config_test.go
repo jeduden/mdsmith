@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/rule"
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -240,8 +241,7 @@ func TestDiscoverFindsInCurrentDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := Discover(dir)
-	require.NoError(t, err, "Discover returned error: %v", err)
+	found := Discover(dir)
 	assert.Equal(t, cfgPath, found, "expected %s, got %s", cfgPath, found)
 }
 
@@ -256,8 +256,7 @@ func TestDiscoverFindsInParentDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := Discover(child)
-	require.NoError(t, err, "Discover returned error: %v", err)
+	found := Discover(child)
 	assert.Equal(t, cfgPath, found, "expected %s, got %s", cfgPath, found)
 }
 
@@ -283,8 +282,7 @@ func TestDiscoverStopsAtGitBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := Discover(child)
-	require.NoError(t, err, "Discover returned error: %v", err)
+	found := Discover(child)
 	assert.Equal(t, "", found, "expected empty string (stopped at .git), got %s", found)
 }
 
@@ -306,8 +304,7 @@ func TestDiscoverStopsAtGitBoundaryWithConfigInRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := Discover(child)
-	require.NoError(t, err, "Discover returned error: %v", err)
+	found := Discover(child)
 	assert.Equal(t, cfgPath, found, "expected %s, got %s", cfgPath, found)
 }
 
@@ -319,8 +316,7 @@ func TestDiscoverReturnsEmptyWhenNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := Discover(dir)
-	require.NoError(t, err, "Discover returned error: %v", err)
+	found := Discover(dir)
 	assert.Equal(t, "", found, "expected empty string, got %s", found)
 }
 
@@ -334,8 +330,7 @@ func TestDiscoverReachesFilesystemRoot(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "sub", "deep")
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 
-	found, err := Discover(dir)
-	require.NoError(t, err)
+	found := Discover(dir)
 	assert.Equal(t, "", found)
 }
 
@@ -1332,24 +1327,20 @@ func TestLoadRejectsYAMLAnchor(t *testing.T) {
 	assert.Contains(t, err.Error(), "anchors/aliases are not permitted")
 }
 
-func TestYamlHasKeyRejectsAnchor(t *testing.T) {
-	yml := []byte("base: &base\n  enabled: true\n")
-	assert.False(t, yamlHasKey(yml, "base"))
+// parseDocNode parses data into the alias-free document node the
+// load pipeline hands to topLevelKeys.
+func parseDocNode(t *testing.T, data string) *yaml.Node {
+	t.Helper()
+	doc, err := yamlutil.UnmarshalNodeSafe([]byte(data))
+	require.NoError(t, err)
+	return &doc
 }
 
-// TestTopLevelKeySet_InvalidYAML covers the yaml.Unmarshal error
-// branch of topLevelKeySet: a syntactically bad YAML payload
-// returns nil (not a panic) so callers can degrade
-// gracefully.
-func TestTopLevelKeySet_InvalidYAML(t *testing.T) {
-	assert.Empty(t, topLevelKeySet([]byte("{not: valid: yaml:")))
-}
-
-// TestTopLevelKeySet_NotAMapping covers the kind-check branch:
+// TestTopLevelKeys_NotAMapping covers the kind-check branch:
 // a top-level scalar (e.g. a bare string) yields an empty set
 // because there are no keys to list.
-func TestTopLevelKeySet_NotAMapping(t *testing.T) {
-	assert.Empty(t, topLevelKeySet([]byte("bare-string-value\n")))
+func TestTopLevelKeys_NotAMapping(t *testing.T) {
+	assert.Empty(t, topLevelKeys(parseDocNode(t, "bare-string-value\n")))
 }
 
 // TestLoad_LegacyNoFollowSymlinksEmitsDeprecation exercises the
@@ -1654,23 +1645,23 @@ func TestUnmarshalYAML_NonScalarNonMappingValue(t *testing.T) {
 	var cfg Config
 	err := yaml.Unmarshal([]byte(input), &cfg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "rule config must be a bool or a mapping")
+	// The node kind is named, not printed as its yaml.Kind number.
+	assert.Contains(t, err.Error(), "rule config must be a bool or a mapping, got sequence")
 }
 
-// TestTopLevelKeySet_DocumentNodeEmpty exercises the
+// TestTopLevelKeys_DocumentNodeEmpty exercises the
 // `node.Kind != yaml.DocumentNode || len(node.Content) == 0` branch
-// by passing YAML that produces a document node with empty content.
-func TestTopLevelKeySet_DocumentNodeEmpty(t *testing.T) {
-	// An empty YAML document produces a DocumentNode with no content.
-	result := topLevelKeySet([]byte(""))
+// with the zero node an empty input parses to.
+func TestTopLevelKeys_DocumentNodeEmpty(t *testing.T) {
+	result := topLevelKeys(parseDocNode(t, ""))
 	assert.Empty(t, result, "empty YAML should return empty key set")
 }
 
-// TestTopLevelKeySet_NullDocument exercises the mapping.Kind != yaml.MappingNode
-// branch. yaml.Unmarshal("null") produces a DocumentNode whose first child is
-// a ScalarNode, so the mapping check fails and an empty set is returned.
-func TestTopLevelKeySet_NullDocument(t *testing.T) {
-	result := topLevelKeySet([]byte("null\n"))
+// TestTopLevelKeys_NullDocument exercises the mapping.Kind != yaml.MappingNode
+// branch. "null" parses to a DocumentNode whose first child is a
+// ScalarNode, so the mapping check fails and an empty set is returned.
+func TestTopLevelKeys_NullDocument(t *testing.T) {
+	result := topLevelKeys(parseDocNode(t, "null\n"))
 	// ScalarNode child means no keys to extract.
 	assert.Empty(t, result)
 }

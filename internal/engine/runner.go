@@ -388,11 +388,7 @@ func (r *Runner) runFiles(work []string, cache *runcache.Cache) []fileOutcome {
 // cloneRules returns an independent copy of rules for one worker so
 // concurrent Check calls never share a rule instance's mutable state.
 func cloneRules(rules []rule.Rule) []rule.Rule {
-	out := make([]rule.Rule, len(rules))
-	for i, rl := range rules {
-		out[i] = rule.CloneInstance(rl)
-	}
-	return out
+	return rule.CloneInstances(rules)
 }
 
 // lintFile reads, parses, and checks a single file and returns its

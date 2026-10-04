@@ -733,3 +733,25 @@ func TestE2E_Build_MDS040GateAllowsNoBuildFlag(t *testing.T) {
 	// (depending on lint issues in doc.md), but never 2 from the gate.
 	assert.NotEqual(t, 2, code, "--no-build must not trigger the MDS040 gate")
 }
+
+// A recipe declared under [tool.mdsmith.build.recipes] in a
+// pyproject-only project runs on fix; the trust gate pins the
+// pyproject.toml it loaded.
+func TestE2E_Build_PyprojectRecipe(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("cp is not available on Windows")
+	}
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, ".git"), 0o755))
+	cfg := "[project]\nname = \"x\"\n\n[tool.mdsmith.build.recipes.copy]\ncommand = \"cp {inputs} {outputs}\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(cfg), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml.trust"), []byte(cfg), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "src.txt"), []byte("hello"), 0o644))
+	writeFixture(t, dir, "doc.md", buildDirective("copy", "src.txt", "dst.txt"))
+
+	stdout, stderr, code := runBinaryInDir(t, dir, "", "fix", "--no-color", "doc.md")
+	assert.Equal(t, 0, code, "fix should succeed: %s", stdout+stderr)
+	got, err := os.ReadFile(filepath.Join(dir, "dst.txt"))
+	require.NoError(t, err)
+	assert.Equal(t, "hello", string(got))
+}

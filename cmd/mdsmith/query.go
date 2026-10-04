@@ -78,7 +78,7 @@ func runQuery(args []string) int {
 
 	cfg, _, err := loadConfig(opts.configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		printConfigError(os.Stderr, err)
 		return 2
 	}
 	maxBytes, err := resolveMaxInputBytes(cfg, opts.maxInputSize)

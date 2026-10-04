@@ -1,8 +1,6 @@
 package config
 
 import (
-	"fmt"
-
 	"gopkg.in/yaml.v3"
 )
 
@@ -107,13 +105,13 @@ func (r *KindSchemaRef) UnmarshalYAML(node *yaml.Node) error {
 		}
 		var name string
 		if err := node.Decode(&name); err != nil {
-			return fmt.Errorf("schema: %w", err)
+			return issueAtNode(node, "schema: %v", err)
 		}
 		if name == "" {
-			return fmt.Errorf("schema: name must not be empty")
+			return issueAtNode(node, "schema: name must not be empty")
 		}
 		if !schemaNameRE.MatchString(name) {
-			return fmt.Errorf(
+			return issueAtNode(node,
 				"schema: name %q must match %s",
 				name, schemaNameRE.String())
 		}
@@ -122,12 +120,12 @@ func (r *KindSchemaRef) UnmarshalYAML(node *yaml.Node) error {
 	case yaml.MappingNode:
 		var m map[string]any
 		if err := node.Decode(&m); err != nil {
-			return fmt.Errorf("schema: %w", err)
+			return issueAtNode(node, "schema: %v", err)
 		}
 		r.inline = m
 		return nil
 	default:
-		return fmt.Errorf(
+		return issueAtNode(node,
 			"schema: must be a registry name or an inline mapping, "+
 				"not a %s", nodeKindName(node.Kind))
 	}

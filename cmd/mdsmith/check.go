@@ -178,7 +178,7 @@ func checkStdin(opts checkCLIOpts) int {
 
 	cfg, cfgPath, err := loadConfig(opts.configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
+		printConfigError(os.Stderr, err)
 		return 2
 	}
 	if cfgPath != "" {

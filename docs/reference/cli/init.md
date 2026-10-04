@@ -28,6 +28,15 @@ converts a peer config. The last two cannot combine.
 An existing `.mdsmith.yml` is left unchanged, with a notice,
 and the run still exits 0. Pass `--force` to overwrite it.
 
+`init` writes only `.mdsmith.yml`. A Python project can keep
+the same keys in a `pyproject.toml` `[tool.mdsmith]` table
+instead; see [config discovery](../config-discovery.md).
+A `.mdsmith.yml` beside that file would take precedence, so
+`init` treats the table as an existing config: it writes
+nothing, prints a notice, and exits 0. `--force` writes the
+`.mdsmith.yml` anyway. With `--apm`, the merge hint is TOML
+for the table.
+
 ## Additive packs
 
 `--add <pack>` scaffolds a curated bundle of `.mdsmith/`

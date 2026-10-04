@@ -11,6 +11,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/bytelimit"
+	"github.com/jeduden/mdsmith/internal/config"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/gitattributes"
 	"github.com/jeduden/mdsmith/internal/githooks"
@@ -235,7 +236,7 @@ func runMergeDriverRun(args []string) int {
 	// driver honors the same limit as check/fix.
 	cfg, _, err := loadConfig("")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: loading config: %v\n", err)
+		printConfigError(os.Stderr, fmt.Errorf("loading config: %w", err))
 		return 2
 	}
 	maxBytes, err := resolveMaxInputBytes(cfg, "")
@@ -257,7 +258,7 @@ func runMergeDriverRun(args []string) int {
 	// treat the path as locally modified and abort the merge with
 	// "Your local changes would be overwritten" — under git rebase
 	// the pick is rescheduled forever.
-	fixed, rc := fixMergedContent(cleaned, ours, pathname, maxBytes)
+	fixed, rc := fixMergedContent(cfg, cleaned, ours, pathname, maxBytes)
 	if rc != 0 {
 		return rc
 	}
@@ -279,8 +280,8 @@ func runMergeDriverRun(args []string) int {
 // result to ours. pathname itself is never read or written; see
 // runMergeDriverRun step 3 for why a worktree write (even one
 // restored byte-for-byte) aborts the parent merge.
-func fixMergedContent(cleaned []byte, ours, pathname string, maxBytes int64) ([]byte, int) {
-	fixed, err := fixSourceFn(pathname, cleaned, maxBytes)
+func fixMergedContent(cfg *config.Config, cleaned []byte, ours, pathname string, maxBytes int64) ([]byte, int) {
+	fixed, err := fixSourceFn(cfg, pathname, cleaned, maxBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: fix failed: %v\n", err)
 		return nil, 2
@@ -331,13 +332,10 @@ func mergeDriverRules() []rule.Rule {
 // matching, and — because git invokes merge drivers from the
 // worktree root — the dirFS derived from it resolves neighbour
 // files (include sources, catalog globs) exactly as a fix of the
-// on-disk file would. Nothing is written to disk.
-func fixMergedSource(path string, source []byte, maxBytes int64) ([]byte, error) {
-	cfg, _, err := loadConfig("")
-	if err != nil {
-		return nil, fmt.Errorf("loading config: %w", err)
-	}
-
+// on-disk file would. cfg is the config runMergeDriverRun already
+// loaded, so one driver run discovers and loads config — and prints
+// its hints and deprecations — once. Nothing is written to disk.
+func fixMergedSource(cfg *config.Config, path string, source []byte, maxBytes int64) ([]byte, error) {
 	return fixpkg.Source(fixpkg.SourceOptions{
 		Config:           cfg,
 		Rules:            mergeDriverRules(),
@@ -491,7 +489,7 @@ func hasConflictMarkers(content []byte) bool {
 func resolveManagedGlobs(_ string, args []string) (gitattributes.Globs, int) {
 	cfg, _, err := loadConfig("")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mdsmith: loading config: %v\n", err)
+		printConfigError(os.Stderr, fmt.Errorf("loading config: %w", err))
 		return gitattributes.Globs{}, 2
 	}
 	globs, skipped := gitattributes.GlobsFromConfig(cfg)

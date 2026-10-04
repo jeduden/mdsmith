@@ -25,15 +25,37 @@ type Server struct {
 	rules          []rule.Rule
 	debounce       time.Duration
 	fetchTimeout   time.Duration
-	discoverConfig func(string) (string, error)
+	discoverConfig func(string) (string, []string)
 	onConfigReload func(cfgPath string)
 	logger         *vlog.Logger
 	docs           *documentStore
+
+	// reloadMu serializes reloadConfig: the dispatcher and the
+	// fetchClientSettings goroutine both reload, and an older load
+	// must not store its config or publish its config diagnostic
+	// after a newer one.
+	reloadMu sync.Mutex
 
 	configMu   sync.RWMutex
 	config     *config.Config
 	configPath string
 	rootDir    string
+
+	// configDiagMu guards configDiagURI, the config file a positioned
+	// config-load diagnostic was last published on ("" when none), so
+	// a later clean reload can clear the squiggle.
+	configDiagMu  sync.Mutex
+	configDiagURI string
+
+	// afterResolveConfig, when set by a test, runs in reloadConfig
+	// between loading the config and publishing its outcome.
+	afterResolveConfig func()
+
+	// hintsMu guards loggedHints, the discovery hints the last reload
+	// logged (joined by newlines), so a reload that finds the same
+	// hints does not repeat the warning.
+	hintsMu     sync.Mutex
+	loggedHints string
 
 	settingsMu sync.RWMutex
 	settings   userSettings
@@ -234,7 +256,7 @@ func New(opts Options) *Server {
 		rules:          opts.Rules,
 		debounce:       debounce,
 		fetchTimeout:   2 * time.Second,
-		discoverConfig: config.Discover,
+		discoverConfig: config.DiscoverWithHints,
 		onConfigReload: opts.OnConfigReload,
 		logger:         logger,
 		docs:           newDocumentStore(),

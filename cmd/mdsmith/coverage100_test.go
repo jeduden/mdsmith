@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -206,4 +207,75 @@ func TestExecuteMetricsRank_ResolveFilesError(t *testing.T) {
 	// file makes resolveRankFiles fail — the rank file-resolution branch.
 	code := runMetricsRank([]string{filepath.Join(t.TempDir(), "missing.md")})
 	assert.Equal(t, 2, code)
+}
+
+// TestRunMergeDriverRun_PrintsDiscoveryHintOnce pins that one driver run
+// loads config once: the plural-table hint and any deprecation warning
+// reach stderr a single time, not once per config load.
+func TestRunMergeDriverRun_PrintsDiscoveryHintOnce(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"),
+		[]byte("[tools.mdsmith]\nfiles = []\n"), 0o644))
+	base, ours, theirs := writeMergeInputs(t, dir, false)
+	t.Chdir(dir)
+	stderr := captureStderr(func() {
+		assert.Equal(t, 0, runMergeDriverRun([]string{base, ours, theirs, "p.md"}))
+	})
+	assert.Equal(t, 1, strings.Count(stderr, "mdsmith: hint:"), stderr)
+}
+
+// TestRunExtract_PrintsDiscoveryHintOnce pins that extract loads config
+// once: resolveFileFromCLI hands back the config path, so the plural
+// table hint passed over on the discovery walk reaches stderr a single
+// time.
+func TestRunExtract_PrintsDiscoveryHintOnce(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("kinds:\n  plan: {}\n"), 0o644))
+	sub := filepath.Join(dir, "sub")
+	require.NoError(t, os.Mkdir(sub, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(sub, "pyproject.toml"),
+		[]byte("[tools.mdsmith]\nfiles = []\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sub, "a.md"),
+		[]byte("---\nkinds: [plan]\n---\n# T\n"), 0o644))
+	t.Chdir(sub)
+	stderr := captureStderr(func() {
+		runExtract([]string{"plan", "a.md"})
+	})
+	assert.Equal(t, 1, strings.Count(stderr, "mdsmith: hint:"), stderr)
+}
+
+// TestResolveFileFromCLI_ErrorPaths drives each failure return of
+// resolveFileFromCLI: every one reports exit 2 and an empty config path.
+func TestResolveFileFromCLI_ErrorPaths(t *testing.T) {
+	cases := []struct {
+		name, cfg, file string
+		write           bool
+	}{
+		{"bad config", "rules: [\n", "a.md", true},
+		{"bad max-input-size", "max-input-size: nope\n", "a.md", true},
+		{"bad max-input-size, front matter off", "front-matter: false\nmax-input-size: nope\n", "a.md", true},
+		{"unknown front-matter kind", "rules: {}\n", "a.md", true},
+		{"missing file", "rules: {}\n", "missing.md", false},
+		{"missing file, front matter off", "front-matter: false\n", "missing.md", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.Mkdir(filepath.Join(dir, ".git"), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"), []byte(tc.cfg), 0o644))
+			if tc.write {
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"),
+					[]byte("---\nkinds: [ghost]\n---\n# T\n"), 0o644))
+			}
+			t.Chdir(dir)
+			var cfgPath string
+			var code int
+			captureStderr(func() { _, _, cfgPath, code = resolveFileFromCLI(tc.file) })
+			assert.Equal(t, 2, code)
+			assert.Equal(t, "", cfgPath)
+		})
+	}
 }

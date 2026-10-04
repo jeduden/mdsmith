@@ -1,10 +1,12 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
@@ -18,6 +20,10 @@ const maxConfigBytes int64 = 1024 * 1024
 
 const configFileName = ".mdsmith.yml"
 
+// pyprojectFileName is the Python project file whose `[tool.mdsmith]`
+// table Discover accepts as an alternative config source.
+const pyprojectFileName = "pyproject.toml"
+
 // DefaultConfigPath returns the default config path under dir (the
 // conventional .mdsmith.yml). It is the single source of truth for the
 // config filename outside this package.
@@ -25,13 +31,35 @@ func DefaultConfigPath(dir string) string {
 	return filepath.Join(dir, configFileName)
 }
 
-// Load reads and parses a config file at the given path.
+// Load reads and parses a config file at the given path. A path with a
+// `.toml` extension (pyproject.toml or any other TOML file) is read
+// from its `[tool.mdsmith]` table; every other path is YAML. A failure
+// is a *LoadError positioned at the offending value when it is known.
 func Load(path string) (*Config, error) {
+	if IsTOMLPath(path) {
+		return loadPyproject(path)
+	}
 	data, err := readLimitedConfig(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading config file: %w", err)
+		return nil, positionError(fmt.Errorf("reading config file: %w", err), path, nil, nil)
 	}
-	return loadFromBytes(data, path, true)
+	cfg, err := loadFromBytes(data, path, true)
+	if err != nil {
+		return nil, yamlPositionError(err, path, data)
+	}
+	return cfg, nil
+}
+
+// IsTOMLPath reports whether path names a TOML config file, one Load
+// reads as a pyproject.toml.
+func IsTOMLPath(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".toml")
+}
+
+// yamlResolverFor returns a lazy constructor for the YAML resolver over
+// data, so the node tree is only built when an error needs a position.
+func yamlResolverFor(data []byte) func() PositionResolver {
+	return func() PositionResolver { return newYAMLResolver(data) }
 }
 
 // ParseBytes parses config from an in-memory YAML byte slice, running
@@ -42,7 +70,11 @@ func Load(path string) (*Config, error) {
 // path), mirroring how the `-c` flag's file text is processed. Empty
 // input yields a usable, mostly-default Config.
 func ParseBytes(data []byte) (*Config, error) {
-	return loadFromBytes(data, "", false)
+	cfg, err := loadFromBytes(data, "", false)
+	if err != nil {
+		return nil, yamlPositionError(err, "", data)
+	}
+	return cfg, nil
 }
 
 // loadFromBytes is the shared parse pipeline behind Load and
@@ -51,21 +83,34 @@ func ParseBytes(data []byte) (*Config, error) {
 // conventions}/`; mergeKinds gates those disk reads so the in-memory
 // path stays filesystem-free.
 func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, error) {
-	// Catch non-string `convention:` values before UnmarshalSafe
-	// silently coerces them into the string field.
-	if err := validateConventionScalar(data); err != nil {
+	doc, err := yamlutil.UnmarshalNodeSafe(data)
+	if err != nil {
+		return nil, fmt.Errorf("parsing config file: %w", yamlErrorIssue(err))
+	}
+	return loadFromNode(&doc, sourcePath, mergeKinds)
+}
+
+// loadFromNode runs the config pipeline over an alias-free YAML
+// document node: the parsed `.mdsmith.yml`, or the node tree built
+// from a pyproject `[tool.mdsmith]` table. A zero node (empty input)
+// yields a mostly-default Config.
+func loadFromNode(doc *yaml.Node, sourcePath string, mergeKinds bool) (*Config, error) {
+	// Catch non-string `convention:` values before decoding silently
+	// coerces them into the string field.
+	if err := validateConventionNode(doc); err != nil {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
 	var cfg Config
-	if err := yamlutil.UnmarshalSafe(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing config file: %w", err)
+	if doc.Kind != 0 {
+		if err := yamlutil.DecodeNodeSafe(doc, &cfg); err != nil {
+			return nil, fmt.Errorf("parsing config file: %w", yamlErrorIssue(err))
+		}
 	}
 
-	// Detect top-level key presence with a single additional parse so
-	// "files" (omitted vs empty) and deprecated keys can be probed
-	// without re-parsing per key.
-	keys := topLevelKeySet(data)
+	// Detect top-level key presence so "files" (omitted vs empty) and
+	// deprecated keys can be probed without re-parsing per key.
+	keys := topLevelKeys(doc)
 	cfg.FilesExplicit = keys["files"]
 
 	if keys["no-follow-symlinks"] {
@@ -105,7 +150,7 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
 
-	if err := checkBuildConfig(data, &cfg); err != nil {
+	if err := checkBuildConfig(doc, &cfg); err != nil {
 		return nil, err
 	}
 
@@ -164,14 +209,9 @@ func mergeAndResolveSchemas(cfg *Config, sourcePath string, mergeKinds bool) err
 	return nil
 }
 
-// topLevelKeySet returns the set of top-level YAML mapping keys
-// present in data, or nil on parse error. It rejects
-// anchor/alias usage for the same reason yamlHasKey does.
-func topLevelKeySet(data []byte) map[string]bool {
-	node, err := yamlutil.UnmarshalNodeSafe(data)
-	if err != nil {
-		return nil
-	}
+// topLevelKeys returns the set of top-level mapping keys of a document
+// node, or nil when its root is not a mapping.
+func topLevelKeys(node *yaml.Node) map[string]bool {
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
 		return nil
 	}
@@ -186,17 +226,12 @@ func topLevelKeySet(data []byte) map[string]bool {
 	return result
 }
 
-// yamlHasKey returns true if the top-level YAML mapping contains the given key.
-func yamlHasKey(data []byte, key string) bool {
-	return topLevelKeySet(data)[key]
-}
-
 // checkBuildConfig runs the two build-config validators that must run
 // after the main YAML parse but before convention application. It is
 // extracted from loadFromBytes to keep that function under the funlen
 // limit.
-func checkBuildConfig(data []byte, cfg *Config) error {
-	if err := rejectRemovedBuildKeys(data); err != nil {
+func checkBuildConfig(doc *yaml.Node, cfg *Config) error {
+	if err := rejectRemovedBuildKeys(doc); err != nil {
 		return fmt.Errorf("parsing config file: %w", err)
 	}
 	if err := ValidateBuildConfig(cfg); err != nil {
@@ -211,8 +246,7 @@ func checkBuildConfig(data []byte, cfg *Config) error {
 // otherwise drop the key silently, leaving an author to wonder why their
 // setting has no effect. The scan walks the `build:` mapping node
 // directly because base-url is nested, not top-level.
-func rejectRemovedBuildKeys(data []byte) error {
-	node, _ := yamlutil.UnmarshalNodeSafe(data) // pre-validated by UnmarshalSafe earlier; error unreachable
+func rejectRemovedBuildKeys(node *yaml.Node) error {
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
 		return nil
 	}
@@ -230,7 +264,7 @@ func rejectRemovedBuildKeys(data []byte) error {
 		}
 		for j := 0; j+1 < len(buildNode.Content); j += 2 {
 			if buildNode.Content[j].Value == "base-url" {
-				return fmt.Errorf(
+				return issueAt(KeyPath{"build", "base-url"},
 					"build.base-url was removed in plan 2606101546; delete it")
 			}
 		}
@@ -238,29 +272,107 @@ func rejectRemovedBuildKeys(data []byte) error {
 	return nil
 }
 
+// FileIn returns the config file that lives directly in dir, or
+// "" when there is none: dir/.mdsmith.yml when it exists, else
+// dir/pyproject.toml when it holds a `[tool.mdsmith]` table. It is the
+// per-directory rule Discover applies at each step of its walk, shared
+// with callers that read one known directory's config (such as the
+// merge-driver glob set at the repository root).
+func FileIn(dir string) string {
+	found, _ := fileIn(dir)
+	return found
+}
+
+// fileIn is FileIn plus, when dir holds no config file, the hint for a
+// pyproject.toml there whose table is the plural `[tools.mdsmith]`. The
+// pyproject.toml is read and parsed once for both answers.
+func fileIn(dir string) (found, hint string) {
+	candidate := filepath.Join(dir, configFileName)
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate, ""
+	}
+	py := filepath.Join(dir, pyprojectFileName)
+	source, hint := probePyproject(py)
+	if !source {
+		return "", hint
+	}
+	return py, ""
+}
+
+// IsConfigFile reports whether path names a file that can be an mdsmith
+// config source: a .mdsmith.yml or a pyproject.toml. Watchers use it to
+// decide when a file change must reload config.
+func IsConfigFile(path string) bool {
+	base := filepath.Base(path)
+	return base == configFileName || base == pyprojectFileName
+}
+
+// sidecarDirs are the directories, beside a config file, whose YAML
+// files Load merges into the config.
+var sidecarDirs = [...]string{kindFilesDir, conventionFilesDir, schemaFilesDir, wordlistFilesDir}
+
+// SidecarOwnerDir reports whether path is a kind, convention, schema or
+// word-list file — a .yml or .yaml file (extension in any case, as the
+// loaders match it) directly in one of the .mdsmith/ sidecar
+// directories — and returns the directory whose config file Load reads
+// it beside. Watchers use it so that editing a sidecar reloads config
+// the way editing the config file does.
+func SidecarOwnerDir(path string) (string, bool) {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".yml", ".yaml":
+	default:
+		return "", false
+	}
+	dir := filepath.Dir(path)
+	owner := filepath.Dir(filepath.Dir(dir))
+	for _, sub := range sidecarDirs {
+		if dir == filepath.Join(owner, sub) {
+			return owner, true
+		}
+	}
+	return "", false
+}
+
 // Discover walks up the directory tree from startDir looking for a
-// .mdsmith.yml config file. It stops searching when it encounters a .git
-// directory (the repository root) or reaches the filesystem root.
-// Returns the path to the config file, or "" if none was found.
-func Discover(startDir string) (string, error) {
+// config file: a .mdsmith.yml, or a pyproject.toml that holds a
+// `[tool.mdsmith]` table. Within one directory .mdsmith.yml wins; across
+// directories the nearest file wins; a pyproject.toml without the table
+// is not a config source and the walk continues past it. It stops
+// searching when it encounters a .git directory (the repository root)
+// or reaches the filesystem root. Returns the path to the config file,
+// or "" if none was found.
+func Discover(startDir string) string {
+	found, _ := DiscoverWithHints(startDir)
+	return found
+}
+
+// DiscoverWithHints is Discover plus the one-line hints its walk
+// collects for files it passed over that look like a misplaced config:
+// a pyproject.toml whose table is the plural `[tools.mdsmith]`. Callers
+// print the hints so the author learns why the table is not read. One
+// walk reads each pyproject.toml once for both answers.
+func DiscoverWithHints(startDir string) (found string, hints []string) {
 	dir, _ := filepath.Abs(startDir) // filepath.Abs cannot fail when os.Getwd succeeds
 	for {
-		candidate := filepath.Join(dir, configFileName)
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, nil
+		f, hint := fileIn(dir)
+		if f != "" {
+			return f, hints
+		}
+		if hint != "" {
+			hints = append(hints, hint)
 		}
 
 		// Check for .git boundary — if .git exists in this dir,
 		// this is the repo root and we should not search further up.
 		gitDir := filepath.Join(dir, ".git")
 		if info, err := os.Stat(gitDir); err == nil && info.IsDir() {
-			return "", nil
+			return "", hints
 		}
 
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			// Reached filesystem root
-			return "", nil
+			return "", hints
 		}
 		dir = parent
 	}
@@ -323,7 +435,14 @@ var statFileSize = func(f *os.File) int64 {
 	return info.Size()
 }
 
+// errConfigTooLarge marks a config file over maxConfigBytes.
+var errConfigTooLarge = errors.New("too large")
+
 // readLimitedConfig reads a config file with a size cap to prevent OOM.
+// A file over the cap fails with an error wrapping errConfigTooLarge;
+// the first maxConfigBytes are then returned alongside it, so discovery
+// can still look for a `[tool.mdsmith]` header there. Callers that only
+// load the file drop the data on any error.
 func readLimitedConfig(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -343,9 +462,9 @@ func readLimitedConfig(path string) ([]byte, error) {
 		if reported < 0 {
 			reported = int64(len(data))
 		}
-		return nil, fmt.Errorf(
-			"config file %q too large (%d bytes, max %d)",
-			path, reported, maxConfigBytes,
+		return data[:maxConfigBytes], fmt.Errorf(
+			"config file %q %w (%d bytes, max %d)",
+			path, errConfigTooLarge, reported, maxConfigBytes,
 		)
 	}
 	return data, nil

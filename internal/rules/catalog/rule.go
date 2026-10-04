@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
@@ -50,12 +49,7 @@ func init() {
 }
 
 // Rule checks that generated sections match their directive output.
-//
-// engineOnce serialises the lazy initialisation of engine: the rule
-// is a registered singleton and the LSP server may call Check from
-// multiple goroutines, so a plain check-then-set on the engine
-// field races. sync.Once gives both writers and readers a single
-// happens-before edge.
+// It builds its gensection engine per call; see getEngine.
 //
 // Pad and SeparatorStyle mirror MDS025 (table-format)'s knobs and
 // govern only the tables this rule emits inside `<?catalog?>` bodies.
@@ -66,8 +60,6 @@ func init() {
 // you want host-file tables and catalog-generated tables to share a
 // canonical.
 type Rule struct {
-	engineOnce     sync.Once
-	engine         *gensection.Engine
 	Pad            int
 	SeparatorStyle tablefmt.SeparatorStyle
 }
@@ -87,12 +79,14 @@ func (r *Rule) RuleID() string { return "MDS019" }
 // RuleName implements gensection.Directive.
 func (r *Rule) RuleName() string { return "catalog" }
 
-// getEngine lazily initializes and returns the gensection engine.
+// getEngine returns a gensection engine bound to r. It is built per
+// call rather than cached in the struct: the rule is a shared
+// singleton that rule.CloneInstance copies (per worker) while another
+// goroutine may be running Fix, so a lazily written field would race
+// with that copy, and a copied engine would stay bound to the source
+// rule instead of the clone. NewEngine only wraps r.
 func (r *Rule) getEngine() *gensection.Engine {
-	r.engineOnce.Do(func() {
-		r.engine = gensection.NewEngine(r)
-	})
-	return r.engine
+	return gensection.NewEngine(r)
 }
 
 // catalogStartNeedle and catalogEndNeedle bound the cheap pre-check

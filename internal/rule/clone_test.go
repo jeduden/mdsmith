@@ -138,3 +138,19 @@ func TestCloneRule_ApplySettingsOnClone(t *testing.T) {
 	assert.Equal(t, 120, cs.Max)
 	assert.Equal(t, 80, original.Max, "original Max should still be 80")
 }
+
+func TestCloneInstances_CopiesEachRuleInOrder(t *testing.T) {
+	a := &configurableStub{id: "MDS001", name: "a", Max: 7}
+	b := &stubRule{id: "MDS002", name: "b"}
+	in := []Rule{a, b}
+
+	out := CloneInstances(in)
+
+	require.Len(t, out, 2)
+	assert.NotSame(t, a, out[0])
+	assert.NotSame(t, b, out[1])
+	assert.Equal(t, 7, out[0].(*configurableStub).Max, "state carries over")
+	assert.Equal(t, "b", out[1].Name())
+	assert.Same(t, a, in[0], "the input slice is left alone")
+	assert.Empty(t, CloneInstances(nil))
+}

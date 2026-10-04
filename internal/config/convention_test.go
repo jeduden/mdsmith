@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/convention"
+	"github.com/jeduden/mdsmith/internal/yamlutil"
 
 	// Register rules so rule.ByName lookups resolve while the
 	// convention mechanism is exercised.
@@ -445,12 +446,15 @@ func TestApplyConvention_MarkdownFlavorWithoutFlavorKey(t *testing.T) {
 	require.NotNil(t, cfg.ConventionPreset)
 }
 
-func TestValidateConventionScalar_NonMappingDocument(t *testing.T) {
+func TestValidateConventionNode_NonMappingDocument(t *testing.T) {
 	// Defensive branch: non-mapping documents (e.g. an empty file
 	// or a top-level scalar) cannot carry a "convention:" key, so
-	// validateConventionScalar is a no-op.
-	assert.NoError(t, validateConventionScalar([]byte("")))
-	assert.NoError(t, validateConventionScalar([]byte("just-a-string\n")))
+	// validateConventionNode is a no-op.
+	for _, data := range []string{"", "just-a-string\n"} {
+		doc, err := yamlutil.UnmarshalNodeSafe([]byte(data))
+		require.NoError(t, err)
+		assert.NoError(t, validateConventionNode(&doc), data)
+	}
 }
 
 func TestLoad_TopLevelConventionLoaded(t *testing.T) {
@@ -507,17 +511,18 @@ func TestLoad_InvalidConventionSurfacesError(t *testing.T) {
 	assert.Contains(t, err.Error(), "bogus")
 }
 
-// TestValidateConventionScalar_RejectsYAMLAnchors pins the
+// TestParseBytes_ConventionRejectsYAMLAnchors pins the
 // document-wide anchor/alias rejection added for audit finding
 // S003: an alias-valued convention and an anchor on an
-// unrelated key are both rejected — the latter is the case a
-// per-value check would miss.
-func TestValidateConventionScalar_RejectsYAMLAnchors(t *testing.T) {
+// unrelated key are both rejected before the convention check
+// reads the node — the latter is the case a per-value check
+// would miss.
+func TestParseBytes_ConventionRejectsYAMLAnchors(t *testing.T) {
 	for _, data := range []string{
 		"base: &anchor portable\nconvention: *anchor\n",
 		"other: &a x\nconvention: portable\n",
 	} {
-		err := validateConventionScalar([]byte(data))
+		_, err := ParseBytes([]byte(data))
 		require.Error(t, err, data)
 		assert.Contains(t, err.Error(), "anchors/aliases", data)
 	}

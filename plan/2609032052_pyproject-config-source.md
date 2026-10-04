@@ -1,7 +1,7 @@
 ---
 id: 2609032052
 title: "Resolve config from `pyproject.toml` under `[tool.mdsmith]`"
-status: "🔲"
+status: "✅"
 model: opus
 summary: >-
   Discover and load mdsmith config from a `pyproject.toml`
@@ -68,8 +68,10 @@ Four facts shape the approach.
    `RuleCfg` bool-or-mapping union and `KindSchemaRef`.
    Re-doing these for TOML would copy fragile code. So
    the conversion runs the other way. Parse the TOML,
-   lift the `[tool.mdsmith]` sub-tree, and re-marshal it
-   to YAML. Then reuse `loadFromBytes` unchanged.
+   lift the `[tool.mdsmith]` sub-tree, and convert it to
+   a positioned `yaml.Node` tree. Then run the shared
+   `loadFromNode` pipeline that `loadFromBytes` now
+   calls after parsing YAML text.
 
 2. `github.com/pelletier/go-toml v1.9.5` is already a
    direct requirement in [go.mod](../go.mod). Only the
@@ -104,9 +106,10 @@ The pyproject source:
 - New paired files in `internal/config`: a
   `//go:build !wasm` file holding the `go-toml` import,
   a `loadPyproject(path)` that converts `[tool.mdsmith]`
-  to a `*Config` via the YAML re-marshal, and a
-  `pyprojectHasMdsmithTable(path)` probe; plus a
-  `//go:build wasm` stub of both that returns an error.
+  to a `yaml.Node` tree for `loadFromNode`, and a
+  `probePyproject(path)` probe; plus a `//go:build wasm`
+  stub of both (the loader errors, the probe finds
+  nothing).
 - `Load` dispatches by extension: `.toml` paths go
   through `loadPyproject`, everything else keeps the YAML
   path. The 1 MB `maxConfigBytes` read cap applies to
@@ -132,13 +135,19 @@ The positioned diagnostics:
 - A position resolver maps a key path to a line and
   column. The YAML resolver reads `yaml.v3` node
   positions and works everywhere, WASM included. The TOML
-  resolver reads `go-toml` tree positions, prepends
-  `tool.mdsmith`, and lives behind the `!wasm` tag.
+  resolver walks the converted node tree, whose nodes
+  carry `go-toml` key positions (inline-table keys are
+  found by scanning the source), and lives behind the
+  `!wasm` tag.
 - Syntax errors come straight from the parser. Both
   `yaml.v3` and `go-toml` report the failing line and
   column on a parse error.
 - The load boundary turns each issue into a
-  `lint.Diagnostic` anchored on the config file. The CLI
+  `lint.Diagnostic` anchored on the config file. Its
+  column counts bytes, like every lint diagnostic. Both
+  parsers count characters, so the boundary converts a
+  YAML column (main file or sidecar) and a TOML
+  parse-error column against the source line. The CLI
   prints these like any other diagnostic
   (`file:line:column`), and the LSP publishes them on the
   config file so an editor shows squiggles, keeping a
@@ -165,25 +174,25 @@ The positioned diagnostics:
 
 Phase A — positioned config diagnostics (YAML first):
 
-1. [ ] Red/green: add a typed config issue (message,
+1. [x] Red/green: add a typed config issue (message,
    severity, structured key path) and a resolver
    interface that maps a key path to a line and column.
    Add the `yaml.v3` node resolver over the parsed
    `.mdsmith.yml` tree.
-2. [ ] Red/green: thread key paths through the validation
+2. [x] Red/green: thread key paths through the validation
    sites in
    [validate.go](../internal/config/validate.go),
    [foreignregion.go](../internal/config/foreignregion.go),
    the `RuleCfg` decoder, wordlist validation, convention
    application, and build validation — one area per
    commit, each with a test asserting the resolved line.
-3. [ ] Red/green: at the load boundary, turn config
+3. [x] Red/green: at the load boundary, turn config
    issues into `lint.Diagnostic`s anchored on the config
    file. Have the CLI render them as
    `file:line:column` diagnostics (exit 2), replacing the
    plain `mdsmith: %v` string; update the affected error
    tests.
-4. [ ] Red/green: have the LSP publish config diagnostics
+4. [x] Red/green: have the LSP publish config diagnostics
    on the config-file document so an editor shows
    squiggles, keeping the `logMessage` summary when the
    file is not open. A malformed `.mdsmith.yml` now points
@@ -191,28 +200,29 @@ Phase A — positioned config diagnostics (YAML first):
 
 Phase B — the pyproject source:
 
-5. [ ] Red/green: add the paired `internal/config` files
+5. [x] Red/green: add the paired `internal/config` files
    — `loadPyproject(path)` behind `//go:build !wasm`
-   (parse TOML, lift `[tool.mdsmith]`, re-marshal to YAML,
-   call `loadFromBytes` with the pyproject path as the
-   sidecar anchor and `mergeKinds` true) and a
+   (parse TOML, lift `[tool.mdsmith]`, convert it to a
+   `yaml.Node` tree, call `loadFromNode` with the
+   pyproject path as the sidecar anchor and `mergeKinds`
+   true) and a
    `//go:build wasm` stub returning an error. Test that a
    `[tool.mdsmith]` config and the equivalent
    `.mdsmith.yml` produce an identical `*Config` —
    including a rule-off bool, a rule sub-table, an
    `[[overrides]]` array of tables, and a kind.
-6. [ ] Red/green: make `Load` dispatch on the `.toml`
+6. [x] Red/green: make `Load` dispatch on the `.toml`
    extension to `loadPyproject`; the YAML path is
    unchanged. Apply the `maxConfigBytes` cap to the TOML
    read. Test `--config path/to/pyproject.toml` and an
    arbitrary `--config foo.toml` both read from
    `[tool.mdsmith]`.
-7. [ ] Red/green: extend `Discover` to return a
+7. [x] Red/green: extend `Discover` to return a
    `pyproject.toml` that contains `[tool.mdsmith]`, with
    the precedence and skip rules above (probe behind the
    same build tag). Extend the discovery tests in
    [config_test.go](../internal/config/config_test.go).
-8. [ ] Red/green: route the native callers through the
+8. [x] Red/green: route the native callers through the
    shared discover-plus-dispatch — the CLI in
    [main.go](../cmd/mdsmith/main.go), the LSP in
    [server_session.go](../internal/lsp/server_session.go),
@@ -220,71 +230,84 @@ Phase B — the pyproject source:
    pyproject-only project is linted identically by
    `check`, `fix`, the editor, and the
    build/gitattributes paths.
-9. [ ] Red/green: add the TOML position resolver over the
-   `go-toml` tree (prepending `tool.mdsmith`), so a bad
-   value or a syntax error in `[tool.mdsmith]` produces a
-   diagnostic at the right line and column in the
-   `pyproject.toml`.
-10. [ ] Red/green: a `pyproject.toml` with a plural
+9. [x] Red/green: add the TOML position resolver over the
+   converted node tree (each node stamped with its
+   `go-toml` key position), so a bad value or a syntax
+   error in `[tool.mdsmith]` produces a diagnostic at the
+   right line and column in the `pyproject.toml`.
+10. [x] Red/green: a `pyproject.toml` with a plural
     `[tools.mdsmith]` table but no `[tool.mdsmith]` emits a
     one-line hint pointing at the correct key and is not
-    used as a config source.
+    used as a config source. The CLI walks once for the
+    config and its hints; the LSP takes them from its
+    discovery seam and logs a hint set once, not on every
+    reload. A watched `pyproject.toml` reloads config only
+    in the root or an ancestor, or as the loaded file; a
+    sidecar (kind, convention, …) reloads likewise.
 
 Phase C — guardrails and docs:
 
-11. [ ] Confirm the WASM boundary: the standard-Go and
+11. [x] Confirm the WASM boundary: the standard-Go and
     TinyGo builds in
     [build.sh](../cmd/mdsmith-wasm/build.sh) still
     compile, and
     [size_test.go](../cmd/mdsmith-wasm/size_test.go)
     passes within both budgets with `go-toml` absent from
     the artifact.
-12. [ ] Docs: add a reference page for config discovery
+12. [x] Docs: add a reference page for config discovery
     order and the `[tool.mdsmith]` source under
     [docs/reference](../docs/reference/index.md), note that
     config errors are positioned diagnostics, link it from
     the `check` and `init` CLI pages and the
     [linter comparison](../docs/background/markdown-linters.md),
     then run `mdsmith fix` to regenerate catalogs.
-13. [ ] Run `mdsmith fix PLAN.md`, `mdsmith check .`,
+13. [x] Run `mdsmith fix PLAN.md`, `mdsmith check .`,
     `go test ./...`, and
     `go tool -modfile=tools/go.mod golangci-lint run`.
+14. [x] Red/green: `init` skips a dir whose
+    `pyproject.toml` has `[tool.mdsmith]` (unless
+    `--force`); dotted TOML keys count toward the
+    nesting cap; one parse serves probe and load.
+15. [x] Red/green: fix the `-race` flake in
+    `TestRebuildSessionDoesNotDisposeHeldSession`: fix
+    paths run per-call rule clones, and toc, catalog,
+    and build no longer cache an engine.
 
 ## Acceptance Criteria
 
-- [ ] A project whose only config is a `pyproject.toml`
+- [x] A project whose only config is a `pyproject.toml`
       with `[tool.mdsmith]` is linted with that config by
       `mdsmith check` and `mdsmith fix`.
-- [ ] The same settings written under `[tool.mdsmith]`
+- [x] The same settings written under `[tool.mdsmith]`
       and in `.mdsmith.yml` produce identical effective
       config across rules, overrides, kinds, and
       conventions.
-- [ ] A bad value in `.mdsmith.yml` produces a diagnostic
+- [x] A bad value in `.mdsmith.yml` produces a diagnostic
       at the offending line and column.
-- [ ] A bad value in a `pyproject.toml` `[tool.mdsmith]`
+- [x] A bad value in a `pyproject.toml` `[tool.mdsmith]`
       table produces a diagnostic at the offending line
       and column in the `pyproject.toml`.
-- [ ] A syntax error in either file points at the failing
+- [x] A syntax error in either file points at the failing
       line.
-- [ ] The CLI prints config errors as
+- [x] The CLI prints config errors as
       `file:line:column` diagnostics; the LSP shows them as
       squiggles on the config file when it is open.
-- [ ] A `.mdsmith.yml` takes precedence over a
+- [x] A `.mdsmith.yml` takes precedence over a
       same-directory `pyproject.toml`; the nearest config
       file wins across directories; a `pyproject.toml` with
       no `[tool.mdsmith]` is ignored.
-- [ ] `--config pyproject.toml` and `--config foo.toml`
+- [x] `--config pyproject.toml` and `--config foo.toml`
       load from the `[tool.mdsmith]` table.
-- [ ] The LSP, build-directive, and gitattributes paths
+- [x] The LSP, build-directive, and gitattributes paths
       honor a pyproject-only project.
-- [ ] The standard-Go and TinyGo WASM builds compile and
+- [x] The standard-Go and TinyGo WASM builds compile and
       stay within the size budgets; `go-toml` is not
       linked into the WASM artifact.
-- [ ] A plural `[tools.mdsmith]` table produces a hint
+- [x] A plural `[tools.mdsmith]` table produces a hint
       and is not used as config.
-- [ ] Reference docs describe the discovery order, the
+- [x] Reference docs describe the discovery order, the
       pyproject source, and positioned config diagnostics.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` — 0 failures.
+- [x] `mdsmith check .` — 0 failures.

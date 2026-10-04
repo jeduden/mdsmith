@@ -934,7 +934,7 @@ func TestApplyAPMPosture_NewConfig_AppendsPosture(t *testing.T) {
 	configFile := filepath.Join(dir, ".mdsmith.yml")
 	require.NoError(t, os.WriteFile(configFile, []byte("\nignore: []\n"), 0o644))
 	var buf bytes.Buffer
-	err := applyAPMPosture(configFile, false, false, &buf)
+	err := applyAPMPosture(configFile, "", false, &buf)
 	require.NoError(t, err)
 	written, readErr := os.ReadFile(configFile)
 	require.NoError(t, readErr)
@@ -948,7 +948,7 @@ func TestApplyAPMPosture_ExistingForced_AppendsPosture(t *testing.T) {
 	configFile := filepath.Join(dir, ".mdsmith.yml")
 	require.NoError(t, os.WriteFile(configFile, []byte("\nignore: []\n"), 0o644))
 	var buf bytes.Buffer
-	err := applyAPMPosture(configFile, true, true, &buf)
+	err := applyAPMPosture(configFile, configFile, true, &buf)
 	require.NoError(t, err)
 	written, readErr := os.ReadFile(configFile)
 	require.NoError(t, readErr)
@@ -960,7 +960,7 @@ func TestApplyAPMPosture_ExistingNotForced_PrintsMergeHint(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	var buf bytes.Buffer
-	err := applyAPMPosture("irrelevant.yml", true, false, &buf)
+	err := applyAPMPosture("irrelevant.yml", "irrelevant.yml", false, &buf)
 	require.NoError(t, err)
 	out := buf.String()
 	assert.Contains(t, out, "merge")
@@ -1007,8 +1007,79 @@ func TestApmPostureBlock(t *testing.T) {
 func TestPrintAPMMergeHint(t *testing.T) {
 	globs := []string{"apm_modules/**", "AGENTS.md"}
 	var buf bytes.Buffer
-	printAPMMergeHint(&buf, globs)
+	printAPMMergeHint(&buf, ".mdsmith.yml", globs)
 	out := buf.String()
-	assert.Contains(t, out, "merge")
-	assert.Contains(t, out, "apm_modules/**")
+	assert.Contains(t, out, ".mdsmith.yml already exists; merge")
+	assert.Contains(t, out, "  - apm_modules/**")
+}
+
+func TestApmPostureTOML(t *testing.T) {
+	got := string(apmPostureTOML([]string{"apm_modules/**", "AGENTS.md"}))
+	assert.Contains(t, got, "# APM coexistence posture")
+	assert.Contains(t, got, "[tool.mdsmith]\nignore = [\n  \"apm_modules/**\",\n  \"AGENTS.md\",\n]\n")
+}
+
+// A pyproject.toml whose [tool.mdsmith] table configures mdsmith is an
+// existing config: a .mdsmith.yml written beside it would take
+// precedence and silently disable it, so a bare init leaves it alone.
+func TestRunInit_PyprojectConfig_SkipsAndExitsZero(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile("pyproject.toml", []byte("[tool.mdsmith.rules]\nline-length = false\n"), 0o644))
+
+	var code int
+	out := captureStderr(func() { code = runInit(nil) })
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "pyproject.toml")
+	assert.Contains(t, out, "--force")
+	_, err := os.Stat(".mdsmith.yml")
+	assert.ErrorIs(t, err, os.ErrNotExist, "no .mdsmith.yml may shadow the pyproject config")
+}
+
+// --force still writes the .mdsmith.yml over a pyproject config.
+func TestRunInit_PyprojectConfig_ForceWrites(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile("pyproject.toml", []byte("[tool.mdsmith]\n"), 0o644))
+	captureStderr(func() { assert.Equal(t, 0, runInit([]string{"--force"})) })
+	_, err := os.Stat(".mdsmith.yml")
+	assert.NoError(t, err)
+}
+
+// A pyproject.toml without the table is not a config: init writes the
+// .mdsmith.yml as usual.
+func TestRunInit_PyprojectWithoutTable_Writes(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile("pyproject.toml", []byte("[project]\nname = \"x\"\n"), 0o644))
+	captureStderr(func() { assert.Equal(t, 0, runInit(nil)) })
+	_, err := os.Stat(".mdsmith.yml")
+	assert.NoError(t, err)
+}
+
+// --apm over a pyproject config prints the posture as a TOML merge hint
+// and does not create a .mdsmith.yml.
+func TestRunInit_APM_PyprojectConfig_PrintsTOMLMergeHint(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.WriteFile("pyproject.toml", []byte("[tool.mdsmith]\n"), 0o644))
+	out := captureStderr(func() { assert.Equal(t, 0, runInit([]string{"--apm"})) })
+	assert.Contains(t, out, "pyproject.toml already exists; merge")
+	assert.Contains(t, out, "[tool.mdsmith]")
+	assert.Contains(t, out, `"apm_modules/**",`)
+	_, err := os.Stat(".mdsmith.yml")
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// writeInitConfig refuses a symlinked target itself, not only through
+// runInitConfig's earlier check.
+func TestWriteInitConfig_SymlinkTarget_Refused(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.Symlink(filepath.Join(dir, "target.yml"), ".mdsmith.yml"))
+	var buf bytes.Buffer
+	err := writeInitConfig(".mdsmith.yml", "", "", true, &buf)
+	require.ErrorContains(t, err, "symlink")
+	_, statErr := os.Stat(filepath.Join(dir, "target.yml"))
+	assert.True(t, os.IsNotExist(statErr))
 }

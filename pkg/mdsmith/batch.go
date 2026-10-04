@@ -77,7 +77,7 @@ func (s *Session) FixPaths(paths []string, opts BatchOptions) *fixpkg.Result {
 	}
 	fixer := &fixpkg.Fixer{
 		Config:           s.cfg,
-		Rules:            s.rules,
+		Rules:            s.fixRules(),
 		StripFrontMatter: frontMatterEnabled(s.cfg),
 		Logger:           opts.Logger,
 		RootDir:          s.rootDir,
