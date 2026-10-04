@@ -156,6 +156,9 @@ type Session struct {
 	// session's config never changes between edits. Created once in
 	// NewSession, mirroring runCache and parseCache.
 	sourceConfigCache *engine.SourceConfigCache
+	// roots holds the disk handles the session lends to every operation
+	// and closes in Dispose (see sessionRoots).
+	roots sessionRoots
 }
 
 // cachedCheck is one memoized Check result: the content hash it was
@@ -245,8 +248,11 @@ func rootDirOf(ws Workspace) string {
 
 // newRunner builds the engine.Runner that backs Check (and therefore
 // Fix's post-fix diagnostics, which route through Check). SourceFS is
-// snapshotted per call, so a workspace edit applied through Invalidate
-// is visible to the next operation.
+// taken per call, so a workspace edit applied through Invalidate is
+// visible to the next operation; an OSWorkspace's view is one os.Root
+// the session reuses, which reads live disk anyway. RootFS is the
+// session's lent root, so a File the parse cache keeps never holds a
+// root nothing closes (see sessionRoots).
 func (s *Session) newRunner() *engine.Runner {
 	return &engine.Runner{
 		Config:           s.cfg,
@@ -254,7 +260,8 @@ func (s *Session) newRunner() *engine.Runner {
 		StripFrontMatter: frontMatterEnabled(s.cfg),
 		RootDir:          s.rootDir,
 		MaxInputBytes:    s.maxBytes,
-		SourceFS:         s.ws.FS(),
+		SourceFS:         s.sourceFS(),
+		RootFS:           s.lentRoot(),
 		ConfigPath:       s.cfgPath,
 		// Shared cross-file read cache: a catalog/include target read by
 		// one operation is reused by the next until Invalidate drops it.
@@ -350,7 +357,7 @@ func (s *Session) Fix(uri string, source []byte) (FixResult, error) {
 		RootDir:          s.rootDir,
 		StripFrontMatter: frontMatterEnabled(s.cfg),
 		MaxInputBytes:    s.maxBytes,
-		SourceFS:         s.ws.FS(),
+		SourceFS:         s.sourceFS(),
 	})
 	if err != nil {
 		return FixResult{}, err
@@ -400,7 +407,7 @@ func (s *Session) FixRule(uri string, source []byte, names []string) (FixResult,
 		RootDir:          s.rootDir,
 		StripFrontMatter: frontMatterEnabled(s.cfg),
 		MaxInputBytes:    s.maxBytes,
-		SourceFS:         s.ws.FS(),
+		SourceFS:         s.sourceFS(),
 	}, names)
 	if err != nil {
 		return FixResult{}, err
@@ -617,12 +624,15 @@ func (s *Session) absPath(uri string) string {
 	return filepath.Join(s.rootDir, filepath.FromSlash(uri))
 }
 
-// Dispose releases the session's caches. The session must not be used
-// afterward. It is safe to call more than once.
+// Dispose releases the session's caches and closes the disk roots it
+// lent to its operations. The session must not be used afterward; a
+// late call reads disk through per-call roots instead. It is safe to
+// call more than once.
 func (s *Session) Dispose() {
 	s.mu.Lock()
 	s.checkCache = nil
 	s.mu.Unlock()
+	s.closeRoots()
 }
 
 // parseCount returns the number of cache-miss Check passes (each of
