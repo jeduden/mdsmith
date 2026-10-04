@@ -551,11 +551,20 @@ func TestResolves(t *testing.T) {
 
 func TestMoveBatch_Admit(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{"a.md": "# A\n"})
-	b := &moveBatch{members: map[string]batchMember{}}
+	b := newMoveBatch()
 	landing := map[string]int{}
 	m := b.admit(ws, MovePair{"./a.md", "x/a.md"}, landing)
 	assert.Equal(t, BatchMove{Src: "a.md", Dst: "x/a.md", Key: "a.md"}, m)
 	assert.Equal(t, batchMember{dst: "x/a.md"}, b.members["a.md"], "planned only once validated")
 	assert.Equal(t, 1, landing["x/a.md"])
+	assert.Equal(t, []byte("# A\n"), b.sources["a.md"], "the source is read once, here")
 	assert.ErrorIs(t, b.admit(ws, MovePair{"a.md", "y.md"}, landing).Err, ErrDuplicateSource)
+}
+
+func TestMoveBatch_PlannedBases(t *testing.T) {
+	b := newMoveBatch()
+	b.members["x/a.md"] = batchMember{dst: "z/a.md", planned: true}
+	b.members["y/a.md"] = batchMember{dst: "q/a.md", planned: true}
+	b.members["b.md"] = batchMember{dst: "c.md"}
+	assert.Equal(t, [][]byte{[]byte("a.md")}, b.plannedBases(), "each planned base once; unplanned left out")
 }

@@ -82,3 +82,23 @@ func TestEdgeLines(t *testing.T) {
 	}
 	assert.Equal(t, map[string]int{"a.md": 1, "b.md": 1, "gone.md": 1}, ws.calls)
 }
+
+// TestMoveAll_ReadsEachFileOnce locks that a batch scans the workspace
+// for incoming links once, not once per planned move: a hub linking
+// every member is read once, and a moved file once, by validation.
+func TestMoveAll_ReadsEachFileOnce(t *testing.T) {
+	ws := &resolveCounter{calls: map[string]int{}, stubWorkspace: stubWorkspace{
+		files: []string{"a.md", "b.md", "c.md", "hub.md"},
+		sources: map[string][]byte{
+			"a.md":   []byte("[b](b.md)\n"),
+			"b.md":   []byte("# B\n"),
+			"c.md":   []byte("# C\n"),
+			"hub.md": []byte("[a](a.md) [b](b.md) [c](c.md)\n"),
+		},
+	}}
+	bp := MoveAll(ws, []MovePair{{"a.md", "x/a.md"}, {"b.md", "x/b.md"}, {"c.md", "y/c.md"}})
+	assert.Equal(t, []string{"y/c.md", "x/b.md", "x/a.md"}, texts(bp.Edits, "hub.md"))
+	assert.Empty(t, bp.Edits["a.md"])
+	assert.Equal(t, 1, ws.calls["hub.md"])
+	assert.Equal(t, 1, ws.calls["a.md"])
+}

@@ -139,47 +139,62 @@ var (
 	refDefMark = []byte("]:")
 )
 
-// appendReferrerEdits repoints every destination in another workspace
-// file that names src — inline links, images, and reference
-// definitions — so it names dst. A self-reference inside src is left
-// to the outbound pass, so no token is edited twice. So is a link in
-// another file the batch moves: that file's own outbound pass spells
-// it from its new folder. A holder whose move could not be planned
-// gets no edit unless the host keeps it in its folder, where the link
-// is spelled from the same directory whether or not the move runs;
-// otherwise the link counts as withheld when it stops resolving.
+// appendReferrerEdits repoints every destination in a workspace file
+// that names a planned batch member — inline links, images, and
+// reference definitions — so it names the member's new path. The
+// workspace is scanned once for the whole batch. A planned member's
+// own file is skipped: its outbound pass spells every link in it,
+// including one to itself, from its new folder. A holder whose move
+// could not be planned gets no edit unless the host keeps it in its
+// folder, where the link is spelled from the same directory whether or
+// not the move runs; otherwise the link counts as withheld when it
+// stops resolving.
 //
-// Every file is read, but only one mayName admits is parsed. The
-// index is not consulted: it records no edge for an image or a
-// ref-def, and it reads a literal `what?.md` as `what`.
-func appendReferrerEdits(
-	changes map[string][]Edit, ws Workspace, p parser.Parser, r *destResolver, src, dst string,
-) {
-	base := []byte(path.Base(src))
+// Every file is read, but only one mayName admits for some member is
+// parsed. The index is not consulted: it records no edge for an image
+// or a ref-def, and it reads a literal `what?.md` as `what`.
+func appendReferrerEdits(changes map[string][]Edit, ws Workspace, p parser.Parser, r *destResolver) {
+	bases := r.batch.plannedBases()
+	if len(bases) == 0 {
+		return
+	}
 	for _, rel := range r.paths() {
-		if rel == src {
+		holder, moved := r.member(rel)
+		if moved && holder.planned {
 			continue
 		}
 		key, source, ok := ws.Resolve(rel)
-		if !ok || !mayName(source, base) {
+		if !ok || !mayNameAny(source, bases) {
 			continue
 		}
 		for _, d := range locateDests(p, rel, source) {
 			ref, ok := r.target(rel, d.dest)
-			if !ok || ref.target != src {
+			if !ok {
 				continue
 			}
-			if m, moved := r.member(rel); moved && !unplannedInPlace(m, rel) {
-				if !m.planned {
-					r.countStale(m.dst, ref.path, dst)
-				}
+			tgt, isMember := r.member(ref.target)
+			if !isMember || !tgt.planned {
 				continue
 			}
-			if edit, ok := destEdit(d, ref, rel, dst); ok {
+			if moved && !unplannedInPlace(holder, rel) {
+				r.countStale(holder.dst, ref.path, tgt.dst)
+				continue
+			}
+			if edit, ok := destEdit(d, ref, rel, tgt.dst); ok {
 				changes[key] = append(changes[key], edit)
 			}
 		}
 	}
+}
+
+// mayNameAny reports whether mayName admits source for any of bases.
+func mayNameAny(source []byte, bases [][]byte) bool {
+	for _, base := range bases {
+		if mayName(source, base) {
+			return true
+		}
+	}
+	return false
 }
 
 // unplannedInPlace reports whether m, the batch entry for the file rel,

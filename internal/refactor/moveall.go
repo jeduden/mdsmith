@@ -91,14 +91,14 @@ func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
 	}
 	p := lint.NewParser()
 	r := &destResolver{ws: ws, batch: b}
+	appendReferrerEdits(bp.Edits, ws, p, r)
 	for _, m := range moves {
 		if m.Err != nil {
 			continue
 		}
-		appendReferrerEdits(bp.Edits, ws, p, r, m.Src, m.Dst)
 		appendWikilinkStemEdits(bp.StemEdits, ws, r, m.Src, m.Dst)
-		if _, source, ok := ws.Resolve(m.Src); ok && (mdpath.HasMarkdownExt(path.Ext(m.Src)) || r.listed(m.Src)) {
-			appendOutboundEdits(bp.Own, p, r, m.Key, m.Src, m.Dst, source)
+		if mdpath.HasMarkdownExt(path.Ext(m.Src)) || r.listed(m.Src) {
+			appendOutboundEdits(bp.Own, p, r, m.Key, m.Src, m.Dst, b.sources[m.Src])
 		}
 	}
 	for _, m := range moves {
@@ -167,7 +167,7 @@ func countShadowed(ws Workspace, p parser.Parser, r *destResolver, vacated strin
 // workspace or another member's source.
 func validateBatch(ws Workspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
 	moves := make([]BatchMove, len(pairs))
-	b := &moveBatch{members: map[string]batchMember{}}
+	b := newMoveBatch()
 	landing := map[string]int{}
 	for i, pr := range pairs {
 		moves[i] = b.admit(ws, pr, landing)
@@ -210,10 +210,11 @@ func (b *moveBatch) admit(ws Workspace, pr MovePair, landing map[string]int) Bat
 		m.Err = ErrDuplicateSource
 		return m
 	}
-	key, _, ok := ws.Resolve(m.Src)
+	key, source, ok := ws.Resolve(m.Src)
 	dstOK := workspaceRelative(m.Dst)
 	if ok {
 		m.Key = key
+		b.sources[m.Src] = source
 		member := batchMember{}
 		if dstOK {
 			member.dst = m.Dst
@@ -241,8 +242,14 @@ func resolves(ws Workspace, p string) bool {
 // stale without an edit.
 type moveBatch struct {
 	members  map[string]batchMember
+	sources  map[string][]byte // each member's text, as admit read it
 	withheld int
 	post     *linkgraph.WikilinkIndex // postIndex, built on first use
+}
+
+// newMoveBatch returns an empty batch, ready for admit.
+func newMoveBatch() *moveBatch {
+	return &moveBatch{members: map[string]batchMember{}, sources: map[string][]byte{}}
 }
 
 // batchMember is one moved file: dst is where the host puts it (empty
@@ -251,6 +258,20 @@ type moveBatch struct {
 type batchMember struct {
 	dst     string
 	planned bool
+}
+
+// plannedBases returns the base name of every planned member's
+// source, each once: the names a link to some member spells out.
+func (b *moveBatch) plannedBases() [][]byte {
+	seen := map[string]bool{}
+	var bases [][]byte
+	for src, m := range b.members {
+		if base := path.Base(src); m.planned && !seen[base] {
+			seen[base] = true
+			bases = append(bases, []byte(base))
+		}
+	}
+	return bases
 }
 
 // member returns the batch entry for the workspace file p.

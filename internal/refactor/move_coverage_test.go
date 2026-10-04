@@ -357,8 +357,15 @@ func TestAppendReferrerEdits_DefensiveBranches(t *testing.T) {
 		unresolvable: map[string]bool{"gone.md": true},
 	}
 	r := soloResolver(ws, "a.md", "docs/a.md")
-	appendReferrerEdits(changes, ws, lint.NewParser(), r, "a.md", "docs/a.md")
+	appendReferrerEdits(changes, ws, lint.NewParser(), r)
 	assert.Empty(t, changes, "every file hits a skip branch")
+
+	// A batch with no planned member reads no file.
+	counter := &resolveCounter{calls: map[string]int{}, stubWorkspace: ws}
+	r = &destResolver{ws: counter, batch: &moveBatch{members: map[string]batchMember{"a.md": {dst: "b.md"}}}}
+	appendReferrerEdits(changes, counter, lint.NewParser(), r)
+	assert.Empty(t, changes)
+	assert.Empty(t, counter.calls)
 }
 
 func TestMayName(t *testing.T) {
@@ -415,7 +422,7 @@ func TestAppendReferrerEdits_RefDefShapesAndSkips(t *testing.T) {
 		unresolvable: map[string]bool{"gone.md": true},
 	}
 	r := soloResolver(ws, "a.md", "docs/a.md")
-	appendReferrerEdits(changes, ws, lint.NewParser(), r, "a.md", "docs/a.md")
+	appendReferrerEdits(changes, ws, lint.NewParser(), r)
 	require.Len(t, changes["hit.md"], 1)
 	assert.Equal(t, "docs/a.md", changes["hit.md"][0].NewText)
 	assert.NotContains(t, changes, "local.md")
