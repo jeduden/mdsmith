@@ -139,11 +139,24 @@ type runOpts struct {
 // default, os.Stderr) is not captured: the child writes to it
 // directly, so a survivor can still reach it after the return.
 //
+// A ctx already done at entry starts nothing: a cancel returns
+// (-1, false, err) and a spent deadline returns (-1, true, err).
+//
 // It returns the process exit code, whether the run timed out, and any
 // error. On success it returns (0, false, nil). On non-zero exit it
 // returns the exit code and a non-nil error. On timeout it returns the
 // exit code (or -1 if unavailable), timedOut=true, and a non-nil error.
 func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
+	// A context already done at entry (a CLI interrupt that landed while
+	// the target was staged, or a spent deadline) starts no recipe:
+	// exec.Command's Start ignores ctx, so it would fork one only to
+	// kill it at once. No kill path runs, so a cancel is not timedOut.
+	if err := ctx.Err(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return -1, true, fmt.Errorf("recipe timed out: %w", err)
+		}
+		return -1, false, fmt.Errorf("recipe cancelled before start: %w", err)
+	}
 	// We manage the timeout and kill path ourselves (process group), so the
 	// command itself is not bound to a context-cancel kill — that would
 	// only kill the leader, not the group.

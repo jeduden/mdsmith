@@ -124,3 +124,41 @@ func TestWaitAtMost(t *testing.T) {
 	assert.False(t, ok, "an empty channel times out")
 	assert.NoError(t, err)
 }
+
+// TestRunRecipe_CancelledBeforeStartSpawnsNothing checks that a context
+// cancelled before runRecipe starts (a CLI interrupt that lands while
+// the target is staged) refuses the recipe instead of forking it. The
+// argv names no real program: a Start attempt would fail with
+// "starting recipe", so the error proves Start never ran.
+func TestRunRecipe_CancelledBeforeStartSpawnsNothing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	code, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{filepath.Join(t.TempDir(), "no-such-recipe")},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.NotContains(t, err.Error(), "starting recipe")
+	assert.False(t, timedOut, "no kill path ran, so the run is not reported as killed")
+	assert.Equal(t, -1, code)
+}
+
+// TestRunRecipe_ExpiredDeadlineBeforeStartSpawnsNothing checks that a
+// deadline already past at entry also refuses the recipe, and still
+// reports it as a timeout.
+func TestRunRecipe_ExpiredDeadlineBeforeStartSpawnsNothing(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{filepath.Join(t.TempDir(), "no-such-recipe")},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.NotContains(t, err.Error(), "starting recipe")
+	assert.Contains(t, err.Error(), "timed out")
+	assert.True(t, timedOut)
+}
