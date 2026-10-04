@@ -68,6 +68,9 @@ done, so only the cancellation is missing.
 4. Make `runRecipe` start no recipe when its context is
    already done at entry, so every `BuildWithResult`
    caller (build pass and verify re-run) is covered.
+   `BuildWithResult` refuses the same way before it
+   stages the target or opens the action's log, so a
+   refused run never truncates an earlier log.
 5. Escalate on a second signal: the first cancels the
    build (SIGTERM plus grace), the second closes a
    `build.WithForceKill` channel so the Unix kill sends

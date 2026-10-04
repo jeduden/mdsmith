@@ -154,6 +154,12 @@ func (b *CustomBuilder) BuildWithResult(
 		res.Err = err
 		return res
 	}
+	// A context already done (a CLI interrupt that landed after the
+	// caller's own check) stages nothing and leaves the action's earlier
+	// log alone.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return notStartedResult(target.Recipe, ctxErr)
+	}
 
 	plan, cleanup, err := b.stage(target)
 	if err != nil {
@@ -201,6 +207,18 @@ func (b *CustomBuilder) BuildWithResult(
 		return res
 	}
 	return res
+}
+
+// notStartedResult is the Result for a recipe refused before start
+// because ctxErr ended its context: the shape BuildWithResult returns
+// when runRecipe refuses at its entry (exit -1, TimedOut only for a
+// spent deadline, an error wrapping ErrNotStarted and ctxErr).
+func notStartedResult(recipe string, ctxErr error) Result {
+	return Result{
+		ExitCode: -1,
+		TimedOut: errors.Is(ctxErr, context.DeadlineExceeded),
+		Err:      fmt.Errorf("recipe %q failed: %w", recipe, NotStartedError(ctxErr)),
+	}
 }
 
 // buildArgv looks up the recipe command for target and tokenizes it into argv.
