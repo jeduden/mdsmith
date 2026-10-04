@@ -1365,3 +1365,29 @@ func TestDispatchOne_StreamEnabled_LiveForwards(t *testing.T) {
 	assert.Equal(t, outcomeRebuilt, outcome)
 	assert.Contains(t, buf.String(), "live output")
 }
+
+// TestDispatchTargets_CancelledContextStartsNoFurtherRecipe covers an
+// interrupt that arrives while one recipe runs: the targets queued
+// behind it must not start.
+func TestDispatchTargets_CancelledContextStartsNoFurtherRecipe(t *testing.T) {
+	root := t.TempDir()
+	cfg := buildPassCfg("    cp:\n      command: cp {inputs} {outputs}\n")
+	mk := func(out string) buildTarget {
+		return buildTarget{file: "doc.md", line: 1, target: buildexec.Target{
+			Recipe: "cp", Root: root, Outputs: []string{out},
+		}}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var started []string
+	builder := &mockBuilder{fn: func(_ context.Context, tg buildexec.Target) error {
+		started = append(started, tg.Outputs[0])
+		cancel()
+		return context.Canceled
+	}}
+	var buf strings.Builder
+	code := dispatchTargets(builder, []buildTarget{mk("a.txt"), mk("b.txt")}, cfg, root,
+		buildPassOpts{ctx: ctx, noCache: true}, buildexec.NewCache(), time.Second, &buf)
+	assert.Equal(t, 2, code)
+	assert.Equal(t, []string{"a.txt"}, started)
+}

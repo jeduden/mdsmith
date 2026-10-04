@@ -632,6 +632,10 @@ func runOneTarget(
 	if opts.stream {
 		bopts.LiveSink = w
 	}
+	// After an interrupt no further recipe may start: the run is ending.
+	if err := opts.context().Err(); err != nil {
+		return targetRunResult{Result: buildexec.Result{Err: err}}
+	}
 	ctx, cancel := context.WithTimeout(opts.context(), timeout)
 	defer cancel()
 	return targetRunResult{Result: b.BuildWithResult(ctx, bt.target, bopts)}
