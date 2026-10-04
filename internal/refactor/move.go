@@ -961,14 +961,13 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws MoveWorkspace, r *des
 
 // stemTarget is the file a rewritten `[[stem]]` link names after a
 // move: dst, the token that names it (see dstWikilinkSpelling), and
-// key, the stem (isStem) or lowercased exact name the resolver looks
-// it up by.
+// the wikilinkKey the resolver looks it up by — a stem or a lowercased
+// exact name — whose holders and resolvesTo it reads through.
 type stemTarget struct {
 	dst         string
 	spelling    string
 	needsPrefix bool
-	key         string
-	isStem      bool
+	wikilinkKey
 }
 
 // newStemTarget returns the stemTarget for a move of a file keyed by
@@ -986,7 +985,7 @@ func newStemTarget(old wikilinkKey, dst string) (stemTarget, bool) {
 	if !ok || !linkgraph.WikilinkIndexed(dst) {
 		return stemTarget{}, false
 	}
-	return stemTarget{dst: dst, spelling: spelling, needsPrefix: needsPrefix, key: k.key, isStem: k.isStem}, true
+	return stemTarget{dst: dst, spelling: spelling, needsPrefix: needsPrefix, wikilinkKey: k}, true
 }
 
 // reaches reports whether a link keyed by t.key resolves to t.dst in
@@ -1000,19 +999,7 @@ func (t stemTarget) reaches(post *linkgraph.WikilinkIndex) bool {
 	if slices.ContainsFunc(t.holders(post), func(q string) bool { return q != t.dst && strings.EqualFold(q, t.dst) }) {
 		return false
 	}
-	return t.wikilinkKey().resolvesTo(post, t.dst)
-}
-
-// holders returns the files in post that a link keyed by t.key
-// reaches, in resolver order: the stem holders for a Markdown
-// destination, the exact-name holders for a typed one.
-func (t stemTarget) holders(post *linkgraph.WikilinkIndex) []string {
-	return t.wikilinkKey().holders(post)
-}
-
-// wikilinkKey returns the key t is looked up by.
-func (t stemTarget) wikilinkKey() wikilinkKey {
-	return wikilinkKey{key: t.key, isStem: t.isStem}
+	return t.resolvesTo(post, t.dst)
 }
 
 // wikilinkKey is the key the wikilink resolver files a file under and
@@ -1097,7 +1084,7 @@ func (r *destResolver) keptStemTarget(old wikilinkKey, dst string) (stemTarget, 
 	if r.batch.stemHolders(old) < 2 {
 		return stemTarget{}, false
 	}
-	return stemTarget{dst: dst, key: old.key, isStem: old.isStem}, true
+	return stemTarget{dst: dst, wikilinkKey: old}, true
 }
 
 // siblingTarget returns the target a link naming the sibling sib by

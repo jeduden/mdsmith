@@ -586,7 +586,7 @@ func TestDestResolver_KeptStemTarget(t *testing.T) {
 		return &destResolver{batch: &moveBatch{members: members}}
 	}
 	self := batchMember{dst: "z/guide.md", planned: true}
-	want := stemTarget{dst: "z/guide.md", key: "guide", isStem: true}
+	want := stemTarget{dst: "z/guide.md", wikilinkKey: stemKey("guide")}
 
 	_, ok := soloResolver(nil, "x/guide.md", "z/guide.md").keptStemTarget(stemKey("guide"), "z/guide.md")
 	assert.False(t, ok, "a lone move")
@@ -622,7 +622,7 @@ func TestMoveAll_TargetLeavesWorkspace(t *testing.T) {
 func TestNewStemTarget(t *testing.T) {
 	got, ok := newStemTarget(stemKey("guide"), "docs/Manual.md")
 	require.True(t, ok)
-	assert.Equal(t, stemTarget{dst: "docs/Manual.md", spelling: "Manual", key: "manual", isStem: true}, got)
+	assert.Equal(t, stemTarget{dst: "docs/Manual.md", spelling: "Manual", wikilinkKey: stemKey("manual")}, got)
 	got, ok = newStemTarget(stemKey("guide"), "img/Logo.png")
 	require.True(t, ok)
 	assert.Equal(t, "logo.png", got.key)
@@ -637,10 +637,10 @@ func TestNewStemTarget(t *testing.T) {
 
 func TestStemTarget_Reaches(t *testing.T) {
 	post := holderIndex("a/manual.md", "a/logo.png")
-	assert.True(t, stemTarget{dst: "manual.md", key: "manual", isStem: true}.reaches(post))
-	assert.False(t, stemTarget{dst: "z/manual.md", key: "manual", isStem: true}.reaches(post))
-	assert.True(t, stemTarget{dst: "logo.png", key: "logo.png"}.reaches(post))
-	assert.False(t, stemTarget{dst: "z/logo.png", key: "logo.png"}.reaches(post))
+	assert.True(t, stemTarget{dst: "manual.md", wikilinkKey: stemKey("manual")}.reaches(post))
+	assert.False(t, stemTarget{dst: "z/manual.md", wikilinkKey: stemKey("manual")}.reaches(post))
+	assert.True(t, stemTarget{dst: "logo.png", wikilinkKey: nameKey("logo.png")}.reaches(post))
+	assert.False(t, stemTarget{dst: "z/logo.png", wikilinkKey: nameKey("logo.png")}.reaches(post))
 }
 
 func TestDestResolver_SiblingTarget(t *testing.T) {
@@ -942,15 +942,15 @@ func TestDestResolver_EdgeReader(t *testing.T) {
 
 func TestStemTarget_Holders(t *testing.T) {
 	post := holderIndex("a/guide.md", "guide.md", "img/guide.png")
-	assert.Equal(t, []string{"guide.md", "a/guide.md"}, stemTarget{key: "guide", isStem: true}.holders(post))
-	assert.Equal(t, []string{"img/guide.png"}, stemTarget{key: "guide.png"}.holders(post))
+	assert.Equal(t, []string{"guide.md", "a/guide.md"}, stemTarget{wikilinkKey: stemKey("guide")}.holders(post))
+	assert.Equal(t, []string{"img/guide.png"}, stemTarget{wikilinkKey: nameKey("guide.png")}.holders(post))
 }
 
 func TestDestResolver_CountBlocked(t *testing.T) {
 	b := newMoveBatch()
 	b.dsts["c.md"], b.dsts["x/c.md"], b.dsts["b.md"] = true, true, true
 	r := &destResolver{batch: b}
-	t1 := stemTarget{dst: "x/c.md", key: "c", isStem: true}
+	t1 := stemTarget{dst: "x/c.md", wikilinkKey: stemKey("c")}
 	r.countBlocked(holderIndex("c.md", "x/c.md"), t1, stemKey("a"), "x/c.md")
 	assert.Equal(t, 1, b.withheld, "a member's destination wins the new key")
 	r.countBlocked(holderIndex("y/c.md", "x/c.md"), t1, stemKey("a"), "x/c.md")

@@ -150,18 +150,13 @@ func TestWikilinkKey_At(t *testing.T) {
 	assert.False(t, ok, "a stale edge whose link names another file")
 }
 
-func TestStemTarget_WikilinkKey(t *testing.T) {
-	assert.Equal(t, nameKey("a.png"), stemTarget{dst: "x/a.png", key: "a.png"}.wikilinkKey())
-	assert.Equal(t, stemKey("a"), stemTarget{dst: "x/a.md", key: "a", isStem: true}.wikilinkKey())
-}
-
 // TestTypedKeys_BatchHelpers locks the name-key cases of the helpers
 // the stem path already covers: a name key matches only a destination
 // of the same name, and members are counted by name.
 func TestTypedKeys_BatchHelpers(t *testing.T) {
 	got, ok := newStemTarget(nameKey("img.png"), "x/photo.png")
 	require.True(t, ok)
-	assert.Equal(t, stemTarget{dst: "x/photo.png", spelling: "photo.png", key: "photo.png"}, got)
+	assert.Equal(t, stemTarget{dst: "x/photo.png", spelling: "photo.png", wikilinkKey: nameKey("photo.png")}, got)
 	_, ok = newStemTarget(nameKey("img.png"), "x/IMG.png")
 	assert.False(t, ok, "the name is kept")
 	_, ok = newStemTarget(stemKey("img.png"), "x/img.png")
@@ -177,7 +172,7 @@ func TestTypedKeys_BatchHelpers(t *testing.T) {
 	r := &destResolver{batch: b}
 	kept, ok := r.keptStemTarget(nameKey("img.png"), "x/img.png")
 	require.True(t, ok)
-	assert.Equal(t, stemTarget{dst: "x/img.png", key: "img.png"}, kept)
+	assert.Equal(t, stemTarget{dst: "x/img.png", wikilinkKey: nameKey("img.png")}, kept)
 	_, ok = r.keptStemTarget(nameKey("img.png"), "x/img.md")
 	assert.False(t, ok)
 }

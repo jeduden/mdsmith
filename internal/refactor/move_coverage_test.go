@@ -88,7 +88,7 @@ func srcWinsStem(idx *linkgraph.WikilinkIndex, src, oldStem string) bool {
 // pass, for a link keyed by key to dst once a lone move of src to dst
 // has run.
 func dstReaches(idx *linkgraph.WikilinkIndex, src, dst, key string, isStem bool) bool {
-	t := stemTarget{dst: dst, key: key, isStem: isStem}
+	t := stemTarget{dst: dst, wikilinkKey: wikilinkKey{key: key, isStem: isStem}}
 	return t.reaches(soloResolver(nil, src, dst).postIndex(idx))
 }
 
