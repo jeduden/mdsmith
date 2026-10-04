@@ -425,6 +425,6 @@ func TestCloseLineRange_SegmentPastSource(t *testing.T) {
 	fcb := ast.NewFencedCodeBlock(nil)
 	fcb.Lines().Append(text.NewSegment(5, 40))
 	s, e := CloseLineRange([]byte("```\n"), fcb, 3)
-	assert.Equal(t, 40, s)
-	assert.Equal(t, 40, e)
+	assert.Equal(t, 4, s)
+	assert.Equal(t, 4, e)
 }

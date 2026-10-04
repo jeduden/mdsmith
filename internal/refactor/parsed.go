@@ -28,6 +28,9 @@ type parsedSource struct {
 	ast      ast.Node
 	defs     []validRefDefMatch
 	defsDone bool
+
+	lineIdx     bodyLineIndex
+	lineIdxDone bool
 }
 
 // parseSource wraps source for shared, lazy parsing; it parses
@@ -51,9 +54,19 @@ func (p *parsedSource) root() ast.Node {
 func (p *parsedSource) refDefs() []validRefDefMatch {
 	if !p.defsDone {
 		if bytes.Contains(p.body, []byte("]:")) {
-			p.defs = refDefMatchesIn(p.body, p.root())
+			p.defs = refDefMatchesIn(p.body, p.root(), p.index())
 		}
 		p.defsDone = true
 	}
 	return p.defs
+}
+
+// index returns the body's line-start index, building it on the first
+// call so every scan of one file shares it.
+func (p *parsedSource) index() bodyLineIndex {
+	if !p.lineIdxDone {
+		p.lineIdx = newBodyLineIndex(p.body)
+		p.lineIdxDone = true
+	}
+	return p.lineIdx
 }

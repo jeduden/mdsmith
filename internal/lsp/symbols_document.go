@@ -44,7 +44,12 @@ func buildOutline(source []byte) []documentSymbol {
 		return nil
 	}
 
-	lines := splitLines(source)
+	// Split only when there is a symbol to range; a prose-only buffer
+	// needs no line table.
+	var lines [][]byte
+	if len(fe.Symbols) > 0 {
+		lines = splitLines(source)
+	}
 	var fmKids []documentSymbol
 	var dirRoot []documentSymbol
 	var headings []index.Symbol

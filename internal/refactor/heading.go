@@ -179,7 +179,7 @@ func renderedHeadingText(source []byte, line int, newName string) string {
 	edited, _ := ApplyEdits(source, []Edit{e})
 	body, fmOffset := bodyAndFMOffset(edited)
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	for _, h := range walkAllHeadings(root, body) {
+	for _, h := range walkAllHeadings(root, body, newBodyLineIndex(body)) {
 		if h.bodyLine == line-fmOffset {
 			return h.text
 		}
@@ -194,7 +194,7 @@ func renderedHeadingText(source []byte, line int, newName string) string {
 // ps parses the same way the engine does so the line it finds is the
 // line Heading rewrites.
 func findHeadingLineIn(ps *parsedSource, headingText string) (int, bool) {
-	for _, h := range walkAllHeadings(ps.root(), ps.body) {
+	for _, h := range walkAllHeadings(ps.root(), ps.body, ps.index()) {
 		if h.text == headingText {
 			return h.bodyLine + ps.fmOffset, true
 		}
@@ -230,7 +230,7 @@ func firstControlRune(s string) rune {
 func computeSlugRemap(source []byte, line int, newText string) ([]string, []string, string) {
 	body, fmOffset := bodyAndFMOffset(source)
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	headings := walkAllHeadings(root, body)
+	headings := walkAllHeadings(root, body, newBodyLineIndex(body))
 	bodyLine := line - fmOffset
 	target := -1
 	for i, h := range headings {
@@ -279,9 +279,8 @@ type headingWalk struct {
 
 // walkAllHeadings returns every heading in document order, including
 // ones whose slugified text is empty.
-func walkAllHeadings(root ast.Node, body []byte) []headingWalk {
+func walkAllHeadings(root ast.Node, body []byte, idx bodyLineIndex) []headingWalk {
 	var out []headingWalk
-	idx := newBodyLineIndex(body)
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil

@@ -110,16 +110,14 @@ var piOpenMarker = []byte("<?")
 
 var piCloseMarker = []byte("?>")
 
-// quoteRun returns the number of consecutive lines from lines[from] that a
-// block quote there can take: non-blank marker-led or lazy-continuation
-// lines. It ignores open-fence state, so it is an upper bound.
-func quoteRun(lines [][]byte, from int) int {
+// markerRun returns the number of consecutive marker-led (`>`) lines from
+// lines[from]. A block quote takes every one of them, so it sizes the
+// quote's buffers; lazy-continuation lines after the run grow by append.
+// Counting stops at the first non-marker line, so one pass over a document
+// of alternating quotes and other blocks stays linear.
+func markerRun(lines [][]byte, from int) int {
 	n := 0
-	for from+n < len(lines) {
-		l := lines[from+n]
-		if isBlankLine(l) || (paragraphLeadKind(l) != BlockQuote && !isLazyContinuation(l)) {
-			break
-		}
+	for from+n < len(lines) && paragraphLeadKind(lines[from+n]) == BlockQuote {
 		n++
 	}
 	return n
@@ -317,12 +315,10 @@ func (s *scanner) tryBlockquote() bool {
 	// (a fence or a >=4-column indent); the overwhelmingly common
 	// prose-only block quote sets it false and skips the recursive scan and
 	// its allocations entirely.
-	// Size the buffers by the run of quote-continuing lines at the cursor —
-	// an upper bound on the quote, since the loop below stops at the first
-	// line outside it — plus the phantom slot an open fence appends. Sizing
-	// by the lines left in the document would reserve the whole remainder
-	// for a few lines.
-	hint := quoteRun(s.lines, s.i) + 1
+	// Size the buffers by the marker-led run at the cursor, plus the
+	// phantom slot an open fence appends. Sizing by the lines left in the
+	// document would reserve the whole remainder for a few lines.
+	hint := markerRun(s.lines, s.i) + 1
 	body := make([][]byte, 0, hint)
 	parentLine := make([]int, 0, hint)
 	codeCapable := false

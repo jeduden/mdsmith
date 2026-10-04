@@ -1,6 +1,7 @@
 package refactor
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -110,14 +111,6 @@ func TestLabelBoundsInBody(t *testing.T) {
 	})
 }
 
-func TestLineOfBodyOffset(t *testing.T) {
-	body := []byte("a\nbb\nc")
-	assert.Equal(t, 1, lineOfBodyOffset(body, -5), "negative clamps to line 1")
-	assert.Equal(t, 1, lineOfBodyOffset(body, 0))
-	assert.Equal(t, 2, lineOfBodyOffset(body, 2))
-	assert.Equal(t, 3, lineOfBodyOffset(body, 99), "past end clamps to last line")
-}
-
 func TestBodyLineIndex(t *testing.T) {
 	idx := newBodyLineIndex([]byte("a\nbb\nccc"))
 	assert.Equal(t, 1, idx.lineOfOffset(-1), "negative clamps to line 1")
@@ -203,17 +196,21 @@ func TestLinkRef_EmptyTextReferenceUseRewritten(t *testing.T) {
 	assert.Len(t, edits, 3)
 }
 
-// TestBodyLineIndexAgreesWithLineOfBodyOffset pins the index the
-// rename scans share to the linear helper it replaces, at every offset
-// including out-of-range ones.
-func TestBodyLineIndexAgreesWithLineOfBodyOffset(t *testing.T) {
+// TestBodyLineIndexAgreesWithNewlineCount pins the index the rename
+// scans share to a newline count, at every offset including
+// out-of-range ones.
+func TestBodyLineIndexAgreesWithNewlineCount(t *testing.T) {
 	for _, body := range [][]byte{
 		nil, []byte("a"), []byte("a\n"), []byte("\n\n"),
 		[]byte("one\ntwo\n\nfour"), []byte("trailing\n"),
 	} {
 		idx := newBodyLineIndex(body)
 		for off := -2; off <= len(body)+2; off++ {
-			assert.Equal(t, lineOfBodyOffset(body, off), idx.lineOfOffset(off),
+			want := 1
+			if off > 0 {
+				want += bytes.Count(body[:min(off, len(body))], []byte{'\n'})
+			}
+			assert.Equal(t, want, idx.lineOfOffset(off),
 				"body %q offset %d", body, off)
 		}
 	}

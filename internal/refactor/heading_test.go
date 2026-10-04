@@ -465,7 +465,7 @@ func TestComputeSlugRemap(t *testing.T) {
 func TestWalkAllHeadings(t *testing.T) {
 	body := []byte("# A\n\nprose\n\n## B\n")
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	hs := walkAllHeadings(root, body)
+	hs := walkAllHeadings(root, body, newBodyLineIndex(body))
 	require.Len(t, hs, 2)
 	assert.Equal(t, "A", hs[0].text)
 	assert.Equal(t, "B", hs[1].text)

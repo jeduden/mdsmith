@@ -130,9 +130,12 @@ func ResolveFilesWithOpts(args []string, opts ResolveOpts) ([]string, error) {
 	seen := make(map[string]struct{})
 	var result []string
 
+	// Resolve the working directory once: filepath.Abs on a relative path
+	// calls os.Getwd per resolved file.
+	cwd, _ := getwdFn()
 	addFile := func(path string) {
-		abs, err := filepath.Abs(path)
-		if err != nil {
+		abs := absWithCwd(path, cwd)
+		if abs == "" {
 			abs = path
 		}
 		if _, ok := seen[abs]; !ok {
@@ -397,15 +400,15 @@ func absWithCwd(path, cwd string) string {
 	if filepath.IsAbs(path) {
 		return filepath.Clean(path)
 	}
-	if cwd != "" {
-		return filepath.Clean(filepath.Join(cwd, path))
-	}
 	if volumeNameFn(path) != "" {
 		abs, err := absPathFn(path)
 		if err != nil {
 			return ""
 		}
 		return filepath.Clean(abs)
+	}
+	if cwd != "" {
+		return filepath.Clean(filepath.Join(cwd, path))
 	}
 	wd, err := getwdFn()
 	if err != nil {

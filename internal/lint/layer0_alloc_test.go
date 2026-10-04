@@ -35,17 +35,36 @@ func TestLayer0BlockquoteAllocScalesWithQuote(t *testing.T) {
 		"block quote scan allocated by remaining document length")
 }
 
-func TestQuoteRun(t *testing.T) {
+func TestMarkerRun(t *testing.T) {
 	lines := [][]byte{
-		[]byte("> a"), []byte("lazy"), []byte("> b"), []byte("# H"),
-		[]byte("> c"), []byte(""), []byte("> d"),
+		[]byte("> a"), []byte("> b"), []byte("lazy"), []byte("> c"),
+		[]byte("> d"), []byte(""),
 	}
-	assert.Equal(t, 3, quoteRun(lines, 0), "quote and lazy lines stop at a heading")
-	assert.Equal(t, 0, quoteRun(lines, 3))
-	assert.Equal(t, 1, quoteRun(lines, 4), "stops at a blank line")
-	assert.Equal(t, 0, quoteRun(lines, 5))
-	assert.Equal(t, 1, quoteRun(lines, 6))
-	assert.Equal(t, 0, quoteRun(lines, 7))
+	assert.Equal(t, 2, markerRun(lines, 0), "stops at a lazy line")
+	assert.Equal(t, 0, markerRun(lines, 2))
+	assert.Equal(t, 2, markerRun(lines, 3))
+	assert.Equal(t, 0, markerRun(lines, 5))
+	assert.Equal(t, 0, markerRun(lines, 6))
+}
+
+// TestLayer0FenceOpeningQuotesAllocScaleWithQuote covers an open fence
+// that stops each quote after one line while plain lines follow: the
+// buffers must follow the quote, and the scan must stay linear.
+func TestLayer0FenceOpeningQuotesAllocScaleWithQuote(t *testing.T) {
+	var src bytes.Buffer
+	for i := 0; i < 8000; i++ {
+		src.WriteString("> ```\nx\n")
+	}
+	lines := bytes.Split(src.Bytes(), []byte{'\n'})
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	scan := scanLayer0(lines)
+	runtime.ReadMemStats(&after)
+
+	assert.NotNil(t, scan)
+	assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(32<<20))
 }
 
 // TestLayer0AlternatingQuotesAndHeadingsAllocScalesWithQuote covers a

@@ -110,7 +110,7 @@ func CloseLineRange(src []byte, fcb *ast.FencedCodeBlock, openEnd int) (int, int
 		}
 	}
 	if closingStart > len(src) {
-		return closingStart, closingStart
+		closingStart = len(src)
 	}
 	return closingStart, closingStart + lineLen(src[closingStart:])
 }

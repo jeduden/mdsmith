@@ -38,3 +38,42 @@ func TestIsGitignoredRelativePathUsesGivenCwd(t *testing.T) {
 	assert.True(t, isGitignored(m, root, "skip.md", false))
 	assert.False(t, isGitignored(m, root, "keep.md", false))
 }
+
+// TestWalkDirRelativeRootWithoutWorkingDirectory covers a relative root
+// whose working directory cannot be resolved: entries cannot be matched
+// against .gitignore, so they are listed rather than dropped.
+func TestWalkDirRelativeRootWithoutWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a.md"), []byte("# A\n"), 0o644))
+	t.Chdir(root)
+
+	orig := getwdFn
+	getwdFn = func() (string, error) { return "", errors.New("no cwd") }
+	t.Cleanup(func() { getwdFn = orig })
+
+	files, err := walkDir(".", true, false)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a.md"}, files)
+}
+
+// TestResolveFilesResolvesWorkingDirectoryOnce bounds the working-directory
+// lookups for a relative root to a small constant per resolve call, not
+// one per file.
+func TestResolveFilesResolvesWorkingDirectoryOnce(t *testing.T) {
+	root := t.TempDir()
+	for i := 0; i < 20; i++ {
+		name := filepath.Join(root, "f"+string(rune('a'+i))+".md")
+		require.NoError(t, os.WriteFile(name, []byte("# T\n"), 0o644))
+	}
+	t.Chdir(root)
+
+	calls := 0
+	orig := getwdFn
+	getwdFn = func() (string, error) { calls++; return orig() }
+	t.Cleanup(func() { getwdFn = orig })
+
+	files, err := ResolveFilesWithOpts([]string{"."}, DefaultResolveOpts())
+	require.NoError(t, err)
+	assert.Len(t, files, 20)
+	assert.LessOrEqual(t, calls, 4, "working directory looked up per file")
+}
