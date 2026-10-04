@@ -183,7 +183,9 @@ func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 // wikilink index, isMovePath for a move). overlayURI, when set,
 // substitutes overlaySource for that file's bytes so a rename computes
 // against the caller's current buffer rather than the last-saved file.
-func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte, keep func(string) bool) *sessionRefactorWorkspace {
+func (s *Session) buildRefactorWorkspace(
+	overlayURI string, overlaySource []byte, keep func(string) bool,
+) *sessionRefactorWorkspace {
 	paths := sync.OnceValue(func() []string { return walkWorkspacePaths(s.ws.FS(), ownsFS(s.ws), keep) })
 	return &sessionRefactorWorkspace{
 		IndexEdges: refactor.NewLazyIndexEdges(func() *index.Index {
