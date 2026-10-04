@@ -494,7 +494,8 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *runcache.Cache, 
 		*bufp = (*bufp)[:0]
 		sourceBufPool.Put(bufp)
 	}()
-	r.configureFile(f, path, cache)
+	closeRoots := r.configureFile(f, path, cache)
+	defer closeRoots()
 
 	// Generated-section ranges come from a PI walk over the AST. A
 	// parse-skipped File (AST nil) is, by gate construction, free of
@@ -586,25 +587,38 @@ func logFile(l *vlog.Logger, path string) {
 // configureFile wires the per-run filesystem references, gitignore, and
 // read-cache onto f. Extracted from lintFile to keep that function under the
 // statement-count threshold enforced by the funlen linter.
-func (r *Runner) configureFile(f *lint.File, path string, cache *runcache.Cache) {
+//
+// It returns a func that closes the roots it opened (f.FS and, for a
+// file below RootDir, f.RootFS). lintFile owns them: the File is never
+// published past the call, so it closes them once the check ends.
+func (r *Runner) configureFile(f *lint.File, path string, cache *runcache.Cache) (closeRoots func()) {
 	f.MaxInputBytes = r.MaxInputBytes
 	f.RunCache = cache
 	dir := filepath.Dir(path)
-	f.FS = lint.OpenRootFS(dir)
+	dirFS := lint.OpenRootFS(dir)
+	f.FS = dirFS
+	var rootFS lint.RootFS
 	gitignoreDir := dir
 	if r.RootDir != "" {
+		f.RootDir = r.RootDir
 		if dir == r.RootDir {
 			// Reuse the already-opened FS; avoid a second os.OpenRoot for the same dir.
-			f.RootDir = r.RootDir
 			f.RootFS = f.FS
 		} else {
-			f.SetRootDir(r.RootDir)
+			rootFS = lint.OpenRootFS(r.RootDir)
+			f.RootFS = rootFS
 		}
 		gitignoreDir = r.RootDir
 	}
 	gd := gitignoreDir // capture for closure
 	f.GitignoreFunc = func() *gitignore.Matcher {
 		return r.cachedGitignore(gd)
+	}
+	return func() {
+		_ = dirFS.Close()
+		if rootFS != nil {
+			_ = rootFS.Close()
+		}
 	}
 }
 
