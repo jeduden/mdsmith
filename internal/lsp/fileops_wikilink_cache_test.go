@@ -385,3 +385,38 @@ func TestRegisterWatchersWriteFailureLeavesNoPendingReply(t *testing.T) {
 	assert.Zero(t, n)
 	assert.False(t, s.watchingFiles.Load())
 }
+
+// pendingReplies returns how many server requests still wait on a reply.
+func pendingReplies(s *Server) int {
+	s.pendingRespMu.Lock()
+	defer s.pendingRespMu.Unlock()
+	return len(s.pendingResp)
+}
+
+// TestRegisterWatchersUnansweredTimesOut locks that a client which
+// never answers the registration leaves the server not watching, and
+// the waiter gives up after fetchTimeout and drops its pending slot.
+func TestRegisterWatchersUnansweredTimesOut(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Writer: io.Discard})
+	s.fetchTimeout = time.Millisecond
+	s.registerWatchers(context.Background())
+	require.Eventually(t, func() bool { return pendingReplies(s) == 0 },
+		testPollDeadline, time.Millisecond)
+	assert.False(t, s.watchingFiles.Load())
+}
+
+// TestRegisterWatchersStopsOnContextDone locks that the waiter exits
+// and drops its pending slot when the server's context ends before the
+// client answers, without marking the server as watching.
+func TestRegisterWatchersStopsOnContextDone(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Writer: io.Discard})
+	s.fetchTimeout = time.Hour
+	ctx, cancel := context.WithCancel(context.Background())
+	s.registerWatchers(ctx)
+	cancel()
+	require.Eventually(t, func() bool { return pendingReplies(s) == 0 },
+		testPollDeadline, time.Millisecond)
+	assert.False(t, s.watchingFiles.Load())
+}
