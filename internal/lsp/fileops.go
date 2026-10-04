@@ -41,8 +41,10 @@ func markdownFileOperationCapabilities() *workspaceServerCapabilities {
 // target's new path, once. A file whose move cannot be planned (a
 // destination that already exists, a traversal path) contributes no
 // edit rather than failing the whole request: the editor still
-// performs the rename, and any stranded link surfaces as an MDS027
-// diagnostic. A rename pair listed twice is planned once.
+// performs the rename. A link it leaves that may reach a different
+// file is counted in the warning below, and one that stops resolving
+// surfaces as an MDS027 diagnostic. A rename pair listed twice is
+// planned once.
 //
 // dropConflictingTextEdits stays as a guard: the batch plans one edit
 // per range, so it drops nothing, but an overlap would make the client

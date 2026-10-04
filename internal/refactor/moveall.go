@@ -200,7 +200,8 @@ func validateBatch(ws MoveWorkspace, pairs []MovePair) ([]BatchMove, *moveBatch)
 		default:
 			b.members[m.Src] = batchMember{dst: m.Dst, planned: true}
 		}
-		if m.Err != nil && exists {
+		if exists {
+			// Every pair whose destination exists is refused above.
 			b.overwritten[m.Dst] = true
 		}
 	}
