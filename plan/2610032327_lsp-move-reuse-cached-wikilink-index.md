@@ -127,7 +127,13 @@ its 300-line file-length limit, so filing it needs a maintainer
 decision on the limit first.
 
 - [runner.go](../internal/engine/runner.go): one root per linted
-  file (`f.FS` and `SetRootDir`).
+  file (`f.FS` and `SetRootDir`). The runner always sets
+  `f.RootFS`, so MDS027's close of its own root (taken only when
+  `RootFS` is nil) never runs in production; its wikilink walk
+  reads this unclosed root. `populateFileFields` publishes the
+  `*lint.File` to the parse cache, so the runner cannot close the
+  root when the file is released. The parse cache, or `lint.File`
+  itself, must own the root and close it.
 - [fix.go](../internal/fix/fix.go): one root per fixed file.
 - [export.go](../cmd/mdsmith/export.go) and
   [extract.go](../cmd/mdsmith/extract.go): one root per file.
