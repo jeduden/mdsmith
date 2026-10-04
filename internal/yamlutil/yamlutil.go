@@ -18,7 +18,9 @@
 //
 // One escape hatch is allowed: call [RejectYAMLAliases] directly, followed by
 // a raw decode, when parse errors must defer to a later [UnmarshalSafe] on the
-// same bytes (the config convention pre-check). A caller that words the alias rejection differently from other
+// same bytes. A caller that parses once with [UnmarshalNodeSafe] and decodes
+// the node with [DecodeNodeSafe] (the config loader) needs no escape hatch.
+// A caller that words the alias rejection differently from other
 // parse errors tests the wrapper's error with errors.Is against [ErrAliases].
 // Every such site keeps the pre-check directly above its decode.
 //
