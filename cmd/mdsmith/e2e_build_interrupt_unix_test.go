@@ -19,6 +19,51 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// startBuildWithChild starts `mdsmith fix --build-only` in a fresh build
+// repo whose one recipe runs prelude, then spawns a long-lived child
+// that records its pid, then sleeps. It returns the running CLI, its
+// stderr, and the child's pid once recorded. On a failed test it reaps
+// the CLI and the child, since a failure may mean the kill regressed,
+// so neither leaves a sleep 120 behind.
+func startBuildWithChild(t *testing.T, prelude string) (*exec.Cmd, *bytes.Buffer, int) {
+	t.Helper()
+	dir := writeBuildRepo(t, "")
+	pidFile := filepath.Join(dir, "child.pid")
+	script := "#!/bin/sh\n" + prelude +
+		"sleep 120 & echo $! > \"" + pidFile + "\"\nsleep 120\ntouch \"$1\"\n"
+	scriptPath := filepath.Join(dir, "spawn.sh")
+	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
+	reconfigureRecipe(t, dir, "    spawn:\n      command: "+scriptPath+" {outputs}\n")
+	writeFixture(t, dir, "doc.md", buildDirective("spawn", "", "out.txt"))
+
+	cmd := exec.Command(binaryPath, "fix", "--no-color", "--build-only", "doc.md")
+	cmd.Dir = dir
+	cmd.Env = envWithCoverDir(coverDir)
+	stderr := &bytes.Buffer{}
+	cmd.Stderr = stderr
+	require.NoError(t, cmd.Start())
+
+	var childPID int
+	deadline := time.Now().Add(10 * time.Second)
+	for childPID == 0 && time.Now().Before(deadline) {
+		if b, err := os.ReadFile(pidFile); err == nil {
+			childPID, _ = strconv.Atoi(strings.TrimSpace(string(b)))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		_ = cmd.Process.Kill()
+		if childPID > 0 {
+			_ = syscall.Kill(childPID, syscall.SIGKILL)
+		}
+	})
+	require.NotZero(t, childPID, "child pid should have been recorded")
+	return cmd, stderr, childPID
+}
+
 // TestE2E_Build_SignalKillsRecipeTree starts `mdsmith fix` on a recipe
 // that spawns a long-lived child, sends the CLI the signal once the
 // child is running, and asserts the CLI exits non-zero, reports an
@@ -26,41 +71,7 @@ import (
 func TestE2E_Build_SignalKillsRecipeTree(t *testing.T) {
 	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM} {
 		t.Run(sig.String(), func(t *testing.T) {
-			dir := writeBuildRepo(t, "")
-			pidFile := filepath.Join(dir, "child.pid")
-			script := "#!/bin/sh\nsleep 120 & echo $! > \"" + pidFile + "\"\nsleep 120\ntouch \"$1\"\n"
-			scriptPath := filepath.Join(dir, "spawn.sh")
-			require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
-			reconfigureRecipe(t, dir, "    spawn:\n      command: "+scriptPath+" {outputs}\n")
-			writeFixture(t, dir, "doc.md", buildDirective("spawn", "", "out.txt"))
-
-			cmd := exec.Command(binaryPath, "fix", "--no-color", "--build-only", "doc.md")
-			cmd.Dir = dir
-			cmd.Env = envWithCoverDir(coverDir)
-			var stderr bytes.Buffer
-			cmd.Stderr = &stderr
-			require.NoError(t, cmd.Start())
-
-			var childPID int
-			deadline := time.Now().Add(10 * time.Second)
-			for childPID == 0 && time.Now().Before(deadline) {
-				if b, err := os.ReadFile(pidFile); err == nil {
-					childPID, _ = strconv.Atoi(strings.TrimSpace(string(b)))
-				}
-				time.Sleep(20 * time.Millisecond)
-			}
-			// A failed test may mean the kill regressed: reap the CLI and
-			// the child then, so they do not leave a sleep 120 behind.
-			t.Cleanup(func() {
-				if !t.Failed() {
-					return
-				}
-				_ = cmd.Process.Kill()
-				if childPID > 0 {
-					_ = syscall.Kill(childPID, syscall.SIGKILL)
-				}
-			})
-			require.NotZero(t, childPID, "child pid should have been recorded")
+			cmd, stderr, childPID := startBuildWithChild(t, "")
 			require.NoError(t, cmd.Process.Signal(sig))
 
 			err := cmd.Wait()
@@ -110,39 +121,8 @@ func TestE2E_Fix_NoBuildKeepsDefaultSignalAction(t *testing.T) {
 // mdsmith for the 5 s grace period, but the second SIGINT sends SIGKILL
 // at once. The tree still dies, so nothing is orphaned.
 func TestE2E_Build_SecondSignalSkipsGrace(t *testing.T) {
-	dir := writeBuildRepo(t, "")
-	pidFile := filepath.Join(dir, "child.pid")
-	script := "#!/bin/sh\ntrap '' TERM\nsleep 120 & echo $! > \"" + pidFile + "\"\nsleep 120\ntouch \"$1\"\n"
-	scriptPath := filepath.Join(dir, "stubborn.sh")
-	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
-	reconfigureRecipe(t, dir, "    stubborn:\n      command: "+scriptPath+" {outputs}\n")
-	writeFixture(t, dir, "doc.md", buildDirective("stubborn", "", "out.txt"))
-
-	cmd := exec.Command(binaryPath, "fix", "--no-color", "--build-only", "doc.md")
-	cmd.Dir = dir
-	cmd.Env = envWithCoverDir(coverDir)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	require.NoError(t, cmd.Start())
-
-	var childPID int
-	deadline := time.Now().Add(10 * time.Second)
-	for childPID == 0 && time.Now().Before(deadline) {
-		if b, err := os.ReadFile(pidFile); err == nil {
-			childPID, _ = strconv.Atoi(strings.TrimSpace(string(b)))
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Cleanup(func() {
-		if !t.Failed() {
-			return
-		}
-		_ = cmd.Process.Kill()
-		if childPID > 0 {
-			_ = syscall.Kill(childPID, syscall.SIGKILL)
-		}
-	})
-	require.NotZero(t, childPID, "child pid should have been recorded")
+	// trap '' TERM makes the recipe tree ignore SIGTERM; only SIGKILL ends it.
+	cmd, stderr, childPID := startBuildWithChild(t, "trap '' TERM\n")
 
 	start := time.Now()
 	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))

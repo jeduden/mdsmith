@@ -46,6 +46,9 @@ func killGroupUntil(cmd *exec.Cmd, force <-chan struct{}) {
 	_ = signalGroup(pgid, syscall.SIGTERM)
 
 	// Wait for the group to drain, polling with signal 0 (existence probe).
+	// One ticker serves every poll instead of a new timer per iteration.
+	poll := time.NewTicker(50 * time.Millisecond)
+	defer poll.Stop()
 	deadline := time.Now().Add(gracePeriod)
 	for time.Now().Before(deadline) {
 		if signalGroup(pgid, 0) != nil {
@@ -54,7 +57,7 @@ func killGroupUntil(cmd *exec.Cmd, force <-chan struct{}) {
 		select {
 		case <-force:
 			deadline = time.Now() // escalated: skip the rest of the grace
-		case <-time.After(50 * time.Millisecond):
+		case <-poll.C:
 		}
 	}
 	_ = signalGroup(pgid, syscall.SIGKILL)
