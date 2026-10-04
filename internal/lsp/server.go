@@ -35,6 +35,12 @@ type Server struct {
 	configPath string
 	rootDir    string
 
+	// configDiagMu guards configDiagURI, the config file a positioned
+	// config-load diagnostic was last published on ("" when none), so
+	// a later clean reload can clear the squiggle.
+	configDiagMu  sync.Mutex
+	configDiagURI string
+
 	settingsMu sync.RWMutex
 	settings   userSettings
 

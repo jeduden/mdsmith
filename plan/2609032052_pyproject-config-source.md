@@ -183,7 +183,7 @@ Phase A — positioned config diagnostics (YAML first):
    `file:line:column` diagnostics (exit 2), replacing the
    plain `mdsmith: %v` string; update the affected error
    tests.
-4. [ ] Red/green: have the LSP publish config diagnostics
+4. [x] Red/green: have the LSP publish config diagnostics
    on the config-file document so an editor shows
    squiggles, keeping the `logMessage` summary when the
    file is not open. A malformed `.mdsmith.yml` now points
@@ -259,14 +259,14 @@ Phase C — guardrails and docs:
       and in `.mdsmith.yml` produce identical effective
       config across rules, overrides, kinds, and
       conventions.
-- [ ] A bad value in `.mdsmith.yml` produces a diagnostic
+- [x] A bad value in `.mdsmith.yml` produces a diagnostic
       at the offending line and column.
 - [ ] A bad value in a `pyproject.toml` `[tool.mdsmith]`
       table produces a diagnostic at the offending line
       and column in the `pyproject.toml`.
 - [ ] A syntax error in either file points at the failing
       line.
-- [ ] The CLI prints config errors as
+- [x] The CLI prints config errors as
       `file:line:column` diagnostics; the LSP shows them as
       squiggles on the config file when it is open.
 - [ ] A `.mdsmith.yml` takes precedence over a

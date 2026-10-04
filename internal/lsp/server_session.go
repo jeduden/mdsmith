@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/lint"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
 )
 
@@ -125,7 +126,7 @@ func (s *Server) reloadConfig() {
 	override := s.settings.ConfigPath
 	s.settingsMu.RUnlock()
 
-	cfg, cfgPath, loadErr := s.resolveConfig(override)
+	cfg, cfgPath, loadErr, cfgDiag := s.resolveConfig(override)
 
 	s.configMu.Lock()
 	pathChanged := s.configPath != cfgPath
@@ -152,6 +153,10 @@ func (s *Server) reloadConfig() {
 		}
 	}
 
+	// A positioned load failure squiggles the config file; a clean
+	// load clears a squiggle a previous reload left there.
+	s.publishConfigDiagnostic(cfgDiag)
+
 	if loadErr != "" {
 		s.logger.Printf("config: %s", loadErr)
 		_ = s.t.writeNotification("window/logMessage",
@@ -164,8 +169,11 @@ func (s *Server) reloadConfig() {
 // the client. The returned cfg is always non-nil (defaults on
 // failure); cfgPath is empty when no config was successfully
 // loaded; loadErr is a human-readable message when load or
-// discover surfaced an error worth logging.
-func (s *Server) resolveConfig(override string) (cfg *config.Config, cfgPath, loadErr string) {
+// discover surfaced an error worth logging; cfgDiag is the load
+// failure as a diagnostic on the config file when it has a position.
+func (s *Server) resolveConfig(override string) (
+	cfg *config.Config, cfgPath, loadErr string, cfgDiag *lint.Diagnostic,
+) {
 	defaults := config.Defaults()
 	fallback := config.Merge(defaults, nil)
 
@@ -179,29 +187,29 @@ func (s *Server) resolveConfig(override string) (cfg *config.Config, cfgPath, lo
 		}
 		loaded, err := config.Load(path)
 		if err != nil {
-			return fallback, "", fmt.Sprintf("loading %q: %v", path, err)
+			return fallback, "", fmt.Sprintf("loading %q: %v", path, err), configLoadDiagnostic(err)
 		}
-		return config.Merge(defaults, loaded), path, ""
+		return config.Merge(defaults, loaded), path, "", nil
 	}
 
 	s.configMu.RLock()
 	root := s.rootDir
 	s.configMu.RUnlock()
 	if root == "" {
-		return fallback, "", ""
+		return fallback, "", "", nil
 	}
 	discovered, err := s.discoverConfig(root)
 	if err != nil {
-		return fallback, "", fmt.Sprintf("discovering config under %q: %v", root, err)
+		return fallback, "", fmt.Sprintf("discovering config under %q: %v", root, err), nil
 	}
 	if discovered == "" {
-		return fallback, "", ""
+		return fallback, "", "", nil
 	}
 	loaded, err := config.Load(discovered)
 	if err != nil {
-		return fallback, "", fmt.Sprintf("loading %q: %v", discovered, err)
+		return fallback, "", fmt.Sprintf("loading %q: %v", discovered, err), configLoadDiagnostic(err)
 	}
-	return config.Merge(defaults, loaded), discovered, ""
+	return config.Merge(defaults, loaded), discovered, "", nil
 }
 
 // fetchClientSettings asks the client for its `mdsmith` configuration
