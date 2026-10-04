@@ -122,6 +122,7 @@ func (s *Server) handleInitialized(ctx context.Context) {
 // when the watcher is absent, the index still updates from open
 // buffer events.
 func (s *Server) registerWatchers() {
+	s.watchingFiles.Store(true)
 	id := s.nextReqID.Add(1)
 	// json.Marshal(int64) cannot fail; ignoring the error is safe.
 	idJSON, _ := json.Marshal(id)

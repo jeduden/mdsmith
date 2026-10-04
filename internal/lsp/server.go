@@ -13,6 +13,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
@@ -127,6 +128,17 @@ type Server struct {
 	// in production; the seam lets a test drive rebuildSession's failure
 	// branch (and the nil-session guards downstream of it) red/green.
 	newSession func(mdsmith.SessionOptions) (*mdsmith.Session, error)
+	// watchingFiles is set once the server asks the client to watch
+	// files (registerWatchers) or receives a watched-file event: from
+	// then on a file create or delete reaches
+	// session.InvalidateWikilinks, so the session's cached wikilink
+	// index is fresh and a move reads it instead of walking the root.
+	watchingFiles atomic.Bool
+	// walkWikilinks walks root on disk for a fresh wikilink index, the
+	// move guard's fallback when the server does not watch files. It is
+	// a test seam — production uses linkgraph.WikilinkIndexAtDir — so a
+	// test can count the walks a move makes.
+	walkWikilinks func(root string) *linkgraph.WikilinkIndex
 	// afterLintCheck, when non-nil, runs in runLint immediately after the
 	// session Check returns and before the results are published. It is a
 	// test seam (nil in production) that lets a test deterministically
@@ -263,7 +275,8 @@ func New(opts Options) *Server {
 		onSupersededExit:  func() { osExit(0) },
 		// Production session constructor; tests override to exercise the
 		// rebuild-failure branch.
-		newSession: mdsmith.NewSession,
+		newSession:    mdsmith.NewSession,
+		walkWikilinks: linkgraph.WikilinkIndexAtDir,
 	}
 	if opts.EnableWorkspaceSingleton {
 		s.instanceID = newInstanceID()

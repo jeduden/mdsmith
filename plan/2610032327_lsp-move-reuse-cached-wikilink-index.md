@@ -72,11 +72,11 @@ for the edge index and once for `WikilinkIndex`.
 
 ## Tasks
 
-1. Write a failing LSP test: a move batch with a
+1. [x] Write a failing LSP test: a move batch with a
    `[[stem]]` edge, a warm cached index, and file-watch
    registration does not walk the root (count walks
    through a test hook).
-2. Route `renameWorkspace` to the session's cached index
+2. [x] Route `renameWorkspace` to the session's cached index
    under that condition; keep the fresh walk otherwise.
 3. Write a failing test: `lint.OpenRootFS` returns a
    handle that a caller can close, and a read after close
@@ -99,9 +99,9 @@ for the edge index and once for `WikilinkIndex`.
 
 ## Acceptance Criteria
 
-- [ ] An LSP move with a fresh cached index does not walk
+- [x] An LSP move with a fresh cached index does not walk
       the workspace root
-- [ ] An LSP move with no file-watch registration still
+- [x] An LSP move with no file-watch registration still
       walks fresh and counts a gitignored same-stem file
 - [ ] No `lint.OpenRootFS` caller leaves its `os.Root` open
       after its walk ends

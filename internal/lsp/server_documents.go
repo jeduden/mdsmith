@@ -131,6 +131,9 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return
 	}
+	// A watched-file event proves the client reports file changes, so
+	// a move may trust the session's wikilink index from now on.
+	s.watchingFiles.Store(true)
 	configChanged := false
 	mdChanges := make([]string, 0, len(p.Changes))
 	for _, c := range p.Changes {

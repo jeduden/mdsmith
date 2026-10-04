@@ -331,13 +331,14 @@ func (s *Server) handleRename(msg *requestMessage) {
 type lspRenameWorkspace struct {
 	refactor.IndexEdges
 	s *Server
-	// wikilinks supplies the wikilink index a move reads, walked once
-	// per workspace at the root its paths were spelled against.
+	// wikilinks supplies the wikilink index a move reads, read once
+	// per workspace for the root its paths were spelled against.
 	wikilinks func() *linkgraph.WikilinkIndex
 }
 
 // renameWorkspace returns the rename engine's Workspace over the warm
-// index, with a wikilink index walked lazily, at most once, at root.
+// index, with a wikilink index read lazily, at most once, for root (see
+// moveWikilinkIndex).
 // Every rename builds its workspace here, so none lacks the index a
 // move's same-stem guard reads. A caller passes the root it spelled its
 // paths against, so a config reload in between cannot key the index to
@@ -346,9 +347,23 @@ func (s *Server) renameWorkspace(root string) lspRenameWorkspace {
 	return lspRenameWorkspace{
 		s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex()),
 		wikilinks: sync.OnceValue(func() *linkgraph.WikilinkIndex {
-			return linkgraph.WikilinkIndexAtDir(root)
+			return s.moveWikilinkIndex(root)
 		}),
 	}
+}
+
+// moveWikilinkIndex returns the wikilink index a move at root reads.
+// Once the server watches files, every create and delete drops the
+// session's cached index, so that index is fresh and is read without
+// a walk (the session walks only when nothing is cached yet).
+// Otherwise the cache may be stale, so root is walked fresh.
+func (s *Server) moveWikilinkIndex(root string) *linkgraph.WikilinkIndex {
+	if s.watchingFiles.Load() {
+		if sess, _ := s.currentSession(); sess != nil {
+			return sess.WikilinkIndex()
+		}
+	}
+	return s.walkWikilinks(root)
 }
 
 // WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
