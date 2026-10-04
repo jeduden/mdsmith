@@ -147,8 +147,9 @@ cross-directory move, check them by hand.
   hands its links to that file. Check such a move with `--dry-run`.
 - **Wikilinks to a name they cannot reach.** A move to a name
   with no extension, such as `COPYING`, leaves every `[[stem]]`
-  as written, because a bare `[[name]]` finds only Markdown
-  files. So does a new name that a wikilink cannot spell: an
+  or typed link such as `![[diagram.png]]` as written, because a
+  bare `[[name]]` finds only Markdown files. So does a new name
+  that a wikilink cannot spell: an
   empty stem such as `.md`, a `#`, `|`, `[`, or `]` as in `C#.md`,
   a backtick, a line break, or a name that ends with a space.
   So does a move into `.git` or `node_modules`, which a wikilink

@@ -48,7 +48,7 @@ the batch case needs a client that sends other files.
 1. Add an exact-name wikilink edge lookup to the index
    (for example `IncomingWikilinkNameEdges(name)`), keyed
    by the lowercased base name the resolver's typed lookup
-   reads. Expose it on `refactor.Workspace`.
+   reads. Expose it on `refactor.MoveWorkspace`.
 2. In `appendWikilinkStemEdits`, rewrite a typed
    `[[name.ext]]` link to a moved non-Markdown source when
    that source wins the name today and the new name reaches
@@ -61,9 +61,11 @@ the batch case needs a client that sends other files.
 
 ## Acceptance Criteria
 
-- [x] Moving `img.png` to `pics/img.png` rewrites
+- [x] Moving `img.png` to `pics/photo.png` rewrites
       `[[img.png]]` only when it reached `img.png` before
-      the move.
+      the move. A move that keeps the name, such as to
+      `pics/img.png`, leaves it as written, as a kept
+      `[[stem]]` is.
 - [x] A batch that shadows `img.png` counts each typed
       `[[img.png]]` link in `Withheld`.
 - [x] All tests pass: `go test ./...`
