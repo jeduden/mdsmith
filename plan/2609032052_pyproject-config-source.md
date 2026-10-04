@@ -302,3 +302,11 @@ Phase C — guardrails and docs:
 - [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
 - [x] `mdsmith check .` — 0 failures.
+
+## Follow-ups
+
+A race test fails now and then, on the base commit too.
+File a plan once `PLAN.md` is under its 300-line cap.
+`TestRebuildSessionDoesNotDisposeHeldSession` runs
+`Session.Fix`, whose shared MDS038 rule sets `r.engine`.
+`rule.CloneInstance` copies that rule for `Check`.
