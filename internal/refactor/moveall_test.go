@@ -311,6 +311,87 @@ func TestMoveAll_UnplannedHolder(t *testing.T) {
 	}
 }
 
+// TestMoveAll_UnplannedHolderInSameFolder covers a link inside a file
+// whose move was refused but lands in its own folder: the link reads
+// the same from there whether or not the host moves the file, so the
+// rewrite spelled from that folder is planned, not withheld.
+func TestMoveAll_UnplannedHolderInSameFolder(t *testing.T) {
+	bp := MoveAll(newMemWorkspace(map[string]string{
+		"docs/a.md": "# A\n\n[b](b.md)\n",
+		"docs/b.md": "# B\n",
+		"docs/c.md": "# C\n",
+	}), []MovePair{{"docs/a.md", "docs/c.md"}, {"docs/b.md", "z/b.md"}})
+	require.Error(t, bp.Moves[0].Err)
+	require.NoError(t, bp.Moves[1].Err)
+	assert.Equal(t, []string{"../z/b.md"}, texts(bp.Edits, "docs/a.md"))
+	assert.Zero(t, bp.Withheld)
+}
+
+// TestMoveAll_KeptStemTakenByMember covers a move that keeps its stem
+// while another member lands on a shallower file with that stem: every
+// bare `[[guide]]` then reaches the newcomer, so it is counted.
+func TestMoveAll_KeptStemTakenByMember(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"x/guide.md": "# G\n",
+		"q/other.md": "# O\n",
+		"n.md":       "# N\n\n[[guide]] [[other]]\n",
+	}, MovePair{"x/guide.md", "x/sub/guide.md"}, MovePair{"q/other.md", "guide.md"})
+	assert.Equal(t, []string{"guide"}, texts(bp.Edits, "n.md"), "only [[other]] follows its file")
+	assert.Equal(t, 1, bp.Withheld)
+}
+
+// TestMoveAll_KeptStemStillWins covers a kept stem another member also
+// lands on, deeper: dst still wins it, so nothing is rewritten or
+// counted.
+func TestMoveAll_KeptStemStillWins(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"x/guide.md": "# G\n",
+		"q/other.md": "# O\n",
+		"n.md":       "# N\n\n[[guide]]\n",
+	}, MovePair{"x/guide.md", "a/guide.md"}, MovePair{"q/other.md", "z/z/guide.md"})
+	assert.NotContains(t, bp.Edits, "n.md")
+	assert.Zero(t, bp.Withheld)
+}
+
+// TestMoveAll_KeptStemFollowsRenamedSibling covers the file `[[guide]]`
+// reaches keeping its stem while the batch renames a same-stem
+// sibling: `[[y/guide]]`, which names the sibling, follows it.
+func TestMoveAll_KeptStemFollowsRenamedSibling(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"x/guide.md": "# X\n",
+		"y/guide.md": "# Y\n",
+		"n.md":       "# N\n\n[[guide]] [[y/guide]]\n",
+	}, MovePair{"x/guide.md", "z/guide.md"}, MovePair{"y/guide.md", "y/howto.md"})
+	assert.Equal(t, []string{"howto"}, texts(bp.Edits, "n.md"))
+	assert.Zero(t, bp.Withheld)
+}
+
+func TestDestResolver_KeptStemTarget(t *testing.T) {
+	batch := func(members map[string]batchMember) *destResolver {
+		return &destResolver{batch: &moveBatch{members: members}}
+	}
+	self := batchMember{dst: "z/guide.md", planned: true}
+	want := stemTarget{dst: "z/guide.md", key: "guide", isStem: true}
+
+	_, ok := (&destResolver{}).keptStemTarget("guide", "x/guide.md", "z/guide.md")
+	assert.False(t, ok, "a lone move")
+	_, ok = batch(map[string]batchMember{"x/guide.md": self, "a.md": {dst: "b.md"}}).
+		keptStemTarget("guide", "x/guide.md", "z/guide.md")
+	assert.False(t, ok, "no other member holds the stem")
+	r := batch(map[string]batchMember{"x/guide.md": self, "a.md": {dst: "guide.md"}})
+	got, ok := r.keptStemTarget("guide", "x/guide.md", "z/guide.md")
+	require.True(t, ok, "another member lands on the stem")
+	assert.Equal(t, want, got)
+	got, ok = batch(map[string]batchMember{"x/guide.md": self, "y/Guide.md": {dst: "y/howto.md"}}).
+		keptStemTarget("guide", "x/guide.md", "z/guide.md")
+	require.True(t, ok, "another member leaves the stem")
+	assert.Equal(t, want, got)
+	_, ok = r.keptStemTarget("guide", "x/guide.md", "z/manual.md")
+	assert.False(t, ok, "a new stem")
+	_, ok = r.keptStemTarget("guide", "x/guide.md", "node_modules/guide.md")
+	assert.False(t, ok, "an unindexed destination")
+}
+
 // TestMoveAll_TargetLeavesWorkspace covers a member moved out of the
 // workspace: a link to it from another moved file can never resolve.
 func TestMoveAll_TargetLeavesWorkspace(t *testing.T) {

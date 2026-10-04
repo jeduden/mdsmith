@@ -11,8 +11,8 @@ import (
 )
 
 // ErrDuplicateSource is returned for a batch pair whose source an
-// earlier pair of the same batch already moves. The earlier pair is
-// planned; this one is not.
+// earlier pair of the same batch already moves. The earlier pair keeps
+// its own verdict; this one is never planned.
 var ErrDuplicateSource = errors.New("source is moved by an earlier pair of the batch")
 
 // ErrDuplicateDestination is returned for every batch pair whose
@@ -69,8 +69,10 @@ type BatchPlan struct {
 //
 // A pair that cannot be planned still counts as a batch member when its
 // source is readable: the host (an editor) moves it anyway. No path
-// edit is planned for a link between it and another member; such a
-// link counts in Withheld when it stops resolving after the batch.
+// edit is planned for a link between it and another member, except a
+// link inside it when it lands in its own folder, which reads the same
+// from there; any other such link counts in Withheld when it stops
+// resolving after the batch.
 //
 // Move is MoveAll with one pair.
 func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
