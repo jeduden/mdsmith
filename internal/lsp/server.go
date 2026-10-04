@@ -25,7 +25,7 @@ type Server struct {
 	rules          []rule.Rule
 	debounce       time.Duration
 	fetchTimeout   time.Duration
-	discoverConfig func(string) (string, error)
+	discoverConfig func(string) (string, []string, error)
 	onConfigReload func(cfgPath string)
 	logger         *vlog.Logger
 	docs           *documentStore
@@ -40,6 +40,12 @@ type Server struct {
 	// a later clean reload can clear the squiggle.
 	configDiagMu  sync.Mutex
 	configDiagURI string
+
+	// hintsMu guards loggedHints, the discovery hints the last reload
+	// logged (joined by newlines), so a reload that finds the same
+	// hints does not repeat the warning.
+	hintsMu     sync.Mutex
+	loggedHints string
 
 	settingsMu sync.RWMutex
 	settings   userSettings
@@ -240,7 +246,7 @@ func New(opts Options) *Server {
 		rules:          opts.Rules,
 		debounce:       debounce,
 		fetchTimeout:   2 * time.Second,
-		discoverConfig: config.Discover,
+		discoverConfig: discoverWithHints,
 		onConfigReload: opts.OnConfigReload,
 		logger:         logger,
 		docs:           newDocumentStore(),

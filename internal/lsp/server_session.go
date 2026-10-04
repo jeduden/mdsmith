@@ -198,8 +198,8 @@ func (s *Server) resolveConfig(override string) (
 	if root == "" {
 		return fallback, "", "", nil
 	}
-	s.logDiscoverHints(root)
-	discovered, err := s.discoverConfig(root)
+	discovered, hints, err := s.discoverConfig(root)
+	s.logDiscoverHints(hints)
 	if err != nil {
 		return fallback, "", fmt.Sprintf("discovering config under %q: %v", root, err), nil
 	}

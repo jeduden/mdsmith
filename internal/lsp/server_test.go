@@ -1534,8 +1534,8 @@ func TestReloadConfigSurfacesDiscoverFailure(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf})
-	s.discoverConfig = func(string) (string, error) {
-		return "", errors.New("synthetic discover failure")
+	s.discoverConfig = func(string) (string, []string, error) {
+		return "", nil, errors.New("synthetic discover failure")
 	}
 	s.configMu.Lock()
 	s.rootDir = "/some/root"
@@ -3389,7 +3389,7 @@ func TestHandleDidChangeWatchedFiles_InvalidatesWikilinkIndex(t *testing.T) {
 			// pure decision pins which change types rebuild the wikilink
 			// candidate set without a live session and its caches (the
 			// session-level wikilink drop is covered in pkg/mdsmith).
-			got := watchedFilesTreeChanged([]fileEvent{{URI: tc.uri, Type: tc.changeType}})
+			got := watchedFilesTreeChanged([]fileEvent{{URI: tc.uri, Type: tc.changeType}}, config.IsConfigFile)
 			assert.Equal(t, tc.want, got,
 				"watchedFilesTreeChanged(%s) = %v, want %v", tc.name, got, tc.want)
 		})
@@ -3403,7 +3403,7 @@ func TestWatchedFilesTreeChangedSkipsConfig(t *testing.T) {
 	t.Parallel()
 	got := watchedFilesTreeChanged([]fileEvent{
 		{URI: "file:///proj/.mdsmith.yml", Type: fileChangeCreated},
-	})
+	}, config.IsConfigFile)
 	assert.False(t, got, "a config-only create must not flag a wikilink tree change")
 }
 
@@ -3415,7 +3415,7 @@ func TestWatchedFilesTreeChangedSkipsNonFileURI(t *testing.T) {
 	t.Parallel()
 	got := watchedFilesTreeChanged([]fileEvent{
 		{URI: "git://github.com/owner/repo/blob/main/page.md", Type: fileChangeCreated},
-	})
+	}, config.IsConfigFile)
 	assert.False(t, got, "non-file URI Created event must not flag a wikilink tree change")
 }
 

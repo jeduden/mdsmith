@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"time"
-
-	"github.com/jeduden/mdsmith/internal/config"
 )
 
 // textDocument/* document-sync handlers — didOpen, didChange, didSave,
@@ -136,7 +134,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 	mdChanges := make([]string, 0, len(p.Changes))
 	for _, c := range p.Changes {
 		path := uriToPath(c.URI)
-		if config.IsConfigFile(path) {
+		if s.isWatchedConfigChange(path) {
 			configChanged = true
 			continue
 		}
@@ -150,7 +148,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 			mdChanges = append(mdChanges, path)
 		}
 	}
-	treeChanged := watchedFilesTreeChanged(p.Changes)
+	treeChanged := watchedFilesTreeChanged(p.Changes, s.isWatchedConfigChange)
 	if configChanged {
 		s.reloadConfig()
 		// kind / ignore globs may have shifted — drop the index so
@@ -192,7 +190,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 }
 
 // watchedFilesTreeChanged reports whether a watched-file batch creates
-// or deletes any non-config file, which changes the candidate set the
+// or deletes any file isConfig does not claim as a config change, which changes the candidate set the
 // wikilink index keys off — so the session's wikilink index must rebuild
 // on the next Check (`[[NewPage]]` / `![[image.png]]` resolve against any
 // extension, so a binary asset add counts too). A pure-change batch (no
@@ -200,7 +198,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 // 1=Created, 2=Changed, 3=Deleted; a rename arrives as a Deleted+Created
 // pair. Pulled out of handleDidChangeWatchedFiles so the decision is
 // unit-testable without a live session and its caches.
-func watchedFilesTreeChanged(changes []fileEvent) bool {
+func watchedFilesTreeChanged(changes []fileEvent, isConfig func(string) bool) bool {
 	for _, c := range changes {
 		path := uriToPath(c.URI)
 		if path == "" {
@@ -209,7 +207,7 @@ func watchedFilesTreeChanged(changes []fileEvent) bool {
 			// unnecessary wikilink-index rebuild.
 			continue
 		}
-		if config.IsConfigFile(path) {
+		if isConfig(path) {
 			continue
 		}
 		if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {

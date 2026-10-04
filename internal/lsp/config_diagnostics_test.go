@@ -144,7 +144,7 @@ func TestWatchedPyprojectChangeReloadsConfig(t *testing.T) {
 	cfg, path, _ := s.snapshotConfig()
 	assert.Equal(t, py, path)
 	assert.False(t, cfg.Rules["line-length"].Enabled)
-	assert.False(t, watchedFilesTreeChanged([]fileEvent{{URI: pathToURI(py), Type: fileChangeCreated}}),
+	assert.False(t, watchedFilesTreeChanged([]fileEvent{{URI: pathToURI(py), Type: fileChangeCreated}}, s.isWatchedConfigChange),
 		"a config-only create must not flag a wikilink tree change")
 }
 
@@ -160,4 +160,120 @@ func TestReloadConfigLogsPluralTableHint(t *testing.T) {
 	s.reloadConfig()
 	assert.Contains(t, buf.String(), "[tools.mdsmith] is not read; rename the table to [tool.mdsmith]")
 	assert.Contains(t, buf.String(), `"type":2`)
+}
+
+// TestReloadConfigLogsHintsFromDiscoverSeam pins that discovery hints
+// come from the injected discoverConfig walk, not a second walk of the
+// real filesystem.
+func TestReloadConfigLogsHintsFromDiscoverSeam(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.discoverConfig = func(string) (string, []string, error) {
+		return "", []string{"stub hint"}, nil
+	}
+	s.configMu.Lock()
+	s.rootDir = "/nonexistent/root"
+	s.configMu.Unlock()
+	s.reloadConfig()
+	assert.Contains(t, buf.String(), "mdsmith: stub hint")
+}
+
+// TestReloadConfigLogsUnchangedHintsOnce pins that a reload whose
+// hints match the previous reload's does not repeat the warning, while
+// a reload after the hints clear and return logs them again.
+func TestReloadConfigLogsUnchangedHintsOnce(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	hints := []string{"stub hint"}
+	s.discoverConfig = func(string) (string, []string, error) {
+		return "", hints, nil
+	}
+	s.configMu.Lock()
+	s.rootDir = "/nonexistent/root"
+	s.configMu.Unlock()
+	s.reloadConfig()
+	s.reloadConfig()
+	assert.Equal(t, 1, strings.Count(buf.String(), "mdsmith: stub hint"))
+
+	hints = nil
+	s.reloadConfig()
+	hints = []string{"stub hint"}
+	s.reloadConfig()
+	assert.Equal(t, 2, strings.Count(buf.String(), "mdsmith: stub hint"))
+}
+
+// TestIsWatchedConfigChange pins which watched config-named files
+// reload config: one in the workspace root or an ancestor (where
+// discovery looks), or the loaded config file itself — not one nested
+// below the root, which discovery never reads.
+func TestIsWatchedConfigChange(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join(string(filepath.Separator), "ws", "repo")
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = root
+	s.configMu.Unlock()
+
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(root, "pyproject.toml")))
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(root, ".mdsmith.yml")))
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(filepath.Dir(root), "pyproject.toml")))
+	assert.False(t, s.isWatchedConfigChange(filepath.Join(root, "pkg", "pyproject.toml")))
+	assert.False(t, s.isWatchedConfigChange(filepath.Join(root, "pkg", ".mdsmith.yml")))
+	assert.False(t, s.isWatchedConfigChange(filepath.Join(root, "doc.md")))
+
+	loaded := filepath.Join(root, "sub", ".mdsmith.yml")
+	s.configMu.Lock()
+	s.configPath = loaded
+	s.configMu.Unlock()
+	assert.True(t, s.isWatchedConfigChange(loaded), "the loaded config file always reloads")
+
+	s.settings.ConfigPath = "cfg/pyproject.toml"
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(root, "cfg", "pyproject.toml")),
+		"the mdsmith.config override reloads even before it loads")
+	assert.False(t, s.isWatchedConfigChange(filepath.Join(root, "pyproject.toml")),
+		"with an override set, discovery does not run")
+
+	s.settings.ConfigPath = ""
+	s.configMu.Lock()
+	s.rootDir = ""
+	s.configMu.Unlock()
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(root, "pkg", "pyproject.toml")),
+		"with no root known, any config-named file reloads")
+}
+
+// TestNestedPyprojectChangeSkipsReload pins that editing a
+// pyproject.toml below the workspace root neither reloads config nor
+// counts as config-only for the wikilink tree check.
+func TestNestedPyprojectChangeSkipsReload(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	s := New(Options{Reader: nil, Writer: &safeBuffer{}})
+	calls := 0
+	s.discoverConfig = func(string) (string, []string, error) {
+		calls++
+		return "", nil, nil
+	}
+	s.configMu.Lock()
+	s.rootDir = root
+	s.configMu.Unlock()
+
+	nested := filepath.Join(root, "pkg", "pyproject.toml")
+	raw, err := json.Marshal(didChangeWatchedFilesParams{Changes: []fileEvent{
+		{URI: pathToURI(nested), Type: fileChangeCreated},
+	}})
+	require.NoError(t, err)
+	s.handleDidChangeWatchedFiles(context.Background(), raw)
+	assert.Equal(t, 0, calls, "a nested pyproject.toml must not reload config")
+	assert.True(t, watchedFilesTreeChanged([]fileEvent{{URI: pathToURI(nested), Type: fileChangeCreated}},
+		s.isWatchedConfigChange), "a nested pyproject.toml create is an ordinary tree change")
+
+	top := filepath.Join(root, "pyproject.toml")
+	raw, err = json.Marshal(didChangeWatchedFilesParams{Changes: []fileEvent{
+		{URI: pathToURI(top), Type: fileChangeChanged},
+	}})
+	require.NoError(t, err)
+	s.handleDidChangeWatchedFiles(context.Background(), raw)
+	assert.Equal(t, 1, calls, "a root pyproject.toml reloads config")
 }
