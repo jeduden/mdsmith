@@ -12,3 +12,7 @@ func loadPyproject(path string) (*Config, error) {
 		fmt.Errorf("%s: pyproject.toml config is not supported in the WebAssembly build", path),
 		path, nil)
 }
+
+// pyprojectHasMdsmithTable always reports false in the WebAssembly
+// build, so discovery never selects a pyproject.toml there.
+func pyprojectHasMdsmithTable(string) bool { return false }

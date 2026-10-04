@@ -207,7 +207,7 @@ Phase B — the pyproject source:
    read. Test `--config path/to/pyproject.toml` and an
    arbitrary `--config foo.toml` both read from
    `[tool.mdsmith]`.
-7. [ ] Red/green: extend `Discover` to return a
+7. [x] Red/green: extend `Discover` to return a
    `pyproject.toml` that contains `[tool.mdsmith]`, with
    the precedence and skip rules above (probe behind the
    same build tag). Extend the discovery tests in
@@ -269,7 +269,7 @@ Phase C — guardrails and docs:
 - [x] The CLI prints config errors as
       `file:line:column` diagnostics; the LSP shows them as
       squiggles on the config file when it is open.
-- [ ] A `.mdsmith.yml` takes precedence over a
+- [x] A `.mdsmith.yml` takes precedence over a
       same-directory `pyproject.toml`; the nearest config
       file wins across directories; a `pyproject.toml` with
       no `[tool.mdsmith]` is ignored.

@@ -3,7 +3,9 @@
 package config
 
 import (
+	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -263,4 +265,85 @@ func TestLoad_TOMLReadIsSizeCapped(t *testing.T) {
 	big := "[tool.mdsmith]\n#" + strings.Repeat("x", int(maxConfigBytes)) + "\n"
 	_, err := Load(writeCfg(t, dir, "pyproject.toml", big))
 	assert.ErrorContains(t, err, "too large")
+}
+
+func TestDiscover_Pyproject(t *testing.T) {
+	const withTable = "[project]\nname = \"x\"\n\n[tool.mdsmith]\nfiles = [\"*.md\"]\n"
+	const withoutTable = "[project]\nname = \"x\"\n\n[tool.black]\nline-length = 88\n"
+
+	t.Run("pyproject with table is found", func(t *testing.T) {
+		dir := t.TempDir()
+		py := writeCfg(t, dir, "pyproject.toml", withTable)
+		got, err := Discover(dir)
+		require.NoError(t, err)
+		assert.Equal(t, py, got)
+	})
+	t.Run("mdsmith.yml wins in the same directory", func(t *testing.T) {
+		dir := t.TempDir()
+		writeCfg(t, dir, "pyproject.toml", withTable)
+		yml := writeCfg(t, dir, ".mdsmith.yml", "rules: {}\n")
+		got, err := Discover(dir)
+		require.NoError(t, err)
+		assert.Equal(t, yml, got)
+	})
+	t.Run("nearest file wins across directories", func(t *testing.T) {
+		root := t.TempDir()
+		writeCfg(t, root, ".mdsmith.yml", "rules: {}\n")
+		py := writeCfg(t, root, "sub/pyproject.toml", withTable)
+		got, err := Discover(filepath.Join(root, "sub"))
+		require.NoError(t, err)
+		assert.Equal(t, py, got)
+	})
+	t.Run("pyproject without table is skipped", func(t *testing.T) {
+		root := t.TempDir()
+		yml := writeCfg(t, root, ".mdsmith.yml", "rules: {}\n")
+		writeCfg(t, root, "sub/pyproject.toml", withoutTable)
+		got, err := Discover(filepath.Join(root, "sub"))
+		require.NoError(t, err)
+		assert.Equal(t, yml, got)
+	})
+	t.Run("git boundary still stops the walk", func(t *testing.T) {
+		root := t.TempDir()
+		writeCfg(t, root, "pyproject.toml", withTable)
+		require.NoError(t, os.MkdirAll(filepath.Join(root, "repo", ".git"), 0o755))
+		got, err := Discover(filepath.Join(root, "repo"))
+		require.NoError(t, err)
+		assert.Equal(t, "", got)
+	})
+	t.Run("malformed pyproject naming the table is a config source", func(t *testing.T) {
+		dir := t.TempDir()
+		py := writeCfg(t, dir, "pyproject.toml", "[tool.mdsmith]\nfiles = [\n")
+		got, err := Discover(dir)
+		require.NoError(t, err)
+		assert.Equal(t, py, got, "so the load reports the syntax error")
+	})
+	t.Run("malformed pyproject without the table is skipped", func(t *testing.T) {
+		dir := t.TempDir()
+		writeCfg(t, dir, "pyproject.toml", "[project\n")
+		got, err := Discover(dir)
+		require.NoError(t, err)
+		assert.Equal(t, "", got)
+	})
+}
+
+func TestPyprojectHasMdsmithTable(t *testing.T) {
+	dir := t.TempDir()
+	cases := map[string]bool{
+		"[tool.mdsmith]\n":                        true,
+		"[tool.mdsmith.rules]\nx = false\n":       true,
+		"[tool]\nmdsmith = { files = [] }\n":      true,
+		"tool.mdsmith.files = []\n":               true,
+		"[tool.mdsmithx]\n":                       false,
+		"[tools.mdsmith]\n":                       false,
+		"[tool.mdsmith\n":                         true,
+		"  [ tool.mdsmith.kinds ] # broken = \n=": true,
+		"# [tool.mdsmith]\n[x\n":                  false,
+	}
+	i := 0
+	for body, want := range cases {
+		i++
+		p := writeCfg(t, dir, fmt.Sprintf("p%d.toml", i), body)
+		assert.Equal(t, want, pyprojectHasMdsmithTable(p), "body %q", body)
+	}
+	assert.False(t, pyprojectHasMdsmithTable(filepath.Join(dir, "missing.toml")))
 }

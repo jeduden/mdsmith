@@ -19,6 +19,10 @@ const maxConfigBytes int64 = 1024 * 1024
 
 const configFileName = ".mdsmith.yml"
 
+// pyprojectFileName is the Python project file whose `[tool.mdsmith]`
+// table Discover accepts as an alternative config source.
+const pyprojectFileName = "pyproject.toml"
+
 // DefaultConfigPath returns the default config path under dir (the
 // conventional .mdsmith.yml). It is the single source of truth for the
 // config filename outside this package.
@@ -283,15 +287,22 @@ func rejectRemovedBuildKeys(node *yaml.Node) error {
 }
 
 // Discover walks up the directory tree from startDir looking for a
-// .mdsmith.yml config file. It stops searching when it encounters a .git
-// directory (the repository root) or reaches the filesystem root.
-// Returns the path to the config file, or "" if none was found.
+// config file: a .mdsmith.yml, or a pyproject.toml that holds a
+// `[tool.mdsmith]` table. Within one directory .mdsmith.yml wins; across
+// directories the nearest file wins; a pyproject.toml without the table
+// is not a config source and the walk continues past it. It stops
+// searching when it encounters a .git directory (the repository root)
+// or reaches the filesystem root. Returns the path to the config file,
+// or "" if none was found.
 func Discover(startDir string) (string, error) {
 	dir, _ := filepath.Abs(startDir) // filepath.Abs cannot fail when os.Getwd succeeds
 	for {
 		candidate := filepath.Join(dir, configFileName)
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, nil
+		}
+		if py := filepath.Join(dir, pyprojectFileName); pyprojectHasMdsmithTable(py) {
+			return py, nil
 		}
 
 		// Check for .git boundary — if .git exists in this dir,

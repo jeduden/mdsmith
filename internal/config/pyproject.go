@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -45,6 +46,30 @@ func loadPyproject(path string) (*Config, error) {
 	}
 	return cfg, nil
 }
+
+// pyprojectHasMdsmithTable reports whether the TOML file at path is an
+// mdsmith config source: it parses and has a `tool.mdsmith` entry. A
+// file that does not parse counts when a line opens a `[tool.mdsmith`
+// header or sets a `tool.mdsmith.` dotted key, so loading it reports
+// the syntax error instead of the walk skipping a broken config. An
+// unreadable file is not a source.
+func pyprojectHasMdsmithTable(path string) bool {
+	data, err := readLimitedConfig(path)
+	if err != nil {
+		return false
+	}
+	tree, err := toml.LoadBytes(data)
+	if err != nil {
+		return mdsmithHeaderRe.Match(data)
+	}
+	return tree.GetPath(pyprojectTable) != nil
+}
+
+// mdsmithHeaderRe matches a line that opens a `[tool.mdsmith]` or
+// `[tool.mdsmith.<sub>]` header (array-of-tables and unclosed forms
+// included) or a `tool.mdsmith.<key> =` dotted key.
+var mdsmithHeaderRe = regexp.MustCompile(
+	`(?m)^[ \t]*(?:\[\[?[ \t]*tool\.mdsmith[ \t]*(?:[\].]|$)|tool\.mdsmith\.)`)
 
 // mdsmithTable returns the `[tool.mdsmith]` table of tree.
 func mdsmithTable(tree *toml.Tree, path string) (*toml.Tree, error) {
