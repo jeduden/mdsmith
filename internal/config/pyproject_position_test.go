@@ -93,6 +93,10 @@ func TestTOMLErrorIssue(t *testing.T) {
 	require.ErrorAs(t, iss, &got)
 	assert.Equal(t, 7, got.Line)
 	assert.Equal(t, 3, got.Column)
+	// The parser's own `(line, col)` prefix counts characters; the
+	// diagnostic carries the byte position, so the message drops it.
+	assert.Equal(t, "boom", got.Message)
+	assert.EqualError(t, got.Unwrap(), "(7, 3): boom", "the cause keeps the parser text")
 	plain := errorString("no position")
 	assert.Equal(t, plain, tomlErrorIssue(plain, nil))
 }

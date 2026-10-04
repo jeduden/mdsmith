@@ -279,17 +279,25 @@ func (r tomlResolver) Resolve(path KeyPath) (line, col int, ok bool) {
 
 // tomlPosRe matches the `(line, col): ` prefix go-toml v1 puts on a
 // parse error.
-var tomlPosRe = regexp.MustCompile(`^\((\d+), (\d+)\)`)
+var tomlPosRe = regexp.MustCompile(`^\((\d+), (\d+)\):? ?`)
 
 // tomlErrorIssue turns a go-toml parse error into an Issue at the line
 // and column the parser reported, the column converted from characters
-// to a byte column in src; an error without one passes through.
+// to a byte column in src; an error without one passes through. The
+// message drops the parser's `(line, col): ` prefix: its column counts
+// characters, so beside the byte column of the diagnostic it would name
+// a second, different column for the same spot. Err keeps the parser's
+// full text.
 func tomlErrorIssue(err error, src []byte) error {
-	m := tomlPosRe.FindStringSubmatch(err.Error())
+	msg := err.Error()
+	m := tomlPosRe.FindStringSubmatch(msg)
 	if m == nil {
 		return err
 	}
 	line, _ := strconv.Atoi(m[1]) // \d+ always parses
 	col, _ := strconv.Atoi(m[2])
-	return &Issue{Message: err.Error(), Severity: lint.Error, Err: err, Line: line, Column: byteColumn(src, line, col)}
+	return &Issue{
+		Message: msg[len(m[0]):], Severity: lint.Error, Err: err,
+		Line: line, Column: byteColumn(src, line, col),
+	}
 }
