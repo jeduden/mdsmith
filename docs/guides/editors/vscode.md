@@ -141,6 +141,13 @@ For the full settings table — `mdsmith.run`, `mdsmith.path`,
 see the
 [VS Code extension reference](../../reference/vscode-extension.md).
 
+The extension's server can share a folder with other mdsmith
+servers, such as the Claude Code plugin's or a second editor's.
+After a reload, only VS Code's own leftover server steps aside.
+The extension scopes that hand-off to the VS Code workspace with
+the storage URI VS Code gives each workspace, so other clients are
+unaffected unless they still run a pre-scope `mdsmith` build.
+
 ## See also
 
 - [VS Code extension reference](../../reference/vscode-extension.md)

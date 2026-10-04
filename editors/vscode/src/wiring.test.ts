@@ -17,6 +17,7 @@ const TransportKindStdio = 0;
 
 import {
   buildClientOptions,
+  singletonScope,
   buildServerOptions,
   decideClose,
   forwardMdsmithConfigChange,
@@ -123,6 +124,38 @@ describe("buildClientOptions", () => {
     const opts = buildClientOptions(watcher, channel);
     expect(opts.outputChannel as unknown).toBe(channel as unknown);
     expect(opts.outputChannelName).toBeUndefined();
+  });
+
+  test("sends the singleton scope under initializationOptions.mdsmith", () => {
+    const opts = buildClientOptions({}, undefined, "ws-uuid");
+    expect(opts.initializationOptions).toEqual({ mdsmith: { singletonScope: "ws-uuid" } });
+  });
+
+  test("omits initializationOptions without a singleton scope", () => {
+    // No scope means the server's workspace singleton stays off for
+    // this client; sending an empty object would be noise.
+    expect(buildClientOptions({}).initializationOptions).toBeUndefined();
+    expect(buildClientOptions({}, undefined, "").initializationOptions).toBeUndefined();
+  });
+});
+
+// fakeUri stands in for vscode.Uri: singletonScope only calls toString.
+function fakeUri(value: string): { toString(): string } {
+  return { toString: () => value };
+}
+
+const STORAGE = "file:///home/u/.config/Code/User/workspaceStorage/abc123/jeduden.mdsmith";
+
+describe("singletonScope", () => {
+  test("is the per-workspace storage URI", () => {
+    expect(singletonScope({ storageUri: fakeUri(STORAGE) })).toBe(STORAGE);
+  });
+
+  test("is empty, the opt-out, when no workspace storage exists", () => {
+    // VS Code leaves storageUri undefined for an empty window with no
+    // folder or workspace open.
+    expect(singletonScope({ storageUri: undefined })).toBe("");
+    expect(singletonScope({})).toBe("");
   });
 });
 
@@ -484,6 +517,7 @@ class FakeClient {
 interface ClientOptionsCapture {
   errorHandler?: { closed(): { action: number }; markSuperseded?(): void };
   middleware?: { provideHover?: unknown };
+  initializationOptions?: { mdsmith?: { singletonScope?: string } };
 }
 
 // makeFakeApi builds a minimal stand-in for the `vscode` namespace
@@ -585,9 +619,19 @@ function makeFakeApi(overrides?: {
 }
 
 // makeContext builds a fake ExtensionContext exposing only the
-// subscriptions array and extensionPath the Wiring class uses.
-function makeContext(): { subscriptions: Array<{ dispose(): void }>; extensionPath: string } {
-  return { subscriptions: [], extensionPath: "/ext" };
+// subscriptions array, extensionPath, and storageUri the Wiring class
+// uses. Pass the same storage URI twice to model a reload of one
+// workspace; pass null for a window with no workspace storage.
+function makeContext(storage: string | null = STORAGE): {
+  subscriptions: Array<{ dispose(): void }>;
+  extensionPath: string;
+  storageUri?: { toString(): string };
+} {
+  return {
+    subscriptions: [],
+    extensionPath: "/ext",
+    storageUri: storage === null ? undefined : fakeUri(storage),
+  };
 }
 
 // makeWiring constructs a Wiring with a fake api and a createClient
@@ -713,6 +757,49 @@ describe("Wiring LSP client lifecycle", () => {
     expect(opts.errorHandler).toBeDefined();
     expect(typeof opts.errorHandler?.closed).toBe("function");
     expect(opts.middleware?.provideHover).toBeDefined();
+  });
+
+  test("sends the workspace storage URI as the singleton scope", async () => {
+    const { wiring, lastClient } = makeWiring();
+    await wiring.activate(makeContext());
+    expect(lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope).toBe(STORAGE);
+  });
+
+  test("derives the singleton scope from the storage URI value alone", async () => {
+    // The VS Code upgrade hand-off: the leaked host and the fresh host
+    // each hold their own vscode.Uri object for one workspace's storage
+    // location. VS Code keeps that location the same across hosts; the
+    // extension's part is to send nothing but its string form — no
+    // per-activation state, no object identity — so the two servers
+    // share one owner record, while another workspace gets another.
+    const scopeFor = async (storage: string): Promise<string | undefined> => {
+      const w = makeWiring();
+      await w.wiring.activate(makeContext(storage));
+      return w.lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope;
+    };
+    const leaked = await scopeFor(STORAGE);
+    const fresh = await scopeFor(STORAGE);
+    const other = await scopeFor(STORAGE.replace("abc123", "def456"));
+    expect(leaked).toBe(STORAGE);
+    expect(fresh).toBe(leaked);
+    expect(other).not.toBe(leaked);
+  });
+
+  test("sends no scope when the window has no workspace storage", async () => {
+    const { wiring, lastClient } = makeWiring();
+    await wiring.activate(makeContext(null));
+    expect(lastClient().clientOptions.initializationOptions).toBeUndefined();
+  });
+
+  test("restartServer reuses the singleton scope", async () => {
+    const { wiring, clients } = makeWiring();
+    const ctx = makeContext();
+    await wiring.activate(ctx);
+    await wiring.restartServer(ctx);
+    const a = clients[0].clientOptions.initializationOptions?.mdsmith?.singletonScope;
+    const b = clients[1].clientOptions.initializationOptions?.mdsmith?.singletonScope;
+    expect(a).toBe(STORAGE);
+    expect(b).toBe(a);
   });
 
   test("restartServer stops the old client and starts a fresh one", async () => {

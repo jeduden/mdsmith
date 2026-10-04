@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,22 +74,40 @@ func watchSingleton(
 // server's stdin pipe open (so no EOF) and registers as alive (so the
 // watchdog stays quiet), then races the freshly-spawned server.
 //
-// It is a no-op without a workspace root or instanceID (the feature is
-// off, or the client sent no rootUri); New only sets instanceID when it
-// also wires the registry seams, so the two travel together (the nil
-// guard is belt-and-suspenders for a hand-built Server). A failed claim
-// leaves the server running without singleton protection rather than
-// risking it stepping itself aside on a transient registry error.
-func (s *Server) startSingletonWatch(root string) {
-	if root == "" || s.instanceID == "" || s.singletonClaim == nil {
-		return
-	}
-	// Claim and watch exactly once. A spec-compliant client sends a
-	// single initialize, but guarding the claim with the watcher's Once
-	// means a stray second initialize cannot re-assert this (possibly
-	// already-superseded) server's ownership and invert newest-wins.
+// The singleton is opt-in per client. scope is the client's
+// initializationOptions.mdsmith.singletonScope token; the owner record
+// is keyed on root plus scope, so only servers sharing a scope (the VS
+// Code orphan and its respawn, which both send the workspace's
+// storageUri) contend. An empty scope means the client did not opt in: the
+// server never claims the registry or starts the watcher, so it neither
+// supersedes nor is superseded, and many such servers coexist on one
+// workspace.
+//
+// It is also a no-op without a workspace root or instanceID (the
+// feature is off, or the client sent no rootUri); New only sets
+// instanceID when it also wires the registry seams, so the two travel
+// together (the nil guard is belt-and-suspenders for a hand-built
+// Server). A failed claim leaves the server running without singleton
+// protection rather than risking it stepping itself aside on a
+// transient registry error.
+func (s *Server) startSingletonWatch(root, scope string) {
+	// Decide exactly once. A spec-compliant client sends a single
+	// initialize, but guarding the whole decision with the watcher's
+	// Once means a stray second initialize can neither re-assert this
+	// (possibly already-superseded) server's ownership and invert
+	// newest-wins, nor opt a server in mid-session after the first
+	// initialize opted out (no scope or no root).
 	s.singletonWatchOnce.Do(func() {
-		key := workspaceKey(root)
+		if scope == "" || root == "" || s.instanceID == "" || s.singletonClaim == nil {
+			return
+		}
+		// A NUL in the root (rootUri "%00" decodes to one) breaks the
+		// workspaceKey framing: its legacy key would equal another
+		// root's scoped key. No real path holds a NUL, so opt out.
+		if strings.IndexByte(root, 0) >= 0 {
+			return
+		}
+		key := workspaceKey(root, scope)
 		// Claim the workspace under this instance's id, overwriting any
 		// previous owner. Whichever server initialized most recently —
 		// the window the user just opened or reloaded — wins; an older
@@ -97,7 +117,16 @@ func (s *Server) startSingletonWatch(root string) {
 			s.logger.Printf("lsp: workspace singleton claim failed: %v", err)
 			return
 		}
-		go watchSingleton(s.runCtx, key, s.instanceID, s.singletonInterval, s.singletonCurrent, func() {
+		// Also take the legacy root-only record once, never watching it.
+		// An older root-only binary (the leaked host on the first upgrade
+		// to a scoped build) polls that record and steps aside when it
+		// sees a new owner, exactly as it did before scopes. A no-token
+		// server never writes it, so new clients without a scope still
+		// coexist with everything.
+		if err := s.singletonClaim(workspaceKey(root, ""), s.instanceID); err != nil {
+			s.logger.Printf("lsp: legacy workspace singleton claim failed: %v", err)
+		}
+		onSuperseded := func() {
 			s.logger.Printf("lsp: superseded by a newer server for this workspace; exiting")
 			s.shutdown.Store(true)
 			s.stopPendingLints()
@@ -106,7 +135,20 @@ func (s *Server) startSingletonWatch(root string) {
 			// us — that respawn loop is what kept the orphan alive.
 			_ = s.t.writeNotification("mdsmith/superseded", supersededParams{Reason: "superseded"})
 			s.onSupersededExit()
-		})
+		}
+		// Prune once, after both claims, so a start scans the registry
+		// directory a single time. The scan runs on the watcher
+		// goroutine, before its first poll, so the initialize response
+		// never waits on a directory read. runCtx is read here, on the
+		// dispatch goroutine, as startParentWatch does, not inside the
+		// spawned goroutine.
+		ctx := s.runCtx
+		go func() {
+			if s.singletonPrune != nil {
+				s.singletonPrune(s.instanceID)
+			}
+			watchSingleton(ctx, key, s.instanceID, s.singletonInterval, s.singletonCurrent, onSuperseded)
+		}()
 	})
 }
 
@@ -117,13 +159,30 @@ type supersededParams struct {
 	Reason string `json:"reason"`
 }
 
-// workspaceKey maps a workspace root path to a stable, filesystem-safe
-// registry key. Cleaning first makes "/w", "/w/" and "/w/." share one
-// key, so two editor windows on the same workspace contend for the same
-// owner record.
-func workspaceKey(root string) string {
-	sum := sha256.Sum256([]byte(filepath.Clean(root)))
-	return hex.EncodeToString(sum[:])
+// workspaceKey maps a workspace root path plus a client-supplied
+// singleton scope to a stable, filesystem-safe registry key. Cleaning
+// first makes "/w", "/w/" and "/w/." share one key, so two servers on
+// the same workspace and scope contend for the same owner record, while
+// different scopes on one workspace get different records and coexist.
+//
+// A non-empty scope is framed as root + "\x00" + scope, so a split is
+// unambiguous for any root and scope free of NUL bytes; singletonScope
+// turns a NUL-bearing scope into the opt-out and startSingletonWatch
+// does the same for a NUL-bearing root, so neither reaches here and a
+// NUL-free root cannot be split two ways. An empty scope hashes the
+// cleaned root alone — the legacy root-only key, byte for byte — so
+// there is one derivation, not two. startSingletonWatch uses
+// that legacy key only for a scoped server's one-shot write that steps
+// an older root-only binary aside; it never watches it, and a no-token
+// server neither reads nor writes it.
+func workspaceKey(root, scope string) string {
+	h := sha256.New()
+	_, _ = io.WriteString(h, filepath.Clean(root))
+	if scope != "" {
+		_, _ = io.WriteString(h, "\x00")
+		_, _ = io.WriteString(h, scope)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // newInstanceID returns a random per-process identifier used to tell
@@ -157,6 +216,14 @@ func defaultRegistry() fileRegistry {
 	return fileRegistry{dir: filepath.Join(base, "mdsmith", "lsp-singleton")}
 }
 
+// singletonRecordMaxAge is how long an owner record may go unwritten
+// before a scoped start prunes it (claim itself never prunes; see
+// startSingletonWatch). Each record is written only at claim time,
+// so the age is time since its owner started. A pruned record of a
+// still-running server reads as "no owner", which watchSingleton treats
+// as "still ours", so pruning never reaps a live server.
+const singletonRecordMaxAge = 30 * 24 * time.Hour
+
 func (r fileRegistry) path(key string) string {
 	return filepath.Join(r.dir, key+".owner")
 }
@@ -166,7 +233,8 @@ func (r fileRegistry) path(key string) string {
 // rename is atomic, so a concurrent reader sees either the old owner or
 // the new one, never a half-written id, and the id-tagged temp name
 // keeps two servers claiming the same workspace at once from clobbering
-// each other's temp file.
+// each other's temp file. It does not prune; startSingletonWatch calls
+// prune once per start, after both of its claims.
 func (r fileRegistry) claim(key, id string) error {
 	if err := os.MkdirAll(r.dir, 0o755); err != nil {
 		return err
@@ -182,6 +250,109 @@ func (r fileRegistry) claim(key, id string) error {
 		return err
 	}
 	return nil
+}
+
+// prune removes records untouched for singletonRecordMaxAge on behalf
+// of instance id. Records this server just claimed carry a fresh
+// mtime, so they always stay.
+func (r fileRegistry) prune(id string) {
+	pruneStale(r.dir, id, time.Now().Add(-singletonRecordMaxAge))
+}
+
+// pruneStale removes owner records, leftover claim temp files, and
+// leftover prune quarantine files in dir last modified before cutoff.
+// Keys are per root and scope, and a deleted or moved workspace leaves
+// its records behind, so without this the directory would grow without
+// bound. It is best effort: any error just leaves the entry in place.
+// It skips a dir that registryDirSafe rejects, and touches only regular
+// files, so a planted symlink entry is never moved or removed.
+// Production passes no hooks; tests pass hooks[0], run after an entry
+// is judged stale, and hooks[1], run after it is quarantined, to land a
+// concurrent claim in each window.
+//
+// A plain stat-then-remove would delete a fresh record that a
+// concurrent claim renamed onto the path in between. So a stale entry
+// is first renamed (atomically) to a quarantine path tagged with the
+// pruning instance's id, unique because one instance prunes one entry
+// at a time, and its age re-checked there. Still stale: it is removed.
+// Fresh: a claim landed in the window, so it is hard-linked back, which
+// fails rather than overwrite a still newer claim that reached the path
+// meanwhile. A filesystem without hard links falls back to a rename,
+// which can only overwrite a claim that landed within that last
+// instant.
+func pruneStale(dir, id string, cutoff time.Time, hooks ...func(string)) {
+	hook := func(i int, p string) {
+		if i < len(hooks) && hooks[i] != nil {
+			hooks[i](p)
+		}
+	}
+	if !registryDirSafe(dir) {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !isRegistryRecord(name) {
+			continue
+		}
+		// Stat now rather than via e.Info(): on Windows and plan9 the
+		// DirEntry caches what ReadDir saw, so an entry removed or
+		// re-claimed since would still read as present and stale.
+		p := filepath.Join(dir, name)
+		info, err := os.Lstat(p)
+		if err != nil || !info.Mode().IsRegular() || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		hook(0, p)
+		if strings.HasSuffix(name, ".prune") {
+			// Already a quarantine file: nothing renames onto it.
+			_ = os.Remove(p)
+			continue
+		}
+		// A failed move means the entry is gone or not ours to move.
+		q := p + "." + id + ".prune"
+		if err := os.Rename(p, q); err != nil {
+			continue
+		}
+		hook(1, p)
+		if qi, err := os.Lstat(q); err == nil && qi.Mode().IsRegular() && qi.ModTime().Before(cutoff) {
+			_ = os.Remove(q)
+			continue
+		}
+		if err := os.Link(q, p); err != nil && !errors.Is(err, fs.ErrExist) {
+			_ = os.Rename(q, p)
+		}
+		_ = os.Remove(q)
+	}
+}
+
+// registryDirSafe reports whether prune may walk dir. Both dir and its
+// parent (the "mdsmith" dir) must be real directories, not symlinks,
+// and, where the platform exposes an owner, belong to the current user
+// and not be world-writable. Without a user cache dir the registry
+// falls back to a shared temp dir, where another local user could plant
+// either path as a symlink, or own the parent and swap the registry dir
+// mid-prune, to make prune delete old *.owner, *.tmp and *.prune files
+// somewhere else. Claims are unaffected; only the prune is skipped.
+func registryDirSafe(dir string) bool {
+	for _, p := range []string{dir, filepath.Dir(dir)} {
+		info, err := os.Lstat(p)
+		if err != nil || info.Mode().Type() != fs.ModeDir || !registryDirOwned(info) {
+			return false
+		}
+	}
+	return true
+}
+
+// isRegistryRecord reports whether name is a file the registry writes:
+// an owner record, a claim temp file, or a prune quarantine file.
+func isRegistryRecord(name string) bool {
+	return strings.HasSuffix(name, ".owner") ||
+		strings.HasSuffix(name, ".tmp") ||
+		strings.HasSuffix(name, ".prune")
 }
 
 // current returns the instance id currently recorded for key, or "" if

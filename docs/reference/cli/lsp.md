@@ -60,19 +60,18 @@ stdio transport. The server uses stdio either way.
    help text — the same text `mdsmith help rule <id>` prints.
 
 2. **Directive fallback.** If no diagnostic covers the cursor, the
-   server checks whether the cursor is inside a `<?directive …?>`
-   block. If so, it returns the directive's guide page from
-   `docs/guides/directives/`. The documented directives are
-   `catalog`, `include`, `build`, `allow-empty-section`, and
-   `require`.
+   server checks whether the cursor is inside a `<?directive …?>` block.
+   If so, it returns the directive's guide page from
+   `docs/guides/directives/`. The documented directives are `catalog`,
+   `include`, `build`, `allow-empty-section`, and `require`.
 
 If neither pass finds a match, the server returns `null` (no hover).
-Each hover response includes a `range` field set to the matched span
-— the diagnostic range or the full directive block range — so clients
-can anchor the popup to the right span.
+Each hover response includes a `range` field set to the matched span —
+the diagnostic range or the full directive block range — so clients can
+anchor the popup to the right span.
 
-`mdsmith/rulePatterns` returns rule maintainability metadata; hover
-adds "Suggested remediation" only when `for-diagnostic: true`.
+`mdsmith/rulePatterns` returns rule maintainability metadata; hover adds
+"Suggested remediation" only when `for-diagnostic: true`.
 
 ## Diagnostic mapping
 
@@ -89,60 +88,51 @@ prints:
 
 ## Code actions
 
-- **`quickfix`** — one per fixable diagnostic. Each
-  edit replaces the whole document with the output of
-  running the single rule, so it covers every
-  occurrence of that rule. The action title is the
-  rule's own quick-fix label (e.g. "Remove trailing
-  whitespace"); a rule that supplies none falls back
-  to "Fix all `<rule>` with mdsmith". Within one
-  request all quick-fix actions for the same rule
-  share one `WorkspaceEdit`; the fix is run once
-  regardless of how many diagnostics carry that
-  rule. Quick fixes apply immediately (see Fix
-  preview below). Generated-section rules (catalog,
-  toc, include) regenerate the section in their fix;
-  the action surfaces normally.
-- **`source.fixAll.mdsmith`** — runs `mdsmith fix` on the
-  current buffer; produces the same bytes the on-disk fixer
-  would write.
+- **`quickfix`** — one per fixable diagnostic. Each edit replaces the
+  whole document with the output of running the single rule, so it
+  covers every occurrence of that rule. The action title is the rule's
+  own quick-fix label (e.g. "Remove trailing whitespace"); a rule that
+  supplies none falls back to "Fix all `<rule>` with mdsmith". Within
+  one request all quick-fix actions for the same rule share one
+  `WorkspaceEdit`; the fix is run once regardless of how many
+  diagnostics carry that rule. Quick fixes apply immediately (see Fix
+  preview below). Generated-section rules (catalog, toc, include)
+  regenerate the section in their fix; the action surfaces normally.
+- **`source.fixAll.mdsmith`** — runs `mdsmith fix` on the current
+  buffer; produces the same bytes the on-disk fixer would write.
 
 ### Fix preview (ChangeAnnotation)
 
-Set `mdsmith.previewFix: true` to preview the
-`source.fixAll.mdsmith` edit before it writes. That action
-is what fix-on-save runs. The preview is scoped to it:
-quick fixes apply right away. Both capabilities below must
-appear in `initialize`:
+Set `mdsmith.previewFix: true` to preview the `source.fixAll.mdsmith`
+edit before it writes. That action is what fix-on-save runs. The preview
+is scoped to it: quick fixes apply right away. Both capabilities below
+must appear in `initialize`:
 
 - `workspace.workspaceEdit.documentChanges`
 - `workspace.workspaceEdit.changeAnnotationSupport`
 
-When both are present, the `source.fixAll.mdsmith` edit
-uses `AnnotatedTextEdit` (LSP 3.16) with
-`needsConfirmation: true`. The `edits` slice carries one
-entry per line-aligned diff hunk, not one whole-file
-replacement (which Refactor Preview would render as "old
-file → new file" with no visible delta). All hunks share
-the `mdsmith-fix-all` `annotationId`. Drop either
-capability and the server emits the legacy `changes` map.
-A warning goes to `window/logMessage` once per session.
+When both are present, the `source.fixAll.mdsmith` edit uses
+`AnnotatedTextEdit` (LSP 3.16) with `needsConfirmation: true`. The
+`edits` slice carries one entry per line-aligned diff hunk, not one
+whole-file replacement (which Refactor Preview would render as "old file
+→ new file" with no visible delta). All hunks share the
+`mdsmith-fix-all` `annotationId`. Drop either capability and the server
+emits the legacy `changes` map. A warning goes to `window/logMessage`
+once per session.
 
 ## Symbol navigation
 
-The server indexes the workspace into a symbol graph. The
-graph is built lazily on the first symbol-navigation
-request and is kept in sync via:
+The server indexes the workspace into a symbol graph. The graph is built
+lazily on the first symbol-navigation request and is kept in sync via:
 
-- `didOpen` / `didChange` re-parse the open buffer
-  and swap its slice of the index.
-- `**/*.md` watcher events refresh one file from disk
-  when it changes outside any open buffer.
-- `.mdsmith.yml` changes invalidate the whole index
-  because `ignore:`, `kind-assignment:`, and
-  `follow-symlinks:` all shift what the index sees.
-  Open buffers bypass `ignore:` (the user editing a
-  file always wants it visible).
+- `didOpen` / `didChange` re-parse the open buffer and swap its slice of
+  the index.
+- `**/*.md` watcher events refresh one file from disk when it changes
+  outside any open buffer.
+- `.mdsmith.yml` changes invalidate the whole index because `ignore:`,
+  `kind-assignment:`, and `follow-symlinks:` all shift what the index
+  sees. Open buffers bypass `ignore:` (the user editing a file always
+  wants it visible).
 
 ### Symbol kinds
 
@@ -153,11 +143,9 @@ request and is kept in sync via:
 | Front-matter field        | `Property` (7)   | file                      |
 | Directive (`<?name … ?>`) | `Event` (24)     | enclosing heading or file |
 
-Headings drive the outline; the others hang off the
-synthetic file-root entry. The cross-document key is
-`(file, anchor)` for headings (slug from
-`mdtext.CollectTOCItems`) and `(file, label)` for link
-refs.
+Headings drive the outline; the others hang off the synthetic file-root
+entry. The cross-document key is `(file, anchor)` for headings (slug
+from `mdtext.CollectTOCItems`) and `(file, label)` for link refs.
 
 ### Definition and implementation
 
@@ -182,22 +170,19 @@ refs.
 | `kind:` value                       | every file with that kind assignment             |
 | Directive arg (`file:` / `source:`) | every directive whose `file:` / `source:` = this |
 
-`includeDeclaration: false` excludes the heading or
-definition itself.
+`includeDeclaration: false` excludes the heading or definition itself.
 
 ### Workspace symbol
 
-The query is a case-insensitive substring. It matches
-heading text, link-ref labels, front-matter `title:`,
-and kind names. The relative path goes in
-`containerName`.
+The query is a case-insensitive substring. It matches heading text,
+link-ref labels, front-matter `title:`, and kind names. The relative
+path goes in `containerName`.
 
 ### Call hierarchy
 
-A Markdown file is the unit of "function"; an outbound
-reference is a "call". `incomingCalls` answers "who
-depends on this runbook?", `outgoingCalls` answers
-"what does this overview embed?".
+A Markdown file is the unit of "function"; an outbound reference is a
+"call". `incomingCalls` answers "who depends on this runbook?",
+`outgoingCalls` answers "what does this overview embed?".
 
 `prepareCallHierarchy` accepts three cursor positions:
 
@@ -205,13 +190,12 @@ depends on this runbook?", `outgoingCalls` answers
 - Heading line → the item is that heading section.
 - Directive arg → the item is the target file.
 
-`incomingCalls` returns every edge into the item, with
-sources from cross-file links, `<?include?>`,
-`<?catalog?>` matches, and `<?build?>`. Each entry
-carries the source file and the reference line.
-`outgoingCalls` returns every edge out of the item;
-catalog matches collapse to one entry per directive
-(expansion would inflate large globs into noise).
+`incomingCalls` returns every edge into the item, with sources from
+cross-file links, `<?include?>`, `<?catalog?>` matches, and `<?build?>`.
+Each entry carries the source file and the reference line.
+`outgoingCalls` returns every edge out of the item; catalog matches
+collapse to one entry per directive (expansion would inflate large globs
+into noise).
 
 ## Completion
 
@@ -257,34 +241,51 @@ Completion inside fenced or indented code blocks returns an empty list.
 
 ### Rename
 
-`prepareRename` returns the text range for ATX heading text
-(without `#`s), setext heading text lines, `[label]: url`
-defs, the trailing `[…]` of a full reference, and the
-leading `[…]` of a shortcut or collapsed reference. The
-placeholder pre-fills the popup; other positions return
-`null`.
+`prepareRename` returns the text range for ATX heading text (without
+`#`s), setext heading text lines, `[label]: url` defs, the trailing
+`[…]` of a full reference, and the leading `[…]` of a shortcut or
+collapsed reference. The placeholder pre-fills the popup; other
+positions return `null`.
 
-Heading rename rewrites the heading and every workspace
-anchor link to its slug. Duplicate-name disambiguator shifts
-emit follow-up edits. Link-ref rename rewrites the
-`[label]: url` def plus every same-file use. `InvalidParams`
-fires on a new duplicate base slug, a colliding def, an
-empty slug, or a `[` / `]` / newline in a label. The
-error's `data.conflict` names the colliding symbol.
+Heading rename rewrites the heading and every workspace anchor link to
+its slug. Duplicate-name disambiguator shifts emit follow-up edits.
+Link-ref rename rewrites the `[label]: url` def plus every same-file
+use. `InvalidParams` fires on a new duplicate base slug, a colliding
+def, an empty slug, or a `[` / `]` / newline in a label. The error's
+`data.conflict` names the colliding symbol.
 
 ## Configuration discovery
 
-Discovery is workspace-wide. Starting at the workspace root
-from `initialize`, the server walks up until it finds a
-`.mdsmith.yml` or hits `.git`. Every open buffer shares the
-resolved config. Set `mdsmith.config` to override the walk.
-Edits to `.mdsmith.yml` re-lint all open documents immediately.
+Discovery is workspace-wide. Starting at the workspace root from
+`initialize`, the server walks up until it finds a `.mdsmith.yml` or
+hits `.git`. Every open buffer shares the resolved config. Set
+`mdsmith.config` to override the walk. Edits to `.mdsmith.yml` re-lint
+all open documents immediately.
 
 ## Performance
 
 Run `go test -run=^$ -bench=. ./internal/lsp/...` to reproduce
 the p95 latency benchmarks (150 ms on 1 000-line, 500 ms on
 5 000-line buffers).
+
+## Multiple instances
+
+Many servers can run on one workspace; each client spawns its own. The
+newest-wins workspace singleton is opt-in: a client sends
+`initializationOptions.mdsmith.singletonScope` on `initialize`. The
+server records one owner per workspace root plus scope. When a newer
+server claims the same pair, the older one sends `mdsmith/superseded`
+and exits.
+
+Keys match exactly (case-sensitive). The scope must be a non-empty
+string with no NUL byte; any other value counts as no scope. Only the
+first `initialize` decides.
+
+A client that sends no scope never claims and is never superseded, so
+Neovim, Helix, and the Claude Code plugin coexist with other servers.
+A scoped server still steps aside a server on a pre-scope build. VS Code
+sends its per-workspace storage URI
+([extension reference](../vscode-extension.md)).
 
 ## Exit codes
 

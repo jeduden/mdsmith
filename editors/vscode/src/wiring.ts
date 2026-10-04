@@ -93,7 +93,8 @@ export interface OutputChannelLike {
 
 export function buildClientOptions(
   configWatcher: FileSystemWatcherLike,
-  outputChannel?: OutputChannelLike
+  outputChannel?: OutputChannelLike,
+  scope?: string
 ): LanguageClientOptions {
   const opts: LanguageClientOptions = {
     documentSelector: [
@@ -105,6 +106,14 @@ export function buildClientOptions(
       fileEvents: configWatcher as never
     }
   };
+  if (scope) {
+    // Opt this client into the server's newest-wins workspace
+    // singleton. The server keys its owner record on the workspace root
+    // plus this token, so only servers sharing the token (a leaked
+    // extension host's orphan and its fresh respawn) supersede each
+    // other; other clients on the workspace send no token and coexist.
+    opts.initializationOptions = { mdsmith: { singletonScope: scope } };
+  }
   if (outputChannel) {
     // Sharing one OutputChannel between palette commands and the LSP
     // client avoids two channels with the same name once the client
@@ -395,10 +404,26 @@ export interface WiringDeps {
 }
 
 // ExtensionContextLike is the slice of vscode.ExtensionContext that
-// Wiring consumes: the disposables array and the extension install path.
+// Wiring consumes: the disposables array, the extension install path,
+// and the per-workspace storage URI that names the singleton scope.
 export interface ExtensionContextLike {
   subscriptions: Array<{ dispose(): void }>;
   extensionPath: string;
+  storageUri?: { toString(): string };
+}
+
+// singletonScope returns this workspace's singleton scope: the string
+// form of context.storageUri. VS Code derives that URI from the
+// workspace identity, so a leaked extension host and its fresh
+// replacement get the same value with nothing written to disk, and
+// their servers contend for one owner record — newest wins.
+// vscode.env.sessionId is not used: it is per extension-host process
+// and may differ between the two hosts, which would silently stop the
+// orphan from being reaped. A window with no folder or workspace open
+// has no storageUri; it gets "", the opt-out, so its server never
+// claims.
+export function singletonScope(context: { storageUri?: { toString(): string } }): string {
+  return context.storageUri?.toString() ?? "";
 }
 
 // DidChangeConfigurationNotificationType is the notification id Wiring
@@ -498,7 +523,11 @@ export class Wiring {
     this.disposeConfigWatcher();
     this.configWatcher = this.api.workspace.createFileSystemWatcher("**/.mdsmith.yml");
     context.subscriptions.push(this.configWatcher);
-    const clientOptions = buildClientOptions(this.configWatcher, this.getOutputChannel());
+    const clientOptions = buildClientOptions(
+      this.configWatcher,
+      this.getOutputChannel(),
+      singletonScope(context),
+    );
     // Replace the default ErrorHandler (DoNotRestart after 5 close
     // events in 3 minutes) with one that gives the user a clear recovery
     // path. We let the client keep restarting up to a higher per-window

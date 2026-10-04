@@ -41,12 +41,15 @@ func (s *Server) handleInitialize(msg *requestMessage) {
 	// update/reload/crash and racing the freshly-spawned one.
 	s.startParentWatch(p.ProcessID)
 
-	// Newest-wins workspace singleton: claim this workspace and step
-	// aside if a newer server later claims it. Backstops the processId
+	// Newest-wins workspace singleton, opt-in per client: when the
+	// client sends initializationOptions.mdsmith.singletonScope, claim
+	// this workspace under that scope and step aside if a newer server
+	// with the same scope later claims it. Backstops the processId
 	// watchdog for the case it can't see — a leaked editor host that
 	// stays alive, holding our stdin open so no EOF arrives, while its
-	// window is gone.
-	s.startSingletonWatch(root)
+	// window is gone. Clients that send no scope never claim, so they
+	// coexist with every other server on the workspace.
+	s.startSingletonWatch(root, p.singletonScope())
 
 	res := initializeResult{
 		Capabilities: serverCapabilities{

@@ -80,19 +80,24 @@ type Server struct {
 	parentWatchOnce sync.Once
 
 	// Workspace singleton (newest-wins). When EnableWorkspaceSingleton
-	// is set, handleInitialize claims the workspace root in a shared
-	// registry under instanceID and starts a watcher that steps this
-	// server aside — notifying the editor via mdsmith/superseded, then
-	// exiting — once a newer server claims the same workspace. This
-	// reaps an orphaned server kept alive by a leaked editor host: the
-	// case the processId watchdog can't see, because that host stays
-	// alive. instanceID is "" when the feature is off, which makes
+	// is set and the client sends initializationOptions.mdsmith.
+	// singletonScope, handleInitialize claims the workspace root plus
+	// that scope in a shared registry under instanceID and starts a
+	// watcher that steps this server aside — notifying the editor via
+	// mdsmith/superseded, then exiting — once a newer server claims the
+	// same workspace and scope. A client that sends no scope never
+	// claims, so it coexists with every other server. This reaps an
+	// orphaned server kept alive by a leaked editor host: the case the
+	// processId watchdog can't see, because that host stays alive.
+	// instanceID is "" when the feature is off, which makes
 	// startSingletonWatch a no-op. singletonClaim / singletonCurrent /
-	// singletonInterval / onSupersededExit are test seams — production
-	// uses a file registry, singletonPollInterval, and os.Exit(0).
+	// singletonPrune / singletonInterval / onSupersededExit are test
+	// seams — production uses a file registry, singletonPollInterval,
+	// and os.Exit(0).
 	instanceID         string
 	singletonClaim     func(key, id string) error
 	singletonCurrent   func(key string) string
+	singletonPrune     func(id string)
 	singletonInterval  time.Duration
 	onSupersededExit   func()
 	singletonWatchOnce sync.Once
@@ -206,9 +211,11 @@ type Options struct {
 	// does on the CLI.
 	OnConfigReload func(cfgPath string)
 	// EnableWorkspaceSingleton turns on the newest-wins workspace
-	// singleton. When two servers run for the same workspace root — a
-	// leaked editor host left one orphaned and a reload spawned a fresh
-	// one — the older steps aside so exactly one stays live. cmd/mdsmith
+	// singleton capability. Each client still opts in by sending a
+	// singletonScope; when two servers run for the same workspace root
+	// and scope — a leaked editor host left one orphaned and a reload
+	// spawned a fresh one — the older steps aside so exactly one stays
+	// live. Servers with different or no scopes coexist. cmd/mdsmith
 	// enables it; unit tests leave it off so they neither write to the
 	// real cache dir nor leak a watcher goroutine (the dedicated
 	// singleton tests drive the seams directly).
@@ -263,6 +270,7 @@ func New(opts Options) *Server {
 		reg := defaultRegistry()
 		s.singletonClaim = reg.claim
 		s.singletonCurrent = reg.current
+		s.singletonPrune = reg.prune
 	}
 	return s
 }

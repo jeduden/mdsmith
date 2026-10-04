@@ -3,6 +3,8 @@ package lsp
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -69,8 +71,91 @@ func TestStartSingletonWatchNoopWithoutRoot(t *testing.T) {
 		t.Error("must not claim a workspace when no root was provided")
 		return nil
 	}
-	s.startSingletonWatch("")
+	s.startSingletonWatch("", "scope")
 	time.Sleep(20 * time.Millisecond)
+}
+
+// The empty-scope gate is distinct from the empty-root guard above: here
+// the root, instance id, and registry seams are all present, so only the
+// missing client opt-in keeps the server from claiming and watching.
+func TestStartSingletonWatchNoopWithoutScope(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
+	s.instanceID = "me"
+	s.singletonInterval = time.Millisecond
+	s.singletonClaim = func(string, string) error {
+		t.Error("must not claim a workspace when the client sent no singletonScope")
+		return nil
+	}
+	s.singletonCurrent = func(string) string {
+		t.Error("must not watch the registry when the client sent no singletonScope")
+		return "newer-instance"
+	}
+	var exited atomic.Bool
+	s.onSupersededExit = func() { exited.Store(true) }
+
+	s.startSingletonWatch("/work/space", "")
+	time.Sleep(20 * time.Millisecond)
+	assert.False(t, exited.Load(), "a scope-less server must never be superseded")
+}
+
+// A root carrying a NUL byte (rootUri "file:///w%00scope" decodes to
+// one) would make its legacy key sha256("/w\x00scope") equal the scoped
+// key of root "/w" with scope "scope", so its legacy write would
+// supersede that other server. Such a root opts out, like a NUL scope.
+func TestStartSingletonWatchNoopWithNULRoot(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, workspaceKey("/w", "scope"), workspaceKey("/w\x00scope", ""),
+		"precondition: the NUL root's legacy key aliases another scoped key")
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
+	s.instanceID = "me"
+	s.singletonInterval = time.Millisecond
+	s.singletonClaim = func(key, _ string) error {
+		t.Errorf("must not claim for a root containing a NUL byte (key %s)", key)
+		return nil
+	}
+	s.singletonCurrent = func(string) string { return "me" }
+
+	s.startSingletonWatch("/w\x00scope", "x")
+	time.Sleep(20 * time.Millisecond)
+}
+
+// The first initialize decides singleton participation for the whole
+// session: a scope-less (or root-less) first call must use up the Once,
+// so a stray later initialize carrying a scope cannot start claiming
+// mid-session.
+func TestStartSingletonWatchFirstCallDecides(t *testing.T) {
+	t.Parallel()
+	for _, first := range []struct{ name, root, scope string }{
+		{"no scope", "/work/space", ""},
+		{"no root", "", "scope"},
+	} {
+		t.Run(first.name, func(t *testing.T) {
+			t.Parallel()
+			s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			s.runCtx = ctx
+			s.instanceID = "me"
+			s.singletonInterval = time.Millisecond
+			var claimed atomic.Bool
+			s.singletonClaim = func(string, string) error {
+				claimed.Store(true)
+				return nil
+			}
+			s.singletonCurrent = func(string) string { return "me" }
+			s.startSingletonWatch(first.root, first.scope)
+			s.startSingletonWatch("/work/space", "scope")
+			time.Sleep(20 * time.Millisecond)
+			assert.False(t, claimed.Load(), "a second initialize must not claim after the first opted out")
+		})
+	}
 }
 
 func TestStartSingletonWatchNoopWithoutInstanceID(t *testing.T) {
@@ -81,7 +166,7 @@ func TestStartSingletonWatchNoopWithoutInstanceID(t *testing.T) {
 		t.Error("must not claim a workspace when the feature is off")
 		return nil
 	}
-	s.startSingletonWatch("/work/space")
+	s.startSingletonWatch("/work/space", "scope")
 	time.Sleep(20 * time.Millisecond)
 }
 
@@ -98,7 +183,7 @@ func TestStartSingletonWatchStaysWhileOwner(t *testing.T) {
 	var exited atomic.Bool
 	s.onSupersededExit = func() { exited.Store(true) }
 
-	s.startSingletonWatch("/work/space")
+	s.startSingletonWatch("/work/space", "scope")
 	time.Sleep(30 * time.Millisecond)
 	assert.False(t, exited.Load(), "must not step aside while it is still the registered owner")
 }
@@ -114,14 +199,16 @@ func TestStartSingletonWatchSupersedesAndNotifies(t *testing.T) {
 	s.singletonInterval = time.Millisecond
 	var claimedKey, claimedID string
 	s.singletonClaim = func(key, id string) error {
-		claimedKey, claimedID = key, id
+		if claimedKey == "" {
+			claimedKey, claimedID = key, id
+		}
 		return nil
 	}
 	s.singletonCurrent = func(string) string { return "newer-instance" }
 	exited := make(chan struct{})
 	s.onSupersededExit = func() { close(exited) }
 
-	s.startSingletonWatch("/work/space")
+	s.startSingletonWatch("/work/space", "scope")
 
 	select {
 	case <-exited:
@@ -129,11 +216,46 @@ func TestStartSingletonWatchSupersedesAndNotifies(t *testing.T) {
 		t.Fatal("did not step aside when a newer server claimed the workspace")
 	}
 	assert.Equal(t, "me", claimedID, "must claim the workspace under its own instance id")
-	assert.Equal(t, workspaceKey("/work/space"), claimedKey, "must claim under the workspace key")
+	assert.Equal(t, workspaceKey("/work/space", "scope"), claimedKey,
+		"must claim under the workspace key for this root and scope")
 	assert.Contains(t, buf.String(), "mdsmith/superseded",
 		"must notify the editor before exiting so its client does not restart us")
 	assert.Contains(t, buf.String(), `"reason":"superseded"`,
 		"must serialize the superseded reason payload the supersededParams struct declares")
+}
+
+// A failed legacy write is logged and ignored: the scoped claim
+// already succeeded, so the watcher still runs on the scoped key.
+func TestStartSingletonWatchIgnoresLegacyClaimFailure(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
+	s.instanceID = "me"
+	s.singletonInterval = time.Millisecond
+	scoped := workspaceKey("/work/space", "scope")
+	s.singletonClaim = func(key, _ string) error {
+		if key != scoped {
+			return io.ErrClosedPipe
+		}
+		return nil
+	}
+	watched := make(chan string, 1)
+	s.singletonCurrent = func(key string) string {
+		select {
+		case watched <- key:
+		default:
+		}
+		return "me"
+	}
+	s.startSingletonWatch("/work/space", "scope")
+	select {
+	case key := <-watched:
+		assert.Equal(t, scoped, key, "the watcher polls the scoped key only")
+	case <-time.After(2 * time.Second):
+		t.Fatal("a failed legacy write must not stop the scoped watcher")
+	}
 }
 
 func TestStartSingletonWatchNoopWithoutClaimSeam(t *testing.T) {
@@ -145,7 +267,7 @@ func TestStartSingletonWatchNoopWithoutClaimSeam(t *testing.T) {
 		t.Error("must not start a watcher when the claim seam is nil")
 		return ""
 	}
-	s.startSingletonWatch("/work/space") // must not panic on the nil seam
+	s.startSingletonWatch("/work/space", "scope") // must not panic on the nil seam
 	time.Sleep(20 * time.Millisecond)
 }
 
@@ -157,17 +279,18 @@ func TestStartSingletonWatchClaimsOnlyOnce(t *testing.T) {
 	s.runCtx = ctx
 	s.instanceID = "me"
 	s.singletonInterval = time.Hour // keep the watcher idle
-	var claims int
-	s.singletonClaim = func(string, string) error {
-		claims++
+	var claims []string
+	s.singletonClaim = func(key, _ string) error {
+		claims = append(claims, key)
 		return nil
 	}
 	s.singletonCurrent = func(string) string { return "me" }
 
-	s.startSingletonWatch("/work/space")
-	s.startSingletonWatch("/work/space") // a stray re-initialize must not re-claim
-	s.startSingletonWatch("/other")      // nor one with a different root
-	assert.Equal(t, 1, claims, "claim is guarded by the watch Once, so it runs exactly once")
+	s.startSingletonWatch("/work/space", "scope")
+	s.startSingletonWatch("/work/space", "scope") // a stray re-initialize must not re-claim
+	s.startSingletonWatch("/other", "scope")      // nor one with a different root
+	assert.Equal(t, []string{workspaceKey("/work/space", "scope"), workspaceKey("/work/space", "")}, claims,
+		"claim is guarded by the watch Once: the scoped key, then the legacy key, exactly once")
 }
 
 func TestNewDefaultOnSupersededExitCallsOsExit(t *testing.T) {
@@ -198,7 +321,7 @@ func TestStartSingletonWatchKeepsRunningWhenClaimFails(t *testing.T) {
 	var exited atomic.Bool
 	s.onSupersededExit = func() { exited.Store(true) }
 
-	s.startSingletonWatch("/work/space")
+	s.startSingletonWatch("/work/space", "scope")
 	time.Sleep(30 * time.Millisecond)
 	assert.False(t, exited.Load(), "a failed claim must leave the server running, not reap it")
 }
@@ -214,7 +337,9 @@ func TestHandleInitializeClaimsWorkspaceSingleton(t *testing.T) {
 	s.singletonInterval = time.Hour // keep the watcher idle for the test
 	var claimedKey, claimedID string
 	s.singletonClaim = func(key, id string) error {
-		claimedKey, claimedID = key, id
+		if claimedKey == "" {
+			claimedKey, claimedID = key, id
+		}
 		return nil
 	}
 	s.singletonCurrent = func(string) string { return "me" }
@@ -223,13 +348,46 @@ func TestHandleInitializeClaimsWorkspaceSingleton(t *testing.T) {
 		JSONRPC: "2.0",
 		ID:      json.RawMessage(`1`),
 		Method:  "initialize",
-		Params:  json.RawMessage(`{"processId":null,"rootUri":"file:///work/space"}`),
+		Params: json.RawMessage(`{"processId":null,"rootUri":"file:///work/space",` +
+			`"initializationOptions":{"mdsmith":{"singletonScope":"ws-uuid"}}}`),
 	}
 	s.handleInitialize(msg)
 
 	assert.Equal(t, "me", claimedID, "initialize must claim the workspace singleton")
-	assert.Equal(t, workspaceKey("/work/space"), claimedKey,
-		"initialize must claim under the rootUri's workspace key")
+	assert.Equal(t, workspaceKey("/work/space", "ws-uuid"), claimedKey,
+		"initialize must claim under the rootUri's workspace key for the client's scope")
+}
+
+func TestHandleInitializeWithoutScopeNeverClaims(t *testing.T) {
+	t.Parallel()
+	for _, params := range []string{
+		`{"processId":null,"rootUri":"file:///work/space"}`,
+		`{"processId":null,"rootUri":"file:///work/space","initializationOptions":null}`,
+		`{"processId":null,"rootUri":"file:///work/space","initializationOptions":{"mdsmith":{"singletonScope":""}}}`,
+	} {
+		var buf bytes.Buffer
+		s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+		ctx, cancel := context.WithCancel(context.Background())
+		s.runCtx = ctx
+		s.instanceID = "me"
+		s.singletonInterval = time.Millisecond
+		s.singletonClaim = func(string, string) error {
+			t.Errorf("must not claim the registry without a singletonScope: %s", params)
+			return nil
+		}
+		s.singletonCurrent = func(string) string { return "newer-instance" }
+		var exited atomic.Bool
+		s.onSupersededExit = func() { exited.Store(true) }
+
+		s.handleInitialize(&requestMessage{
+			JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "initialize",
+			Params: json.RawMessage(params),
+		})
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+		assert.False(t, exited.Load(), "a scope-less server must never be superseded: %s", params)
+		assert.NotContains(t, buf.String(), "mdsmith/superseded")
+	}
 }
 
 func TestNewEnablesWorkspaceSingleton(t *testing.T) {
@@ -238,6 +396,7 @@ func TestNewEnablesWorkspaceSingleton(t *testing.T) {
 	assert.NotEmpty(t, on.instanceID, "an enabled server gets a real instance id")
 	require.NotNil(t, on.singletonClaim, "an enabled server wires the registry claim seam")
 	require.NotNil(t, on.singletonCurrent, "an enabled server wires the registry read seam")
+	require.NotNil(t, on.singletonPrune, "an enabled server wires the registry prune seam")
 
 	off := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	assert.Empty(t, off.instanceID, "a disabled server has no instance id, so the watch is a no-op")
@@ -260,12 +419,43 @@ func TestFileRegistryClaimCurrentRoundTrip(t *testing.T) {
 
 func TestWorkspaceKeyStableAndDistinct(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, workspaceKey("/a/b"), workspaceKey("/a/b/"),
+	assert.Equal(t, workspaceKey("/a/b", "s"), workspaceKey("/a/b/", "s"),
 		"a trailing slash must not change the key")
-	assert.Equal(t, workspaceKey("/a/b"), workspaceKey("/a/./b"),
+	assert.Equal(t, workspaceKey("/a/b", "s"), workspaceKey("/a/./b", "s"),
 		"a redundant path element must not change the key")
-	assert.NotEqual(t, workspaceKey("/a/b"), workspaceKey("/a/c"),
+	assert.NotEqual(t, workspaceKey("/a/b", "s"), workspaceKey("/a/c", "s"),
 		"distinct workspaces get distinct keys")
+}
+
+func TestWorkspaceKeyScopeSameRootDifferentScopeDiffers(t *testing.T) {
+	t.Parallel()
+	assert.NotEqual(t, workspaceKey("/a/b", "vscode-1"), workspaceKey("/a/b", "vscode-2"),
+		"two scopes on one workspace must contend for different owner records")
+	assert.NotEqual(t, workspaceKey("/a/b", "vscode-1"), workspaceKey("/a/b", ""),
+		"a scoped key must not collide with the legacy root-only key")
+}
+
+func TestWorkspaceKeyScopeSameRootSameScopeMatches(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, workspaceKey("/a/b", "vscode-1"), workspaceKey("/a/b/", "vscode-1"),
+		"an orphan and its respawn sharing one scope must share one owner record")
+}
+
+func TestWorkspaceKeyScopeEmptyIsLegacyRootOnlyKey(t *testing.T) {
+	t.Parallel()
+	// The pre-scope derivation: sha256 over the cleaned root alone. An
+	// empty scope must reproduce it byte for byte, so the one key
+	// function keeps the legacy format rather than growing a sibling.
+	legacy := sha256.Sum256([]byte("/a/b"))
+	assert.Equal(t, hex.EncodeToString(legacy[:]), workspaceKey("/a/b/", ""))
+}
+
+func TestWorkspaceKeyScopeSeparatorPreventsAmbiguity(t *testing.T) {
+	t.Parallel()
+	// Without the NUL separator, root "/a" with scope "b" and root
+	// "/ab" with no scope would hash the same bytes, "/ab".
+	assert.NotEqual(t, workspaceKey("/a", "b"), workspaceKey("/ab", ""),
+		"root and scope must be framed so their concatenation is unambiguous")
 }
 
 func TestNewInstanceIDUniqueAndNonEmpty(t *testing.T) {
@@ -330,6 +520,267 @@ func TestFileRegistryClaimRemovesTempOnRenameFailure(t *testing.T) {
 	assert.Error(t, r.claim("k", "id"))
 	_, statErr := os.Stat(r.path("k") + "." + "id" + ".tmp")
 	assert.True(t, os.IsNotExist(statErr), "a failed claim must not leave its temp file behind")
+}
+
+// claim only writes; pruning is a separate pass that
+// startSingletonWatch runs once per start, so a scoped start (scoped
+// claim plus legacy claim) scans the registry directory once, not twice.
+func TestFileRegistryClaimDoesNotPrune(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	r := fileRegistry{dir: dir}
+	old := time.Now().Add(-2 * singletonRecordMaxAge)
+	stale := filepath.Join(dir, "stale.owner")
+	require.NoError(t, os.WriteFile(stale, []byte("x"), 0o600))
+	require.NoError(t, os.Chtimes(stale, old, old))
+
+	require.NoError(t, r.claim("mine", "me"))
+	assert.FileExists(t, stale, "claim must not scan the registry")
+
+	r.prune("me")
+	assert.NoFileExists(t, stale, "a record untouched past the max age must be pruned")
+	assert.Equal(t, "me", r.current("mine"), "a record just claimed is fresh and stays")
+}
+
+func TestStartSingletonWatchPrunesOncePerStart(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
+	s.instanceID = "me"
+	s.singletonInterval = time.Hour
+	var claims, prunes atomic.Int32
+	s.singletonClaim = func(string, string) error { claims.Add(1); return nil }
+	s.singletonCurrent = func(string) string { return "me" }
+	s.singletonPrune = func(string) { prunes.Add(1) }
+
+	s.startSingletonWatch("/w", "scope")
+	assert.Equal(t, int32(2), claims.Load(), "scoped and legacy claims")
+	assert.Eventually(t, func() bool { return prunes.Load() == 1 },
+		time.Second, time.Millisecond, "one prune per start")
+	assert.Never(t, func() bool { return prunes.Load() > 1 },
+		20*time.Millisecond, time.Millisecond, "only one prune per start")
+}
+
+// The prune scans the registry directory, so it runs off the
+// initialize path: startSingletonWatch returns while it is still in
+// flight, and the editor's initialize response does not wait on it.
+func TestStartSingletonWatchPrunesOffInitializePath(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
+	s.instanceID = "me"
+	s.singletonInterval = time.Hour
+	s.singletonClaim = func(string, string) error { return nil }
+	s.singletonCurrent = func(string) string { return "me" }
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	started := make(chan struct{})
+	s.singletonPrune = func(string) { close(started); <-release }
+
+	returned := make(chan struct{})
+	go func() { s.startSingletonWatch("/w", "scope"); close(returned) }()
+	select {
+	case <-returned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("startSingletonWatch blocked on the registry prune")
+	}
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the prune never ran")
+	}
+}
+
+// The prune runs on a spawned goroutine, so the test waits a window for
+// it: an assertion that only fires inside that goroutine would land
+// after the test returned and never fail it.
+func TestStartSingletonWatchSkipsPruneOnFailedClaim(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
+	s.instanceID = "me"
+	s.singletonInterval = time.Hour
+	s.singletonClaim = func(string, string) error { return io.ErrClosedPipe }
+	s.singletonCurrent = func(string) string { return "me" }
+	var pruned atomic.Bool
+	s.singletonPrune = func(string) { pruned.Store(true) }
+	s.startSingletonWatch("/w", "scope")
+	assert.Never(t, pruned.Load, 30*time.Millisecond, time.Millisecond, "a failed claim must not prune")
+}
+
+func TestIsRegistryRecord(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]bool{
+		"abc.owner":                 true,
+		"abc.owner.id.tmp":          true,
+		"abc.owner.id.prune":        true,
+		"abc.owner.id.tmp.id.prune": true,
+		"notes.txt":                 false,
+		"abc.owner.bak":             false,
+		"owner":                     false,
+		"":                          false,
+	} {
+		assert.Equal(t, want, isRegistryRecord(name), name)
+	}
+}
+
+// An entry listed by ReadDir can vanish before the prune stats it (a
+// concurrent prune or claim removed it). The prune must skip it rather
+// than read a nil FileInfo. ReadDir lists names sorted, so hook 0 on
+// "a.owner" deletes "b.owner" before the loop reaches it.
+func TestPruneStaleSkipsEntryVanishedBeforeStat(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	old := now.Add(-2 * time.Hour)
+	a := filepath.Join(dir, "a.owner")
+	b := filepath.Join(dir, "b.owner")
+	for _, p := range []string{a, b} {
+		require.NoError(t, os.WriteFile(p, []byte("old"), 0o600))
+		require.NoError(t, os.Chtimes(p, old, old))
+	}
+
+	var stale []string
+	pruneStale(dir, "pruner", now.Add(-time.Hour), func(path string) {
+		stale = append(stale, path)
+		if path == a {
+			require.NoError(t, os.Remove(b))
+		}
+	})
+	assert.NoFileExists(t, a, "the first stale record is still pruned")
+	assert.Equal(t, []string{a}, stale, "the vanished entry is skipped before it is judged stale")
+}
+
+// A claim can rename a fresh record onto a path between the stale
+// check and the removal. The prune must then leave that fresh record
+// in place rather than delete a live server's claim.
+func TestPruneStaleRecordsKeepsRecordClaimedMidPrune(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	p := filepath.Join(dir, "x.owner")
+	old := now.Add(-2 * time.Hour)
+	require.NoError(t, os.WriteFile(p, []byte("old"), 0o600))
+	require.NoError(t, os.Chtimes(p, old, old))
+
+	pruneStale(dir, "pruner", now.Add(-time.Hour), func(path string) {
+		if path == p {
+			r := fileRegistry{dir: dir}
+			require.NoError(t, r.claim("x", "new"))
+		}
+	})
+
+	assert.Equal(t, "new", fileRegistry{dir: dir}.current("x"),
+		"the record claimed mid-prune must survive")
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "no quarantine file may be left behind")
+}
+
+// When a newer claim lands after the record was quarantined, the
+// restore must not overwrite it.
+func TestPruneStaleRecordsRestoreNeverClobbersNewerClaim(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	p := filepath.Join(dir, "x.owner")
+	old := now.Add(-2 * time.Hour)
+	require.NoError(t, os.WriteFile(p, []byte("old"), 0o600))
+	require.NoError(t, os.Chtimes(p, old, old))
+	r := fileRegistry{dir: dir}
+
+	pruneStale(dir, "pruner", now.Add(-time.Hour), func(path string) {
+		if path == p {
+			require.NoError(t, r.claim("x", "mid"))
+		}
+	}, func(path string) {
+		if path == p {
+			require.NoError(t, r.claim("x", "newest"))
+		}
+	})
+
+	assert.Equal(t, "newest", r.current("x"))
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "no quarantine file may be left behind")
+}
+
+// An entry removed by someone else between the stale check and the
+// quarantine move is skipped, and no quarantine file appears.
+func TestPruneStaleRecordsSkipsEntryGoneMidPrune(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	p := filepath.Join(dir, "x.owner")
+	old := now.Add(-2 * time.Hour)
+	require.NoError(t, os.WriteFile(p, []byte("old"), 0o600))
+	require.NoError(t, os.Chtimes(p, old, old))
+
+	pruneStale(dir, "pruner", now.Add(-time.Hour), func(string) {
+		require.NoError(t, os.Remove(p))
+	})
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries)
+}
+
+// A quarantine that vanishes before its re-check leaves nothing behind
+// and does not panic: the Lstat, the link, and the rename fallback all
+// fail and are ignored. A concurrent prune does this to a live pruner's
+// quarantine of a still-stale record (it cannot tell it from one a
+// crashed prune left), and an outside cleaner can do it to any.
+func TestPruneStaleRecordsRestoreOfVanishedQuarantine(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	p := filepath.Join(dir, "x.owner")
+	old := now.Add(-2 * time.Hour)
+	require.NoError(t, os.WriteFile(p, []byte("old"), 0o600))
+	require.NoError(t, os.Chtimes(p, old, old))
+
+	pruneStale(dir, "pruner", now.Add(-time.Hour), nil, func(string) {
+		require.NoError(t, os.Remove(p+".pruner.prune"))
+	})
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries)
+}
+
+func TestPruneStaleRecords(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	old := now.Add(-2 * time.Hour)
+	write := func(name string, mtime time.Time) string {
+		p := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(p, []byte("x"), 0o600))
+		require.NoError(t, os.Chtimes(p, mtime, mtime))
+		return p
+	}
+	staleOwner := write("a.owner", old)
+	staleTmp := write("a.owner.id.tmp", old)
+	staleQuarantine := write("a.owner.123.prune", old)
+	freshOwner := write("b.owner", now)
+	foreign := write("notes.txt", old)
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "d.owner"), 0o755))
+
+	pruneStale(dir, "pruner", now.Add(-time.Hour))
+
+	assert.NoFileExists(t, staleOwner)
+	assert.NoFileExists(t, staleTmp)
+	assert.NoFileExists(t, staleQuarantine, "a quarantine file left by a crashed prune is pruned too")
+	assert.FileExists(t, freshOwner)
+	assert.FileExists(t, foreign, "only registry records are pruned")
+	assert.DirExists(t, filepath.Join(dir, "d.owner"), "directories are left alone")
+	pruneStale(filepath.Join(dir, "missing"), "pruner", now) // an unreadable dir is a no-op
 }
 
 func TestFileRegistryCurrentEmptyWhenNotReadable(t *testing.T) {

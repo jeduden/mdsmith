@@ -4,7 +4,11 @@
 // code actions, and watched-file notifications.
 package lsp
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+)
 
 // JSON-RPC 2.0 framing.
 
@@ -61,11 +65,92 @@ const (
 // failing — a non-pointer int would otherwise return
 // "cannot unmarshal null into int" and the server would reject
 // the very first request.
+//
+// InitializationOptions is spec'd as `LSPAny`, so it stays raw here:
+// a client that sends a string, array, or null must not fail the
+// initialize decode. singletonScope reads the one field mdsmith
+// understands from it.
 type initializeParams struct {
-	ProcessID        *int               `json:"processId,omitempty"`
-	RootURI          *string            `json:"rootUri,omitempty"`
-	WorkspaceFolders []workspaceFolder  `json:"workspaceFolders,omitempty"`
-	Capabilities     clientCapabilities `json:"capabilities"`
+	ProcessID             *int               `json:"processId,omitempty"`
+	RootURI               *string            `json:"rootUri,omitempty"`
+	WorkspaceFolders      []workspaceFolder  `json:"workspaceFolders,omitempty"`
+	Capabilities          clientCapabilities `json:"capabilities"`
+	InitializationOptions json.RawMessage    `json:"initializationOptions,omitempty"`
+}
+
+// UnmarshalJSON decodes the params in one pass over the top-level
+// members, matching each key exactly as the LSP spec spells it.
+// encoding/json matches struct fields case-insensitively, so a stock
+// decode would let "InitializationOptions" opt a client into the
+// singleton, and a later case-variant sibling would overwrite the real
+// value; here a case variant is just an unknown member and is skipped.
+// One pass also decodes the (large) capabilities object once.
+//
+// The value reaching UnmarshalJSON is already valid JSON (encoding/json
+// checks it first), so reading a key token cannot fail. A null or
+// non-object value falls back to the stock decode, which keeps the
+// stock result: a no-op for null, a type error otherwise.
+func (p *initializeParams) UnmarshalJSON(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if tok, _ := dec.Token(); tok != json.Delim('{') {
+		type plain initializeParams
+		return json.Unmarshal(data, (*plain)(p))
+	}
+	var skip json.RawMessage
+	for dec.More() {
+		tok, _ := dec.Token()
+		key, _ := tok.(string)
+		var target any
+		switch key {
+		case "processId":
+			target = &p.ProcessID
+		case "rootUri":
+			target = &p.RootURI
+		case "workspaceFolders":
+			target = &p.WorkspaceFolders
+		case "capabilities":
+			target = &p.Capabilities
+		case "initializationOptions":
+			target = &p.InitializationOptions
+		default:
+			target = &skip
+		}
+		if err := dec.Decode(target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// singletonScope returns initializationOptions.mdsmith.singletonScope,
+// the client-supplied token that opts this server into the workspace
+// singleton (see startSingletonWatch). Any other shape — absent, null,
+// a non-object options value or namespace, a non-string scope — yields
+// "", which is the opt-out: the server then never claims the registry.
+//
+// Keys are matched exactly, the top-level one by UnmarshalJSON.
+// encoding/json struct decoding folds case, so "MDSMITH" would opt a
+// client in and a case-variant sibling of the wrong type would fail
+// the whole decode; map lookups avoid both. A
+// scope containing a NUL byte is also an opt-out, because workspaceKey
+// frames root and scope with NUL and must stay unambiguous.
+func (p initializeParams) singletonScope() string {
+	var opts map[string]json.RawMessage
+	if json.Unmarshal(p.InitializationOptions, &opts) != nil {
+		return ""
+	}
+	var ns map[string]json.RawMessage
+	if json.Unmarshal(opts["mdsmith"], &ns) != nil {
+		return ""
+	}
+	var scope string
+	if json.Unmarshal(ns["singletonScope"], &scope) != nil {
+		return ""
+	}
+	if strings.IndexByte(scope, 0) >= 0 {
+		return ""
+	}
+	return scope
 }
 
 type workspaceFolder struct {
