@@ -189,6 +189,10 @@ landed meanwhile is linked back, never over a newer one. A
 pruned record of a live server reads as "no owner", which the
 watcher treats as "still ours".
 
+Prune skips the scan if the registry dir or its parent is a
+symlink, or if another user owns it or can write to it. It moves
+and removes only regular files, never a planted symlink.
+
 ### Rollout
 
 The extension bundles its own binary, so server and extension
@@ -265,7 +269,8 @@ the scope is per VS Code workspace.
       and never watches it, so a pre-scope orphan exits on the
       first upgrade.
 - [x] A scoped start prunes registry records older than 30 days,
-      once, without deleting a record claimed mid-prune.
+      once, without deleting a record claimed mid-prune, and
+      never through a symlinked or foreign-owned registry dir.
 - [x] The VS Code extension sends
       `initializationOptions.mdsmith.singletonScope` = its
       workspace `storageUri`; a `bun:test` asserts the
@@ -301,14 +306,9 @@ are recorded here. File each as its own opus plan once `PLAN.md` has room.
    a failing `-race` test of concurrent `Session.Fix` and `Session.Check`,
    private rule instances per config signature, and CI `go test -race` for
    `internal/{lsp,engine,fix}` and `pkg/mdsmith`.
-3. **Shared temp-dir prune.** If `os.UserCacheDir` fails, the registry falls
-   back to a shared `/tmp/mdsmith`, where another user can plant
-   `lsp-singleton` as a symlink so prune removes old `*.tmp`, `*.owner` and
-   `*.prune` files in its target. Skip prune on that fallback, or refuse a
-   registry dir that is a symlink or owned by another user.
-4. **Retire the legacy claim.** Each scoped start writes the root-only record,
+3. **Retire the legacy claim.** Each scoped start writes the root-only record,
    superseding a pre-scope client on that root; set a removal release.
-5. **NUL root and seams.** Reject `%00` in `uriToPath`/`pickRoot` for every
+4. **NUL root and seams.** Reject `%00` in `uriToPath`/`pickRoot` for every
    caller and drop the singleton-only guard. Replace `pruneStale`'s positional
    `hooks ...func(string)` with named seams, and read `initializationOptions`
    from the raw params map instead of the custom `UnmarshalJSON`, which made
