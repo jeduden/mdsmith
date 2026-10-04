@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -815,17 +814,10 @@ func (f *Fixer) wireFileFS(lf *lint.File, path string) fs.FS {
 // for a file below RootDir. A lent SourceFS stays open for its owner.
 func (f *Fixer) releaseRoots(lf *lint.File, path string) {
 	if f.SourceFS == nil {
-		closeFS(lf.FS)
+		lint.CloseFS(lf.FS)
 	}
 	if f.RootDir != "" && filepath.Dir(path) != f.RootDir {
-		closeFS(lf.RootFS)
-	}
-}
-
-// closeFS closes fsys when it holds a handle.
-func closeFS(fsys fs.FS) {
-	if c, ok := fsys.(io.Closer); ok {
-		_ = c.Close()
+		lint.CloseFS(lf.RootFS)
 	}
 }
 

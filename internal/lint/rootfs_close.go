@@ -13,6 +13,16 @@ type RootFS interface {
 	io.Closer
 }
 
+// CloseFS closes fsys when it holds a handle (an io.Closer, such as the
+// RootFS OpenRootFS returns) and does nothing otherwise, so a caller
+// releasing a view it may not own needs no type switch. A close error
+// on a read-only directory handle loses nothing, so it is dropped.
+func CloseFS(fsys fs.FS) {
+	if c, ok := fsys.(io.Closer); ok {
+		_ = c.Close()
+	}
+}
+
 // closingFS gives fsys a Close and forwards the optional fs interfaces
 // fsys implements (os.Root's FS and os.DirFS implement all five), so
 // fs.ReadFile, fs.ReadDir, fs.Stat, fs.WalkDir, fs.ReadLink, and

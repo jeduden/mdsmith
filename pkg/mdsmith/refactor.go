@@ -3,13 +3,13 @@ package mdsmith
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"path"
 	"sync"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/refactor"
 )
@@ -204,8 +204,8 @@ func (s *Session) buildRefactorWorkspace(
 // fsys's only use, so a closable fsys (an OSWorkspace's os.Root view) is
 // closed once it ends; an fsys the caller does not own is left open.
 func walkWorkspacePaths(fsys fs.FS, owned bool, keep func(string) bool) []string {
-	if c, ok := fsys.(io.Closer); ok && owned {
-		defer func() { _ = c.Close() }()
+	if owned {
+		defer lint.CloseFS(fsys)
 	}
 	var paths []string
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {

@@ -19,10 +19,28 @@ type sessionRoots struct {
 	source fs.FS
 }
 
+// sourceView is the workspace FS view one operation reads through.
+type sourceView struct {
+	fs.FS
+	// perCall is set when the view was opened for this operation alone
+	// (after Dispose, or when the session could not open one to keep):
+	// release closes it, and no parse cache may keep a File holding it.
+	perCall bool
+}
+
+// release closes the view when it was opened for this operation alone;
+// a view the session lends, or one its workspace keeps, stays open.
+func (v sourceView) release() {
+	if v.perCall {
+		lint.CloseFS(v.FS)
+	}
+}
+
 // lentRoot returns the view of s.rootDir every runner borrows as its
 // RootFS, opening it on first use. It returns nil when the session has
-// no on-disk root, or after Dispose (the runner then opens and closes
-// a root of its own per call).
+// no on-disk root, after Dispose, or when the root cannot be opened
+// (the next call retries the open rather than keeping the failure); the
+// runner then opens and closes a root of its own per call.
 func (s *Session) lentRoot() fs.FS {
 	if s.rootDir == "" {
 		return nil
@@ -33,28 +51,46 @@ func (s *Session) lentRoot() fs.FS {
 		return nil
 	}
 	if s.roots.root == nil {
-		s.roots.root = lint.OpenRootFS(s.rootDir)
+		root := lint.OpenRootFS(s.rootDir)
+		if !readable(root) {
+			lint.CloseFS(root)
+			return nil
+		}
+		s.roots.root = root
 	}
 	return s.roots.root
 }
 
-// sourceFS returns the workspace FS view an operation reads through. A
-// view the session owns (ownsFS) is opened once and reused; any other
-// workspace hands out its own per call, as does an owned one after
-// Dispose.
-func (s *Session) sourceFS() fs.FS {
+// sourceFS returns the workspace FS view an operation reads through; the
+// operation calls its release once it ends. A view the session owns
+// (ownsFS) is opened once and reused until Dispose. After Dispose, or
+// when the open fails (retried on the next call), the operation gets a
+// view of its own that release closes. Any other workspace hands out
+// its own view per call and keeps what it holds, so release leaves it
+// open.
+func (s *Session) sourceFS() sourceView {
 	if !ownsFS(s.ws) {
-		return s.ws.FS()
+		return sourceView{FS: s.ws.FS()}
 	}
 	s.roots.mu.Lock()
 	defer s.roots.mu.Unlock()
-	if s.roots.closed {
-		return s.ws.FS()
+	if s.roots.source != nil {
+		return sourceView{FS: s.roots.source}
 	}
-	if s.roots.source == nil {
-		s.roots.source = s.ws.FS()
+	view := s.ws.FS()
+	if s.roots.closed || !readable(view) {
+		return sourceView{FS: view, perCall: true}
 	}
-	return s.roots.source
+	s.roots.source = view
+	return sourceView{FS: view}
+}
+
+// readable reports whether fsys can read its own root, so a failed open
+// (an unreadable or missing directory) is not kept for the session's
+// lifetime.
+func readable(fsys fs.FS) bool {
+	_, err := fs.Stat(fsys, ".")
+	return err == nil
 }
 
 // closeRoots closes every handle the session opened. Later calls are
@@ -63,10 +99,7 @@ func (s *Session) closeRoots() {
 	s.roots.mu.Lock()
 	defer s.roots.mu.Unlock()
 	s.roots.closed = true
-	for _, h := range []fs.FS{s.roots.root, s.roots.source} {
-		if c, ok := h.(interface{ Close() error }); ok {
-			_ = c.Close()
-		}
-	}
+	lint.CloseFS(s.roots.root)
+	lint.CloseFS(s.roots.source)
 	s.roots.root, s.roots.source = nil, nil
 }

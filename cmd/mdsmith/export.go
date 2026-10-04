@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
-	iofs "io/fs"
 	"os"
 	"path/filepath"
 
@@ -206,13 +204,10 @@ func wireExportFS(f *lint.File, path, cfgPath string) {
 
 // closeFileRoots closes the roots a command opened for f through
 // lint.OpenRootFS: f.FS and f.RootFS. When both name one handle (a file
-// at the project root) the second Close is a harmless no-op error.
+// at the project root) the second Close is a harmless no-op.
 func closeFileRoots(f *lint.File) {
-	for _, h := range []iofs.FS{f.FS, f.RootFS} {
-		if c, ok := h.(io.Closer); ok {
-			_ = c.Close()
-		}
-	}
+	lint.CloseFS(f.FS)
+	lint.CloseFS(f.RootFS)
 }
 
 // effectiveExportConfig parses front-matter kinds/fields (with the

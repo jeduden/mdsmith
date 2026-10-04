@@ -52,6 +52,21 @@ func TestOpenRootFS_NonExistentDirClose(t *testing.T) {
 	assert.NoError(t, lint.OpenRootFS(t.TempDir()+"/does-not-exist").Close())
 }
 
+// TestCloseFS locks that CloseFS closes a closable view and leaves one
+// without a Close (os.DirFS) readable.
+func TestCloseFS(t *testing.T) {
+	dir := writeRootFile(t, "a.md", "# A\n")
+	root := lint.OpenRootFS(dir)
+	lint.CloseFS(root)
+	_, err := fs.Stat(root, "a.md")
+	assert.Error(t, err, "CloseFS closes a RootFS")
+
+	plain := os.DirFS(dir)
+	lint.CloseFS(plain)
+	_, err = fs.Stat(plain, "a.md")
+	assert.NoError(t, err, "a view with no Close is left alone")
+}
+
 // The forwarding tests below lock that the closable wrapper keeps the
 // optional fs interfaces os.Root's FS implements, so fs.ReadFile,
 // fs.ReadDir, fs.Stat, fs.ReadLink, and fs.Lstat keep their fast paths.
