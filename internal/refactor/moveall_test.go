@@ -977,3 +977,28 @@ func TestDestResolver_CountBlocked(t *testing.T) {
 	r.countBlocked(holderIndex("y/c.md", "x/c.md", "b.md"), t1, stemKey("b"), "x/c.md")
 	assert.Equal(t, 2, b.withheld, "the link left as written reaches a member's destination")
 }
+
+func TestDestResolver_KnowsHolders(t *testing.T) {
+	walked := &destResolver{}
+	assert.True(t, walked.knowsHolders(stemKey("guide")))
+	assert.True(t, walked.knowsHolders(nameKey("img.png")), "a walked index holds every name")
+	listed := &destResolver{wlListed: true}
+	assert.True(t, listed.knowsHolders(stemKey("guide")), "the listed files are the stem's best known set")
+	assert.False(t, listed.knowsHolders(nameKey("img.png")), "the listed files may lack a non-Markdown holder")
+}
+
+func TestDestResolver_Blocked(t *testing.T) {
+	b := newMoveBatch()
+	b.dsts["c.md"] = true
+	r := &destResolver{batch: b}
+	reached := wikilinkTarget{dst: "c.md", wikilinkKey: stemKey("c")}
+	assert.False(t, r.blocked(holderIndex("c.md"), reached, stemKey("a"), "c.md"), "the target reaches its file")
+	taken := wikilinkTarget{dst: "x/c.md", wikilinkKey: stemKey("c")}
+	assert.True(t, r.blocked(holderIndex("c.md", "x/c.md"), taken, stemKey("a"), "x/c.md"))
+	assert.Equal(t, 1, b.withheld, "a member's destination wins the new key, so the link is counted")
+
+	r.wlListed = true
+	name := wikilinkTarget{dst: "photo.png", wikilinkKey: nameKey("photo.png")}
+	assert.True(t, r.blocked(holderIndex(), name, stemKey("a"), "photo.png"), "a name key's holders are unknown")
+	assert.Equal(t, 1, b.withheld, "an unknown holder is left as written, not counted")
+}
