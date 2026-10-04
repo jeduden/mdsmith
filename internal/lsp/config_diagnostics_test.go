@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/textproto"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -144,9 +145,6 @@ func TestWatchedPyprojectChangeReloadsConfig(t *testing.T) {
 	cfg, path, _ := s.snapshotConfig()
 	assert.Equal(t, py, path)
 	assert.False(t, cfg.Rules["line-length"].Enabled)
-	created := []fileEvent{{URI: pathToURI(py), Type: fileChangeCreated}}
-	assert.False(t, watchedFilesTreeChanged(created, s.isWatchedConfigChange),
-		"a config-only create must not flag a wikilink tree change")
 }
 
 func TestReloadConfigLogsPluralTableHint(t *testing.T) {
@@ -280,8 +278,8 @@ func TestNestedPyprojectChangeSkipsReload(t *testing.T) {
 	require.NoError(t, err)
 	s.handleDidChangeWatchedFiles(context.Background(), raw)
 	assert.Equal(t, 0, calls, "a nested pyproject.toml must not reload config")
-	assert.True(t, watchedFilesTreeChanged([]fileEvent{{URI: pathToURI(nested), Type: fileChangeCreated}},
-		s.isWatchedConfigChange), "a nested pyproject.toml create is an ordinary tree change")
+	assert.True(t, watchedFileTreeChanged(fileEvent{URI: pathToURI(nested), Type: fileChangeCreated}),
+		"a nested pyproject.toml create is an ordinary tree change")
 
 	top := filepath.Join(root, "pyproject.toml")
 	raw, err = json.Marshal(didChangeWatchedFilesParams{Changes: []fileEvent{
@@ -290,4 +288,108 @@ func TestNestedPyprojectChangeSkipsReload(t *testing.T) {
 	require.NoError(t, err)
 	s.handleDidChangeWatchedFiles(context.Background(), raw)
 	assert.Equal(t, 1, calls, "a root pyproject.toml reloads config")
+}
+
+// TestRegisterWatchersIncludesSidecars pins that the client watches the
+// kind, convention, schema and word-list files Load reads beside a
+// config, so editing one reloads config.
+func TestRegisterWatchersIncludesSidecars(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.registerWatchers()
+	assert.Contains(t, buf.String(), "**/.mdsmith/*/*.yml")
+	assert.Contains(t, buf.String(), "**/.mdsmith/*/*.yaml")
+}
+
+// TestWatchedSidecarFixClearsSquiggle pins that a positioned error in a
+// kind file squiggles that file, and that saving the fix — a watched
+// event on the kind file alone — reloads config and clears it.
+func TestWatchedSidecarFixClearsSquiggle(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, writeFile(filepath.Join(dir, ".mdsmith.yml"), "rules: {}\n"))
+	kf := filepath.Join(dir, ".mdsmith", "kinds", "plan.yml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(kf), 0o755))
+	require.NoError(t, writeFile(kf, "rules: {}\npath-pattern: [x]\n"))
+
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.reloadConfig()
+	uri := pathToURI(kf)
+	pubs := publishedFor(t, buf.String(), uri)
+	require.Len(t, pubs, 1)
+	require.Len(t, pubs[0].Diagnostics, 1)
+
+	require.NoError(t, writeFile(kf, "rules: {}\n"))
+	raw, err := json.Marshal(didChangeWatchedFilesParams{Changes: []fileEvent{
+		{URI: uri, Type: fileChangeChanged},
+	}})
+	require.NoError(t, err)
+	s.handleDidChangeWatchedFiles(context.Background(), raw)
+	pubs = publishedFor(t, buf.String(), uri)
+	require.Len(t, pubs, 2, "the sidecar save must reload config")
+	assert.Empty(t, pubs[1].Diagnostics)
+}
+
+// TestIsWatchedConfigChangeSidecars pins that a sidecar file reloads
+// config under the same rule as the config file beside it.
+func TestIsWatchedConfigChangeSidecars(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join(string(filepath.Separator), "ws", "repo")
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = root
+	s.configMu.Unlock()
+
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(root, ".mdsmith", "kinds", "plan.yml")))
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(filepath.Dir(root), ".mdsmith", "wordlists", "w.yaml")))
+	assert.False(t, s.isWatchedConfigChange(filepath.Join(root, "pkg", ".mdsmith", "kinds", "plan.yml")),
+		"a sidecar beside a nested config discovery never reads")
+	assert.False(t, s.isWatchedConfigChange(filepath.Join(root, ".mdsmith", "other", "x.yml")))
+
+	loaded := filepath.Join(root, "sub", ".mdsmith.yml")
+	s.configMu.Lock()
+	s.configPath = loaded
+	s.configMu.Unlock()
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(root, "sub", ".mdsmith", "schemas", "s.yml")),
+		"a sidecar beside the loaded config reloads")
+
+	s.settings.ConfigPath = "cfg/.mdsmith.yml"
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(root, "cfg", ".mdsmith", "conventions", "c.yml")),
+		"a sidecar beside the mdsmith.config override reloads")
+	assert.False(t, s.isWatchedConfigChange(filepath.Join(root, ".mdsmith", "kinds", "plan.yml")),
+		"with an override set, a sidecar beside the root config is not read")
+}
+
+// TestIsWatchedConfigChangeThroughSymlink pins that a watched event
+// carrying the symlink-resolved path of a file the server knows by its
+// link path (a workspace opened through a symlink) still reloads.
+func TestIsWatchedConfigChangeThroughSymlink(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	real := filepath.Join(base, "real")
+	require.NoError(t, os.MkdirAll(filepath.Join(real, "sub"), 0o755))
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	s := New(Options{Reader: nil, Writer: io.Discard})
+	s.configMu.Lock()
+	s.rootDir = link
+	s.configMu.Unlock()
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(real, ".mdsmith.yml")), "root config by its real path")
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(real, ".mdsmith", "kinds", "k.yml")), "root sidecar by its real path")
+	assert.False(t, s.isWatchedConfigChange(filepath.Join(real, "sub", ".mdsmith.yml")))
+
+	s.configMu.Lock()
+	s.configPath = filepath.Join(link, "sub", ".mdsmith.yml")
+	s.configMu.Unlock()
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(real, "sub", ".mdsmith.yml")), "loaded config by its real path")
+
+	s.settings.ConfigPath = filepath.Join(link, "sub", "pyproject.toml")
+	assert.True(t, s.isWatchedConfigChange(filepath.Join(real, "sub", "pyproject.toml")), "override by its real path")
 }

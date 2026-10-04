@@ -87,38 +87,79 @@ func (s *Server) logDiscoverHints(hints []string) {
 }
 
 // isWatchedConfigChange reports whether a watched file event on path
-// must reload config. Only a config-named file (config.IsConfigFile)
-// qualifies, and then only one that can change what reloadConfig
-// loads: the loaded config file itself; with an `mdsmith.config`
-// override, the override file; otherwise a file in the workspace root
-// or one of its ancestors, the directories discovery walks. A
-// pyproject.toml nested below the root — every package of a Python
-// monorepo has one — is never read, so editing it must not rebuild
-// the session. With no root known yet, every config-named file counts.
+// must reload config. Only a config source (config.IsConfigFile) or a
+// sidecar Load reads beside one (config.SidecarOwnerDir: a kind,
+// convention, schema or word-list file) qualifies, and then only one
+// that can change what reloadConfig loads: the loaded config file or a
+// sidecar beside it; with an `mdsmith.config` override, the override
+// file or a sidecar beside it; otherwise one whose directory is the
+// workspace root or one of its ancestors, the directories discovery
+// walks. A pyproject.toml nested below the root — every package of a
+// Python monorepo has one — is never read, so editing it must not
+// rebuild the session. With no root known yet, every candidate counts.
+// Paths compare lexically first and then symlink-resolved, since a
+// client may report the real path of a workspace opened through a
+// symlink.
 func (s *Server) isWatchedConfigChange(path string) bool {
-	if !config.IsConfigFile(path) {
-		return false
-	}
 	path = filepath.Clean(path)
+	owner, sidecar := config.SidecarOwnerDir(path)
+	if !sidecar {
+		if !config.IsConfigFile(path) {
+			return false
+		}
+		owner = filepath.Dir(path)
+	}
+	// reads reports whether the config file cfg reads path: it is cfg
+	// itself, or a sidecar beside it.
+	reads := func(cfg string) bool {
+		if sidecar {
+			return sameDir(owner, filepath.Dir(cfg))
+		}
+		return sameFile(path, cfg)
+	}
 	s.settingsMu.RLock()
 	override := s.settings.ConfigPath
 	s.settingsMu.RUnlock()
 	s.configMu.RLock()
 	loaded, root := s.configPath, s.rootDir
 	s.configMu.RUnlock()
-	if loaded != "" && path == filepath.Clean(loaded) {
+	if loaded != "" && reads(loaded) {
 		return true
 	}
 	if override != "" {
 		if !filepath.IsAbs(override) && root != "" {
 			override = filepath.Join(root, override)
 		}
-		return path == filepath.Clean(override)
+		return reads(override)
 	}
 	if root == "" {
 		return true
 	}
-	return isDirOrAncestor(filepath.Dir(path), filepath.Clean(root))
+	root = filepath.Clean(root)
+	return isDirOrAncestor(owner, root) || isDirOrAncestor(resolveDir(owner), resolveDir(root))
+}
+
+// resolveDir returns dir with symlinks resolved, or dir unchanged when
+// it cannot be resolved (it was deleted, or never existed).
+func resolveDir(dir string) string {
+	if r, err := filepath.EvalSymlinks(dir); err == nil {
+		return r
+	}
+	return dir
+}
+
+// sameDir reports whether a and b name the same directory, lexically or
+// once symlinks are resolved.
+func sameDir(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	return a == b || resolveDir(a) == resolveDir(b)
+}
+
+// sameFile reports whether a and b name the same file: the same base
+// name in the same directory. Only the directories are resolved, so a
+// deleted file still compares.
+func sameFile(a, b string) bool {
+	return filepath.Base(a) == filepath.Base(b) && sameDir(filepath.Dir(a), filepath.Dir(b))
 }
 
 // isDirOrAncestor reports whether dir is root or one of its ancestors.

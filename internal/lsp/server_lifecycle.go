@@ -110,9 +110,10 @@ func (s *Server) handleInitialized(ctx context.Context) {
 // on:
 //
 //   - `**/.mdsmith.yml` and `**/pyproject.toml` (the config sources)
-//     invalidate cached config and the symbol index (kind / ignore
-//     globs may shift scope); isWatchedConfigChange decides which
-//     events reload.
+//     and `**/.mdsmith/*/*.{yml,yaml}` (the kind, convention, schema
+//     and word-list files Load reads beside them) invalidate cached
+//     config and the symbol index (kind / ignore globs may shift
+//     scope); isWatchedConfigChange decides which events reload.
 //   - `**/*.md` keeps the symbol index in sync when files change
 //     outside of any open buffer (sibling editor, VCS checkout).
 //
@@ -124,15 +125,19 @@ func (s *Server) registerWatchers() {
 	id := s.nextReqID.Add(1)
 	// json.Marshal(int64) cannot fail; ignoring the error is safe.
 	idJSON, _ := json.Marshal(id)
-	// Watch the config sources (.mdsmith.yml and pyproject.toml) plus
+	// Watch the config sources (.mdsmith.yml and pyproject.toml), the
+	// sidecar YAML files beside them (two globs, since not every
+	// client expands `{yml,yaml}`), plus
 	// every Markdown file, the extension set derived from mdpath so the
 	// watch scope tracks the single source of truth alongside discovery
 	// and the merge driver.
 	globs := mdpath.RecursiveGlobs()
-	watchers := make([]fileSystemWatcher, 0, len(globs)+2)
+	watchers := make([]fileSystemWatcher, 0, len(globs)+4)
 	watchers = append(watchers,
 		fileSystemWatcher{GlobPattern: "**/.mdsmith.yml"},
-		fileSystemWatcher{GlobPattern: "**/pyproject.toml"})
+		fileSystemWatcher{GlobPattern: "**/pyproject.toml"},
+		fileSystemWatcher{GlobPattern: "**/.mdsmith/*/*.yml"},
+		fileSystemWatcher{GlobPattern: "**/.mdsmith/*/*.yaml"})
 	for _, g := range globs {
 		watchers = append(watchers, fileSystemWatcher{GlobPattern: g})
 	}

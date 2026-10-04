@@ -130,7 +130,11 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return
 	}
+	// Classify each event once: a config reload short-circuits the
+	// rest, and only the non-config events feed the wikilink tree
+	// check and the Markdown refresh.
 	configChanged := false
+	treeChanged := false
 	mdChanges := make([]string, 0, len(p.Changes))
 	for _, c := range p.Changes {
 		path := uriToPath(c.URI)
@@ -138,6 +142,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 			configChanged = true
 			continue
 		}
+		treeChanged = treeChanged || watchedFileTreeChanged(c)
 		// Use isMarkdownExt for case-insensitive extension match
 		// — the rest of the navigation surface (docTextOrFile,
 		// indexReloadFromDisk) treats `.MD` / `.Markdown` as
@@ -148,7 +153,6 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 			mdChanges = append(mdChanges, path)
 		}
 	}
-	treeChanged := watchedFilesTreeChanged(p.Changes, s.isWatchedConfigChange)
 	if configChanged {
 		s.reloadConfig()
 		// kind / ignore globs may have shifted — drop the index so
@@ -189,32 +193,23 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 	}
 }
 
-// watchedFilesTreeChanged reports whether a watched-file batch creates
-// or deletes any file isConfig does not claim as a config change, which changes the candidate set the
-// wikilink index keys off — so the session's wikilink index must rebuild
-// on the next Check (`[[NewPage]]` / `![[image.png]]` resolve against any
-// extension, so a binary asset add counts too). A pure-change batch (no
-// create/delete) leaves the candidate set intact. Per LSP spec:
-// 1=Created, 2=Changed, 3=Deleted; a rename arrives as a Deleted+Created
-// pair. Pulled out of handleDidChangeWatchedFiles so the decision is
-// unit-testable without a live session and its caches.
-func watchedFilesTreeChanged(changes []fileEvent, isConfig func(string) bool) bool {
-	for _, c := range changes {
-		path := uriToPath(c.URI)
-		if path == "" {
-			// Non-file URI (e.g. git:// or untitled:) — not a
-			// filesystem event; skip so it cannot trigger an
-			// unnecessary wikilink-index rebuild.
-			continue
-		}
-		if isConfig(path) {
-			continue
-		}
-		if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {
-			return true
-		}
+// watchedFileTreeChanged reports whether a watched-file event (one not
+// claimed as a config change) creates or deletes a file, which changes
+// the candidate set the wikilink index keys off — so the session's
+// wikilink index must rebuild on the next Check (`[[NewPage]]` /
+// `![[image.png]]` resolve against any extension, so a binary asset add
+// counts too). A change event leaves the candidate set intact. Per LSP
+// spec: 1=Created, 2=Changed, 3=Deleted; a rename arrives as a
+// Deleted+Created pair. Pulled out of handleDidChangeWatchedFiles so the
+// decision is unit-testable without a live session and its caches.
+func watchedFileTreeChanged(c fileEvent) bool {
+	if uriToPath(c.URI) == "" {
+		// Non-file URI (e.g. git:// or untitled:) — not a filesystem
+		// event; skip so it cannot trigger an unnecessary
+		// wikilink-index rebuild.
+		return false
 	}
-	return false
+	return c.Type == fileChangeCreated || c.Type == fileChangeDeleted
 }
 
 // syncBuffer pushes an open buffer's current bytes into the session's
