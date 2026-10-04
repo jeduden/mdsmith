@@ -126,11 +126,15 @@ type runOpts struct {
 // and on Windows with a Job Object.
 //
 // After the kill, runRecipe waits at most reapWait for the leader to
-// exit. If it has not (a leader that ignored the group kill), it kills
-// the leader directly with the killer's forceLeader, a kill it cannot catch,
-// and waits at most reapWait again. It then waits at most reapWait
-// for captured output to drain and closes its end of
-// the pipes (recipeOutput.abandon), so a survivor that holds a captured
+// exit. If it has not (a leader that ignored the group kill), it calls
+// the killer's forceLeader, which kills the leader directly with a kill
+// it cannot catch (on plan9 it does nothing, as kill already ended in
+// that kill), and waits at most reapWait again. On plan9 that second
+// wait is still useful: a ctl kill takes effect only when the leader
+// next returns from a system call, so a leader blocked in one can
+// outlast the first wait and die during the second. It then waits at most
+// reapWait for captured output to drain and closes its end of the pipes
+// (recipeOutput.abandon), so a survivor that holds a captured
 // pipe open cannot hang mdsmith. On Unix and Windows the close also
 // ends the copy goroutine and frees the fd; plan9 cannot cancel a
 // blocked read, so there they last until the survivor's next write or
@@ -243,8 +247,8 @@ func exitCodeOf(err error) int {
 }
 
 // groupKiller is one recipe's kill state, owned by runRecipe. afterStart
-// builds it once the recipe has started; a platform with no group state
-// to hold returns a killer that kills only the leader.
+// builds it once the recipe has started. A platform with no group to
+// kill (exec_other.go) returns a killer that kills only the leader.
 type groupKiller interface {
 	// kill ends the recipe's whole group (or only its leader where the
 	// platform has no group). A killer for a command that never started
@@ -261,13 +265,30 @@ type groupKiller interface {
 	forceLeader()
 }
 
+// killCmdLeader kills cmd's leader process with killLeader and ignores
+// its error (the leader may already have exited). It is the shared
+// forceLeader body on Unix and Windows, and the whole kill on targets
+// with no group (exec_other.go). A nil Process (the command never
+// started) is a no-op.
+func killCmdLeader(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+	_ = killLeader(cmd.Process)
+}
+
+// killLeader kills one process: SIGKILL on Unix, TerminateProcess on
+// Windows. It is a var so a test can check which process a killer
+// kills without killing one, as on js/wasm, where none can start.
+var killLeader = (*os.Process).Kill
+
 // afterStartFn indirects afterStart so a test can install a stub
 // killer: one that records a call, or models a group kill that leaves
 // the recipe running.
 var afterStartFn = afterStart
 
 // reapWait bounds each wait after a timeout kill: for the leader after
-// killGroup, for it again after the leader-only fallback kill, and for
+// the killer's kill, for it again after its forceLeader, and for
 // captured output to drain. It is a var so a test can shorten it.
 var reapWait = 5 * time.Second
 

@@ -80,12 +80,7 @@ func (k *jobKiller) kill() {
 // forceLeader kills only the leader with TerminateProcess, which it
 // cannot refuse. It covers a recipe that ignored CTRL_BREAK when no Job
 // Object could be set up. A nil Process is a no-op.
-func (k *jobKiller) forceLeader() {
-	if k.cmd.Process == nil {
-		return
-	}
-	_ = k.cmd.Process.Kill()
-}
+func (k *jobKiller) forceLeader() { killCmdLeader(k.cmd) }
 
 // close closes the job handle; KILL_ON_JOB_CLOSE reaps any survivors.
 func (k *jobKiller) close() {

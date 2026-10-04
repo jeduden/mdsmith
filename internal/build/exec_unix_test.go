@@ -32,14 +32,14 @@ func processAlive(pid int) bool {
 	return err == nil || err == syscall.EPERM
 }
 
-func TestKillGroup_NilProcess(t *testing.T) {
-	// A command that never started has a nil Process; killGroup must return
+func TestKill_Unix_NilProcess(t *testing.T) {
+	// A command that never started has a nil Process; kill must return
 	// immediately rather than dereference it.
-	afterStart(&exec.Cmd{}).kill()
+	assert.NotPanics(t, afterStart(&exec.Cmd{}).kill)
 }
 
-func TestKillGroup_SIGKILLPath(t *testing.T) {
-	// A recipe that ignores SIGTERM must still be force-killed: killGroup
+func TestKill_Unix_SIGKILLPath(t *testing.T) {
+	// A recipe that ignores SIGTERM must still be force-killed: kill
 	// waits gracePeriod for the polite signal to work, then sends SIGKILL.
 	old := gracePeriod
 	gracePeriod = 50 * time.Millisecond
@@ -140,9 +140,9 @@ func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
 	// Models Windows with no Job Object and a recipe that ignores
 	// CTRL_BREAK: the group kill leaves the leader running. runRecipe
 	// must kill the leader itself after reapWait, not wait forever.
-	// That direct kill must go through the killer's forceLeader: on
-	// plan9 (*os.Process).Kill posts a note the leader can catch, so a
-	// direct Process.Kill there would leave it running.
+	// That direct kill must go through the killer's forceLeader, so each
+	// platform picks its own uncatchable leader kill (none on plan9,
+	// where kill already ended in one).
 	forced := stubKillGroup(t, func(*exec.Cmd) {})
 	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 5`)
 
@@ -164,7 +164,7 @@ func TestForceLeader_Unix_NilProcess(t *testing.T) {
 	assert.NotPanics(t, afterStart(&exec.Cmd{}).forceLeader)
 }
 
-func TestForceLeader_Unix_KillsLeaderOnly(t *testing.T) {
+func TestForceLeader_Unix_KillsLeader(t *testing.T) {
 	cmd := exec.Command("sleep", "30")
 	configureProcessGroup(cmd)
 	require.NoError(t, cmd.Start())

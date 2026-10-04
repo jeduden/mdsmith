@@ -34,7 +34,7 @@ const TimeoutKillAction = "killed note group, or only the leader if none was cap
 var procRoot = "/proc"
 
 // maxSweepPasses bounds how many times forceKillNoteGroup lists
-// procRoot, so a member that keeps forking cannot hold killGroup.
+// procRoot, so a member that keeps forking cannot hold the killer's kill.
 const maxSweepPasses = 8
 
 // killMember is killIfInGroup, indirected so a test can model a member
@@ -104,10 +104,12 @@ func afterStart(cmd *exec.Cmd) groupKiller {
 	return k
 }
 
-// close closes the notepg file, if afterStart kept one.
+// close closes the notepg file, if afterStart kept one, and drops it,
+// so a second close (or a later kill) does not reuse the closed file.
 func (k *noteKiller) close() {
 	if k.group != nil && k.group.pg != nil {
 		_ = k.group.pg.Close()
+		k.group.pg = nil
 	}
 }
 

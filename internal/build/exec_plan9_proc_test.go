@@ -185,6 +185,27 @@ func TestKill_Plan9_WritesKillToHeldFile(t *testing.T) {
 	assert.Equal(t, "kill", readFile(t, path))
 }
 
+func TestClose_Plan9_ClosesHeldNotePg(t *testing.T) {
+	// close must release the notepg file afterStart kept, so a recipe
+	// does not leak the fd past runRecipe's return.
+	root := stubProcRoot(t)
+	fakeProc(t, root, "42", "9")
+	fakeNotePg(t, root, "42")
+	stubNoteKill(t)
+
+	k := afterStart(&exec.Cmd{Process: &os.Process{Pid: 42}})
+	require.NotNil(t, groupOf(k))
+	pg := groupOf(k).pg
+	require.NotNil(t, pg)
+	k.close()
+	_, err := pg.WriteString("kill")
+	assert.ErrorIs(t, err, os.ErrClosed)
+	// close drops the file, so a second close (or a kill after it)
+	// never touches the closed fd, as jobKiller.close zeroes its job.
+	assert.Nil(t, groupOf(k).pg)
+	assert.NotPanics(t, k.close)
+}
+
 func TestKill_Plan9_ForceKillsLeaderThatLeftGroup(t *testing.T) {
 	// The notepg write succeeds, but the leader moved to another note
 	// group, so neither the note nor the sweep reaches it. kill

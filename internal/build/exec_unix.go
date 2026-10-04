@@ -37,12 +37,7 @@ func (pgKiller) close() {}
 
 // forceLeader kills only the leader with SIGKILL, which it cannot
 // catch. A nil Process is a no-op.
-func (k pgKiller) forceLeader() {
-	if k.cmd.Process == nil {
-		return
-	}
-	_ = k.cmd.Process.Kill()
-}
+func (k pgKiller) forceLeader() { killCmdLeader(k.cmd) }
 
 // kill terminates the recipe's whole process group. It sends
 // SIGTERM first, waits up to gracePeriod for the group to exit, then

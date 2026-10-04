@@ -52,7 +52,7 @@ failed.
 
 ## Tasks
 
-1. , in `exec.go`, a `groupKiller` interface with
+1. Define, in `exec.go`, a `groupKiller` interface with
    `kill()` and `close()` methods. Change `afterStart`
    to return it. A no-op or leader-only killer stands
    in where a platform has no group state.
@@ -75,7 +75,11 @@ failed.
    `forceLeader()` method that is the leader kill on
    Unix and Windows and a no-op on plan9, where `kill`
    already ends in it. Delete `forceKillLeaderFn` and
-   the shared `exec_leader_kill.go`.
+   the shared `exec_leader_kill.go`. The Unix,
+   Windows, and `exec_other.go` killers share one
+   `killCmdLeader` helper in `exec.go`, so the
+   leader kill has a single body behind the
+   `killLeader` test hook.
 
 ## Acceptance Criteria
 

@@ -2,10 +2,7 @@
 
 package build
 
-import (
-	"os"
-	"os/exec"
-)
+import "os/exec"
 
 // configureProcessGroup is a no-op on js/wasm and wasip1, which have
 // neither POSIX process groups nor Windows Job Objects and cannot start
@@ -30,18 +27,9 @@ func afterStart(cmd *exec.Cmd) groupKiller { return leaderKiller{cmd} }
 // command never started) is a no-op.
 func (k leaderKiller) kill() { k.forceLeader() }
 
-// forceLeader kills the recipe's leader process with killLeader. A nil
+// forceLeader kills the recipe's leader process (killCmdLeader). A nil
 // Process is a no-op.
-func (k leaderKiller) forceLeader() {
-	if k.cmd.Process == nil {
-		return
-	}
-	_ = killLeader(k.cmd.Process)
-}
+func (k leaderKiller) forceLeader() { killCmdLeader(k.cmd) }
 
 // close has nothing to release.
 func (leaderKiller) close() {}
-
-// killLeader kills one process. It is a var so a js/wasm test, where no
-// subprocess can start, can check that killGroup kills the leader.
-var killLeader = (*os.Process).Kill
