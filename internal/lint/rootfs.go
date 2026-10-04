@@ -21,12 +21,15 @@ import (
 // continue to work. Absolute symlinks are blocked unconditionally by
 // os.OpenRoot (RESOLVE_BENEATH semantics), regardless of whether their
 // target is inside or outside the root.
-func OpenRootFS(dir string) fs.FS {
+//
+// The returned RootFS holds the os.Root directory handle open until its
+// Close; a caller that walks the tree once closes it when done.
+func OpenRootFS(dir string) RootFS {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return &openRootErrFS{err: err}
 	}
-	return root.FS()
+	return &closingFS{fsys: root.FS(), close: root.Close}
 }
 
 // openRootErrFS is an fs.FS that always returns the stored error on Open.
@@ -39,3 +42,6 @@ type openRootErrFS struct {
 func (e *openRootErrFS) Open(name string) (fs.File, error) {
 	return nil, e.err
 }
+
+// Close is a no-op: no directory handle was opened.
+func (e *openRootErrFS) Close() error { return nil }

@@ -78,7 +78,7 @@ for the edge index and once for `WikilinkIndex`.
    through a test hook).
 2. [x] Route `renameWorkspace` to the session's cached index
    under that condition; keep the fresh walk otherwise.
-3. Write a failing test: `lint.OpenRootFS` returns a
+3. [x] Write a failing test: `lint.OpenRootFS` returns a
    handle that a caller can close, and a read after close
    fails.
 4. Close the root in `linkgraph.WikilinkIndexAtDir`,
