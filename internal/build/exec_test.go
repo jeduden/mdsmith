@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -259,10 +260,99 @@ func TestStartFailure(t *testing.T) {
 	assert.NotErrorIs(t, err, ErrNotStarted)
 }
 
-func TestForceFired(t *testing.T) {
-	assert.False(t, forceFired(nil), "a nil force never fires")
+// runKillLeaderOnForce runs killLeaderOnForce with fresh channels,
+// lets step drive them, and reports whether the kill ran.
+func runKillLeaderOnForce(step func(killed, force, exited chan struct{})) bool {
+	killed, force, exited := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	ran := false
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		killLeaderOnForce(func() { ran = true }, killed, force, exited)
+	}()
+	step(killed, force, exited)
+	<-done
+	return ran
+}
+
+func TestKillLeaderOnForce_ForceAfterKill(t *testing.T) {
+	assert.True(t, runKillLeaderOnForce(func(killed, force, _ chan struct{}) {
+		close(killed)
+		close(force)
+	}), "a second interrupt after the kill returned kills the leader")
+}
+
+func TestKillLeaderOnForce_ForceBeforeKill(t *testing.T) {
+	assert.True(t, runKillLeaderOnForce(func(killed, force, _ chan struct{}) {
+		close(force)
+		close(killed)
+	}), "a second interrupt during the kill kills the leader once it returns")
+}
+
+func TestKillLeaderOnForce_ExitBeforeKill(t *testing.T) {
+	assert.False(t, runKillLeaderOnForce(func(_, force, exited chan struct{}) {
+		close(exited)
+		close(force)
+	}), "a leader that exited with no kill run is not killed")
+}
+
+func TestKillLeaderOnForce_ExitWithNoForce(t *testing.T) {
+	assert.False(t, runKillLeaderOnForce(func(killed, _, exited chan struct{}) {
+		close(killed)
+		close(exited)
+	}), "a kill with no second interrupt leaves the leader to WaitDelay")
+}
+
+// recordKiller is a groupKiller that counts kills, sees the force
+// channel it was given, and reports forced from each kill.
+type recordKiller struct {
+	kills  int
+	force  <-chan struct{}
+	forced bool
+}
+
+func (k *recordKiller) kill(force <-chan struct{}) bool {
+	k.kills++
+	k.force = force
+	return k.forced
+}
+
+func (*recordKiller) close() {}
+
+func TestKillerFor_RecipeUsesAfterStart(t *testing.T) {
+	want := &recordKiller{}
+	old := afterStartFn
+	afterStartFn = func(*exec.Cmd) groupKiller { return want }
+	t.Cleanup(func() { afterStartFn = old })
+	assert.Same(t, want, killerFor(&exec.Cmd{}, false))
+}
+
+func TestKillerFor_HookSkipsAfterStart(t *testing.T) {
+	old := afterStartFn
+	afterStartFn = func(*exec.Cmd) groupKiller {
+		t.Error("a hook must not reach afterStart")
+		return &recordKiller{}
+	}
+	t.Cleanup(func() { afterStartFn = old })
+	assert.NotNil(t, killerFor(&exec.Cmd{}, true))
+}
+
+func TestRecipeKill_CancelWaitsForArm(t *testing.T) {
 	force := make(chan struct{})
-	assert.False(t, forceFired(force))
-	close(force)
-	assert.True(t, forceFired(force))
+	rk := newRecipeKill(force)
+	k := &recordKiller{forced: true}
+	done := make(chan error, 1)
+	go func() { done <- rk.cancel() }()
+	select {
+	case <-rk.killed:
+		t.Fatal("cancel ran the kill before arm installed the killer")
+	case <-time.After(50 * time.Millisecond):
+	}
+	rk.arm(k)
+	require.NoError(t, <-done)
+	<-rk.killed
+	assert.Equal(t, 1, k.kills)
+	assert.Equal(t, (<-chan struct{})(force), k.force, "the kill gets the run's force channel")
+	assert.True(t, rk.cancelled)
+	assert.True(t, rk.forced, "forced is what the kill reported")
 }

@@ -381,8 +381,8 @@ Windows sends `CTRL_BREAK_EVENT` and ends its Job Object; without one, a daemon
 can survive. A leader alive 5 s on is killed directly; output drain caps at 5 s.
 If the leader exits first, its children's output flows until the timeout, which
 keeps its exit code. Ctrl-C, `SIGTERM`, `SIGHUP` (DEL on plan9) in `mdsmith fix`
-do the same; a second one 250 ms later skips the grace and cuts the drain to
-0.1 s. mdsmith reports `INTERRUPTED`, then dies of the signal (exit 2 off Unix).
+do the same; a second one 250 ms later skips the grace, kills the leader
+directly, and cuts the drain to 0.1 s. mdsmith reports `INTERRUPTED`, then dies of the signal (exit 2 off Unix).
 
 ### Atomic-write hardening
 

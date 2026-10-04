@@ -60,14 +60,14 @@ behaviour over deleting lines:
    platform. `os/exec` gets `*os.File` ends and runs no
    copies, so `Cancel` and `WaitDelay` replace only the
    leader-reap waits and `forceLeader`.
-2. **A late second interrupt waits out `reapWait`.**
-   `WaitDelay` is read once, when `Cancel` returns.
-   `Cancel` sets it to `forcedReapWait` when the
-   `WithForceKill` channel is closed by then: a second
-   interrupt during the grace period, or one that came
-   first. One that arrives later waits the whole
-   `reapWait` for the leader. The output drain still
-   shortens at any point.
+2. **A second interrupt kills the leader at once.**
+   `WaitDelay` is set once, before `Start`; the os/exec
+   docs promise nothing about a change made inside
+   `Cancel`. Instead, once the kill has returned and the
+   `WithForceKill` channel is closed (before or after),
+   `killLeaderOnForce` kills the leader directly, so a
+   second interrupt never waits out `reapWait`. The
+   output drain still shortens at any point.
 3. **No user-visible timing change.** `os/exec` stops
    watching ctx once the leader exits. `runRecipe` keeps
    its own select on drain versus ctx for that case: at

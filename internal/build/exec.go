@@ -176,10 +176,10 @@ var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
 // kill), os/exec kills it with Process.Kill, which it cannot catch on
 // Unix (SIGKILL) or Windows (TerminateProcess); on plan9 that is a
 // note, but kill already ended in the uncatchable ctl kill. runRecipe
-// then waits for the leader to exit. Once a second interrupt has
-// closed the WithForceKill channel by the time the kill returns,
-// Cancel shortens WaitDelay to forcedReapWait; one that arrives after
-// the kill returned waits out the whole reapWait.
+// then waits for the leader to exit. A second interrupt (the
+// WithForceKill channel closed), before or after the kill returned,
+// kills the leader directly as soon as the kill has returned
+// (killLeaderOnForce), without waiting out reapWait.
 //
 // A leader that exits before the deadline does not end the run while
 // a child it left behind still holds a captured pipe: that child's
@@ -249,28 +249,13 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		configureProcessGroup(cmd)
 	}
 
-	// The killer is this run's kill state, owned here and closed on
-	// return. A hook (sharedGroup) gets a leader-only one and skips
-	// afterStart, so it gets no Job Object whose kill-on-close would end
-	// a dev server it backgrounded. os/exec may call Cancel as soon as
-	// Start returns, so Cancel first waits for the killer (ready).
-	// cancelled and forced are written by Cancel and read only after
-	// cmd.Wait returned, which orders them.
+	// WaitDelay is set once, here: os/exec reads it after Cancel
+	// returns, and the os/exec docs promise nothing about a change made
+	// inside Cancel. A second interrupt instead kills the leader
+	// directly (killLeaderOnForce), whenever it comes.
 	force := forceKillFrom(ctx)
-	ready := make(chan struct{})
-	var killer groupKiller
-	var cancelled, forced bool
-	cmd.Cancel = func() error {
-		<-ready
-		cancelled = true
-		forced = killer.kill(force)
-		if forceFired(force) {
-			// A second interrupt: the leader the SIGKILL reached needs
-			// one short poll, not a whole reapWait.
-			cmd.WaitDelay = forcedReapWait
-		}
-		return nil
-	}
+	rk := newRecipeKill(force)
+	cmd.Cancel = rk.cancel
 	cmd.WaitDelay = reapWait
 
 	err := cmd.Start()
@@ -279,17 +264,16 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		ro.abandon()
 		return startFailure(ctx, o.processLabel(), err)
 	}
-	if o.sharedGroup {
-		killer = sharedGroupKiller(cmd)
-	} else {
-		killer = afterStartFn(cmd)
-	}
-	close(ready)
+	killer := killerFor(cmd, o.sharedGroup)
+	rk.arm(killer)
 	defer killer.close()
 
+	exited := make(chan struct{})
+	go killLeaderOnForce(func() { _ = cmd.Process.Kill() }, rk.killed, force, exited)
 	err = cmd.Wait()
-	if cancelled {
-		return timeoutResult(ctx, ro, cmd.ProcessState.ExitCode(), forced)
+	close(exited)
+	if rk.cancelled {
+		return timeoutResult(ctx, ro, cmd.ProcessState.ExitCode(), rk.forced)
 	}
 	// The leader exited on its own, so os/exec no longer watches ctx. A
 	// child it left behind may still hold a captured pipe, and the
@@ -305,6 +289,52 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	}
 }
 
+// killerFor returns the groupKiller for a started cmd: the killer is
+// the run's kill state, closed when runRecipe returns. A hook
+// (sharedGroup) gets a leader-only one and skips afterStart, so it gets
+// no Job Object whose kill-on-close would end a dev server it
+// backgrounded.
+func killerFor(cmd *exec.Cmd, sharedGroup bool) groupKiller {
+	if sharedGroup {
+		return sharedGroupKiller(cmd)
+	}
+	return afterStartFn(cmd)
+}
+
+// recipeKill is the timeout kill os/exec runs through Cmd.Cancel.
+// os/exec may call Cancel as soon as Start returns, so cancel first
+// waits for arm to install the killer (ready). killed is closed once
+// the kill returned. cancelled and forced are written by cancel and
+// read only after cmd.Wait returned, which orders them.
+type recipeKill struct {
+	force             <-chan struct{}
+	ready, killed     chan struct{}
+	killer            groupKiller
+	cancelled, forced bool
+}
+
+// newRecipeKill returns a recipeKill for a run whose WithForceKill
+// channel is force (nil when there is none).
+func newRecipeKill(force <-chan struct{}) *recipeKill {
+	return &recipeKill{force: force, ready: make(chan struct{}), killed: make(chan struct{})}
+}
+
+// arm installs the started command's killer and lets cancel run.
+func (k *recipeKill) arm(killer groupKiller) {
+	k.killer = killer
+	close(k.ready)
+}
+
+// cancel is Cmd.Cancel: it runs the group kill once, records that it
+// ran and whether force cut the grace short, and closes killed.
+func (k *recipeKill) cancel() error {
+	<-k.ready
+	k.cancelled = true
+	k.forced = k.killer.kill(k.force)
+	close(k.killed)
+	return nil
+}
+
 // startFailure maps a failed Start to runRecipe's results, naming the
 // process by label. Start refuses to fork once ctx is done and returns
 // its Err: that run never started (NotStartedError, timedOut for a
@@ -316,14 +346,23 @@ func startFailure(ctx context.Context, label string, err error) (int, bool, erro
 	return -1, false, fmt.Errorf("starting %s: %w", label, err)
 }
 
-// forceFired reports whether force (a WithForceKill channel) is
-// closed. A nil force never fires.
-func forceFired(force <-chan struct{}) bool {
+// killLeaderOnForce runs kill, which kills the leader directly, once the timeout kill
+// has returned (killed is closed) and a second interrupt has closed
+// force, in either order. The group kill can leave the leader running
+// (Windows with no Job Object sends only CTRL_BREAK; a Unix leader can
+// leave its group), and without this a second interrupt would wait out
+// WaitDelay's whole reapWait. It returns without a kill once the
+// leader has exited (exited is closed); a nil force never fires.
+func killLeaderOnForce(kill func(), killed, force, exited <-chan struct{}) {
+	select {
+	case <-killed:
+	case <-exited:
+		return
+	}
 	select {
 	case <-force:
-		return true
-	default:
-		return false
+		kill()
+	case <-exited:
 	}
 }
 
@@ -424,15 +463,15 @@ func forceKillFrom(ctx context.Context) <-chan struct{} {
 var afterStartFn = afterStart
 
 // reapWait bounds each wait after a timeout kill: as Cmd.WaitDelay,
-// for the leader before os/exec kills it directly, and for captured
-// output to drain (forcedReapWait after a second interrupt). It is a
-// var so a test can shorten it.
+// for the leader before os/exec kills it directly (a second interrupt
+// kills it at once, killLeaderOnForce), and for captured output to
+// drain (forcedReapWait after a second interrupt). It is a var so a
+// test can shorten it.
 var reapWait = 5 * time.Second
 
-// forcedReapWait bounds a reapWait wait once a second interrupt closed
-// the WithForceKill channel (for WaitDelay, only when it closed before
-// the kill returned): the kill already escalated to
-// SIGKILL, so one short poll reaps a leader it reached, and a survivor
+// forcedReapWait bounds the output drain once a second interrupt
+// closed the WithForceKill channel: the kill already escalated to
+// SIGKILL, so one short poll drains what the group wrote, and a survivor
 // outside the group (a setsid daemon holding a captured pipe) costs no
 // more than that before runRecipe abandons it.
 const forcedReapWait = 100 * time.Millisecond

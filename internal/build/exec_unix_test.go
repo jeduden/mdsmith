@@ -459,8 +459,7 @@ trap '' TERM; echo $$ > "`+ready+`"; while :; do sleep 0.05; done`)
 func TestRunRecipe_ForceShortensLeaderReap(t *testing.T) {
 	// The group kill leaves the leader running (stubGroupKiller's kill
 	// does nothing). With force already closed when the kill returns,
-	// Cancel cuts WaitDelay to forcedReapWait, so os/exec kills the
-	// leader after one short poll, not after reapWait.
+	// killLeaderOnForce kills the leader at once, not after reapWait.
 	stubGroupKiller(t, func(*exec.Cmd) {})
 	reapWait = 3 * time.Second
 	script := writeScript(t, t.TempDir(), "slow.sh", `exec sleep 30`)
@@ -478,4 +477,34 @@ func TestRunRecipe_ForceShortensLeaderReap(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, timedOut)
 	assert.Less(t, time.Since(start), 1500*time.Millisecond, "a closed force must not wait out reapWait")
+}
+
+func TestRunRecipe_LateForceKillsLeaderAtOnce(t *testing.T) {
+	// The group kill leaves the leader running and returns at once (no
+	// grace to cut short), so a second interrupt arrives only after it.
+	// That late interrupt must still kill the leader directly, not
+	// leave it to WaitDelay's whole reapWait.
+	stubGroupKiller(t, func(*exec.Cmd) {})
+	reapWait = 5 * time.Second
+	script := writeScript(t, t.TempDir(), "slow.sh", `exec sleep 30`)
+
+	force := make(chan struct{})
+	ctx, cancel := context.WithTimeout(WithForceKill(context.Background(), force), 100*time.Millisecond)
+	defer cancel()
+	forcedAt := make(chan time.Time, 1)
+	go func() {
+		<-ctx.Done()
+		time.Sleep(300 * time.Millisecond)
+		forcedAt <- time.Now()
+		close(force)
+	}()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	took := time.Since(<-forcedAt)
+	require.Error(t, err)
+	assert.True(t, timedOut)
+	assert.Less(t, took, 2*time.Second, "a late second interrupt must not wait out reapWait")
 }
