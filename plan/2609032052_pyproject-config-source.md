@@ -1,7 +1,7 @@
 ---
 id: 2609032052
 title: "Resolve config from `pyproject.toml` under `[tool.mdsmith]`"
-status: "🔲"
+status: "🔳"
 model: opus
 summary: >-
   Discover and load mdsmith config from a `pyproject.toml`
@@ -165,7 +165,7 @@ The positioned diagnostics:
 
 Phase A — positioned config diagnostics (YAML first):
 
-1. [ ] Red/green: add a typed config issue (message,
+1. [x] Red/green: add a typed config issue (message,
    severity, structured key path) and a resolver
    interface that maps a key path to a line and column.
    Add the `yaml.v3` node resolver over the parsed
