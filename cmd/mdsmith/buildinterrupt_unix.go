@@ -17,6 +17,10 @@ var hangupSignals = []os.Signal{syscall.SIGHUP}
 // the raise instead of dying of it.
 var killSelf = func(s syscall.Signal) error { return syscall.Kill(syscall.Getpid(), s) }
 
+// resetSignal is signal.Reset, a var so a test can check raiseSignal
+// restores the default action before the raise without dying of it.
+var resetSignal = signal.Reset
+
 // raiseWait is how long raiseSignal gives a self-sent signal to end
 // the process before it returns to main's fallback exit. It is a var
 // so a test need not wait.
@@ -30,7 +34,7 @@ func raiseSignal(sig os.Signal) {
 	if !ok {
 		return
 	}
-	signal.Reset(s)
+	resetSignal(s)
 	_ = killSelf(s)
 	time.Sleep(raiseWait)
 }

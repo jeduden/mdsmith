@@ -112,6 +112,24 @@ func TestWatchInterrupts_DoneBeforeAnySignal(t *testing.T) {
 	require.NoError(t, ctx.Err(), "no signal, no cancel")
 }
 
+// TestWatchInterrupts_SignalQueuedAtDoneIsKept covers a signal Notify
+// queued just before dispatch returned and signal.Stop ran: the watcher
+// sees it and done together, and must not drop the user's interrupt by
+// picking done. The race is a random select, so try it many times.
+func TestWatchInterrupts_SignalQueuedAtDoneIsKept(t *testing.T) {
+	for i := range 200 {
+		sigs := make(chan os.Signal, 1)
+		sigs <- os.Interrupt
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		close(done)
+		first := watchInterrupts(sigs, cancel, make(chan struct{}), done)
+		require.Equal(t, os.Interrupt, first, "iteration %d", i)
+		require.ErrorIs(t, ctx.Err(), context.Canceled, "iteration %d", i)
+		cancel()
+	}
+}
+
 func TestWatchInterrupts_DoneAfterOneSignal(t *testing.T) {
 	sigs := make(chan os.Signal, 1)
 	ctx, cancel := context.WithCancel(context.Background())

@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"os/signal"
+	"reflect"
 	"syscall"
 	"testing"
 	"time"
@@ -25,17 +26,25 @@ func TestInterruptSignals_IncludesHangup(t *testing.T) {
 }
 
 func TestRaiseSignal_ResetsAndSignalsSelf(t *testing.T) {
-	var sent []syscall.Signal
-	oldKill, oldWait := killSelf, raiseWait
-	killSelf = func(s syscall.Signal) error { sent = append(sent, s); return nil }
+	var steps []string
+	oldKill, oldWait, oldReset := killSelf, raiseWait, resetSignal
+	killSelf = func(s syscall.Signal) error { steps = append(steps, "kill "+s.String()); return nil }
+	resetSignal = func(sigs ...os.Signal) {
+		for _, s := range sigs {
+			steps = append(steps, "reset "+s.String())
+		}
+	}
 	raiseWait = 0
-	t.Cleanup(func() { killSelf, raiseWait = oldKill, oldWait })
+	t.Cleanup(func() { killSelf, raiseWait, resetSignal = oldKill, oldWait, oldReset })
 
 	raiseSignal(syscall.SIGHUP)
-	assert.Equal(t, []syscall.Signal{syscall.SIGHUP}, sent)
-	// The handler is back to the default action: a caught SIGHUP would
-	// otherwise keep the process alive after the raise.
-	assert.False(t, signal.Ignored(syscall.SIGHUP))
+	// The handler goes back to the default action before the raise: a
+	// caught SIGHUP would otherwise keep the process alive.
+	assert.Equal(t, []string{"reset hangup", "kill hangup"}, steps)
+}
+
+func TestResetSignal_IsSignalReset(t *testing.T) {
+	assert.Equal(t, reflect.ValueOf(signal.Reset).Pointer(), reflect.ValueOf(resetSignal).Pointer())
 }
 
 func TestRaiseSignal_NonSyscallSignalIsNoop(t *testing.T) {
@@ -60,6 +69,9 @@ func TestKillSelf_ReachesThisProcess(t *testing.T) {
 // while dispatch runs: the handler catches it, cancels the dispatch,
 // and records it so main re-raises it once output is written.
 func TestDispatchInterruptible_RecordsFirstSignal(t *testing.T) {
+	// Catch SIGHUP even when the test binary started with it ignored
+	// (nohup): the test sends it, so it must not be left out.
+	stubSignalIgnored(t)
 	stubRaise(t)
 	pendingInterrupt = nil
 	code := dispatchInterruptible(buildPassOpts{interruptible: true}, func(o buildPassOpts) int {

@@ -11,8 +11,9 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 )
 
-// runBuildPassInterruptible runs the build pass with SIGINT and SIGTERM
-// cancelling its context while it dispatches recipes and hooks, so each
+// runBuildPassInterruptible runs the build pass with SIGINT, SIGTERM,
+// and on Unix SIGHUP (interruptSignals) cancelling its context while it
+// dispatches recipes and hooks, so each
 // running recipe's process group is killed before mdsmith exits; recipes
 // run in their own group and would otherwise survive the terminal's
 // interrupt. A second signal escalates: the Unix kill skips the rest of
@@ -125,7 +126,9 @@ func interruptSignals() []os.Signal {
 // grace period), the second closes force (SIGKILL at once). Later
 // signals are swallowed, because exiting before every recipe group is
 // reaped would orphan it. It returns, when done is closed, the first
-// signal received, or nil.
+// signal received, or nil. A signal Notify queued in sigs before
+// signal.Stop still counts when done closes alongside it: select picks
+// a ready case at random, and dropping it would swallow the interrupt.
 func watchInterrupts(
 	sigs <-chan os.Signal, cancel context.CancelFunc, force chan<- struct{}, done <-chan struct{},
 ) os.Signal {
@@ -134,7 +137,12 @@ func watchInterrupts(
 	case first = <-sigs:
 		cancel()
 	case <-done:
-		return nil
+		select {
+		case first = <-sigs:
+			cancel()
+		default:
+		}
+		return first
 	}
 	select {
 	case <-sigs:
