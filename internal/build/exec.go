@@ -203,11 +203,11 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 			}
 			return exitResult(err)
 		case <-ctx.Done():
-			killGroupFn(cmd)
+			killGroupFn(cmd, forceKillFrom(ctx))
 			return timeoutResult(ctx, ro, err)
 		}
 	case <-ctx.Done():
-		killGroupFn(cmd)
+		killGroupFn(cmd, forceKillFrom(ctx))
 		reaped, waitErr := waitAtMost(done, reapWait)
 		if !reaped {
 			// The group kill left the leader running (Windows when the
@@ -257,13 +257,33 @@ func exitCodeOf(err error) int {
 	return -1
 }
 
+// forceKillKey is the context key WithForceKill stores its channel under.
+type forceKillKey struct{}
+
+// WithForceKill returns a copy of ctx that carries force. Once force is
+// closed, a recipe kill skips what is left of the Unix SIGTERM grace
+// period and sends SIGKILL to the group at once. The CLI closes it on a
+// second interrupt so an impatient user is not made to wait. Other
+// platforms kill with no grace period and ignore it.
+func WithForceKill(ctx context.Context, force <-chan struct{}) context.Context {
+	return context.WithValue(ctx, forceKillKey{}, force)
+}
+
+// forceKillFrom returns the channel WithForceKill stored in ctx, or nil
+// (which never fires) when there is none.
+func forceKillFrom(ctx context.Context) <-chan struct{} {
+	force, _ := ctx.Value(forceKillKey{}).(<-chan struct{})
+	return force
+}
+
 // afterStartFn indirects afterStart so a test can install a non-nil job
 // cleanup and exercise the deferred-cleanup branch on Unix.
 var afterStartFn = afterStart
 
-// killGroupFn indirects killGroup so a test can model a group kill that
-// leaves the recipe running.
-var killGroupFn = killGroup
+// killGroupFn indirects killGroupUntil so a test can model a group
+// kill that leaves the recipe running. Its second argument is the
+// WithForceKill channel of the run's context.
+var killGroupFn = killGroupUntil
 
 // forceKillLeaderFn indirects forceKillLeader so a test can check that
 // runRecipe's leader-only fallback uses it.

@@ -162,3 +162,12 @@ func TestRunRecipe_ExpiredDeadlineBeforeStartSpawnsNothing(t *testing.T) {
 	assert.Contains(t, err.Error(), "timed out")
 	assert.True(t, timedOut)
 }
+
+func TestWithForceKill_RoundTrip(t *testing.T) {
+	assert.Nil(t, forceKillFrom(context.Background()))
+	force := make(chan struct{})
+	ctx, cancel := context.WithTimeout(WithForceKill(context.Background(), force), time.Minute)
+	defer cancel()
+	// A child context (the per-target timeout) still carries the channel.
+	assert.Equal(t, (<-chan struct{})(force), forceKillFrom(ctx))
+}

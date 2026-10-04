@@ -32,7 +32,13 @@ func afterStart(*exec.Cmd) func() { return nil }
 // SIGTERM first, waits up to gracePeriod for the group to exit, then
 // sends SIGKILL. Signaling the negative pgid reaches every process in
 // the group, so a recipe's background children are killed too.
-func killGroup(cmd *exec.Cmd) {
+func killGroup(cmd *exec.Cmd) { killGroupUntil(cmd, nil) }
+
+// killGroupUntil is killGroup with an escape hatch: once force is
+// closed (a second CLI interrupt, see WithForceKill), it stops waiting
+// out the grace period and sends SIGKILL at once. A nil force never
+// fires, which is killGroup.
+func killGroupUntil(cmd *exec.Cmd, force <-chan struct{}) {
 	if cmd.Process == nil {
 		return
 	}
@@ -45,7 +51,11 @@ func killGroup(cmd *exec.Cmd) {
 		if signalGroup(pgid, 0) != nil {
 			return // group is gone
 		}
-		time.Sleep(50 * time.Millisecond)
+		select {
+		case <-force:
+			deadline = time.Now() // escalated: skip the rest of the grace
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
 	_ = signalGroup(pgid, syscall.SIGKILL)
 }

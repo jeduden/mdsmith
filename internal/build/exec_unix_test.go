@@ -113,7 +113,7 @@ func stubKillGroup(t *testing.T, fn func(*exec.Cmd)) {
 	t.Helper()
 	oldKill, oldReap := killGroupFn, reapWait
 	pgid := 0
-	killGroupFn = func(cmd *exec.Cmd) {
+	killGroupFn = func(cmd *exec.Cmd, _ <-chan struct{}) {
 		pgid = cmd.Process.Pid
 		fn(cmd)
 	}
@@ -316,4 +316,39 @@ func TestRunRecipe_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
 
 func TestTimeoutKillAction_Unix(t *testing.T) {
 	assert.Equal(t, "sent SIGTERM to process group", TimeoutKillAction)
+}
+
+func TestRunRecipe_ForceKillSkipsGrace(t *testing.T) {
+	// A second interrupt closes the force channel: a recipe that ignores
+	// SIGTERM must get SIGKILL then, not after the whole grace period.
+	old := gracePeriod
+	gracePeriod = 20 * time.Second
+	t.Cleanup(func() { gracePeriod = old })
+
+	script := writeScript(t, t.TempDir(), "ignore.sh", `trap '' TERM; sleep 60`)
+	force := make(chan struct{})
+	ctx, cancel := context.WithCancel(WithForceKill(context.Background(), force))
+	defer cancel()
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+		time.Sleep(300 * time.Millisecond)
+		close(force)
+	}()
+	start := time.Now()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	assert.True(t, timedOut, "the kill path ran")
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Less(t, time.Since(start), 10*time.Second, "force must cut the SIGTERM grace short")
+}
+
+func TestKillGroupUntil_NilProcess(t *testing.T) {
+	force := make(chan struct{})
+	close(force)
+	killGroupUntil(&exec.Cmd{}, force)
 }
