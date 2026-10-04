@@ -1,6 +1,6 @@
 ---
 command: move
-summary: Move a Markdown file and rewrite every reference to it — incoming links and ref-def destinations, the moved file's own outbound relative links, and `[[stem]]` wikilinks when the basename changes — staging the rename with `git mv` when the file is tracked.
+summary: Move a Markdown file and rewrite every reference to it — incoming links and ref-def destinations, the moved file's own outbound relative links, and `[[stem]]` or typed `[[name.ext]]` wikilinks when the basename changes — staging the rename with `git mv` when the file is tracked.
 ---
 # `mdsmith move`
 
@@ -49,7 +49,9 @@ code 2.
   for a file named exactly `v1.3`. A stem that ends in a space
   keeps it too, so `guide .md` gives `[[guide .md]]`, since a
   link target is trimmed. A new name with another extension is
-  written whole, as in `[[guide.mdx]]`.
+  written whole, as in `[[guide.mdx]]`. A typed link to any other
+  file, such as `![[diagram.png]]`, follows a name change the same
+  way (`![[flow.png]]`), with the checks below read by exact name.
 
 Each destination is found in the parsed document, so each one is
 rewritten exactly once. These forms are all handled:
@@ -158,10 +160,6 @@ cross-directory move, check them by hand.
   `[^1]: [z](a.md)` as a footnote definition and leaves its text
   as written, so the link inside it is not repointed. Longer
   footnote text, such as `[^1]: See [z](a.md).`, is repointed.
-- **Embeds of a renamed non-Markdown file.** Moving an image
-  repoints the links and images that name it. A wikilink embed
-  such as `![[diagram.png]]` is left alone, so it goes stale
-  when the move changes the file name.
 
 ## How the file is moved
 
@@ -297,8 +295,8 @@ mdsmith move guide.md reference/guide.md --dry-run
   `workspace/willRenameFiles`, which runs the same move engine. A rename of
   several files is planned as one batch: a link between two moved files gets
   one rewrite, from the holder's new folder to the target's new path. A link
-  to a refused move from a moved file, a link in a refused move that leaves
-  its folder, and a `[[stem]]` whose new stem another moved file takes get
-  none. The warning counts each that may miss its file, an unedited `[[stem]]`
-  a moved file takes, and a link to a refused move a moved file displaces,
+  to a refused move from a moved file, a link in a refused move that leaves its
+  folder, and a wikilink whose new name another moved file takes get none. The
+  warning counts each that may miss its file, an unedited wikilink a moved file
+  takes, and a link or typed wikilink to a refused move a moved file displaces,
   not one from a refused move to an unmoved file. MDS027 flags any that break.

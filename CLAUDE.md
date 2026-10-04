@@ -131,7 +131,7 @@ row: "- [{summary}]({filename})"
 - [Run a Language Server Protocol server on stdio for editor integrations.](docs/reference/cli/lsp.md)
 - [Git merge driver that resolves conflicts inside generated sections.](docs/reference/cli/merge-driver.md)
 - [Get, list, and rank shared Markdown metrics (file length, token estimate, readability, …).](docs/reference/cli/metrics.md)
-- [Move a Markdown file and rewrite every reference to it — incoming links and ref-def destinations, the moved file's own outbound relative links, and `[[stem]]` wikilinks when the basename changes — staging the rename with `git mv` when the file is tracked.](docs/reference/cli/move.md)
+- [Move a Markdown file and rewrite every reference to it — incoming links and ref-def destinations, the moved file's own outbound relative links, and `[[stem]]` or typed `[[name.ext]]` wikilinks when the basename changes — staging the rename with `git mv` when the file is tracked.](docs/reference/cli/move.md)
 - [Install / manage a pre-merge-commit hook that runs `mdsmith fix` after a merge.](docs/reference/cli/pre-merge-commit.md)
 - [Select Markdown files by a CUE expression on front matter.](docs/reference/cli/query.md)
 - [Retitle a heading or rename a link-reference label and rewrite every dependent edit; the kind is auto-detected or forced with `--as`, and a path-shaped request is steered to `mdsmith move`.](docs/reference/cli/rename.md)
