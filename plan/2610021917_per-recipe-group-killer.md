@@ -76,8 +76,9 @@ failed.
    Unix and Windows and a no-op on plan9, where `kill`
    already ends in it. Delete `forceKillLeaderFn` and
    the shared `exec_leader_kill.go`. The Unix,
-   Windows, and `exec_other.go` killers share one
-   `killCmdLeader` helper in `exec_leader.go`, so
+   Windows, and `exec_other.go` killers embed one
+   `leaderKill` type from `exec_leader.go`, whose
+   `forceLeader` calls the `killCmdLeader` helper, so
    the leader kill has a single body behind the
    `killLeader` test hook. That file is tagged
    `!plan9`: there `(*os.Process).Kill` posts a

@@ -27,9 +27,11 @@ const windowsCreateNewProcessGroup = 0x00000200
 
 // jobKiller is the groupKiller on Windows. job is the Job Object
 // afterStart assigned the recipe to, or 0 when it could not set one up;
-// then kill sends CTRL_BREAK alone.
+// then kill sends CTRL_BREAK alone. The embedded leaderKill supplies
+// forceLeader, which covers a recipe that ignored CTRL_BREAK when no
+// Job Object could be set up.
 type jobKiller struct {
-	cmd *exec.Cmd
+	leaderKill
 	job syscall.Handle
 }
 
@@ -40,7 +42,7 @@ type jobKiller struct {
 // job the killer holds no job: the CREATE_NEW_PROCESS_GROUP flag still
 // allows the CTRL_BREAK kill path.
 func afterStart(cmd *exec.Cmd) groupKiller {
-	k := &jobKiller{cmd: cmd}
+	k := &jobKiller{leaderKill: leaderKill{cmd}}
 	if cmd.Process == nil {
 		return k
 	}
@@ -76,11 +78,6 @@ func (k *jobKiller) kill() {
 		_ = terminateJob(k.job)
 	}
 }
-
-// forceLeader kills only the leader with TerminateProcess, which it
-// cannot refuse. It covers a recipe that ignored CTRL_BREAK when no Job
-// Object could be set up. A nil Process is a no-op.
-func (k *jobKiller) forceLeader() { killCmdLeader(k.cmd) }
 
 // close closes the job handle; KILL_ON_JOB_CLOSE reaps any survivors.
 func (k *jobKiller) close() {

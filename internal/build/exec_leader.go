@@ -19,6 +19,17 @@ func killCmdLeader(cmd *exec.Cmd) {
 	_ = killLeader(cmd.Process)
 }
 
+// leaderKill is embedded in each !plan9 groupKiller to supply its
+// forceLeader: pgKiller (Unix), jobKiller (Windows), and leaderKiller
+// (exec_other.go). plan9's noteKiller has its own, as kill already
+// ends in an uncatchable leader kill there.
+type leaderKill struct{ cmd *exec.Cmd }
+
+// forceLeader kills only the recipe's leader (killCmdLeader): SIGKILL
+// on Unix, TerminateProcess on Windows, neither of which the leader can
+// catch. A nil Process is a no-op.
+func (k leaderKill) forceLeader() { killCmdLeader(k.cmd) }
+
 // killLeader kills one process: SIGKILL on Unix, TerminateProcess on
 // Windows. This file builds everywhere but plan9: there
 // (*os.Process).Kill posts a "kill" note the leader can catch, so

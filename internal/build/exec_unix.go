@@ -25,19 +25,16 @@ func configureProcessGroup(cmd *exec.Cmd) {
 }
 
 // pgKiller is the groupKiller on Unix. The process group needs no state
-// beyond the leader's pid, which is the pgid.
-type pgKiller struct{ cmd *exec.Cmd }
+// beyond the leader's pid, which is the pgid. The embedded leaderKill
+// supplies forceLeader.
+type pgKiller struct{ leaderKill }
 
 // afterStart holds no state on Unix; the Job Object equivalent is
 // Windows only.
-func afterStart(cmd *exec.Cmd) groupKiller { return pgKiller{cmd} }
+func afterStart(cmd *exec.Cmd) groupKiller { return pgKiller{leaderKill{cmd}} }
 
 // close has nothing to release.
 func (pgKiller) close() {}
-
-// forceLeader kills only the leader with SIGKILL, which it cannot
-// catch. A nil Process is a no-op.
-func (k pgKiller) forceLeader() { killCmdLeader(k.cmd) }
 
 // kill terminates the recipe's whole process group. It sends
 // SIGTERM first, waits up to gracePeriod for the group to exit, then

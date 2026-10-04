@@ -29,7 +29,7 @@ func TestClose_Windows_ClosesJobOnce(t *testing.T) {
 	// close a handle value Windows has since handed to another object.
 	job, err := createKillOnCloseJob()
 	require.NoError(t, err)
-	k := &jobKiller{cmd: &exec.Cmd{}, job: job}
+	k := &jobKiller{leaderKill: leaderKill{&exec.Cmd{}}, job: job}
 	k.close()
 	assert.Zero(t, k.job)
 	assert.NotPanics(t, k.close)

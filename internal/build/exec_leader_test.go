@@ -39,3 +39,10 @@ func TestKillCmdLeader_KillsLeaderAndIgnoresError(t *testing.T) {
 	assert.NotPanics(t, func() { killCmdLeader(cmd) })
 	assert.Same(t, cmd.Process, *got)
 }
+
+func TestLeaderKill_ForceLeaderKillsLeader(t *testing.T) {
+	got := stubKillLeader(t)
+	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
+	assert.NotPanics(t, func() { leaderKill{cmd}.forceLeader() })
+	assert.Same(t, cmd.Process, *got)
+}
