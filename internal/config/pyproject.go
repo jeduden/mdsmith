@@ -3,11 +3,13 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pelletier/go-toml"
@@ -63,14 +65,41 @@ func loadPyproject(path string) (*Config, error) {
 // levels.
 const maxTOMLNesting = 1000
 
+// parseTOMLBytes is go-toml's parser, a variable so a test can count
+// the parses.
+var parseTOMLBytes = toml.LoadBytes
+
+// lastTOML holds the most recent loadTOML result keyed by its input
+// bytes, so discovery's probe of the chosen pyproject.toml and the Load
+// that follows parse it once. A single entry bounds what it holds to one
+// config file (at most maxConfigBytes) and its tree. Callers only read
+// the tree, so sharing it between them is safe.
+var lastTOML struct {
+	sync.Mutex
+	data []byte
+	tree *toml.Tree
+	err  error
+}
+
 // loadTOML parses data with go-toml after rejecting input whose arrays,
-// inline tables and dotted keys nest deeper than maxTOMLNesting.
+// inline tables and dotted keys nest deeper than maxTOMLNesting. The
+// same bytes parsed last time return the same result without a parse.
 func loadTOML(data []byte) (*toml.Tree, error) {
-	if tomlNestingExceeds(data, maxTOMLNesting) {
-		return nil, fmt.Errorf("toml: arrays, inline tables and dotted keys nest deeper than %d levels",
-			maxTOMLNesting)
+	lastTOML.Lock()
+	defer lastTOML.Unlock()
+	if lastTOML.data != nil && bytes.Equal(lastTOML.data, data) {
+		return lastTOML.tree, lastTOML.err
 	}
-	return toml.LoadBytes(data)
+	var tree *toml.Tree
+	var err error
+	if tomlNestingExceeds(data, maxTOMLNesting) {
+		err = fmt.Errorf("toml: arrays, inline tables and dotted keys nest deeper than %d levels",
+			maxTOMLNesting)
+	} else {
+		tree, err = parseTOMLBytes(data)
+	}
+	lastTOML.data, lastTOML.tree, lastTOML.err = data, tree, err
+	return tree, err
 }
 
 // tomlNestingExceeds reports whether nesting outside strings and
@@ -163,10 +192,17 @@ func tomlStringEnd(data []byte, i int) int {
 // line opens a `[tool.mdsmith` header or sets a `tool.mdsmith.` dotted
 // key, so loading it reports the syntax error instead of the walk
 // skipping a broken config; it earns no hint. An unreadable file is
-// neither.
+// neither, and so is a file that never spells "mdsmith" (it is not
+// parsed). loadTOML keeps the parse for the Load that follows.
 func probePyproject(path string) (source bool, hint string) {
 	data, err := readLimitedConfig(path)
 	if err != nil {
+		return false, ""
+	}
+	// Both tables and the broken-header fallback spell out "mdsmith",
+	// so a file without it — most of a Python monorepo's — is neither a
+	// source nor a hint, and needs no parse.
+	if !bytes.Contains(data, []byte("mdsmith")) {
 		return false, ""
 	}
 	tree, err := loadTOML(data)

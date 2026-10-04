@@ -564,3 +564,49 @@ func TestLoadPyproject_PluralOnlyErrorCarriesHint(t *testing.T) {
 	_, err := Load(p)
 	assert.ErrorContains(t, err, "no [tool.mdsmith] table; found [tools.mdsmith] — rename it to [tool.mdsmith]")
 }
+
+// countTOMLParses swaps the go-toml parse for one that counts its calls.
+func countTOMLParses(t *testing.T) *int {
+	t.Helper()
+	n := 0
+	orig := parseTOMLBytes
+	parseTOMLBytes = func(b []byte) (*toml.Tree, error) {
+		n++
+		return orig(b)
+	}
+	t.Cleanup(func() { parseTOMLBytes = orig })
+	return &n
+}
+
+// Discovery's probe and the Load that follows parse the chosen
+// pyproject.toml once between them.
+func TestPyproject_DiscoverThenLoadParsesOnce(t *testing.T) {
+	dir := t.TempDir()
+	py := writeCfg(t, dir, "pyproject.toml", "[tool.mdsmith.rules]\nline-length = false\n")
+	n := countTOMLParses(t)
+	found, _ := DiscoverWithHints(dir)
+	require.Equal(t, py, found)
+	cfg, err := Load(found)
+	require.NoError(t, err)
+	assert.False(t, cfg.Rules["line-length"].Enabled)
+	assert.Equal(t, 1, *n)
+
+	// Changed bytes are parsed afresh.
+	writeCfg(t, dir, "pyproject.toml", "[tool.mdsmith.rules]\nline-length = true\n")
+	cfg, err = Load(py)
+	require.NoError(t, err)
+	assert.True(t, cfg.Rules["line-length"].Enabled)
+	assert.Equal(t, 2, *n)
+}
+
+// A pyproject.toml that never names mdsmith can be neither a config
+// source nor earn the plural-table hint, so the probe skips the parse.
+func TestProbePyproject_SkipsParseWithoutMdsmith(t *testing.T) {
+	dir := t.TempDir()
+	p := writeCfg(t, dir, "pyproject.toml", "[project]\nname = \"x\"\n")
+	n := countTOMLParses(t)
+	source, hint := probePyproject(p)
+	assert.False(t, source)
+	assert.Equal(t, "", hint)
+	assert.Equal(t, 0, *n)
+}
