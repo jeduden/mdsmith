@@ -109,9 +109,5 @@ func CloseLineRange(src []byte, fcb *ast.FencedCodeBlock, openEnd int) (int, int
 			closingStart++
 		}
 	}
-	closingEnd := closingStart
-	for closingEnd < len(src) && src[closingEnd] != '\n' {
-		closingEnd++
-	}
-	return closingStart, closingEnd
+	return closingStart, closingStart + lineLen(src[closingStart:])
 }
