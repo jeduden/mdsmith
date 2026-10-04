@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -47,7 +48,7 @@ type buildPassOpts struct {
 	// Cancelling it (CLI interrupt) kills the running recipes' process
 	// groups. Nil means context.Background().
 	ctx context.Context
-	// interruptible installs the SIGINT/SIGTERM handler around the
+	// interruptible installs the SIGINT/SIGTERM/SIGHUP handler around the
 	// dispatch of recipes and hooks (dispatchInterruptible). Only
 	// runBuildPassInterruptible, the fix entry point, sets it.
 	interruptible bool
@@ -69,11 +70,20 @@ func (o buildPassOpts) runsProcesses() bool {
 
 // interrupted reports whether the build context is already done, so a
 // target reached after an interrupt neither hashes its inputs nor
-// starts its recipe. The caller returns outcomeNotStarted, and
-// dispatchTargets reports every such target in one reportNotStarted
-// line.
+// starts its recipe. The caller returns outcomeNotStarted (decideAndRun
+// does for a run refusedByInterrupt), and dispatchTargets reports every
+// such target in one reportNotStarted line.
 func interrupted(opts buildPassOpts) bool {
 	return opts.context().Err() != nil
+}
+
+// refusedByInterrupt reports whether a run's err says an interrupt
+// refused its recipe before it started (runOneTarget, or runRecipe's
+// entry check): such a target is outcomeNotStarted, like one
+// dispatchOne refused. A spent deadline that refused it stays a
+// timeout.
+func refusedByInterrupt(err error) bool {
+	return errors.Is(err, buildexec.ErrNotStarted) && errors.Is(err, context.Canceled)
 }
 
 // notStartedShown caps how many target names reportNotStarted lists.
@@ -603,6 +613,9 @@ func decideAndRun(
 		}
 	}
 	res := runOneTarget(builder, bt, id, opts, timeout, allFinals, w)
+	if refusedByInterrupt(res.Err) {
+		return outcomeNotStarted, nil // reported in dispatchTargets' summary
+	}
 	if res.Err != nil {
 		reportBuildFailure(bt, res, w)
 		return outcomeFailed, nil
@@ -692,7 +705,8 @@ func runOneTarget(
 	// After an interrupt no further recipe may start: the run is ending.
 	// dispatchOne and the concurrent workers check before hashing; this
 	// covers an interrupt that lands while the ActionID is computed.
-	if err := opts.context().Err(); err != nil {
+	if interrupted(opts) {
+		err := fmt.Errorf("recipe cancelled %w: %w", buildexec.ErrNotStarted, opts.context().Err())
 		return targetRunResult{Result: buildexec.Result{Err: err}}
 	}
 	ctx, cancel := context.WithTimeout(opts.context(), timeout)

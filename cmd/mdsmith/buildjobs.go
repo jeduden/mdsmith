@@ -46,8 +46,8 @@ func runConcurrent(
 	verdicts := make([]buildexec.Verdict, len(targets))
 	verdictErrs := make([]error, len(targets))
 	for i, bt := range targets {
-		if opts.context().Err() != nil {
-			break // interrupted: every worker refuses its target unhashed
+		if interrupted(opts) {
+			break // every worker refuses its target unhashed
 		}
 		stins[i] = stalenessFor(bt, cfg)
 		verdicts[i], verdictErrs[i] = targetVerdict(stins[i], cache, opts)

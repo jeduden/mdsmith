@@ -1593,6 +1593,65 @@ func TestDispatchTargets_InterruptSummarizesUnstartedTargets(t *testing.T) {
 	}
 }
 
+// errRefusedByInterrupt is the error runRecipe returns when it refuses a run
+// whose context an interrupt already cancelled.
+var errRefusedByInterrupt = fmt.Errorf("recipe cancelled %w: %w", buildexec.ErrNotStarted, context.Canceled)
+
+// TestDispatchTargets_RecipeRefusedAfterInterruptJoinsSummary covers an
+// interrupt that lands after the dispatch-time check, so runRecipe
+// itself refuses the recipe: that target never started either, and
+// must join the one summary line instead of a line of its own.
+func TestDispatchTargets_RecipeRefusedAfterInterruptJoinsSummary(t *testing.T) {
+	for _, jobs := range []int{1, 2} {
+		root := t.TempDir()
+		cfg := buildPassCfg("    cp:\n      command: cp {inputs} {outputs}\n")
+		mk := func(out string) buildTarget {
+			return buildTarget{file: "doc.md", line: 1, target: buildexec.Target{
+				Recipe: "cp", Root: root, Outputs: []string{out},
+			}}
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		builder := &mockBuilder{fn: func(context.Context, buildexec.Target) error {
+			cancel()
+			return errRefusedByInterrupt
+		}}
+		var buf strings.Builder
+		code := dispatchTargets(builder, []buildTarget{mk("a.txt"), mk("b.txt")}, cfg, root,
+			buildPassOpts{ctx: ctx, jobs: jobs, noCache: true}, buildexec.NewCache(), time.Second, &buf)
+		cancel()
+		assert.Equal(t, 2, code, "jobs=%d", jobs)
+		assert.Equal(t, "INTERRUPTED 2 targets before start: a.txt, b.txt\n", buf.String(), "jobs=%d", jobs)
+	}
+}
+
+// TestDispatchOne_VerifyReRunRefusedNamesVerify covers an interrupt
+// that lands after verifyTarget's own check, so runRecipe refuses the
+// re-run: the first run did start, so the report must not say the
+// target was interrupted before start.
+func TestDispatchOne_VerifyReRunRefusedNamesVerify(t *testing.T) {
+	root := t.TempDir()
+	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
+	bt := buildTarget{file: "doc.md", line: 1, target: buildexec.Target{
+		Recipe: "mk", Root: root, Outputs: []string{"out.txt"},
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	calls := 0
+	builder := &mockBuilder{fn: func(context.Context, buildexec.Target) error {
+		calls++
+		if calls == 1 {
+			return nil
+		}
+		cancel()
+		return errRefusedByInterrupt
+	}}
+	var buf strings.Builder
+	outcome := dispatchOne(builder, bt, cfg, buildPassOpts{ctx: ctx, verify: true, noCache: true},
+		buildexec.NewCache(), time.Second, &buf)
+	assert.Equal(t, outcomeFailed, outcome)
+	assert.Equal(t, "INTERRUPTED out.txt before verify re-run\n", buf.String())
+}
+
 func TestReportNotStarted(t *testing.T) {
 	for _, tc := range []struct {
 		names []string

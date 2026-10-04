@@ -217,11 +217,14 @@ func verifyTarget(
 	b buildexec.Builder, bt buildTarget, id string,
 	opts buildPassOpts, timeout time.Duration, res *targetRunResult, w io.Writer,
 ) bool {
-	if opts.context().Err() != nil {
-		// The first run finished and committed its outputs; only the
-		// re-run is skipped, so this is not "before start".
+	// The first run finished and committed its outputs; only the re-run
+	// is skipped, so neither refusal below is "before start".
+	refused := func() bool {
 		_, _ = fmt.Fprintf(w, "INTERRUPTED %s before verify re-run\n", targetName(bt))
 		return false
+	}
+	if interrupted(opts) {
+		return refused()
 	}
 	first := snapshotOutputs(bt)
 
@@ -236,6 +239,9 @@ func verifyTarget(
 		verifyOpts.LiveSink = w
 	}
 	second := b.BuildWithResult(vctx, bt.target, verifyOpts)
+	if refusedByInterrupt(second.Err) {
+		return refused() // the interrupt landed while the re-run was staged
+	}
 	if errors.Is(second.Err, context.Canceled) {
 		reportBuildFailure(bt, targetRunResult{Result: second}, w)
 		return false
