@@ -5,6 +5,7 @@
 package lsp
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 )
@@ -77,21 +78,47 @@ type initializeParams struct {
 	InitializationOptions json.RawMessage    `json:"initializationOptions,omitempty"`
 }
 
-// UnmarshalJSON decodes the params as usual, then re-reads
-// initializationOptions by its exact key. encoding/json matches struct
-// fields case-insensitively, so without this "InitializationOptions"
-// would opt a client into the singleton, and a later case-variant
-// sibling would overwrite the real value. The map decode cannot fail
-// once the struct decode of the same bytes has succeeded, so its error
-// is dropped; a nil map just leaves the options absent.
+// UnmarshalJSON decodes the params in one pass over the top-level
+// members, matching each key exactly as the LSP spec spells it.
+// encoding/json matches struct fields case-insensitively, so a stock
+// decode would let "InitializationOptions" opt a client into the
+// singleton, and a later case-variant sibling would overwrite the real
+// value; here a case variant is just an unknown member and is skipped.
+// One pass also decodes the (large) capabilities object once.
+//
+// The value reaching UnmarshalJSON is already valid JSON (encoding/json
+// checks it first), so reading a key token cannot fail. A null or
+// non-object value falls back to the stock decode, which keeps the
+// stock result: a no-op for null, a type error otherwise.
 func (p *initializeParams) UnmarshalJSON(data []byte) error {
-	type plain initializeParams
-	if err := json.Unmarshal(data, (*plain)(p)); err != nil {
-		return err
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if tok, _ := dec.Token(); tok != json.Delim('{') {
+		type plain initializeParams
+		return json.Unmarshal(data, (*plain)(p))
 	}
-	var top map[string]json.RawMessage
-	_ = json.Unmarshal(data, &top)
-	p.InitializationOptions = top["initializationOptions"]
+	var skip json.RawMessage
+	for dec.More() {
+		tok, _ := dec.Token()
+		key, _ := tok.(string)
+		var target any
+		switch key {
+		case "processId":
+			target = &p.ProcessID
+		case "rootUri":
+			target = &p.RootURI
+		case "workspaceFolders":
+			target = &p.WorkspaceFolders
+		case "capabilities":
+			target = &p.Capabilities
+		case "initializationOptions":
+			target = &p.InitializationOptions
+		default:
+			target = &skip
+		}
+		if err := dec.Decode(target); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

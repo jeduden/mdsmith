@@ -75,4 +75,25 @@ func TestInitializeParamsUnmarshalJSON(t *testing.T) {
 	var null initializeParams
 	require.NoError(t, json.Unmarshal([]byte(`null`), &null))
 	assert.Nil(t, null.InitializationOptions)
+
+	var arr initializeParams
+	assert.Error(t, json.Unmarshal([]byte(`[]`), &arr),
+		"a non-object params value must still fail the decode")
+}
+
+// The decode is one exact-key pass over the members, so every
+// top-level key matches as the LSP spec spells it: a case variant is an
+// unknown member and is skipped, as initializationOptions already was.
+// Unknown members of any shape are skipped without failing the decode.
+func TestInitializeParamsUnmarshalJSONExactKeys(t *testing.T) {
+	t.Parallel()
+	var p initializeParams
+	require.NoError(t, json.Unmarshal([]byte(`{"ProcessId":7,"ROOTURI":"file:///r",`+
+		`"extra":{"nested":[1,{"a":null}]},"trace":"off",`+
+		`"capabilities":{"workspace":{"workspaceEdit":{"documentChanges":true}}}}`), &p))
+	assert.Nil(t, p.ProcessID, "a case-variant processId is an unknown member")
+	assert.Nil(t, p.RootURI, "a case-variant rootUri is an unknown member")
+	require.NotNil(t, p.Capabilities.Workspace)
+	require.NotNil(t, p.Capabilities.Workspace.WorkspaceEdit)
+	assert.True(t, p.Capabilities.Workspace.WorkspaceEdit.DocumentChanges)
 }
