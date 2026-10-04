@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"sync"
 
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/refactor"
 )
@@ -138,9 +140,20 @@ func toRefactorPlan(p refactor.Plan) RefactorPlan {
 // buffer overlaid when a rename supplies one).
 type sessionRefactorWorkspace struct {
 	refactor.IndexEdges
-	s             *Session
+	s *Session
+	// fsys is the workspace FS snapshot, taken once on first use and
+	// shared by the edge index walk and WikilinkIndex: a MemWorkspace
+	// copies every file's bytes on each FS call.
+	fsys          func() fs.FS
 	overlayURI    string
 	overlaySource []byte
+}
+
+// WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
+// resolution reads, over the session workspace's whole file tree. Each
+// call walks that tree again; the move planner calls it once per plan.
+func (w *sessionRefactorWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	return linkgraph.NewWikilinkIndex(w.fsys())
 }
 
 func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
@@ -164,21 +177,22 @@ func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 // rename computes against the caller's current buffer rather than the
 // last-saved file.
 func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte) *sessionRefactorWorkspace {
+	fsys := sync.OnceValue(s.ws.FS)
 	return &sessionRefactorWorkspace{
 		IndexEdges: refactor.NewLazyIndexEdges(func() *index.Index {
-			return s.indexRefactorWorkspace(overlayURI, overlaySource)
+			return s.indexRefactorWorkspace(fsys(), overlayURI, overlaySource)
 		}),
 		s:             s,
+		fsys:          fsys,
 		overlayURI:    overlayURI,
 		overlaySource: overlaySource,
 	}
 }
 
-// indexRefactorWorkspace walks the session's workspace for Markdown
-// files and indexes them, reading overlaySource in place of
+// indexRefactorWorkspace walks fsys, the session workspace's FS, for
+// Markdown files and indexes them, reading overlaySource in place of
 // overlayURI's bytes when overlayURI is set.
-func (s *Session) indexRefactorWorkspace(overlayURI string, overlaySource []byte) *index.Index {
-	fsys := s.ws.FS()
+func (s *Session) indexRefactorWorkspace(fsys fs.FS, overlayURI string, overlaySource []byte) *index.Index {
 	var rels []string
 	// The walk callback swallows per-entry errors, so WalkDir's own return
 	// is always nil for a well-formed workspace FS; nothing to propagate.

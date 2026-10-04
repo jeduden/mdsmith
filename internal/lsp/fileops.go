@@ -57,7 +57,9 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 		return
 	}
 	_, _, root := s.snapshotConfig()
-	ws := lspRenameWorkspace{s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex())}
+	// The batch shares one wikilink index, walked at the root its move
+	// paths are spelled against.
+	ws := s.renameWorkspace(root)
 
 	moves := planRenameBatch(ws, root, p.Files)
 	merged := map[string][]textEdit{}

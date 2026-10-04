@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/index"
-	"github.com/jeduden/mdsmith/internal/refactor"
 )
 
 // TestServer_PrepareRenameAt drives prepareRenameAt directly with an
@@ -241,7 +240,7 @@ func TestLspRenameWorkspace_Resolve(t *testing.T) {
 		})
 		_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
 
-		ws := lspRenameWorkspace{s: h.srv, IndexEdges: refactor.NewIndexEdges(h.srv.ensureIndex())}
+		ws := h.srv.renameWorkspace(h.srv.rootDir)
 		gotURI, gotSrc, ok := ws.Resolve("open.md")
 		require.True(t, ok)
 		assert.Equal(t, uri, gotURI, "expected client URI from open buffer")
@@ -260,7 +259,7 @@ func TestLspRenameWorkspace_Resolve(t *testing.T) {
 		})
 		_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
 
-		ws := lspRenameWorkspace{s: h.srv, IndexEdges: refactor.NewIndexEdges(h.srv.ensureIndex())}
+		ws := h.srv.renameWorkspace(h.srv.rootDir)
 		gotURI, gotSrc, ok := ws.Resolve("closed.md")
 		require.True(t, ok)
 		assert.Equal(t, rootURI+"/closed.md", gotURI, "expected canonical workspace URI for disk fallback")

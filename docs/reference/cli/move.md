@@ -111,21 +111,48 @@ cross-directory move, check them by hand.
   `\` just before the `#` or `?` that ends the path, as in
   `a.md\#x`, only escapes that byte, so such a link is repointed
   and keeps its `\`.
-- **Ambiguous wikilinks.** When another Markdown file shares the
-  old or the new basename stem, no `[[stem]]` is rewritten,
-  because the rewrite could point it at the wrong file. For a new
-  name with another extension, such as `guide.mdx`, a listed file
-  that already has that name blocks the rewrite. Only files the
-  `files:` patterns match are checked, so a same-named image or
-  other unlisted file does not block it. Check such a move with
-  `--dry-run`.
+- **Ambiguous wikilinks.** A `[[stem]]` reads the basename
+  alone, folder prefix or not. When several Markdown files share
+  the stem, it reaches the shallowest one, then the first by
+  path, with capitals before lowercase letters, so `Docs/a.md`
+  comes before `archive/a.md`.
+  If that file is not the one you move, no `[[stem]]` is
+  rewritten, because each one still reaches that other file. If
+  it is, every `[[stem]]` follows the move, except one whose
+  folder prefix names the folder of another file with the stem,
+  such as `[[ref/guide]]` for `ref/guide.md`. That link already
+  names its file, and it reaches that file once yours is gone.
+  The new name gets the same check: when a file that already has
+  the new stem comes before the destination, no `[[stem]]` is
+  rewritten, because the new name would reach that file. When the
+  destination comes first, the move also takes over that file's
+  links. For a new name with another extension, such as
+  `guide.mdx`, the check reads files with that exact name, since
+  `[[guide.mdx]]` reads it by name. The check reads the files a
+  wikilink resolves against: every file under the workspace root
+  except `.git` and `node_modules`, whatever the `files:`
+  patterns or `.gitignore` say. So a gitignored
+  `archive/guide.md` blocks the rewrite for a move of
+  `docs/guide.md`, and an unlisted `logo.png` blocks it for a
+  move to `docs/logo.png`. A `node_modules/pkg/README.md` does
+  not block a move of `docs/api/v1/readme.md`, though it is
+  shallower. When another file has the stem, a source path typed
+  in other letter case than on disk, such as `Docs/guide.md` for
+  `docs/guide.md`, also blocks the rewrite: the check cannot tell
+  it is the same file. A move that keeps the stem rewrites
+  nothing, but it can still change which file the stem reaches.
+  Moving the file a `[[guide]]` reaches below another `guide.md`
+  hands its links to that file. Check such a move with `--dry-run`.
 - **Wikilinks to a name they cannot reach.** A move to a name
   with no extension, such as `COPYING`, leaves every `[[stem]]`
   as written, because a bare `[[name]]` finds only Markdown
   files. So does a new name that a wikilink cannot spell: an
   empty stem such as `.md`, a `#`, `|`, `[`, or `]` as in `C#.md`,
   a backtick, a line break, or a name that ends with a space.
-  Those links break. A name that starts with a space, or reads as
+  So does a move into `.git` or `node_modules`, which a wikilink
+  never searches. Those links break. A move out of one of them
+  also leaves `[[stem]]` as written, since no wikilink reached
+  the file there. A name that starts with a space, or reads as
   a drive letter such as `C:x.md`, is written as `[[./C:x]]`.
 - **Footnote text that is a lone link.** mdsmith reads
   `[^1]: [z](a.md)` as a footnote definition and leaves its text

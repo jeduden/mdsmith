@@ -2,9 +2,12 @@ package refactor
 
 import (
 	"errors"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 	"github.com/jeduden/mdsmith/pkg/goldmark/text"
@@ -35,6 +38,10 @@ func newMemWorkspace(files map[string]string) *memWorkspace {
 		return bytesMap[rel], nil
 	})
 	return &memWorkspace{IndexEdges: NewIndexEdges(idx), files: bytesMap}
+}
+
+func (w *memWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	return holderIndex(slices.Collect(maps.Keys(w.files))...)
 }
 
 func (w *memWorkspace) Resolve(file string) (string, []byte, bool) {
@@ -570,14 +577,17 @@ func TestRefDefColonOffset(t *testing.T) {
 func TestAnchorEditForEdge_SkipPaths(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{"b.md": "[x](a.md#setup)\n"})
 	// Source file the workspace can't resolve.
-	_, _, ok := anchorEditForEdge(ws, index.Edge{SourceFile: "gone.md", SourceLine: 1, SourceCol: 1}, "setup", "x")
+	_, _, ok := anchorEditForEdge(&edgeLines{ws: ws},
+		index.Edge{SourceFile: "gone.md", SourceLine: 1, SourceCol: 1}, "setup", "x")
 	assert.False(t, ok)
 	// SourceLine past EOF.
-	_, _, ok = anchorEditForEdge(ws, index.Edge{SourceFile: "b.md", SourceLine: 99, SourceCol: 1}, "setup", "x")
+	_, _, ok = anchorEditForEdge(&edgeLines{ws: ws},
+		index.Edge{SourceFile: "b.md", SourceLine: 99, SourceCol: 1}, "setup", "x")
 	assert.False(t, ok)
 	// Fragment can't be located on the line.
 	ws2 := newMemWorkspace(map[string]string{"b.md": "no link here\n"})
-	_, _, ok = anchorEditForEdge(ws2, index.Edge{SourceFile: "b.md", SourceLine: 1, SourceCol: 1}, "setup", "x")
+	_, _, ok = anchorEditForEdge(&edgeLines{ws: ws2},
+		index.Edge{SourceFile: "b.md", SourceLine: 1, SourceCol: 1}, "setup", "x")
 	assert.False(t, ok)
 }
 

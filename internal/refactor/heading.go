@@ -21,11 +21,15 @@ import (
 // reaches beyond the edited file: every incoming `[t](other.md#slug)`
 // anchor and every `[label]: other.md#slug` ref-def whose destination
 // resolves to the renamed heading must be rewritten too. The engine
-// asks the Workspace three questions and stays surface-neutral:
+// asks the Workspace these questions and stays surface-neutral:
 //
 //   - which edges point at (file, slug)?
 //   - what files exist?
 //   - what key + bytes back a workspace-relative path?
+//
+// A file move (see Move) shares the seam and also asks which edges
+// name a file by path or by `[[stem]]`, and which files a `[[stem]]`
+// resolves against (WikilinkIndex).
 //
 // The LSP server backs it with its warm index plus open buffers; the
 // `mdsmith rename` CLI with a transient index plus disk reads. The
@@ -43,6 +47,17 @@ type Workspace interface {
 	// basename stem matches stem (compared case-insensitively). A file
 	// move whose basename stem changes rewrites these.
 	IncomingWikilinkEdges(stem string) []index.Edge
+	// WikilinkIndex returns the index `[[stem]]` resolution reads: every
+	// file under the workspace root except `.git` and `node_modules`,
+	// whether or not Files lists it. A file move reads from it which
+	// file `[[oldStem]]` resolves to and whether the new stem or name
+	// is taken, so it must cover the same file set the resolver does. A
+	// nil index (no readable root) makes the move read the Files list
+	// instead. An implementation may walk the
+	// whole root on every call (the CLI and Session ones do; the LSP
+	// one memoizes), so a planner calls it at most once per plan and
+	// only once it has a `[[stem]]` edge to guard.
+	WikilinkIndex() *linkgraph.WikilinkIndex
 	// Files lists every workspace-relative file path the workspace
 	// knows about.
 	Files() []string
@@ -501,8 +516,9 @@ func appendAnchorEditsForHeading(
 	changes map[string][]Edit, ws Workspace,
 	headingFile, oldSlug, newSlug string,
 ) {
+	lines := edgeLines{ws: ws}
 	for _, e := range ws.IncomingAnchorEdges(headingFile, oldSlug) {
-		key, edit, ok := anchorEditForEdge(ws, e, oldSlug, newSlug)
+		key, edit, ok := anchorEditForEdge(&lines, e, oldSlug, newSlug)
 		if !ok {
 			continue
 		}
@@ -516,18 +532,11 @@ func appendAnchorEditsForHeading(
 // rename skips those rather than failing the whole request, since the
 // alternative would block a heading rename over an unrelated stale
 // edge.
-func anchorEditForEdge(ws Workspace, e index.Edge, oldSlug, newSlug string) (string, Edit, bool) {
-	key, source, ok := ws.Resolve(e.SourceFile)
+func anchorEditForEdge(lines *edgeLines, e index.Edge, oldSlug, newSlug string) (string, Edit, bool) {
+	key, row, ok := lines.row(e)
 	if !ok {
 		return "", Edit{}, false
 	}
-	lines := splitLines(source)
-	// The index can hold stale entries after a closed-buffer edit or
-	// an unprocessed watcher event. Indexing past EOF would panic.
-	if e.SourceLine < 1 || e.SourceLine > len(lines) {
-		return "", Edit{}, false
-	}
-	row := lines[e.SourceLine-1]
 	startByte, endByte, ok := anchorFragmentBytes(row, e.SourceCol-1, oldSlug)
 	if !ok {
 		return "", Edit{}, false
