@@ -343,6 +343,19 @@ type destResolver struct {
 
 	wl     *linkgraph.WikilinkIndex // ws.WikilinkIndex, once wlRead
 	wlRead bool
+	lines  *edgeLines // see edgeReader
+}
+
+// edgeReader returns the one edgeLines the resolver's `[[stem]]`
+// passes share, keeping every file it reads: a file holding links to
+// several moved files is read once per batch, not once per move. The
+// batch moves no file before it is planned, so a kept read stays
+// current.
+func (r *destResolver) edgeReader() *edgeLines {
+	if r.lines == nil {
+		r.lines = &edgeLines{ws: r.ws, memo: map[string]edgeFile{}}
+	}
+	return r.lines
 }
 
 // paths returns the workspace's files, normalized as Resolve keys
@@ -891,7 +904,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	}
 	post := r.postIndex(idx)
 	siblings := stemSiblings(idx.StemPaths(oldStem), src)
-	lines := edgeLines{ws: ws}
+	lines := r.edgeReader()
 	for _, e := range edges {
 		key, row, ok := lines.row(e)
 		if !ok {

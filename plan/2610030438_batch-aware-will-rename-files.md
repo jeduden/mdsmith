@@ -132,6 +132,9 @@ then reports it.
 18. [x] Refuse two pairs whose destinations differ in letter
     case alone, such as `docs/c.md` and `Docs/C.md`. A
     case-insensitive file system stores both as one file.
+19. [x] Read a file once across a batch's `[[stem]]` passes.
+    A file linking three moved files is read once by them all,
+    not once per move.
 
 ## Acceptance Criteria
 

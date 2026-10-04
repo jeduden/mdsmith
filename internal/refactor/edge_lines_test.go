@@ -123,3 +123,54 @@ func TestMoveAll_ShadowedPathReadsEachFileOnce(t *testing.T) {
 	assert.Equal(t, 1, bp.Withheld)
 	assert.Equal(t, 1, ws.calls["hub.md"])
 }
+
+// memResolveCounter counts Resolve calls on a memWorkspace.
+type memResolveCounter struct {
+	*memWorkspace
+	calls map[string]int
+}
+
+func (w memResolveCounter) Resolve(file string) (string, []byte, bool) {
+	w.calls[file]++
+	return w.memWorkspace.Resolve(file)
+}
+
+// TestMoveAll_StemPassesReadEachFileOnce locks that the `[[stem]]`
+// passes of one batch share their reads: hub.md, holding a link to
+// each of three moved files, is read once by the referrer scan and
+// once by every stem pass together, not once per move.
+func TestMoveAll_StemPassesReadEachFileOnce(t *testing.T) {
+	ws := memResolveCounter{calls: map[string]int{}, memWorkspace: newMemWorkspace(map[string]string{
+		"a.md":   "# A\n",
+		"b.md":   "# B\n",
+		"c.md":   "# C\n",
+		"hub.md": "# Hub\n\n[[a]] [[b]] [[c]]\n",
+	})}
+	bp := MoveAll(ws, []MovePair{{"a.md", "a2.md"}, {"b.md", "b2.md"}, {"c.md", "c2.md"}})
+	assert.ElementsMatch(t, []string{"a2", "b2", "c2"}, texts(bp.Edits, "hub.md"))
+	assert.Equal(t, 2, ws.calls["hub.md"])
+}
+
+// TestEdgeLines_Memo locks that a reader with a memo resolves a file
+// once even when its edges are not consecutive, and that one without
+// re-reads it.
+func TestEdgeLines_Memo(t *testing.T) {
+	edges := []index.Edge{
+		{SourceFile: "a.md", SourceLine: 1}, {SourceFile: "b.md", SourceLine: 1}, {SourceFile: "a.md", SourceLine: 1},
+	}
+	for memo, want := range map[bool]int{true: 1, false: 2} {
+		ws := &resolveCounter{calls: map[string]int{}, stubWorkspace: stubWorkspace{
+			sources: map[string][]byte{"a.md": []byte("x\n"), "b.md": []byte("y\n")},
+		}}
+		r := &edgeLines{ws: ws}
+		if memo {
+			r.memo = map[string]edgeFile{}
+		}
+		for _, e := range edges {
+			_, row, ok := r.row(e)
+			require.True(t, ok)
+			assert.NotEmpty(t, row)
+		}
+		assert.Equal(t, want, ws.calls["a.md"], "memo %v", memo)
+	}
+}

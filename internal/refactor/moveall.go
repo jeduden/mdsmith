@@ -126,7 +126,7 @@ func countShadowed(ws Workspace, r *destResolver, vacated string) {
 	if len(edges) == 0 || !r.wikilinkIndex().StemResolvesTo(stem, vacated) {
 		return
 	}
-	lines := edgeLines{ws: ws}
+	lines := r.edgeReader()
 	for _, e := range edges {
 		if _, row, ok := lines.row(e); ok {
 			if got, _, _, ok := linkgraph.WikilinkStemAt(row, e.SourceCol-1); ok && got == stem {
