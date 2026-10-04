@@ -1334,6 +1334,36 @@ func TestHandleOutgoingCallsCatalogPlaceholder(t *testing.T) {
 	require.NotEmpty(t, calls)
 }
 
+// TestHandleOutgoingCallsSkipsWikilinks locks that a `[[stem]]` link
+// and a typed `![[name.ext]]` embed add no outgoing call: the index
+// keeps them unresolved, with no target file, so the catalog
+// placeholder would list them as a call to the host's own directory.
+func TestHandleOutgoingCallsSkipsWikilinks(t *testing.T) {
+	t.Parallel()
+	src := "# A\n\nSee [[b]] and ![[img.png]].\n"
+	h, _, rootURI := rootedHarness(t, map[string]string{"a.md": src, "b.md": "# B\n", "img.png": "png"})
+	uri := rootURI + "/a.md"
+	h.srv.settingsMu.Lock()
+	h.srv.settings.Run = runOff
+	h.srv.settingsMu.Unlock()
+	h.notify("textDocument/didOpen", didOpenTextDocumentParams{
+		TextDocument: textDocumentItem{URI: uri, LanguageID: "markdown", Version: 1, Text: src},
+	})
+	raw, errResp := h.request("textDocument/prepareCallHierarchy", textDocumentPositionParams{
+		TextDocument: textDocumentIdentifier{URI: uri},
+		Position:     Position{Line: 0, Character: 0},
+	})
+	require.Nil(t, errResp)
+	var items []callHierarchyItem
+	require.NoError(t, json.Unmarshal(raw, &items))
+	require.Len(t, items, 1)
+	raw, errResp = h.request("callHierarchy/outgoingCalls", callHierarchyOutgoingCallsParams{Item: items[0]})
+	require.Nil(t, errResp)
+	var calls []callHierarchyOutgoingCall
+	require.NoError(t, json.Unmarshal(raw, &calls))
+	assert.Empty(t, calls)
+}
+
 func TestHandleOutgoingCallsSkipsRefAndAnchorLinks(t *testing.T) {
 	t.Parallel()
 	src := "# A\n\nSee [self](#sec) and [Foo][bar].\n\n## Sec\n\n[bar]: ./b.md\n"
