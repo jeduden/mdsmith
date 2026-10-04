@@ -25,7 +25,8 @@ func writeRootsTree(t *testing.T) string {
 const rootsSrc = "# A\n\nSee [b](b.md).\n"
 
 // TestSessionLendsOneRootAndClosesItOnDispose locks that a Session over
-// an OSWorkspace opens its disk roots once, lends them to every Check
+// an OSWorkspace opens one disk root, used as both its source view and
+// its lent RootFS, lends it to every Check
 // and CheckVersion (whose parse cache keeps each File, and its root,
 // past the call), and closes them in Dispose. Not parallel: it records
 // lint.OpenRootFS.
@@ -43,7 +44,7 @@ func TestSessionLendsOneRootAndClosesItOnDispose(t *testing.T) {
 	require.NoError(t, err)
 
 	got := opened()
-	assert.Len(t, got, 2, "one lent project root and one source view")
+	assert.Len(t, got, 1, "one handle serves as both the lent root and the source view")
 	for _, r := range got {
 		_, err := fs.Stat(r, "b.md")
 		assert.NoError(t, err, "a lent root stays open while the session lives")

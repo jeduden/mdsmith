@@ -9,7 +9,8 @@ import (
 
 // sessionRoots holds the disk handles a Session opens once and lends to
 // every operation: a view of rootDir (the engine's RootFS) and, for a
-// workspace whose FS view the caller owns (an OSWorkspace), that view.
+// workspace whose FS view the session owns (an OSWorkspace), that view,
+// which is the same handle when the workspace sits at rootDir.
 // A File the session's parse cache keeps holds them past the call that
 // parsed it, so only the session can close them, and Dispose does.
 type sessionRoots struct {
@@ -17,6 +18,9 @@ type sessionRoots struct {
 	closed bool
 	root   lint.RootFS
 	source fs.FS
+	// sourceIsRoot is set when source is root (an OSWorkspace at
+	// rootDir), so closeRoots closes the one handle once.
+	sourceIsRoot bool
 }
 
 // sourceView is the workspace FS view one operation reads through.
@@ -47,6 +51,12 @@ func (s *Session) lentRoot() fs.FS {
 	}
 	s.roots.mu.Lock()
 	defer s.roots.mu.Unlock()
+	return s.lentRootLocked()
+}
+
+// lentRootLocked is lentRoot's body; the caller holds s.roots.mu and has
+// checked that s.rootDir is set.
+func (s *Session) lentRootLocked() fs.FS {
 	if s.roots.closed {
 		return nil
 	}
@@ -63,7 +73,9 @@ func (s *Session) lentRoot() fs.FS {
 
 // sourceFS returns the workspace FS view an operation reads through; the
 // operation calls its release once it ends. A view the session owns
-// (ownsFS) is opened once and reused until Dispose. After Dispose, or
+// (ownsFS) is opened once and reused until Dispose; an OSWorkspace's
+// view is the lent root itself, since both are rooted at rootDir, so
+// the session holds one handle rather than two. After Dispose, or
 // when the open fails (retried on the next call), the operation gets a
 // view of its own that release closes. Any other workspace hands out
 // its own view per call and keeps what it holds, so release leaves it
@@ -76,6 +88,12 @@ func (s *Session) sourceFS() sourceView {
 	defer s.roots.mu.Unlock()
 	if s.roots.source != nil {
 		return sourceView{FS: s.roots.source}
+	}
+	if s.rootDir != "" {
+		if root := s.lentRootLocked(); root != nil {
+			s.roots.source, s.roots.sourceIsRoot = root, true
+			return sourceView{FS: root}
+		}
 	}
 	view := s.ws.FS()
 	if s.roots.closed || !readable(view) {
@@ -100,6 +118,8 @@ func (s *Session) closeRoots() {
 	defer s.roots.mu.Unlock()
 	s.roots.closed = true
 	lint.CloseFS(s.roots.root)
-	lint.CloseFS(s.roots.source)
-	s.roots.root, s.roots.source = nil, nil
+	if !s.roots.sourceIsRoot {
+		lint.CloseFS(s.roots.source)
+	}
+	s.roots.root, s.roots.source, s.roots.sourceIsRoot = nil, nil, false
 }
