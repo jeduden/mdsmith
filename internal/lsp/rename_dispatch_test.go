@@ -240,7 +240,7 @@ func TestLspRenameWorkspace_Resolve(t *testing.T) {
 		})
 		_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
 
-		ws := h.srv.renameWorkspace(h.srv.rootDir)
+		ws := h.srv.renameWorkspace()
 		gotURI, gotSrc, ok := ws.Resolve("open.md")
 		require.True(t, ok)
 		assert.Equal(t, uri, gotURI, "expected client URI from open buffer")
@@ -259,7 +259,7 @@ func TestLspRenameWorkspace_Resolve(t *testing.T) {
 		})
 		_ = h.awaitNotification("textDocument/publishDiagnostics", 5*time.Second)
 
-		ws := h.srv.renameWorkspace(h.srv.rootDir)
+		ws := h.srv.renameWorkspace()
 		gotURI, gotSrc, ok := ws.Resolve("closed.md")
 		require.True(t, ok)
 		assert.Equal(t, rootURI+"/closed.md", gotURI, "expected canonical workspace URI for disk fallback")

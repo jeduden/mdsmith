@@ -46,7 +46,7 @@ func countWikilinkWalks(s *Server) *atomic.Int32 {
 // texts keyed by workspace-relative path.
 func moveStem(t *testing.T, s *Server, root, rel, dst string) map[string][]string {
 	t.Helper()
-	batch := planRenameBatch(s.renameWorkspace(root), root, []fileRename{{
+	batch := planRenameBatch(s.moveWorkspace(root), root, []fileRename{{
 		OldURI: pathToURI(filepath.Join(root, rel)),
 		NewURI: pathToURI(filepath.Join(root, dst)),
 	}})

@@ -323,29 +323,43 @@ func (s *Server) handleRename(msg *requestMessage) {
 	}
 }
 
-// lspRenameWorkspace backs the rename engine's Workspace seam with
-// the server's warm index plus open buffers. The index supplies the
-// edge graph; resolveURIAndSource supplies the per-file bytes and
-// the URI the file's edits group under (the client URI for open
-// buffers, the canonical workspace URI otherwise).
+// lspRenameWorkspace backs the rename engine's heading seam
+// (refactor.Workspace) with the server's warm index plus open buffers.
+// The index supplies the edge graph; resolveURIAndSource supplies the
+// per-file bytes and the URI the file's edits group under (the client
+// URI for open buffers, the canonical workspace URI otherwise). A
+// heading rename reads no wikilink index, so this type carries none;
+// a move builds lspMoveWorkspace instead.
 type lspRenameWorkspace struct {
 	refactor.IndexEdges
 	s *Server
+}
+
+// renameWorkspace returns the heading-rename Workspace over the warm
+// index.
+func (s *Server) renameWorkspace() lspRenameWorkspace {
+	return lspRenameWorkspace{s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex())}
+}
+
+// lspMoveWorkspace backs refactor.MoveWorkspace: the heading workspace
+// plus the wikilink index a move reads. Build it only through
+// moveWorkspace, which always sets wikilinks.
+type lspMoveWorkspace struct {
+	lspRenameWorkspace
 	// wikilinks supplies the wikilink index a move reads, read once
 	// per workspace for the root its paths were spelled against.
 	wikilinks func() *linkgraph.WikilinkIndex
 }
 
-// renameWorkspace returns the rename engine's Workspace over the warm
-// index, with a wikilink index read lazily, at most once, for root (see
-// moveWikilinkIndex).
-// Every rename builds its workspace here, so none lacks the index a
-// move's same-stem guard reads. A caller passes the root it spelled its
-// paths against, so a config reload in between cannot key the index to
-// another directory.
-func (s *Server) renameWorkspace(root string) lspRenameWorkspace {
-	return lspRenameWorkspace{
-		s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex()),
+// moveWorkspace returns the move Workspace over the warm index, with a
+// wikilink index read lazily, at most once, for root (see
+// moveWikilinkIndex). Every move builds its workspace here, so none
+// lacks the index a move's same-stem guard reads. A caller passes the
+// root it spelled its paths against, so a config reload in between
+// cannot key the index to another directory.
+func (s *Server) moveWorkspace(root string) lspMoveWorkspace {
+	return lspMoveWorkspace{
+		lspRenameWorkspace: s.renameWorkspace(),
 		wikilinks: sync.OnceValue(func() *linkgraph.WikilinkIndex {
 			return s.moveWikilinkIndex(root)
 		}),
@@ -369,7 +383,7 @@ func (s *Server) moveWikilinkIndex(root string) *linkgraph.WikilinkIndex {
 // WikilinkIndex implements refactor.MoveWorkspace: the index `[[stem]]`
 // resolution reads, over the whole workspace root on disk, or nil when
 // that root is unreadable.
-func (w lspRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+func (w lspMoveWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return w.wikilinks()
 }
 
@@ -386,9 +400,7 @@ func (s *Server) renameHeading(
 	msg *requestMessage, p renameParams,
 	source []byte, rel string, line int, res index.LocateResult, newName string,
 ) {
-	_, _, root := s.snapshotConfig()
-	ws := s.renameWorkspace(root)
-	plan, err := refactor.Heading(ws, p.TextDocument.URI, rel, source, line, res.Name, newName)
+	plan, err := refactor.Heading(s.renameWorkspace(), p.TextDocument.URI, rel, source, line, res.Name, newName)
 	if err != nil {
 		s.writeRenameError(msg.ID, err)
 		return

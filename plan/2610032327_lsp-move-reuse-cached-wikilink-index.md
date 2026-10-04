@@ -88,7 +88,7 @@ for the edge index and once for `WikilinkIndex`.
    `refactor.Heading` takes. Split `Workspace` into that seam
    and a move seam that adds the path, wikilink-edge, and
    `WikilinkIndex` questions.
-6. Build the LSP heading workspace without the wikilink
+6. [x] Build the LSP heading workspace without the wikilink
    closure, and the move workspace only through a
    constructor that sets it.
 7. Write a failing `Session.Move` test that counts FS walks:
@@ -105,10 +105,10 @@ for the edge index and once for `WikilinkIndex`.
       walks fresh and counts a gitignored same-stem file
 - [ ] No `lint.OpenRootFS` caller leaves its `os.Root` open
       after its walk ends
-- [ ] `refactor.Heading` accepts a workspace with no
+- [x] `refactor.Heading` accepts a workspace with no
       `WikilinkIndex` method, and an LSP heading rename builds
       no wikilink closure
-- [ ] No LSP move workspace can hold a nil wikilink closure
+- [x] No LSP move workspace can hold a nil wikilink closure
 - [ ] `Session.Move` with a `[[stem]]` edge walks the
       workspace FS once
 - [ ] All tests pass: `go test ./...`

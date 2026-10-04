@@ -58,7 +58,7 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 	_, _, root := s.snapshotConfig()
 	// The batch shares one wikilink index, walked at the root its move
 	// paths are spelled against.
-	ws := s.renameWorkspace(root)
+	ws := s.moveWorkspace(root)
 
 	batch := planRenameBatch(ws, root, p.Files)
 	merged, dropped := guardRenameEdits(batch.Edits)
