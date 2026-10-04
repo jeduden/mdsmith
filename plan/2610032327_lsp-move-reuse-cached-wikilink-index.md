@@ -76,8 +76,10 @@ for the edge index and once for `WikilinkIndex`.
    `[[stem]]` edge, a warm cached index, and file-watch
    registration does not walk the root (count walks
    through a test hook).
-2. [x] Route `renameWorkspace` to the session's cached index
-   under that condition; keep the fresh walk otherwise.
+2. [x] Route the move workspace (`moveWorkspace`, split from
+   `renameWorkspace` in task 6) to the session's cached index
+   under that condition, only when the session was built at
+   the move's root; keep the fresh walk otherwise.
 3. [x] Write a failing test: `lint.OpenRootFS` returns a
    handle that a caller can close, and a read after close
    fails.
