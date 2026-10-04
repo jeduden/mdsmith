@@ -1446,3 +1446,36 @@ func TestMoveAll_RefusedHolderMisreadsRoot(t *testing.T) {
 	require.Equal(t, DestinationExistsError{Dst: "x/b.md"}, bp.Moves[0].Err)
 	assert.Equal(t, 1, bp.Withheld)
 }
+
+// TestMoveAll_RefusedHolderMisreadsBareDirectory covers a link with no
+// trailing `/` in a refused move that leaves its folder and that, read
+// from the new folder, names a directory: `sub` names x/sub/ and `..`
+// names the root. Such a link resolves for MDS027 (it only stats the
+// path), so it reaches that directory silently and is counted. One
+// that names neither a file nor a directory there stops resolving.
+func TestMoveAll_RefusedHolderMisreadsBareDirectory(t *testing.T) {
+	for name, tc := range map[string]struct {
+		files    map[string]string
+		withheld int
+	}{
+		"a directory there": {map[string]string{
+			"docs/b.md": "# B\n\n[s](sub)\n", "docs/sub/a.md": "# A\n", "x/b.md": "# Old\n", "x/sub/y.md": "# Y\n",
+		}, 1},
+		"the root": {map[string]string{
+			"docs/sub/b.md": "# B\n\n[up](..)\n", "docs/x.md": "# X\n", "x/b.md": "# Old\n",
+		}, 1},
+		"nothing there": {map[string]string{
+			"docs/b.md": "# B\n\n[s](sub)\n", "docs/sub/a.md": "# A\n", "x/b.md": "# Old\n",
+		}, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			src := "docs/b.md"
+			if _, ok := tc.files[src]; !ok {
+				src = "docs/sub/b.md"
+			}
+			bp := MoveAll(newMemWorkspace(tc.files), []MovePair{{src, "x/b.md"}})
+			require.Equal(t, DestinationExistsError{Dst: "x/b.md"}, bp.Moves[0].Err)
+			assert.Equal(t, tc.withheld, bp.Withheld)
+		})
+	}
+}

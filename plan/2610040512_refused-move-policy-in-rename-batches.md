@@ -136,7 +136,10 @@ the link stops resolving, where MDS027 flags it.
    A directory link such as `sub/` in a refused member that
    leaves its folder counts when a file, listed or not, may
    sit under the directory it names from there
-   (`TestMoveAll_RefusedHolderMisreadsDirectory`).
+   (`TestMoveAll_RefusedHolderMisreadsDirectory`). A link
+   with no trailing `/`, such as `sub` or `..`, counts when
+   it names a directory from there, since MDS027 only stats
+   the path (`TestMoveAll_RefusedHolderMisreadsBareDirectory`).
    A refused member whose path refused duplicate members
    name is treated as taken too, so a link to it counts
    (`TestMoveAll_ShadowedByDuplicates`).

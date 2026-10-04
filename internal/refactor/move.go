@@ -188,10 +188,12 @@ func appendReferrerEdits(changes map[string][]Edit, ws MoveWorkspace, p parser.P
 // countRefusedHolders reads every link in each member whose move could
 // not be planned and that leaves its folder (see refusedLeaving), with
 // the text admit read for it. Such a member gets no edit, so
-// referrerEdit only counts its links. The workspace is neither listed
-// nor read for it, so a refused lone Move reads no other file, and a
-// member the workspace does not list is still read. As in a planned
-// member's outbound pass, only a Markdown or listed file is parsed.
+// referrerEdit only counts its links. The member's text comes from the
+// batch, not the workspace list, so a member the workspace does not
+// list is still read; only the paths its links name from the new
+// folder are looked up (see countMisread). A refused lone Move never
+// gets here: Move returns before planning. As in a planned member's
+// outbound pass, only a Markdown or listed file is parsed.
 func (r *destResolver) countRefusedHolders(p parser.Parser) {
 	for src, m := range r.batch.members {
 		if !refusedLeaving(m, src) || !mdpath.HasMarkdownExt(path.Ext(src)) && !r.listed(src) {
@@ -305,7 +307,9 @@ func refusedLeaving(m batchMember, rel string) bool {
 // is read from holder.dst only once the file has left rel, so only a
 // member landing on rel can be there. A directory link is counted when
 // a file may sit under the directory it names from there (see
-// mayHoldDir).
+// mayHoldDir). So is a link with no trailing `/` that names a directory
+// from there, such as `sub` or `..`: MDS027 only stats the path, so it
+// reads such a link as resolving.
 func (r *destResolver) countMisread(holder batchMember, rel string, ref destRef) {
 	if !refusedLeaving(holder, rel) {
 		return
@@ -316,7 +320,7 @@ func (r *destResolver) countMisread(holder batchMember, rel string, ref destRef)
 		if r.batch.dsts[p] {
 			r.batch.withheld++
 		}
-	case ref.dir && r.mayHoldDir(p), !ref.dir && r.mayOccupy(p):
+	case ref.dir && r.mayHoldDir(p), !ref.dir && (r.mayOccupy(p) || r.mayHoldDir(p)):
 		r.batch.withheld++
 	}
 }

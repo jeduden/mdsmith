@@ -77,8 +77,9 @@ type MoveWorkspace interface {
 	// on every call (the CLI one does; the LSP one memoizes, and the
 	// Session one reuses its edge-index walk), so a planner calls it at
 	// most once per plan and only once it has a wikilink edge to guard,
-	// or a directory link in a refused batch member to read (see
-	// destResolver.mayHoldDir), which a lone Move never has.
+	// or a link in a refused batch member that may name a directory
+	// from its new folder (see destResolver.mayHoldDir), which a lone
+	// Move never has.
 	WikilinkIndex() *linkgraph.WikilinkIndex
 }
 
