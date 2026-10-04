@@ -149,15 +149,19 @@ func extractBacklinksFromSource(
 	// never errors — goldmark always returns an AST. The discard keeps
 	// the linter happy without preserving an unreachable branch.
 	f, _ := lint.NewFileFromSource(src, data, stripFrontMatter) //nolint:errcheck
-	// Wikilink resolution needs the workspace root: ResolveWikiLink
-	// walks the fs.FS to find candidates. Standard Markdown link
-	// resolution operates on the source-relative path and never reads
-	// f.RootFS, so this is a wikilink-only requirement. The root is
+	// Wikilink resolution without an index needs the workspace root:
+	// ResolveWikiLink walks the fs.FS to find candidates. Standard
+	// Markdown link resolution operates on the source-relative path and
+	// never reads f.RootFS, and a prebuilt index answers every wikilink
+	// from memory, so only the index-less fallback opens the root. It is
 	// closed once this file's records are built.
 	if rootDir != "" {
-		root := openRootFS(rootDir)
-		defer func() { _ = root.Close() }()
-		f.RootDir, f.RootFS = rootDir, root
+		f.RootDir = rootDir
+		if index == nil {
+			root := openRootFS(rootDir)
+			defer func() { _ = root.Close() }()
+			f.RootFS = root
+		}
 	}
 	var out []Record
 	for _, link := range linkgraph.ExtractLinks(f) {
