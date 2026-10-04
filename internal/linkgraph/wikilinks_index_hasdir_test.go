@@ -13,6 +13,8 @@ func TestWikilinkIndex_HasDir(t *testing.T) {
 	assert.False(t, idx.HasDir("x/su"), "a prefix of a name is not the directory")
 	assert.False(t, idx.HasDir("z"))
 	assert.False(t, idx.HasDir(""))
+	assert.True(t, idx.HasDir("."), "the root holds every file")
+	assert.False(t, NewWikilinkIndexFromPaths(nil).HasDir("."), "an empty root holds none")
 	var none *WikilinkIndex
 	assert.False(t, none.HasDir("x"))
 
