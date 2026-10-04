@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,6 +126,11 @@ func (s *Server) startSingletonWatch(root, scope string) {
 		if err := s.singletonClaim(workspaceKey(root, ""), s.instanceID); err != nil {
 			s.logger.Printf("lsp: legacy workspace singleton claim failed: %v", err)
 		}
+		// Prune once, after both claims, so a start scans the registry
+		// directory a single time.
+		if s.singletonPrune != nil {
+			s.singletonPrune(s.instanceID)
+		}
 		go watchSingleton(s.runCtx, key, s.instanceID, s.singletonInterval, s.singletonCurrent, func() {
 			s.logger.Printf("lsp: superseded by a newer server for this workspace; exiting")
 			s.shutdown.Store(true)
@@ -217,7 +224,8 @@ func (r fileRegistry) path(key string) string {
 // rename is atomic, so a concurrent reader sees either the old owner or
 // the new one, never a half-written id, and the id-tagged temp name
 // keeps two servers claiming the same workspace at once from clobbering
-// each other's temp file.
+// each other's temp file. It does not prune; startSingletonWatch calls
+// prune once per start, after both of its claims.
 func (r fileRegistry) claim(key, id string) error {
 	if err := os.MkdirAll(r.dir, 0o755); err != nil {
 		return err
@@ -232,35 +240,88 @@ func (r fileRegistry) claim(key, id string) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	pruneStaleRecords(r.dir, r.path(key), time.Now().Add(-singletonRecordMaxAge))
 	return nil
 }
 
-// pruneStaleRecords removes owner records (and leftover claim temp
-// files) in dir last modified before cutoff, keeping the path keep.
-// Keys are per root and scope, and a scope can change on every
+// prune removes records untouched for singletonRecordMaxAge on behalf
+// of instance id. Records this server just claimed carry a fresh
+// mtime, so they always stay.
+func (r fileRegistry) prune(id string) {
+	pruneStaleRecords(r.dir, id, time.Now().Add(-singletonRecordMaxAge))
+}
+
+// pruneStaleRecords removes owner records, leftover claim temp files,
+// and leftover prune quarantine files in dir last modified before
+// cutoff. Keys are per root and scope, and a scope can change on every
 // activation, so without this the directory would grow without bound.
 // It is best effort: any error just leaves the entry in place.
-func pruneStaleRecords(dir, keep string, cutoff time.Time) {
+func pruneStaleRecords(dir, id string, cutoff time.Time) {
+	pruneStale(dir, id, cutoff)
+}
+
+// pruneStale is pruneStaleRecords with test hooks: hooks[0] runs after
+// an entry is judged stale, hooks[1] after it is quarantined. They let
+// a test land a concurrent claim in each window.
+//
+// A plain stat-then-remove would delete a fresh record that a
+// concurrent claim renamed onto the path in between. So a stale entry
+// is first renamed (atomically) to a quarantine path tagged with the
+// pruning instance's id, unique because one instance prunes one entry
+// at a time, and its age
+// re-checked there. Still stale: it is removed. Fresh: a claim landed
+// in the window, so it is hard-linked back, which fails rather than
+// overwrite a still newer claim that reached the path meanwhile. A
+// filesystem without hard links falls back to a rename, which can only
+// overwrite a claim that landed within that last instant.
+func pruneStale(dir, id string, cutoff time.Time, hooks ...func(string)) {
+	hook := func(i int, p string) {
+		if i < len(hooks) && hooks[i] != nil {
+			hooks[i](p)
+		}
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || (!strings.HasSuffix(name, ".owner") && !strings.HasSuffix(name, ".tmp")) {
-			continue
-		}
-		p := filepath.Join(dir, name)
-		if p == keep {
+		if e.IsDir() || !isRegistryRecord(name) {
 			continue
 		}
 		info, err := e.Info()
 		if err != nil || !info.ModTime().Before(cutoff) {
 			continue
 		}
-		_ = os.Remove(p)
+		p := filepath.Join(dir, name)
+		hook(0, p)
+		if strings.HasSuffix(name, ".prune") {
+			// Already a quarantine file: nothing renames onto it.
+			_ = os.Remove(p)
+			continue
+		}
+		// A failed move means the entry is gone or not ours to move.
+		q := p + "." + id + ".prune"
+		if err := os.Rename(p, q); err != nil {
+			continue
+		}
+		hook(1, p)
+		if qi, err := os.Lstat(q); err == nil && qi.ModTime().Before(cutoff) {
+			_ = os.Remove(q)
+			continue
+		}
+		if err := os.Link(q, p); err != nil && !errors.Is(err, fs.ErrExist) {
+			_ = os.Rename(q, p)
+		}
+		_ = os.Remove(q)
 	}
+}
+
+// isRegistryRecord reports whether name is a file the registry writes:
+// an owner record, a claim temp file, or a prune quarantine file.
+func isRegistryRecord(name string) bool {
+	return strings.HasSuffix(name, ".owner") ||
+		strings.HasSuffix(name, ".tmp") ||
+		strings.HasSuffix(name, ".prune")
 }
 
 // current returns the instance id currently recorded for key, or "" if

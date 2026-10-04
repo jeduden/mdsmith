@@ -396,6 +396,7 @@ func TestNewEnablesWorkspaceSingleton(t *testing.T) {
 	assert.NotEmpty(t, on.instanceID, "an enabled server gets a real instance id")
 	require.NotNil(t, on.singletonClaim, "an enabled server wires the registry claim seam")
 	require.NotNil(t, on.singletonCurrent, "an enabled server wires the registry read seam")
+	require.NotNil(t, on.singletonPrune, "an enabled server wires the registry prune seam")
 
 	off := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
 	assert.Empty(t, off.instanceID, "a disabled server has no instance id, so the watch is a no-op")
@@ -521,7 +522,10 @@ func TestFileRegistryClaimRemovesTempOnRenameFailure(t *testing.T) {
 	assert.True(t, os.IsNotExist(statErr), "a failed claim must not leave its temp file behind")
 }
 
-func TestFileRegistryClaimPrunesStaleRecords(t *testing.T) {
+// claim only writes; pruning is a separate pass that
+// startSingletonWatch runs once per start, so a scoped start (scoped
+// claim plus legacy claim) scans the registry directory once, not twice.
+func TestFileRegistryClaimDoesNotPrune(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	r := fileRegistry{dir: dir}
@@ -529,14 +533,136 @@ func TestFileRegistryClaimPrunesStaleRecords(t *testing.T) {
 	stale := filepath.Join(dir, "stale.owner")
 	require.NoError(t, os.WriteFile(stale, []byte("x"), 0o600))
 	require.NoError(t, os.Chtimes(stale, old, old))
-	fresh := filepath.Join(dir, "fresh.owner")
-	require.NoError(t, os.WriteFile(fresh, []byte("y"), 0o600))
 
 	require.NoError(t, r.claim("mine", "me"))
+	assert.FileExists(t, stale, "claim must not scan the registry")
 
-	assert.NoFileExists(t, stale, "a record untouched past the max age must be pruned on claim")
-	assert.FileExists(t, fresh, "a recent record belongs to a live server and must stay")
-	assert.Equal(t, "me", r.current("mine"))
+	r.prune("me")
+	assert.NoFileExists(t, stale, "a record untouched past the max age must be pruned")
+	assert.Equal(t, "me", r.current("mine"), "a record just claimed is fresh and stays")
+}
+
+func TestStartSingletonWatchPrunesOncePerStart(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
+	s.instanceID = "me"
+	s.singletonInterval = time.Hour
+	var claims, prunes atomic.Int32
+	s.singletonClaim = func(string, string) error { claims.Add(1); return nil }
+	s.singletonCurrent = func(string) string { return "me" }
+	s.singletonPrune = func(string) { prunes.Add(1) }
+
+	s.startSingletonWatch("/w", "scope")
+	assert.Equal(t, int32(2), claims.Load(), "scoped and legacy claims")
+	assert.Equal(t, int32(1), prunes.Load(), "one prune per start")
+}
+
+func TestStartSingletonWatchSkipsPruneOnFailedClaim(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	s.instanceID = "me"
+	s.singletonClaim = func(string, string) error { return io.ErrClosedPipe }
+	s.singletonPrune = func(string) { t.Error("a failed claim must not prune") }
+	s.startSingletonWatch("/w", "scope")
+}
+
+// A claim can rename a fresh record onto a path between the stale
+// check and the removal. The prune must then leave that fresh record
+// in place rather than delete a live server's claim.
+func TestPruneStaleRecordsKeepsRecordClaimedMidPrune(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	p := filepath.Join(dir, "x.owner")
+	old := now.Add(-2 * time.Hour)
+	require.NoError(t, os.WriteFile(p, []byte("old"), 0o600))
+	require.NoError(t, os.Chtimes(p, old, old))
+
+	pruneStale(dir, "pruner", now.Add(-time.Hour), func(path string) {
+		if path == p {
+			r := fileRegistry{dir: dir}
+			require.NoError(t, r.claim("x", "new"))
+		}
+	})
+
+	assert.Equal(t, "new", fileRegistry{dir: dir}.current("x"),
+		"the record claimed mid-prune must survive")
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "no quarantine file may be left behind")
+}
+
+// When a newer claim lands after the record was quarantined, the
+// restore must not overwrite it.
+func TestPruneStaleRecordsRestoreNeverClobbersNewerClaim(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	p := filepath.Join(dir, "x.owner")
+	old := now.Add(-2 * time.Hour)
+	require.NoError(t, os.WriteFile(p, []byte("old"), 0o600))
+	require.NoError(t, os.Chtimes(p, old, old))
+	r := fileRegistry{dir: dir}
+
+	pruneStale(dir, "pruner", now.Add(-time.Hour), func(path string) {
+		if path == p {
+			require.NoError(t, r.claim("x", "mid"))
+		}
+	}, func(path string) {
+		if path == p {
+			require.NoError(t, r.claim("x", "newest"))
+		}
+	})
+
+	assert.Equal(t, "newest", r.current("x"))
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "no quarantine file may be left behind")
+}
+
+// An entry removed by someone else between the stale check and the
+// quarantine move is skipped, and no quarantine file appears.
+func TestPruneStaleRecordsSkipsEntryGoneMidPrune(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	p := filepath.Join(dir, "x.owner")
+	old := now.Add(-2 * time.Hour)
+	require.NoError(t, os.WriteFile(p, []byte("old"), 0o600))
+	require.NoError(t, os.Chtimes(p, old, old))
+
+	pruneStale(dir, "pruner", now.Add(-time.Hour), func(string) {
+		require.NoError(t, os.Remove(p))
+	})
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries)
+}
+
+// A quarantined fresh record that vanishes before the restore (a
+// concurrent prune of a crashed quarantine cannot do this, but an
+// outside cleaner can) leaves nothing behind and does not panic: the
+// link and the rename fallback both fail and are ignored.
+func TestPruneStaleRecordsRestoreOfVanishedQuarantine(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	p := filepath.Join(dir, "x.owner")
+	old := now.Add(-2 * time.Hour)
+	require.NoError(t, os.WriteFile(p, []byte("old"), 0o600))
+	require.NoError(t, os.Chtimes(p, old, old))
+
+	pruneStale(dir, "pruner", now.Add(-time.Hour), nil, func(string) {
+		require.NoError(t, os.Remove(p+".pruner.prune"))
+	})
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	assert.Empty(t, entries)
 }
 
 func TestPruneStaleRecords(t *testing.T) {
@@ -552,20 +678,20 @@ func TestPruneStaleRecords(t *testing.T) {
 	}
 	staleOwner := write("a.owner", old)
 	staleTmp := write("a.owner.id.tmp", old)
-	keep := write("k.owner", old)
+	staleQuarantine := write("a.owner.123.prune", old)
 	freshOwner := write("b.owner", now)
 	foreign := write("notes.txt", old)
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "d.owner"), 0o755))
 
-	pruneStaleRecords(dir, keep, now.Add(-time.Hour))
+	pruneStaleRecords(dir, "pruner", now.Add(-time.Hour))
 
 	assert.NoFileExists(t, staleOwner)
 	assert.NoFileExists(t, staleTmp)
-	assert.FileExists(t, keep, "the record just claimed is never pruned")
+	assert.NoFileExists(t, staleQuarantine, "a quarantine file left by a crashed prune is pruned too")
 	assert.FileExists(t, freshOwner)
 	assert.FileExists(t, foreign, "only registry records are pruned")
 	assert.DirExists(t, filepath.Join(dir, "d.owner"), "directories are left alone")
-	pruneStaleRecords(filepath.Join(dir, "missing"), "", now) // an unreadable dir is a no-op
+	pruneStaleRecords(filepath.Join(dir, "missing"), "pruner", now) // an unreadable dir is a no-op
 }
 
 func TestFileRegistryCurrentEmptyWhenNotReadable(t *testing.T) {

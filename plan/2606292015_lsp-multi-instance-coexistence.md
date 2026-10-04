@@ -184,10 +184,13 @@ and steps aside, exactly as before scopes. Only the VS Code (now
 UUID-keyed) path watches a new key.
 
 Keys are now per root and scope, and a scope changes whenever
-`workspaceState` is cleared or its write fails. So every claim
-prunes `.owner` records (and leftover claim temp files) older
-than 30 days. A pruned record of a live server reads as "no
-owner", which the watcher treats as "still ours".
+`workspaceState` is cleared or its write fails. So each scoped
+start prunes, once after both claims, `.owner` records (and
+leftover claim temp and quarantine files) older than 30 days.
+A stale record is first renamed to a quarantine path and its
+age checked again. A claim that landed meanwhile is linked
+back, never over a newer one. A pruned record of a live server
+reads as "no owner", which the watcher treats as "still ours".
 
 ### Rollout
 
@@ -281,7 +284,8 @@ short. Room comes from re-wrapping its narrow prose paragraphs to
 - [x] A scoped claim writes the legacy root-only record once
       and never watches it, so a pre-scope orphan exits on the
       first upgrade.
-- [x] A claim prunes registry records older than 30 days.
+- [x] A scoped start prunes registry records older than 30 days,
+      once, without deleting a record claimed mid-prune.
 - [x] The VS Code extension sends
       `initializationOptions.mdsmith.singletonScope` = a UUID it
       persists in `workspaceState`; a `bun:test` asserts the

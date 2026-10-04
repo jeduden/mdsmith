@@ -91,11 +91,13 @@ type Server struct {
 	// case the processId watchdog can't see, because that host stays
 	// alive. instanceID is "" when the feature is off, which makes
 	// startSingletonWatch a no-op. singletonClaim / singletonCurrent /
+	// singletonPrune /
 	// singletonInterval / onSupersededExit are test seams — production
 	// uses a file registry, singletonPollInterval, and os.Exit(0).
 	instanceID         string
 	singletonClaim     func(key, id string) error
 	singletonCurrent   func(key string) string
+	singletonPrune     func(id string)
 	singletonInterval  time.Duration
 	onSupersededExit   func()
 	singletonWatchOnce sync.Once
@@ -268,6 +270,7 @@ func New(opts Options) *Server {
 		reg := defaultRegistry()
 		s.singletonClaim = reg.claim
 		s.singletonCurrent = reg.current
+		s.singletonPrune = reg.prune
 	}
 	return s
 }
