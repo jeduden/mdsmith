@@ -1,6 +1,6 @@
 ---
 command: move
-summary: Move a Markdown file and rewrite every reference to it — incoming links and ref-def destinations, the moved file's own outbound relative links, and `[[stem]]` or typed `[[name.ext]]` wikilinks when the basename changes — staging the rename with `git mv` when the file is tracked.
+summary: Move a Markdown file or another workspace file such as an image and rewrite every reference to it — incoming links and ref-def destinations, a moved Markdown file's own outbound relative links, and wikilinks when the basename changes (`[[stem]]` for Markdown, typed `![[name.ext]]` for other files) — staging the rename with `git mv` when the file is tracked.
 ---
 # `mdsmith move`
 
