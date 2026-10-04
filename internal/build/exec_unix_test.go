@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -30,6 +30,21 @@ func parsePID(s string) (int, error) {
 func processAlive(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return err == nil || err == syscall.EPERM
+}
+
+// leaderGone returns a readiness check for deadlineWhen: it holds once
+// pidFile holds the leader's pid and that pid is gone (the leader
+// exited and runRecipe's Wait reaped it), so a test that pins the
+// leader's own exit code never has its deadline fire first.
+func leaderGone(pidFile string) func() bool {
+	return func() bool {
+		b, err := os.ReadFile(pidFile)
+		if err != nil {
+			return false
+		}
+		pid, err := parsePID(strings.TrimSpace(string(b)))
+		return err == nil && !processAlive(pid)
+	}
 }
 
 func TestKill_Unix_NilProcess(t *testing.T) {
@@ -114,27 +129,21 @@ func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
 }
 
 // stubGroupKiller swaps afterStartFn for one that wraps the real Unix
-// killer: kill runs fn instead, forceLeader sets the returned flag and
-// runs the real forceLeader, and close is the real close. It also
+// killer: kill runs fn instead, and close is the real close. It also
 // shortens reapWait for one test.
 // The stub leaves survivors on purpose, so cleanup SIGKILLs the
 // recipe's whole process group (Setpgid made pgid == leader pid):
 // an orphan would otherwise keep the test binary's stderr open and
 // stall `go test` until it exits.
-func stubGroupKiller(t *testing.T, fn func(*exec.Cmd)) *atomic.Bool {
+func stubGroupKiller(t *testing.T, fn func(*exec.Cmd)) {
 	t.Helper()
 	oldStart, oldReap := afterStartFn, reapWait
 	pgid := 0
-	forced := &atomic.Bool{}
 	afterStartFn = func(cmd *exec.Cmd) groupKiller {
 		pgid = cmd.Process.Pid
 		inner := afterStart(cmd)
 		return stubKiller{
-			killFn: func() { fn(cmd) },
-			forceFn: func() {
-				forced.Store(true)
-				inner.forceLeader()
-			},
+			killFn:  func() { fn(cmd) },
 			closeFn: inner.close,
 		}
 	}
@@ -145,23 +154,20 @@ func stubGroupKiller(t *testing.T, fn func(*exec.Cmd)) *atomic.Bool {
 			_ = signalGroup(pgid, syscall.SIGKILL)
 		}
 	})
-	return forced
 }
 
 func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
 	// Models Windows with no Job Object and a recipe that ignores
-	// CTRL_BREAK: the group kill leaves the leader running. runRecipe
-	// must kill the leader itself after reapWait, not wait forever.
-	// That direct kill must go through the killer's forceLeader, so each
-	// platform picks its own uncatchable leader kill (none on plan9,
-	// where kill already ended in one).
-	forced := stubGroupKiller(t, func(*exec.Cmd) {})
+	// CTRL_BREAK: the group kill leaves the leader running. os/exec's
+	// WaitDelay (reapWait) must then kill the leader directly with a
+	// kill it cannot catch, not wait forever.
+	stubGroupKiller(t, func(*exec.Cmd) {})
 	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 5`)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, timedOut, err := runRecipe(ctx, runOpts{
+	code, timedOut, err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
 		dir:     t.TempDir(),
 		defExec: defaultExecConfig(),
@@ -169,37 +175,12 @@ func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, timedOut)
 	assert.Less(t, time.Since(start), 3*time.Second, "leader fallback kill should be prompt")
-	assert.True(t, forced.Load(), "the reap fallback must use forceLeader")
+	assert.Equal(t, -1, code, "the leader must die of the fallback's signal")
 }
 
 func TestClose_Unix_IsNoOp(t *testing.T) {
 	// The process group holds no state, so close has nothing to release.
 	assert.NotPanics(t, afterStart(&exec.Cmd{}).close)
-}
-
-func TestForceLeader_Unix_NilProcess(t *testing.T) {
-	assert.NotPanics(t, afterStart(&exec.Cmd{}).forceLeader)
-}
-
-func TestForceLeader_Unix_KillsLeader(t *testing.T) {
-	cmd := exec.Command("sleep", "30")
-	configureProcessGroup(cmd)
-	require.NoError(t, cmd.Start())
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-
-	afterStart(cmd).forceLeader()
-	// Bound the wait so a forceLeader that kills nothing fails now,
-	// not when sleep exits on its own.
-	reaped, err := waitAtMost(done, 5*time.Second, nil)
-	if !reaped {
-		_ = cmd.Process.Kill()
-		<-done
-	}
-	require.True(t, reaped, "forceLeader must kill the leader")
-	var ee *exec.ExitError
-	require.ErrorAs(t, err, &ee)
-	assert.Equal(t, -1, ee.ExitCode(), "the leader must die of a signal")
 }
 
 func TestRunRecipe_SurvivorHoldingPipeDoesNotBlock(t *testing.T) {
@@ -328,12 +309,12 @@ func TestRunRecipe_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
 	t.Cleanup(func() { gracePeriod = old })
 	stage := t.TempDir()
 	pidFile := filepath.Join(stage, "child.pid")
+	leaderPID := filepath.Join(stage, "leader.pid")
 	script := writeScript(t, t.TempDir(), "orphan.sh",
-		`sleep 30 & echo $! > "`+pidFile+`"; echo started; exit 0`)
+		`echo $$ > "`+leaderPID+`"; sleep 30 & echo $! > "`+pidFile+`"; echo started; exit 0`)
 
 	out := &lockedBuffer{}
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
+	ctx := deadlineWhen(t, leaderGone(leaderPID))
 	start := time.Now()
 	code, timedOut, err := runRecipe(ctx, runOpts{
 		argv:    []string{script},
@@ -343,7 +324,7 @@ func TestRunRecipe_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "recipe timed out")
 	assert.True(t, timedOut)
-	assert.Equal(t, -1, code, "a leader that exited 0 carries no ExitError")
+	assert.Equal(t, 0, code, "the leader's own exit status, not -1")
 	assert.Less(t, time.Since(start), 3*time.Second)
 	assert.Contains(t, out.String(), "started")
 
@@ -353,6 +334,32 @@ func TestRunRecipe_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
 	require.NoError(t, perr)
 	assert.Eventually(t, func() bool { return !processAlive(pid) },
 		5*time.Second, 50*time.Millisecond, "the group kill must reach the child")
+}
+
+func TestRunRecipe_TimedOutAfterLeaderExitKeepsExitCode(t *testing.T) {
+	// The leader exits before the deadline; a child it backgrounded
+	// holds the captured pipe past it. The run still times out, and
+	// the code is the leader's own exit status: 0 included, which
+	// carries no ExitError.
+	old := gracePeriod
+	gracePeriod = 50 * time.Millisecond
+	t.Cleanup(func() { gracePeriod = old })
+	for _, want := range []int{0, 2} {
+		t.Run(strconv.Itoa(want), func(t *testing.T) {
+			leaderPID := filepath.Join(t.TempDir(), "leader.pid")
+			script := writeScript(t, t.TempDir(), "exit.sh",
+				`echo $$ > "`+leaderPID+`"; sleep 30 & echo started; exit `+strconv.Itoa(want))
+			code, timedOut, err := runRecipe(deadlineWhen(t, leaderGone(leaderPID)), runOpts{
+				argv:    []string{script},
+				dir:     t.TempDir(),
+				defExec: defaultExecConfig(),
+				stdout:  &lockedBuffer{},
+			})
+			require.ErrorContains(t, err, "recipe timed out")
+			assert.True(t, timedOut)
+			assert.Equal(t, want, code)
+		})
+	}
 }
 
 func TestTimeoutKillAction_Unix(t *testing.T) {
@@ -466,8 +473,8 @@ trap '' TERM; echo $$ > "`+ready+`"; while :; do sleep 0.05; done`)
 
 func TestRunRecipe_ForceShortensLeaderReap(t *testing.T) {
 	// The group kill leaves the leader running (stubGroupKiller's kill
-	// does nothing). With force already closed, the leader reap and the
-	// wait after the leader-only kill each take one short poll.
+	// does nothing). With force already closed when the kill returns,
+	// killLeaderOnForce kills the leader at once, not after reapWait.
 	stubGroupKiller(t, func(*exec.Cmd) {})
 	reapWait = 3 * time.Second
 	script := writeScript(t, t.TempDir(), "slow.sh", `exec sleep 30`)
@@ -485,4 +492,119 @@ func TestRunRecipe_ForceShortensLeaderReap(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, timedOut)
 	assert.Less(t, time.Since(start), 1500*time.Millisecond, "a closed force must not wait out reapWait")
+}
+
+func TestRunRecipe_LateForceKillsLeaderAtOnce(t *testing.T) {
+	// The group kill leaves the leader running and returns at once (no
+	// grace to cut short), so a second interrupt arrives only after it.
+	// That late interrupt must still kill the leader directly, not
+	// leave it to WaitDelay's whole reapWait.
+	stubGroupKiller(t, func(*exec.Cmd) {})
+	reapWait = 5 * time.Second
+	script := writeScript(t, t.TempDir(), "slow.sh", `exec sleep 30`)
+
+	force := make(chan struct{})
+	ctx, cancel := context.WithTimeout(WithForceKill(context.Background(), force), 100*time.Millisecond)
+	defer cancel()
+	forcedAt := make(chan time.Time, 1)
+	go func() {
+		<-ctx.Done()
+		time.Sleep(300 * time.Millisecond)
+		forcedAt <- time.Now()
+		close(force)
+	}()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	took := time.Since(<-forcedAt)
+	require.Error(t, err)
+	assert.True(t, timedOut)
+	assert.Less(t, took, 2*time.Second, "a late second interrupt must not wait out reapWait")
+}
+
+func TestRunRecipe_EmptiedGroupIsNotSignalledAtDeadline(t *testing.T) {
+	// The leader backgrounds a setsid daemon, which leaves the recipe's
+	// group but keeps the captured stdout pipe, and then exits. From then
+	// on the group is empty, and its pgid (the leader's reaped pid) may
+	// be reused by an unrelated group before the deadline. The deadline
+	// kill must not signal it.
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("no setsid")
+	}
+	oldSignal, oldReap := signalGroup, reapWait
+	var mu sync.Mutex
+	var sent []syscall.Signal
+	signalGroup = func(pgid int, sig syscall.Signal) error {
+		mu.Lock()
+		sent = append(sent, sig)
+		mu.Unlock()
+		return oldSignal(pgid, sig)
+	}
+	reapWait = 100 * time.Millisecond
+	t.Cleanup(func() { signalGroup, reapWait = oldSignal, oldReap })
+
+	dir := t.TempDir()
+	leaderPID := filepath.Join(dir, "leader.pid")
+	daemonPID := filepath.Join(dir, "daemon.pid")
+	script := writeScript(t, t.TempDir(), "daemon.sh",
+		`echo $$ > "`+leaderPID+`"
+setsid sh -c 'echo $$ > "`+daemonPID+`"; exec sleep 30' &
+while [ ! -s "`+daemonPID+`" ]; do sleep 0.05; done
+echo started; exit 0`)
+	t.Cleanup(func() {
+		if pid := waitForPID(daemonPID); pid > 0 {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
+
+	code, timedOut, err := runRecipe(deadlineWhen(t, leaderGone(leaderPID)), runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+		stdout:  &lockedBuffer{},
+	})
+	require.ErrorContains(t, err, "recipe timed out")
+	assert.True(t, timedOut)
+	assert.Equal(t, 0, code)
+	mu.Lock()
+	defer mu.Unlock()
+	assert.NotContains(t, sent, syscall.SIGTERM, "an emptied group must not be signalled")
+	assert.NotContains(t, sent, syscall.SIGKILL, "an emptied group must not be signalled")
+}
+
+// stubSignalGroup swaps signalGroup for one test with one that returns
+// err and records nothing.
+func stubSignalGroup(t *testing.T, err error) {
+	t.Helper()
+	old := signalGroup
+	signalGroup = func(int, syscall.Signal) error { return err }
+	t.Cleanup(func() { signalGroup = old })
+}
+
+func TestPgKiller_LeaderExitedNilProcessIsNoOp(t *testing.T) {
+	k := &pgKiller{leaderKill: leaderKill{&exec.Cmd{}}}
+	k.leaderExited()
+	assert.False(t, k.groupGone)
+}
+
+func TestPgKiller_LeaderExitedEmptyGroupStopsKill(t *testing.T) {
+	stubSignalGroup(t, syscall.ESRCH)
+	k := &pgKiller{leaderKill: leaderKill{&exec.Cmd{Process: &os.Process{Pid: 42}}}}
+	k.leaderExited()
+	assert.True(t, k.groupGone, "ESRCH: no member is left")
+	called := false
+	signalGroup = func(int, syscall.Signal) error { called = true; return nil }
+	assert.False(t, k.kill(nil))
+	assert.False(t, called, "kill must not signal an emptied group")
+}
+
+func TestPgKiller_LeaderExitedLiveGroupKeepsKill(t *testing.T) {
+	for _, err := range []error{nil, syscall.EPERM} {
+		stubSignalGroup(t, err)
+		k := &pgKiller{leaderKill: leaderKill{&exec.Cmd{Process: &os.Process{Pid: 42}}}}
+		k.leaderExited()
+		assert.False(t, k.groupGone, "a group with members, or one we may not signal, still exists")
+	}
 }

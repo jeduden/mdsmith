@@ -169,50 +169,74 @@ var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
 // holds on Unix, on plan9 for processes that stay in the note group,
 // and on Windows with a Job Object.
 //
-// After the kill, runRecipe waits at most reapWait for the leader to
-// exit. If it has not (a leader that ignored the group kill), it calls
-// the killer's forceLeader, which kills the leader directly with a kill
-// it cannot catch (on plan9 it does nothing, as kill already ended in
-// that kill), and waits at most reapWait again. On plan9 that second
-// wait is still useful: a ctl kill takes effect only when the leader
-// next returns from a system call, so a leader blocked in one can
-// outlast the first wait and die during the second. It then waits at most
-// reapWait for captured output to drain and closes its end of the pipes
-// (recipeOutput.abandon), so a survivor that holds a captured
-// pipe open cannot hang mdsmith. Once a second interrupt closes the
-// WithForceKill channel, each of those waits ends forcedReapWait later.
-// On Unix and Windows the close also
-// ends the copy goroutine and frees the fd; plan9 cannot cancel a
-// blocked read, so there they last until the survivor's next write or
-// exit. Captured output written after runRecipe returns is dropped,
+// The command is bound to ctx with exec.CommandContext: when ctx ends
+// while the leader runs, os/exec calls Cmd.Cancel, which runs the
+// kill above. Cmd.WaitDelay (reapWait) then bounds the wait for the
+// leader: if the kill left it running (a leader that ignored the group
+// kill), os/exec kills it with Process.Kill, which it cannot catch on
+// Unix (SIGKILL) or Windows (TerminateProcess); on plan9 that is a
+// note, but kill already ended in the uncatchable ctl kill. runRecipe
+// then waits for the leader to exit. A second interrupt (the
+// WithForceKill channel closed), before or after the kill returned,
+// kills the leader directly as soon as the kill has returned
+// (killLeaderOnForce), without waiting out reapWait.
+//
+// A leader that exits before the deadline does not end the run while
+// a child it left behind still holds a captured pipe: that child's
+// output keeps reaching the caller until it closes the pipe or the
+// deadline passes. os/exec stops watching ctx once the leader exits,
+// so runRecipe watches it itself: at the deadline it runs the kill
+// and reports a timeout with the leader's own exit code.
+//
+// After either kill, runRecipe waits at most reapWait for captured
+// output to drain and closes its end of the pipes
+// (recipeOutput.abandon), so a survivor that holds a captured pipe
+// open cannot hang mdsmith (forcedReapWait once the WithForceKill
+// channel is closed, at any point of that wait). The pipes are
+// runRecipe's own, not os/exec's, because os/exec's WaitDelay drain
+// waits for its copy goroutines after closing the pipes, and plan9
+// cannot cancel a blocked read. On Unix and Windows the close also
+// ends the copy goroutine and frees the fd; on plan9 they last until
+// the survivor's next write or exit. Captured output written after
+// runRecipe returns is dropped,
 // never forwarded. A writer that is an *os.File (including the nil
 // default, os.Stderr) is not captured: the child writes to it
 // directly, so a survivor can still reach it after the return.
 //
-// A ctx already done at entry starts nothing: a cancel returns
+// A ctx already done at entry, or by the time Start runs, starts
+// nothing: a cancel returns
 // (-1, false, err) and a spent deadline returns (-1, true, err), err
 // wrapping ErrNotStarted.
 //
 // It returns the process exit code, whether the run timed out, and any
 // error. On success it returns (0, false, nil). On non-zero exit it
 // returns the exit code and a non-nil error. On timeout it returns the
-// exit code (or -1 if unavailable), timedOut=true, and a non-nil error.
+// leader's exit status, timedOut=true, and a non-nil error: a leader
+// that exited before the deadline (a child held a captured pipe past
+// it) keeps its own code, 0 included; one the kill ended reports the
+// status the kill left it (-1 for a signal on Unix; Windows and plan9
+// report a code), and one Wait read no status for reports -1.
 func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	// A context already done at entry (a CLI interrupt that landed while
-	// the target was staged, or a spent deadline) starts no recipe:
-	// exec.Command's Start ignores ctx, so it would fork one only to
-	// kill it at once. No kill path runs, so a cancel is not timedOut.
+	// the target was staged, or a spent deadline) starts no recipe and
+	// opens no pipes. One that ends after this check is refused by
+	// Start itself (startFailure). No kill path runs, so a cancel is not
+	// timedOut.
 	if err := ctx.Err(); err != nil {
 		return -1, errors.Is(err, context.DeadlineExceeded), NotStartedError(err)
 	}
-	// We manage the timeout and kill path ourselves (process group), so the
-	// command itself is not bound to a context-cancel kill — that would
-	// only kill the leader, not the group.
-	cmd := exec.Command(o.argv[0], o.argv[1:]...) //nolint:gosec // argv is explicit; user-declared recipe
+	// exec.CommandContext binds the leader to ctx: once ctx is done
+	// while the leader runs, os/exec calls Cancel (the group kill), and
+	// if the leader is still running WaitDelay after Cancel returned,
+	// kills it directly with Process.Kill and returns from Wait.
+	cmd := exec.CommandContext(ctx, o.argv[0], o.argv[1:]...) //nolint:gosec // argv is explicit; user-declared recipe
 	cmd.Dir = o.dir
-	// The pipes are ours, not os/exec's, so cmd.Wait returns when the
-	// leader exits and the timeout path can close them on a survivor.
-	// The gate closes on return, so no output reaches a caller after it.
+	// The pipes are ours, not os/exec's: it gets *os.File ends and runs
+	// no copy goroutines, so cmd.Wait returns when the leader exits and
+	// the timeout path can close them on a survivor. os/exec's own
+	// WaitDelay drain would wait for its copies after closing the
+	// pipes, which on plan9 cannot end a pending read. The gate closes
+	// on return, so no output reaches a caller after it.
 	ro := &recipeOutput{}
 	defer ro.gate.close()
 	if err := ro.attach(cmd, o.stdout, o.stderr); err != nil {
@@ -225,62 +249,138 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		configureProcessGroup(cmd)
 	}
 
+	// WaitDelay is set once, here: os/exec reads it after Cancel
+	// returns, and the os/exec docs promise nothing about a change made
+	// inside Cancel. A second interrupt instead kills the leader
+	// directly (killLeaderOnForce), whenever it comes.
+	force := forceKillFrom(ctx)
+	rk := newRecipeKill(force)
+	cmd.Cancel = rk.cancel
+	cmd.WaitDelay = reapWait
+
 	err := cmd.Start()
 	ro.closeChildEnds()
 	if err != nil {
 		ro.abandon()
-		return -1, false, fmt.Errorf("starting %s: %w", o.processLabel(), err)
+		return startFailure(ctx, o.processLabel(), err)
 	}
-
-	// The killer is this run's kill state, owned here and closed on
-	// return. A hook (sharedGroup) gets a leader-only one and skips
-	// afterStart, so it gets no Job Object whose kill-on-close would end
-	// a dev server it backgrounded.
-	var killer groupKiller
-	if o.sharedGroup {
-		killer = sharedGroupKiller(cmd)
-	} else {
-		killer = afterStartFn(cmd)
-	}
+	killer := killerFor(cmd, o.sharedGroup)
+	rk.arm(killer)
 	defer killer.close()
-	force := forceKillFrom(ctx)
 
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-
-	// The context carries the deadline (set by the caller via
-	// context.WithTimeout). We do not bind the command to a context-cancel
-	// kill — that would kill only the leader, not the process group — so on
-	// ctx.Done() we kill the whole group ourselves, then drain the Wait.
+	exited := make(chan struct{})
+	go killLeaderOnForce(func() { _ = cmd.Process.Kill() }, rk.killed, force, exited)
+	err = cmd.Wait()
+	close(exited)
+	if rk.cancelled {
+		return timeoutResult(ctx, ro, cmd.ProcessState.ExitCode(), rk.forced)
+	}
+	// The leader exited on its own, so os/exec no longer watches ctx. A
+	// child it left behind may still hold a captured pipe, and the
+	// deadline still applies to the drain: at it, kill the group, unless
+	// the killer found it already empty when told the leader exited.
+	noteLeaderExited(killer)
 	select {
-	case err := <-done:
-		// The leader exited; a child it left behind may still hold a
-		// captured pipe, so the deadline still applies to the drain.
-		select {
-		case <-ro.drained:
-			if err == nil {
-				err = ro.err()
-			}
-			return exitResult(err)
-		case <-ctx.Done():
-			forced := killer.kill(force)
-			return timeoutResult(ctx, ro, err, forced)
+	case <-ro.drained:
+		if err == nil {
+			err = ro.err()
 		}
+		return exitResult(err)
 	case <-ctx.Done():
-		forced := killer.kill(force)
-		reaped, waitErr := waitAtMost(done, reapWait, force)
-		if !reaped {
-			// The group kill left the leader running (Windows when the
-			// Job Object could not be set up and the recipe ignores
-			// CTRL_BREAK, or a Unix leader that left its group).
-			// forceLeader kills it directly with a kill it cannot
-			// catch; plan9's does nothing, as its kill already ended in
-			// one. done is buffered, so the Wait goroutine exits
-			// whenever the leader does.
-			killer.forceLeader()
-			_, waitErr = waitAtMost(done, reapWait, force)
-		}
-		return timeoutResult(ctx, ro, waitErr, forced)
+		return timeoutResult(ctx, ro, cmd.ProcessState.ExitCode(), killer.kill(force))
+	}
+}
+
+// killerFor returns the groupKiller for a started cmd: the killer is
+// the run's kill state, closed when runRecipe returns. A hook
+// (sharedGroup) gets a leader-only one and skips afterStart, so it gets
+// no Job Object whose kill-on-close would end a dev server it
+// backgrounded.
+func killerFor(cmd *exec.Cmd, sharedGroup bool) groupKiller {
+	if sharedGroup {
+		return sharedGroupKiller(cmd)
+	}
+	return afterStartFn(cmd)
+}
+
+// leaderExitNoter is a groupKiller that names its group by a number
+// the leader's pid lent it (Unix's pgid). Once the leader is reaped and
+// the group empty, that number may be reused by an unrelated group, so
+// runRecipe tells such a killer, right after Wait reaped a leader that
+// exited on its own, to check the group while the number is still its.
+type leaderExitNoter interface{ leaderExited() }
+
+// noteLeaderExited calls k's leaderExited when k is a leaderExitNoter.
+// Killers that hold a handle (Windows' Job Object, plan9's notepg) or
+// signal through the reaped cmd.Process need no such check.
+func noteLeaderExited(k groupKiller) {
+	if n, ok := k.(leaderExitNoter); ok {
+		n.leaderExited()
+	}
+}
+
+// recipeKill is the timeout kill os/exec runs through Cmd.Cancel.
+// os/exec may call Cancel as soon as Start returns, so cancel first
+// waits for arm to install the killer (ready). killed is closed once
+// the kill returned. cancelled and forced are written by cancel and
+// read only after cmd.Wait returned, which orders them.
+type recipeKill struct {
+	force             <-chan struct{}
+	ready, killed     chan struct{}
+	killer            groupKiller
+	cancelled, forced bool
+}
+
+// newRecipeKill returns a recipeKill for a run whose WithForceKill
+// channel is force (nil when there is none).
+func newRecipeKill(force <-chan struct{}) *recipeKill {
+	return &recipeKill{force: force, ready: make(chan struct{}), killed: make(chan struct{})}
+}
+
+// arm installs the started command's killer and lets cancel run.
+func (k *recipeKill) arm(killer groupKiller) {
+	k.killer = killer
+	close(k.ready)
+}
+
+// cancel is Cmd.Cancel: it runs the group kill once, records that it
+// ran and whether force cut the grace short, and closes killed.
+func (k *recipeKill) cancel() error {
+	<-k.ready
+	k.cancelled = true
+	k.forced = k.killer.kill(k.force)
+	close(k.killed)
+	return nil
+}
+
+// startFailure maps a failed Start to runRecipe's results, naming the
+// process by label. Start refuses to fork once ctx is done and returns
+// its Err: that run never started (NotStartedError, timedOut for a
+// spent deadline). Any other error is a start failure.
+func startFailure(ctx context.Context, label string, err error) (int, bool, error) {
+	if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+		return -1, errors.Is(ctxErr, context.DeadlineExceeded), NotStartedError(ctxErr)
+	}
+	return -1, false, fmt.Errorf("starting %s: %w", label, err)
+}
+
+// killLeaderOnForce runs kill, which kills the leader directly, once the timeout kill
+// has returned (killed is closed) and a second interrupt has closed
+// force, in either order. The group kill can leave the leader running
+// (Windows with no Job Object sends only CTRL_BREAK; a Unix leader can
+// leave its group), and without this a second interrupt would wait out
+// WaitDelay's whole reapWait. It returns without a kill once the
+// leader has exited (exited is closed); a nil force never fires.
+func killLeaderOnForce(kill func(), killed, force, exited <-chan struct{}) {
+	select {
+	case <-killed:
+	case <-exited:
+		return
+	}
+	select {
+	case <-force:
+		kill()
+	case <-exited:
 	}
 }
 
@@ -306,14 +406,14 @@ func exitResult(err error) (int, bool, error) {
 // waits at most reapWait (forcedReapWait once a second interrupt closed
 // the WithForceKill channel) for captured output to drain, abandons the
 // pipes if a survivor still holds them, and reports the timeout or
-// cancellation with the exit code waitErr carries. forced (a second
+// cancellation with exitCode, the leader's exit status (-1 when it died
+// of a signal on Unix or Wait read no status). forced (a second
 // interrupt escalated the kill) wraps ErrForceKilled into either one:
 // a timed-out recipe still in its grace is cut short by it too.
-func timeoutResult(ctx context.Context, ro *recipeOutput, waitErr error, forced bool) (int, bool, error) {
+func timeoutResult(ctx context.Context, ro *recipeOutput, exitCode int, forced bool) (int, bool, error) {
 	if drained, _ := waitAtMost(ro.drained, reapWait, forceKillFrom(ctx)); !drained {
 		ro.abandon()
 	}
-	exitCode := exitCodeOf(waitErr)
 	what := "recipe cancelled"
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		what = "recipe timed out"
@@ -347,21 +447,13 @@ type groupKiller interface {
 	// kill reports whether force cut the grace short while the target
 	// was still alive. It can leave the leader running: Windows without
 	// a Job Object sends only CTRL_BREAK, which the recipe can ignore,
-	// and a Unix leader can leave its group; runRecipe then calls
-	// forceLeader. A killer for a command that never started does
+	// and a Unix leader can leave its group; os/exec's WaitDelay then
+	// kills the leader. A killer for a command that never started does
 	// nothing and reports false.
 	kill(force <-chan struct{}) bool
 	// close releases what afterStart captured. runRecipe calls it once,
 	// on return.
 	close()
-	// forceLeader kills only the recipe's leader, with a kill it cannot
-	// catch. runRecipe calls it when kill left the leader running (a
-	// Unix leader that left its group, Windows without a Job Object).
-	// On plan9 it does nothing, as kill already ends in that same
-	// uncatchable kill. On targets with no group (exec_other.go) kill is
-	// this same leader kill, so a repeat only finds the leader gone. A
-	// command that never started is a no-op.
-	forceLeader()
 }
 
 // forceKillKey is the context key WithForceKill stores its channel under.
@@ -388,15 +480,16 @@ func forceKillFrom(ctx context.Context) <-chan struct{} {
 // the recipe running.
 var afterStartFn = afterStart
 
-// reapWait bounds each wait after a timeout kill: for the leader after
-// the killer's kill, for it again after its forceLeader, and for
-// captured output to drain (forcedReapWait after a second interrupt).
-// It is a var so a test can shorten it.
+// reapWait bounds each wait after a timeout kill: as Cmd.WaitDelay,
+// for the leader before os/exec kills it directly (a second interrupt
+// kills it at once, killLeaderOnForce), and for captured output to
+// drain (forcedReapWait after a second interrupt). It is a var so a
+// test can shorten it.
 var reapWait = 5 * time.Second
 
-// forcedReapWait bounds each reapWait wait once a second interrupt
+// forcedReapWait bounds the output drain once a second interrupt
 // closed the WithForceKill channel: the kill already escalated to
-// SIGKILL, so one short poll reaps a leader it reached, and a survivor
+// SIGKILL, so one short poll drains what the group wrote, and a survivor
 // outside the group (a setsid daemon holding a captured pipe) costs no
 // more than that before runRecipe abandons it.
 const forcedReapWait = 100 * time.Millisecond
@@ -406,7 +499,8 @@ const forcedReapWait = 100 * time.Millisecond
 // zero value when the wait runs out first. Once force is closed (a
 // second interrupt, see WithForceKill) the wait ends at most
 // forcedReapWait later; a nil force never fires. It still waits that
-// long, so a leader the SIGKILL reached is reaped, not orphaned.
+// long, so output a holder wrote before the SIGKILL reached it can
+// still drain before runRecipe abandons the pipe.
 func waitAtMost[T any](ch <-chan T, d time.Duration, force <-chan struct{}) (bool, T) {
 	t := time.NewTimer(d)
 	defer t.Stop()

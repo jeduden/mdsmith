@@ -254,26 +254,6 @@ func TestKill_Plan9_FailedWriteStillKillsLeader(t *testing.T) {
 	assert.Equal(t, "kill", readFile(t, ctl))
 }
 
-func TestForceLeader_Plan9_DoesNotKillLeaderAgain(t *testing.T) {
-	// kill already ends in the uncatchable leader kill, so the reap
-	// fallback's forceLeader, which runRecipe calls after kill, must not
-	// repeat it by writing to ctl or posting a note. The fake ctl is
-	// written at offset 0, so it is emptied between the two calls to
-	// tell a second write from the first.
-	root := stubProcRoot(t)
-	ctl := fakeProc(t, root, "42", "9")
-	noted := stubNoteKill(t)
-
-	k := afterStart(&exec.Cmd{Process: &os.Process{Pid: 42}})
-	defer k.close()
-	k.kill(nil)
-	require.Equal(t, "kill", readFile(t, ctl), "kill must end in the leader's ctl kill")
-	require.NoError(t, os.Truncate(ctl, 0))
-	k.forceLeader()
-	assert.Empty(t, readFile(t, ctl))
-	assert.Empty(t, *noted)
-}
-
 func TestForceKillLeader_Plan9_WritesCtl(t *testing.T) {
 	ctl := fakeProc(t, stubProcRoot(t), "42", "9")
 	noted := stubNoteKill(t)
