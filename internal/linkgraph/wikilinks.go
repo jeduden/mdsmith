@@ -213,11 +213,15 @@ func WikilinkIndexAtDir(dir string) *WikilinkIndex {
 // walking dir on disk (as WikilinkIndexAtDir does) only on a miss. The
 // key is dir's absolute form, the key MDS027 stores its index under, so
 // a caller holding a session's run cache reads the index a lint already
-// built instead of walking the tree again.
+// built instead of walking the tree again. A nil cache walks dir, as
+// WikilinkIndexFor does.
 //
 // filepath.Abs only errors when os.Getwd fails, an OS-level failure
 // MDS027's wikilinkCacheKey swallows the same way.
 func CachedWikilinkIndexAtDir(cache *runcache.Cache, dir string) *WikilinkIndex {
+	if cache == nil {
+		return WikilinkIndexAtDir(dir)
+	}
 	key, _ := filepath.Abs(dir) //nolint:errcheck
 	v := cache.Wikilinks(key, func() any { return WikilinkIndexAtDir(dir) })
 	idx, _ := v.(*WikilinkIndex)

@@ -58,6 +58,12 @@ func TestCachedWikilinkIndexAtDir(t *testing.T) {
 		cache.Wikilinks(abs, func() any { return warm })
 		assert.Same(t, warm, CachedWikilinkIndexAtDir(cache, root))
 	})
+	t.Run("nil cache walks dir", func(t *testing.T) {
+		t.Parallel()
+		idx := CachedWikilinkIndexAtDir(nil, root)
+		require.NotNil(t, idx, "a nil cache walks, as WikilinkIndexFor does")
+		assert.Equal(t, []string{"guide.md"}, idx.StemPaths("guide"))
+	})
 }
 
 // TestWikilinkIndexAtDirClosesRoot locks that the one-shot on-disk walk
