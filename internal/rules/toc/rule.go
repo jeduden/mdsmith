@@ -5,7 +5,6 @@ package toc
 import (
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/jeduden/mdsmith/internal/archetype/gensection"
 	"github.com/jeduden/mdsmith/internal/lint"
@@ -17,18 +16,9 @@ func init() {
 	rule.Register(&Rule{})
 }
 
-// Rule checks and fixes <?toc?>...<?/toc?> generated sections.
-//
-// engineOnce serialises lazy engine init; the rule is a registered
-// singleton and the LSP server may call Check from concurrent
-// goroutines, where a plain check-then-set on the engine field
-// would race.
-// engine sits before engineOnce so the GC pointer-scan span is 8 bytes
-// (just the pointer) rather than 24 (pointer buried after sync.Once).
-type Rule struct {
-	engine     *gensection.Engine
-	engineOnce sync.Once
-}
+// Rule checks and fixes <?toc?>...<?/toc?> generated sections. It is
+// stateless; see getEngine.
+type Rule struct{}
 
 // ID implements rule.Rule.
 func (r *Rule) ID() string { return "MDS038" }
@@ -45,11 +35,14 @@ func (r *Rule) RuleID() string { return "MDS038" }
 // RuleName implements gensection.Directive.
 func (r *Rule) RuleName() string { return "toc" }
 
+// getEngine returns a gensection engine bound to r. It is built per
+// call rather than cached in the struct: the rule is a shared
+// singleton that rule.CloneInstance copies (per worker) while another
+// goroutine may be running Fix, so a lazily written field would race
+// with that copy, and a copied engine would stay bound to the source
+// rule instead of the clone. NewEngine only wraps r.
 func (r *Rule) getEngine() *gensection.Engine {
-	r.engineOnce.Do(func() {
-		r.engine = gensection.NewEngine(r)
-	})
-	return r.engine
+	return gensection.NewEngine(r)
 }
 
 // Check implements rule.Rule.
