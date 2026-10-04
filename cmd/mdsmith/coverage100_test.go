@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -206,4 +207,20 @@ func TestExecuteMetricsRank_ResolveFilesError(t *testing.T) {
 	// file makes resolveRankFiles fail — the rank file-resolution branch.
 	code := runMetricsRank([]string{filepath.Join(t.TempDir(), "missing.md")})
 	assert.Equal(t, 2, code)
+}
+
+// TestRunMergeDriverRun_PrintsDiscoveryHintOnce pins that one driver run
+// loads config once: the plural-table hint and any deprecation warning
+// reach stderr a single time, not once per config load.
+func TestRunMergeDriverRun_PrintsDiscoveryHintOnce(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"),
+		[]byte("[tools.mdsmith]\nfiles = []\n"), 0o644))
+	base, ours, theirs := writeMergeInputs(t, dir, false)
+	t.Chdir(dir)
+	stderr := captureStderr(func() {
+		assert.Equal(t, 0, runMergeDriverRun([]string{base, ours, theirs, "p.md"}))
+	})
+	assert.Equal(t, 1, strings.Count(stderr, "mdsmith: hint:"), stderr)
 }

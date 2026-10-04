@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/jeduden/mdsmith/internal/config"
 )
 
 func TestGuardRegularFile_Symlink_ReturnsError(t *testing.T) {
@@ -87,11 +89,11 @@ func TestFixMergedContent_PathnameIsSymlink_Harmless(t *testing.T) {
 
 	origFix := fixSourceFn
 	t.Cleanup(func() { fixSourceFn = origFix })
-	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+	fixSourceFn = func(_ *config.Config, _ string, src []byte, _ int64) ([]byte, error) {
 		return src, nil
 	}
 
-	_, code := fixMergedContent([]byte("# content\n"), ours, link, 1<<20)
+	_, code := fixMergedContent(config.Defaults(), []byte("# content\n"), ours, link, 1<<20)
 	assert.Equal(t, 0, code)
 
 	data, err := os.ReadFile(target)
@@ -109,11 +111,11 @@ func TestFixMergedContent_OursIsSymlink_ExitsTwo(t *testing.T) {
 
 	origFix := fixSourceFn
 	t.Cleanup(func() { fixSourceFn = origFix })
-	fixSourceFn = func(_ string, src []byte, _ int64) ([]byte, error) {
+	fixSourceFn = func(_ *config.Config, _ string, src []byte, _ int64) ([]byte, error) {
 		return src, nil
 	}
 
-	_, code := fixMergedContent([]byte("# content\n"), oursLink, "pathname.md", 1<<20)
+	_, code := fixMergedContent(config.Defaults(), []byte("# content\n"), oursLink, "pathname.md", 1<<20)
 	assert.Equal(t, 2, code)
 }
 
