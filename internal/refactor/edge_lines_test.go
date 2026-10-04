@@ -22,10 +22,10 @@ func (c *resolveCounter) Resolve(file string) (string, []byte, bool) {
 	return c.stubWorkspace.Resolve(file)
 }
 
-// TestAppendWikilinkStemEdits_ReadsEachSourceOnce locks that a file
+// TestAppendWikilinkKeyEdits_ReadsEachSourceOnce locks that a file
 // holding several `[[stem]]` links is resolved once, not once per edge:
 // the edges arrive sorted by SourceFile.
-func TestAppendWikilinkStemEdits_ReadsEachSourceOnce(t *testing.T) {
+func TestAppendWikilinkKeyEdits_ReadsEachSourceOnce(t *testing.T) {
 	ws := &resolveCounter{calls: map[string]int{}, stubWorkspace: stubWorkspace{
 		files: []string{"api.md", "index.md"},
 		wikilinkEdges: []index.Edge{
@@ -36,7 +36,7 @@ func TestAppendWikilinkStemEdits_ReadsEachSourceOnce(t *testing.T) {
 		sources: map[string][]byte{"index.md": []byte("[[api]]\n[[api]]\n[[api]]\n")},
 	}}
 	changes := map[string][]Edit{}
-	appendWikilinkStemEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
+	appendWikilinkKeyEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
 	require.Len(t, changes["index.md"], 3)
 	assert.Equal(t, 1, ws.calls["index.md"])
 }

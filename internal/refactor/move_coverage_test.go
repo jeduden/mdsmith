@@ -78,17 +78,17 @@ func stemKey(stem string) wikilinkKey {
 	return wikilinkKey{key: stem, isStem: true}
 }
 
-// srcWinsStem runs winsStem, the check appendWikilinkStemEdits makes
+// srcWinsStem runs winsKey, the check appendWikilinkKeyEdits makes
 // before it rewrites any `[[oldStem]]` link, for a lone move of src.
 func srcWinsStem(idx *linkgraph.WikilinkIndex, src, oldStem string) bool {
-	return soloResolver(nil, src, "z/z/z/dst.md").winsStem(idx, stemKey(oldStem), src)
+	return soloResolver(nil, src, "z/z/z/dst.md").winsKey(idx, stemKey(oldStem), src)
 }
 
-// dstReaches runs stemTarget.reaches, the check each rewrite must
+// dstReaches runs wikilinkTarget.reaches, the check each rewrite must
 // pass, for a link keyed by key to dst once a lone move of src to dst
 // has run.
 func dstReaches(idx *linkgraph.WikilinkIndex, src, dst, key string, isStem bool) bool {
-	t := stemTarget{dst: dst, wikilinkKey: wikilinkKey{key: key, isStem: isStem}}
+	t := wikilinkTarget{dst: dst, wikilinkKey: wikilinkKey{key: key, isStem: isStem}}
 	return t.reaches(soloResolver(nil, src, dst).postIndex(idx))
 }
 
@@ -122,7 +122,7 @@ func TestWinsStemAndReaches_StemKeys(t *testing.T) {
 	}
 }
 
-func TestStemTargetReaches_NewName(t *testing.T) {
+func TestWikilinkTargetReaches_NewName(t *testing.T) {
 	files := []string{"a.md", "img/api.png", "notes/b.mdx", "x/B.MDX"}
 	for name, tc := range map[string]struct {
 		files []string
@@ -144,10 +144,10 @@ func TestStemTargetReaches_NewName(t *testing.T) {
 	}
 }
 
-// TestStemTargetReaches_DestinationResolution locks that a file
+// TestWikilinkTargetReaches_DestinationResolution locks that a file
 // already holding the new stem or name blocks the rewrite only when it,
 // not dst, is the file the rewritten link would reach.
-func TestStemTargetReaches_DestinationResolution(t *testing.T) {
+func TestWikilinkTargetReaches_DestinationResolution(t *testing.T) {
 	idx := holderIndex("z/x/manual.md", "z/x/logo.png")
 	assert.True(t, dstReaches(idx, "src.md", "a/manual.md", "manual", true),
 		"dst is shallower than the stem holder")
@@ -404,7 +404,7 @@ func TestMayNameAny(t *testing.T) {
 	}
 }
 
-func TestAppendWikilinkStemEdits_DefensiveBranches(t *testing.T) {
+func TestAppendWikilinkKeyEdits_DefensiveBranches(t *testing.T) {
 	changes := map[string][]Edit{}
 	ws := stubWorkspace{
 		wikilinkEdges: []index.Edge{
@@ -420,7 +420,7 @@ func TestAppendWikilinkStemEdits_DefensiveBranches(t *testing.T) {
 	}
 	// Basename changes (api -> service) so the pass runs, but every edge
 	// hits a skip branch.
-	appendWikilinkStemEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
+	appendWikilinkKeyEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
 	assert.Empty(t, changes)
 }
 
@@ -571,13 +571,13 @@ type nilIndexCountingWorkspace struct{ countingWorkspace }
 
 func (*nilIndexCountingWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex { return nil }
 
-// TestAppendWikilinkStemEdits_StaleEdgeKeyMismatch locks that an edge
+// TestAppendWikilinkKeyEdits_StaleEdgeKeyMismatch locks that an edge
 // whose column now holds a link to another stem, or a typed name such
 // as `[[api.png]]`, is skipped, while a link still keyed by the old
 // stem in other casing or behind a folder is rewritten. `[[docs/Api /]]`
 // keys as `api ` (the space before the slash stays), so it never
 // reached api.md and is skipped too.
-func TestAppendWikilinkStemEdits_StaleEdgeKeyMismatch(t *testing.T) {
+func TestAppendWikilinkKeyEdits_StaleEdgeKeyMismatch(t *testing.T) {
 	for row, want := range map[string]int{
 		"[[other]]":      0,
 		"[[api.png]]":    0,
@@ -593,7 +593,7 @@ func TestAppendWikilinkStemEdits_StaleEdgeKeyMismatch(t *testing.T) {
 				files:   []string{"api.md", "d.md"},
 				sources: map[string][]byte{"d.md": []byte(row + "\n")},
 			}
-			appendWikilinkStemEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
+			appendWikilinkKeyEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
 			assert.Len(t, changes["d.md"], want)
 		})
 	}
@@ -608,12 +608,12 @@ func TestWinsStem_SourceInOtherCase(t *testing.T) {
 	assert.False(t, srcWinsStem(idx, "Docs/guide.md", "guide"))
 }
 
-// TestStemTargetReaches_DestinationInOtherCase locks that a
+// TestWikilinkTargetReaches_DestinationInOtherCase locks that a
 // destination an indexed file spells in another letter case is not
 // taken to win its key, though the post-move index holds the
 // destination too: on a case-insensitive file system docs/manual.md
 // may be that very file.
-func TestStemTargetReaches_DestinationInOtherCase(t *testing.T) {
+func TestWikilinkTargetReaches_DestinationInOtherCase(t *testing.T) {
 	idx := holderIndex("src.md", "docs/manual.md", "img/logo.png")
 	assert.False(t, dstReaches(idx, "src.md", "Docs/manual.md", "manual", true))
 	assert.False(t, dstReaches(idx, "src.md", "IMG/logo.png", "logo.png", false))

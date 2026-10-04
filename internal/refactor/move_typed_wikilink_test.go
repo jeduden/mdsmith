@@ -154,25 +154,25 @@ func TestWikilinkKey_At(t *testing.T) {
 // the stem path already covers: a name key matches only a destination
 // of the same name, and members are counted by name.
 func TestTypedKeys_BatchHelpers(t *testing.T) {
-	got, ok := newStemTarget(nameKey("img.png"), "x/photo.png")
+	got, ok := newWikilinkTarget(nameKey("img.png"), "x/photo.png")
 	require.True(t, ok)
-	assert.Equal(t, stemTarget{dst: "x/photo.png", spelling: "photo.png", wikilinkKey: nameKey("photo.png")}, got)
-	_, ok = newStemTarget(nameKey("img.png"), "x/IMG.png")
+	assert.Equal(t, wikilinkTarget{dst: "x/photo.png", spelling: "photo.png", wikilinkKey: nameKey("photo.png")}, got)
+	_, ok = newWikilinkTarget(nameKey("img.png"), "x/IMG.png")
 	assert.False(t, ok, "the name is kept")
-	_, ok = newStemTarget(stemKey("img.png"), "x/img.png")
+	_, ok = newWikilinkTarget(stemKey("img.png"), "x/img.png")
 	assert.True(t, ok, "a stem and a name are separate keys")
 
 	b := newMoveBatch()
 	b.members["img.png"] = batchMember{dst: "x/img.png", planned: true}
 	b.members["a.png"] = batchMember{dst: "y/IMG.png", planned: true}
 	b.members["img.md"] = batchMember{dst: "z/img.md", planned: true}
-	assert.Equal(t, 2, b.stemHolders(nameKey("img.png")))
-	assert.Equal(t, 1, b.stemHolders(stemKey("img")))
-	assert.Equal(t, []string{"img.png"}, b.stemSources(nameKey("img.png")))
+	assert.Equal(t, 2, b.keyHolders(nameKey("img.png")))
+	assert.Equal(t, 1, b.keyHolders(stemKey("img")))
+	assert.Equal(t, []string{"img.png"}, b.keySources(nameKey("img.png")))
 	r := &destResolver{batch: b}
-	kept, ok := r.keptStemTarget(nameKey("img.png"), "x/img.png")
+	kept, ok := r.keptWikilinkTarget(nameKey("img.png"), "x/img.png")
 	require.True(t, ok)
-	assert.Equal(t, stemTarget{dst: "x/img.png", wikilinkKey: nameKey("img.png")}, kept)
-	_, ok = r.keptStemTarget(nameKey("img.png"), "x/img.md")
+	assert.Equal(t, wikilinkTarget{dst: "x/img.png", wikilinkKey: nameKey("img.png")}, kept)
+	_, ok = r.keptWikilinkTarget(nameKey("img.png"), "x/img.md")
 	assert.False(t, ok)
 }

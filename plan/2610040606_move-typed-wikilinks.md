@@ -49,7 +49,8 @@ the batch case needs a client that sends other files.
    (for example `IncomingWikilinkNameEdges(name)`), keyed
    by the lowercased base name the resolver's typed lookup
    reads. Expose it on `refactor.MoveWorkspace`.
-2. In `appendWikilinkStemEdits`, rewrite a typed
+2. In `appendWikilinkStemEdits` (since renamed
+   `appendWikilinkKeyEdits`), rewrite a typed
    `[[name.ext]]` link to a moved non-Markdown source when
    that source wins the name today and the new name reaches
    its destination once the batch has run.

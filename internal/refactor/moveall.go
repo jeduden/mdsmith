@@ -96,7 +96,7 @@ func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
 		if m.Err != nil {
 			continue
 		}
-		appendWikilinkStemEdits(bp.Edits, ws, r, m.Src, m.Dst)
+		appendWikilinkKeyEdits(bp.Edits, ws, r, m.Src, m.Dst)
 		if mdpath.HasMarkdownExt(path.Ext(m.Src)) || r.listed(m.Src) {
 			appendOutboundEdits(bp.Edits, p, r, m.Key, m.Src, m.Dst, b.sources[m.Src])
 		}
@@ -236,42 +236,42 @@ type moveBatch struct {
 	shadowed map[string]bool   // see countShadowed
 	withheld int
 	post     *linkgraph.WikilinkIndex // postIndex, built on first use
-	stems    map[wikilinkKey]int      // stemHolders, built by keyStems
-	srcStems map[wikilinkKey][]string // stemSources, built by keyStems
+	keys     map[wikilinkKey]int      // keyHolders, built by buildKeys
+	srcKeys  map[wikilinkKey][]string // keySources, built by buildKeys
 }
 
-// stemHolders returns how many members hold the wikilink key k (a stem
+// keyHolders returns how many members hold the wikilink key k (a stem
 // or an exact name, see wikilinkKey) with their source or their
 // destination, each member counted once.
-func (b *moveBatch) stemHolders(k wikilinkKey) int {
-	b.keyStems()
-	return b.stems[k]
+func (b *moveBatch) keyHolders(k wikilinkKey) int {
+	b.buildKeys()
+	return b.keys[k]
 }
 
-// stemSources returns every member source whose wikilink key is k, in
+// keySources returns every member source whose wikilink key is k, in
 // no set order.
-func (b *moveBatch) stemSources(k wikilinkKey) []string {
-	b.keyStems()
-	return b.srcStems[k]
+func (b *moveBatch) keySources(k wikilinkKey) []string {
+	b.buildKeys()
+	return b.srcKeys[k]
 }
 
-// keyStems builds the wikilink keys stemHolders and stemSources read.
+// buildKeys builds the wikilink keys keyHolders and keySources read.
 // It runs on the first call, once every verdict is in, so a batch
 // reads its members once, not once per move.
-func (b *moveBatch) keyStems() {
-	if b.stems != nil {
+func (b *moveBatch) buildKeys() {
+	if b.keys != nil {
 		return
 	}
-	b.stems, b.srcStems = map[wikilinkKey]int{}, map[wikilinkKey][]string{}
+	b.keys, b.srcKeys = map[wikilinkKey]int{}, map[wikilinkKey][]string{}
 	for src, m := range b.members {
 		s := fileWikilinkKey(src)
-		b.stems[s]++
-		b.srcStems[s] = append(b.srcStems[s], src)
+		b.keys[s]++
+		b.srcKeys[s] = append(b.srcKeys[s], src)
 		if m.dst == "" {
 			continue
 		}
 		if d := fileWikilinkKey(m.dst); d != s {
-			b.stems[d]++
+			b.keys[d]++
 		}
 	}
 }
