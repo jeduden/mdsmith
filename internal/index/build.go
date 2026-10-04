@@ -123,8 +123,9 @@ func buildFileEntry(filePath string, source []byte) *FileEntry {
 	// Directives (PIs) at the document root.
 	fe.Symbols = append(fe.Symbols, collectDirectives(fe.Path, root, nl, fmOffset)...)
 
-	// Edges: anchor / file / ref-style links plus directive targets,
-	// then Obsidian-style wikilinks (keyed by stem for the move planner).
+	// Edges: anchor / file / ref-style links plus directive targets in
+	// Outgoing; Obsidian-style wikilinks, keyed by stem or exact name for
+	// the move planner, apart in Wikilinks.
 	fe.Outgoing = append(fe.Outgoing, collectLinkEdges(fe.Path, lf, fmOffset)...)
 	fe.Outgoing = append(fe.Outgoing, collectDirectiveEdges(fe.Path, lf, fmOffset)...)
 	fe.Wikilinks = collectWikilinkEdges(fe.Path, lf, fmOffset)
@@ -577,8 +578,8 @@ func collectLinkEdges(filePath string, f *lint.File, fmOffset int) []Edge {
 // by Markdown basename stem, with TargetLabel the lowercased stem
 // (linkgraph.WikilinkStem), and an EdgeWikilinkName for a typed
 // `[[name.ext]]` link or `![[name.ext]]` embed that resolves by exact
-// file name, with TargetLabel the lowercased base name
-// (linkgraph.WikilinkName). Both mirror the resolver's keys. Each edge
+// file name, with TargetLabel the lowercased base name (as
+// linkgraph.WikilinkKey returns it). Both mirror the resolver's keys. Each edge
 // is Unresolved with an empty TargetFile: resolution needs the whole
 // workspace, so the concrete target is left to the move planner, which
 // matches by key.

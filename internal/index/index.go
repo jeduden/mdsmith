@@ -110,7 +110,7 @@ const (
 	// EdgeWikilinkName is a typed Obsidian-style `[[name.ext]]` link (or
 	// `![[name.ext]]` embed), which resolves by exact file name rather
 	// than by stem. Its TargetLabel holds the lowercased base name
-	// (linkgraph.WikilinkName); like EdgeWikilink it is Unresolved with
+	// (linkgraph.WikilinkKey); like EdgeWikilink it is Unresolved with
 	// an empty TargetFile. It is a kind of its own because a name key
 	// can equal a stem key (`[[img.png]]` names img.png, while
 	// `[[img.png.md]]` names img.png.md by the stem `img.png`). The move
@@ -511,9 +511,9 @@ func (i *Index) OutgoingEdges(file string) []Edge {
 //
 // Same-file anchor links (`[x](#sec)`) and label-based reference links
 // (`[x][label]`) carry no path token and are excluded (their
-// TargetFile is empty). Unresolved edges — catalog globs, glob build
-// inputs, and wikilinks — are skipped too: their target is not yet a
-// concrete file. The result is freshly allocated and sorted by
+// TargetFile is empty). Unresolved edges — catalog globs and glob
+// build inputs — are skipped too: their target is not yet a concrete
+// file. Wikilinks are never seen: they sit in FileEntry.Wikilinks. The result is freshly allocated and sorted by
 // (SourceFile, SourceLine, SourceCol) for deterministic edits.
 func (i *Index) IncomingPathEdges(file string) []Edge {
 	if i == nil {

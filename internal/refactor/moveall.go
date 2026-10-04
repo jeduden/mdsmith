@@ -48,10 +48,10 @@ type BatchMove struct {
 // order. Withheld counts the links that get no edit yet may not
 // reach their file once the batch has run: one from a planned member
 // to a member whose move could not be planned, one inside such a
-// member to a planned member that stops resolving, a `[[stem]]` whose
-// new key another member's destination wins, a `[[stem]]` left as
-// written that another member's destination takes (see stolen), and
-// every path link, `[[stem]]` link, and typed `[[name.ext]]` link to
+// member to a planned member that stops resolving, a wikilink (a
+// `[[stem]]` or a typed `[[name.ext]]`) whose new key another member's
+// destination wins, a wikilink left as written that another member's
+// destination takes (see stolen), and every path link and wikilink to
 // a shadowed path (see countShadowed).
 type BatchPlan struct {
 	Plan
