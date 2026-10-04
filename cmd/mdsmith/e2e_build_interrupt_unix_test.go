@@ -4,6 +4,8 @@ package main_test
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,6 +49,17 @@ func TestE2E_Build_SignalKillsRecipeTree(t *testing.T) {
 				}
 				time.Sleep(20 * time.Millisecond)
 			}
+			// A failed test may mean the kill regressed: reap the CLI and
+			// the child then, so they do not leave a sleep 120 behind.
+			t.Cleanup(func() {
+				if !t.Failed() {
+					return
+				}
+				_ = cmd.Process.Kill()
+				if childPID > 0 {
+					_ = syscall.Kill(childPID, syscall.SIGKILL)
+				}
+			})
 			require.NotZero(t, childPID, "child pid should have been recorded")
 			require.NoError(t, cmd.Process.Signal(sig))
 
@@ -60,4 +73,34 @@ func TestE2E_Build_SignalKillsRecipeTree(t *testing.T) {
 				6*time.Second, 100*time.Millisecond, "recipe child must not be orphaned")
 		})
 	}
+}
+
+// TestE2E_Fix_NoBuildKeepsDefaultSignalAction checks that the build
+// pass's interrupt handler does not cover a run that starts no recipe:
+// SIGTERM must still end `mdsmith fix --no-build` at once instead of
+// being swallowed until the lint-fix pass finishes.
+func TestE2E_Fix_NoBuildKeepsDefaultSignalAction(t *testing.T) {
+	dir := t.TempDir()
+	body := "# Title\n\n" + strings.Repeat("Some text with trailing spaces   \n\n", 40)
+	for i := range 1500 {
+		writeFixture(t, dir, fmt.Sprintf("f%d.md", i), body)
+	}
+
+	cmd := exec.Command(binaryPath, "fix", "--no-color", "--no-build", ".")
+	cmd.Dir = dir
+	cmd.Env = envWithCoverDir(coverDir)
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+
+	time.Sleep(100 * time.Millisecond)
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		_ = cmd.Wait()
+		t.Skipf("fix finished before the signal was sent: %v", err)
+	}
+	err := cmd.Wait()
+	var ee *exec.ExitError
+	require.True(t, errors.As(err, &ee), "fix must not survive SIGTERM, got %v", err)
+	ws, ok := ee.Sys().(syscall.WaitStatus)
+	require.True(t, ok)
+	assert.True(t, ws.Signaled(), "fix must die of SIGTERM, got %v", err)
 }

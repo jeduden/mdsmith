@@ -46,6 +46,9 @@ func runConcurrent(
 	verdicts := make([]buildexec.Verdict, len(targets))
 	verdictErrs := make([]error, len(targets))
 	for i, bt := range targets {
+		if opts.context().Err() != nil {
+			break // interrupted: every worker refuses its target unhashed
+		}
 		stins[i] = stalenessFor(bt, cfg)
 		verdicts[i], verdictErrs[i] = targetVerdict(stins[i], cache, opts)
 	}
@@ -59,6 +62,10 @@ func runConcurrent(
 		go func(i int, bt buildTarget) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			if refuseIfInterrupted(bt, opts, sw) {
+				results[i] = concurrentResult{outcome: outcomeFailed}
+				return
+			}
 			outcome, entry := decideAndRun(
 				builder, bt, opts, stins[i], verdicts[i], verdictErrs[i], timeout, allFinals, sw)
 			results[i] = concurrentResult{outcome: outcome, entry: entry}

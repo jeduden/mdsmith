@@ -1390,4 +1390,143 @@ func TestDispatchTargets_CancelledContextStartsNoFurtherRecipe(t *testing.T) {
 		buildPassOpts{ctx: ctx, noCache: true}, buildexec.NewCache(), time.Second, &buf)
 	assert.Equal(t, 2, code)
 	assert.Equal(t, []string{"a.txt"}, started)
+	// The target that never started is reported as interrupted, not as
+	// a recipe failure.
+	assert.Contains(t, buf.String(), "INTERRUPTED b.txt before start")
+	assert.NotContains(t, buf.String(), "FAIL b.txt")
+}
+
+// interruptedTarget returns a target whose only input is missing, so a
+// dispatch that still computes its verdict reports that error.
+func interruptedTarget(root string) buildTarget {
+	return buildTarget{file: "doc.md", line: 1, target: buildexec.Target{
+		Recipe: "cp", Root: root, Inputs: []string{"missing.txt"}, Outputs: []string{"out.txt"},
+	}}
+}
+
+// refuseBuilder fails the test if any recipe is dispatched.
+func refuseBuilder(t *testing.T) *mockBuilder {
+	return &mockBuilder{fn: func(context.Context, buildexec.Target) error {
+		t.Error("no recipe may start after an interrupt")
+		return nil
+	}}
+}
+
+// TestDispatchTargets_InterruptedSkipsVerdict covers a target reached
+// after an interrupt, on the serial and the concurrent path: it is
+// reported interrupted before its inputs are hashed for a verdict.
+func TestDispatchTargets_InterruptedSkipsVerdict(t *testing.T) {
+	for _, jobs := range []int{1, 2} {
+		root := t.TempDir()
+		cfg := buildPassCfg("    cp:\n      command: cp {inputs} {outputs}\n")
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		var buf strings.Builder
+		code := dispatchTargets(refuseBuilder(t), []buildTarget{interruptedTarget(root)}, cfg, root,
+			buildPassOpts{ctx: ctx, jobs: jobs}, buildexec.NewCache(), time.Second, &buf)
+		assert.Equal(t, 2, code, "jobs=%d", jobs)
+		assert.Contains(t, buf.String(), "INTERRUPTED out.txt before start", "jobs=%d", jobs)
+		assert.NotContains(t, buf.String(), "missing.txt", "jobs=%d", jobs)
+	}
+}
+
+// TestDispatchOne_VerifyInterrupted_FailsWithoutUnstable covers an
+// interrupt that lands during --build-verify's re-run: the target
+// fails as interrupted instead of passing as non-deterministic.
+func TestDispatchOne_VerifyInterrupted_FailsWithoutUnstable(t *testing.T) {
+	root := t.TempDir()
+	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
+	bt := buildTarget{file: "doc.md", line: 1, target: buildexec.Target{
+		Recipe: "mk", Root: root, Outputs: []string{"out.txt"},
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	calls := 0
+	builder := &mockBuilder{fn: func(context.Context, buildexec.Target) error {
+		calls++
+		if calls == 1 {
+			return nil
+		}
+		cancel()
+		return context.Canceled
+	}}
+	var buf strings.Builder
+	outcome := dispatchOne(builder, bt, cfg, buildPassOpts{ctx: ctx, verify: true, noCache: true},
+		buildexec.NewCache(), time.Second, &buf)
+	assert.Equal(t, outcomeFailed, outcome)
+	assert.Contains(t, buf.String(), "INTERRUPTED out.txt")
+	assert.NotContains(t, buf.String(), "verify re-run failed")
+	assert.NotContains(t, buf.String(), "OK out.txt")
+}
+
+// TestDispatchOne_VerifyAfterInterrupt_StartsNoReRun covers an interrupt
+// that lands between the first run and the --build-verify re-run: the
+// re-run must not start.
+func TestDispatchOne_VerifyAfterInterrupt_StartsNoReRun(t *testing.T) {
+	root := t.TempDir()
+	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
+	bt := buildTarget{file: "doc.md", line: 1, target: buildexec.Target{
+		Recipe: "mk", Root: root, Outputs: []string{"out.txt"},
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	calls := 0
+	builder := &mockBuilder{fn: func(context.Context, buildexec.Target) error {
+		calls++
+		cancel() // the interrupt arrives as the first run finishes
+		return nil
+	}}
+	var buf strings.Builder
+	outcome := dispatchOne(builder, bt, cfg, buildPassOpts{ctx: ctx, verify: true, noCache: true},
+		buildexec.NewCache(), time.Second, &buf)
+	assert.Equal(t, outcomeFailed, outcome)
+	assert.Equal(t, 1, calls, "the verify re-run must not start")
+	assert.Contains(t, buf.String(), "INTERRUPTED out.txt")
+}
+
+// TestRunBuildPassInterruptible_InterruptedExitsTwo covers an interrupt
+// that a before-hook reports with its own exit code: the pass still
+// exits 2, as for an interrupted recipe.
+func TestRunBuildPassInterruptible_InterruptedExitsTwo(t *testing.T) {
+	root := t.TempDir()
+	trustRoot(t, root)
+	cfg, err := config.ParseBytes([]byte("build:\n  recipes:\n    mk:\n      command: touch {outputs}\n" +
+		"  hooks:\n    before:\n      - command: true\n"))
+	require.NoError(t, err)
+	p := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(p, []byte(buildPassDirective("mk", "out.txt")), 0o644))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var buf strings.Builder
+	code := runBuildPassInterruptible(cfg, filepath.Join(root, ".mdsmith.yml"), []string{p},
+		buildPassOpts{ctx: ctx, timeout: time.Second, noCache: true}, &buf)
+	assert.Equal(t, 2, code, buf.String())
+	assert.Contains(t, buf.String(), "(interrupted)")
+	assert.NoFileExists(t, filepath.Join(root, "out.txt"))
+}
+
+// TestRunBuildPassInterruptible_DryRunInstallsNoHandler covers a pass
+// that starts no process: it runs as plain runBuildPass, so its exit
+// code is the pass's own.
+func TestRunBuildPassInterruptible_DryRunInstallsNoHandler(t *testing.T) {
+	root := t.TempDir()
+	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
+	p := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(p, []byte(buildPassDirective("mk", "out.txt")), 0o644))
+
+	var buf strings.Builder
+	code := runBuildPassInterruptible(cfg, filepath.Join(root, ".mdsmith.yml"), []string{p},
+		buildPassOpts{dryRun: true, noCache: true}, &buf)
+	assert.Equal(t, 0, code, buf.String())
+	assert.Contains(t, buf.String(), "STALE")
+}
+
+// TestBuildPassOpts_RunsProcesses covers which build-pass modes install
+// the interrupt handler: only those that can start a recipe or hook.
+func TestBuildPassOpts_RunsProcesses(t *testing.T) {
+	assert.True(t, buildPassOpts{}.runsProcesses())
+	assert.False(t, buildPassOpts{dryRun: true}.runsProcesses())
+	assert.False(t, buildPassOpts{checkStale: true}.runsProcesses())
+	assert.False(t, buildPassOpts{explain: "out.txt"}.runsProcesses())
 }

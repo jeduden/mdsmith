@@ -112,13 +112,14 @@ func printStreamTail(label string, lines []string, w io.Writer) {
 }
 
 // reportBuildFailure prints the rich diagnostic for a failed recipe. A
+// cancelled build context (CLI interrupt) prints the interrupt line; a
 // timeout prints the hung-recipe block (last lines of both streams before
 // the kill); any other failure prints the six-field block plus the last 20
 // lines of stderr. When the recipe never ran (Argv is empty, e.g. ActionID
 // computation failed before dispatch), only the error is printed.
 func reportBuildFailure(bt buildTarget, res targetRunResult, w io.Writer) {
 	name := targetName(bt)
-	if res.TimedOut && errors.Is(res.Err, context.Canceled) {
+	if errors.Is(res.Err, context.Canceled) {
 		reportInterrupt(name, res, w)
 		return
 	}
@@ -148,10 +149,16 @@ func reportBuildFailure(bt buildTarget, res targetRunResult, w io.Writer) {
 	printStreamTail("stderr", res.StderrTail, w)
 }
 
-// reportInterrupt prints the diagnostic for a recipe killed because the
+// reportInterrupt prints the diagnostic for a recipe stopped because the
 // build context was cancelled (CLI interrupt), not because it ran out of
-// time. The recipe's group was already killed before this is called.
+// time. res.TimedOut is set only when the kill path ran, so a recipe the
+// interrupt reached before it started gets no kill line; a running
+// one's group was already killed before this is called.
 func reportInterrupt(name string, res targetRunResult, w io.Writer) {
+	if !res.TimedOut {
+		_, _ = fmt.Fprintf(w, "INTERRUPTED %s before start\n", name)
+		return
+	}
 	_, _ = fmt.Fprintf(w, "INTERRUPTED %s after %s\n", name, res.Duration.Round(time.Millisecond))
 	_, _ = fmt.Fprintf(w, "  %s\n", buildexec.TimeoutKillAction)
 }
@@ -188,11 +195,17 @@ func relLogPath(root, logPath string) string {
 // verifyTarget re-runs the recipe a second time in an independent staging
 // dir, diffs the declared output bytes against the first run, and sets
 // res.Unstable with a warning when they differ. A mismatch is a warning,
-// not a failure: some recipes embed timestamps or random seeds.
+// not a failure: some recipes embed timestamps or random seeds. It
+// returns false, after reporting the interrupt, when the build context
+// is cancelled before or during the re-run: an interrupt says nothing
+// about determinism, so the target fails instead of passing as unstable.
 func verifyTarget(
 	b buildexec.Builder, bt buildTarget, id string,
 	opts buildPassOpts, timeout time.Duration, res *targetRunResult, w io.Writer,
-) {
+) bool {
+	if refuseIfInterrupted(bt, opts, w) {
+		return false
+	}
 	first := snapshotOutputs(bt)
 
 	vctx, cancel := context.WithTimeout(opts.context(), timeout)
@@ -206,10 +219,14 @@ func verifyTarget(
 		verifyOpts.LiveSink = w
 	}
 	second := b.BuildWithResult(vctx, bt.target, verifyOpts)
+	if errors.Is(second.Err, context.Canceled) {
+		reportBuildFailure(bt, targetRunResult{Result: second}, w)
+		return false
+	}
 	if second.Err != nil {
 		_, _ = fmt.Fprintf(w, "WARN %s: verify re-run failed: %v\n", targetName(bt), second.Err)
 		res.Unstable = true
-		return
+		return true
 	}
 	if !outputsEqual(first, snapshotOutputs(bt)) {
 		_, _ = fmt.Fprintf(w,
@@ -217,6 +234,7 @@ func verifyTarget(
 			targetName(bt))
 		res.Unstable = true
 	}
+	return true
 }
 
 // outputHash is one declared output's verify-pass fingerprint: ok is

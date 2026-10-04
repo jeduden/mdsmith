@@ -16,18 +16,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// waitForFile polls until path exists and returns its trimmed content.
-func waitForFile(t *testing.T, path string) string {
-	t.Helper()
+// pollFile polls for up to 10 s until path is non-empty and returns its
+// trimmed content, or false on timeout. It never fails the test, so a
+// goroutine other than the test's may call it.
+func pollFile(path string) (string, bool) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if b, err := os.ReadFile(path); err == nil && len(b) > 0 {
-			return strings.TrimSpace(string(b))
+			return strings.TrimSpace(string(b)), true
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("timed out waiting for %s", path)
-	return ""
+	return "", false
+}
+
+// waitForFile is pollFile that fails the test on timeout. Call it only
+// from the test goroutine.
+func waitForFile(t *testing.T, path string) string {
+	t.Helper()
+	s, ok := pollFile(path)
+	if !ok {
+		t.Fatalf("timed out waiting for %s", path)
+	}
+	return s
 }
 
 // pidGone reports whether the process no longer exists.
@@ -53,7 +64,9 @@ func runInterruptedBuild(t *testing.T) (int, string, int) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		waitForFile(t, pidFile)
+		// Cancel even when the pid never appears, so the pass ends
+		// instead of running out its one-minute timeout.
+		_, _ = pollFile(pidFile)
 		cancel()
 	}()
 
@@ -62,6 +75,13 @@ func runInterruptedBuild(t *testing.T) (int, string, int) {
 		buildPassOpts{ctx: ctx, timeout: time.Minute, noCache: true}, &buf)
 	pid, err := strconv.Atoi(waitForFile(t, pidFile))
 	require.NoError(t, err)
+	// A failed test may mean the kill regressed: reap the child then, so
+	// it does not leave a sleep 120 behind.
+	t.Cleanup(func() {
+		if t.Failed() && pid > 0 {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
 	return code, buf.String(), pid
 }
 

@@ -57,6 +57,24 @@ func (o buildPassOpts) context() context.Context {
 	return o.ctx
 }
 
+// runsProcesses reports whether the pass may start a recipe or hook.
+// --build-dry-run, --build-check-stale, and --build-explain run none.
+func (o buildPassOpts) runsProcesses() bool {
+	return !o.dryRun && !o.checkStale && o.explain == ""
+}
+
+// refuseIfInterrupted reports bt as interrupted and returns true when
+// the build context is already done, so a target reached after an
+// interrupt neither hashes its inputs nor starts its recipe.
+func refuseIfInterrupted(bt buildTarget, opts buildPassOpts, w io.Writer) bool {
+	err := opts.context().Err()
+	if err == nil {
+		return false
+	}
+	reportBuildFailure(bt, targetRunResult{Result: buildexec.Result{Err: err}}, w)
+	return true
+}
+
 // buildTarget pairs a resolved build.Target with the file and line it
 // came from, so the per-target summary can name the source directive.
 type buildTarget struct {
@@ -493,6 +511,9 @@ func dispatchOne(
 	builder buildexec.Builder, bt buildTarget, cfg *config.Config,
 	opts buildPassOpts, cache *buildexec.Cache, timeout time.Duration, w io.Writer,
 ) targetOutcome {
+	if refuseIfInterrupted(bt, opts, w) {
+		return outcomeFailed
+	}
 	stin := stalenessFor(bt, cfg)
 	verdict, serr := targetVerdict(stin, cache, opts)
 	outcome, entry := decideAndRun(builder, bt, opts, stin, verdict, serr, timeout, nil, w)
@@ -550,8 +571,8 @@ func decideAndRun(
 		reportBuildFailure(bt, res, w)
 		return outcomeFailed, nil
 	}
-	if opts.verify {
-		verifyTarget(builder, bt, id, opts, timeout, &res, w)
+	if opts.verify && !verifyTarget(builder, bt, id, opts, timeout, &res, w) {
+		return outcomeFailed, nil
 	}
 	entry, err := buildCacheEntry(stin, opts, res.Unstable)
 	if err != nil {
@@ -633,6 +654,8 @@ func runOneTarget(
 		bopts.LiveSink = w
 	}
 	// After an interrupt no further recipe may start: the run is ending.
+	// dispatchOne and the concurrent workers check before hashing; this
+	// covers an interrupt that lands while the ActionID is computed.
 	if err := opts.context().Err(); err != nil {
 		return targetRunResult{Result: buildexec.Result{Err: err}}
 	}
