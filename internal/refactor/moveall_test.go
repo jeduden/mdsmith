@@ -425,6 +425,25 @@ func TestMoveAll_TypedNameSharedByTwoMoves(t *testing.T) {
 	assert.Equal(t, 1, bp.Withheld)
 }
 
+// TestMoveAll_TypedSourceNameSharedByTwoMoves covers two moved
+// sources that hold one exact name in different letter cases: every
+// `[[img.png]]` link reaches the one that sorts first (x/IMG.png), so
+// only that member's links follow it, once each, and the other member
+// plans no wikilink edit, whichever order the pairs come in.
+func TestMoveAll_TypedSourceNameSharedByTwoMoves(t *testing.T) {
+	files := map[string]string{
+		"x/IMG.png": "png",
+		"y/img.png": "png",
+		"n.md":      "# N\n\n![[img.png]] [[Img.PNG|i]]\n",
+	}
+	pairs := []MovePair{{"x/IMG.png", "x/a.png"}, {"y/img.png", "y/b.png"}}
+	for _, order := range [][]MovePair{pairs, {pairs[1], pairs[0]}} {
+		bp := moveAll(t, files, order...)
+		assert.Equal(t, []string{"a.png", "a.png"}, texts(bp.Edits, "n.md"))
+		assert.Zero(t, bp.Withheld)
+	}
+}
+
 // TestMoveAll_UnplannedTargetCounted covers a rewrite that would
 // assume an unplanned move stayed put: docs/b.md moves onto the
 // existing x/b.md, which Move refuses but the host still performs, so
