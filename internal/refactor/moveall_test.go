@@ -38,7 +38,7 @@ func assertNoOverlap(t *testing.T, edits map[string][]Edit) {
 
 // texts returns the NewText of each edit under key, in plan order.
 func texts(edits map[string][]Edit, key string) []string {
-	var out []string
+	out := make([]string, 0, len(edits[key]))
 	for _, e := range edits[key] {
 		out = append(out, e.NewText)
 	}
@@ -179,4 +179,153 @@ func TestMoveAll_SingleMatchesMove(t *testing.T) {
 	require.NoError(t, bp.Moves[0].Err)
 	assert.Equal(t, p.Edits, bp.Edits)
 	assert.Equal(t, &FileOp{From: "docs/a.md", To: "x/c.md"}, p.FileOp)
+}
+
+func TestMoveAll_WikilinksBetweenMovedFiles(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"a.md": "# A\n\nSee [[b]] and [b](b.md).\n",
+		"b.md": "# B\n\nSee [[a]].\n",
+	}, MovePair{"a.md", "x/a2.md"}, MovePair{"b.md", "y/b2.md"})
+	assert.Equal(t, []string{"../y/b2.md", "b2"}, texts(bp.Edits, "a.md"))
+	assert.Equal(t, []string{"a2"}, texts(bp.Edits, "b.md"))
+	assert.Equal(t, []string{"b2"}, texts(bp.StemEdits, "a.md"))
+	assert.Zero(t, bp.Withheld)
+}
+
+// TestMoveAll_SharedNewStem covers two moves landing on one new stem:
+// only the move whose destination wins the stem after the batch
+// rewrites its links, and the other's are withheld and counted.
+func TestMoveAll_SharedNewStem(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"x/a.md": "# A\n",
+		"y/b.md": "# B\n",
+		"n.md":   "# N\n\n[[a]] [[b]]\n",
+	}, MovePair{"x/a.md", "x/c.md"}, MovePair{"y/b.md", "y/c.md"})
+	assert.Equal(t, []string{"c"}, texts(bp.Edits, "n.md"))
+	assert.Equal(t, 1, bp.Withheld)
+}
+
+// TestMoveAll_StemAndSiblingShareNewStem covers the file `[[Guide]]`
+// reaches and its same-stem sibling both moving to one new stem: the
+// sibling's destination wins `[[Manual]]`, so the bare link is
+// withheld, while `[[ref/Guide]]`, which names the sibling, follows it.
+func TestMoveAll_StemAndSiblingShareNewStem(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"docs/Guide.md": "# G\n",
+		"ref/Guide.md":  "# R\n",
+		"n.md":          "# N\n\n[[Guide]] [[ref/Guide]]\n",
+	}, MovePair{"docs/Guide.md", "z/Manual.md"}, MovePair{"ref/Guide.md", "a/Manual.md"})
+	assert.Equal(t, []string{"Manual"}, texts(bp.Edits, "n.md"))
+	require.Len(t, bp.Edits["n.md"], 1)
+	assert.Equal(t, 16, bp.Edits["n.md"][0].Range.Start.Character, "the ref/Guide link")
+	assert.Equal(t, 1, bp.Withheld)
+}
+
+// TestMoveAll_FolderPrefixedStemFollowsSibling covers two moves
+// leaving a shared stem: `[[y/guide]]` names the sibling's folder, so
+// it follows y/guide.md, not the file the bare stem reaches.
+func TestMoveAll_FolderPrefixedStemFollowsSibling(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"x/guide.md": "# X\n",
+		"y/guide.md": "# Y\n",
+		"n.md":       "# N\n\n[[guide]] [[y/guide]]\n",
+	}, MovePair{"x/guide.md", "x/manual.md"}, MovePair{"y/guide.md", "y/howto.md"})
+	assert.Equal(t, []string{"howto", "manual"}, texts(bp.Edits, "n.md"))
+	assert.Zero(t, bp.Withheld)
+}
+
+// TestMoveAll_SiblingKeepingStemLeavesPrefixedLink covers a named
+// sibling whose move keeps its stem: its link still reaches it, so it
+// is left as written.
+func TestMoveAll_SiblingKeepingStemLeavesPrefixedLink(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"x/guide.md": "# X\n",
+		"y/guide.md": "# Y\n",
+		"n.md":       "# N\n\n[[guide]] [[y/Guide]]\n",
+	}, MovePair{"x/guide.md", "x/manual.md"}, MovePair{"y/guide.md", "z/guide.md"})
+	assert.Equal(t, []string{"manual"}, texts(bp.Edits, "n.md"))
+	assert.Zero(t, bp.Withheld)
+}
+
+// TestMoveAll_UnmovedStemHolderIsNotCounted locks that a new stem a
+// file outside the batch already wins blocks the rewrite silently, as
+// Move always has: no batch member caused it.
+func TestMoveAll_UnmovedStemHolderIsNotCounted(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"x/a.md": "# A\n",
+		"c.md":   "# C\n",
+		"n.md":   "# N\n\n[[a]]\n",
+	}, MovePair{"x/a.md", "x/c.md"})
+	assert.NotContains(t, bp.Edits, "n.md")
+	assert.Zero(t, bp.Withheld)
+}
+
+// TestMoveAll_TypedNameSharedByTwoMoves covers two moves to one
+// non-Markdown name: `[[logo.png]]` reaches the shallower destination,
+// so the other move's link is withheld.
+func TestMoveAll_TypedNameSharedByTwoMoves(t *testing.T) {
+	bp := moveAll(t, map[string]string{
+		"x/a.md":   "# A\n",
+		"y/z/b.md": "# B\n",
+		"n.md":     "# N\n\n[[a]] [[b]]\n",
+	}, MovePair{"x/a.md", "x/logo.png"}, MovePair{"y/z/b.md", "y/z/logo.png"})
+	assert.Equal(t, []string{"logo.png"}, texts(bp.Edits, "n.md"))
+	assert.Equal(t, 1, bp.Withheld)
+}
+
+// TestMoveAll_UnplannedTargetCounted covers a rewrite that would
+// assume an unplanned move stayed put: docs/b.md moves onto the
+// existing x/b.md, which Move refuses but the host still performs, so
+// docs/a.md's `b.md` gets no edit and is counted.
+func TestMoveAll_UnplannedTargetCounted(t *testing.T) {
+	bp := MoveAll(newMemWorkspace(map[string]string{
+		"docs/a.md": "# A\n\n[b](b.md)\n",
+		"docs/b.md": "# B\n",
+		"x/b.md":    "# Old\n",
+	}), []MovePair{{"docs/a.md", "other/a.md"}, {"docs/b.md", "x/b.md"}})
+	require.NoError(t, bp.Moves[0].Err)
+	assert.Equal(t, DestinationExistsError{Dst: "x/b.md"}, bp.Moves[1].Err)
+	assert.NotContains(t, bp.Edits, "docs/a.md")
+	assert.Equal(t, 1, bp.Withheld)
+}
+
+// TestMoveAll_UnplannedHolder covers a link inside a file whose move
+// was not planned: it is counted only when it stops resolving.
+func TestMoveAll_UnplannedHolder(t *testing.T) {
+	files := map[string]string{
+		"docs/a.md": "# A\n\n[b](b.md)\n",
+		"docs/b.md": "# B\n",
+		"x/y/a.md":  "# Old\n",
+	}
+	for dst, want := range map[string]int{"x/y/b.md": 0, "z/b.md": 1} {
+		t.Run(dst, func(t *testing.T) {
+			bp := MoveAll(newMemWorkspace(files),
+				[]MovePair{{"docs/a.md", "x/y/a.md"}, {"docs/b.md", dst}})
+			require.Error(t, bp.Moves[0].Err)
+			require.NoError(t, bp.Moves[1].Err)
+			assert.NotContains(t, bp.Edits, "docs/a.md")
+			assert.Equal(t, want, bp.Withheld)
+		})
+	}
+}
+
+// TestMoveAll_TargetLeavesWorkspace covers a member moved out of the
+// workspace: a link to it from another moved file can never resolve.
+func TestMoveAll_TargetLeavesWorkspace(t *testing.T) {
+	bp := MoveAll(newMemWorkspace(map[string]string{
+		"a.md": "# A\n\n[b](b.md)\n",
+		"b.md": "# B\n",
+	}), []MovePair{{"a.md", "x/a.md"}, {"b.md", "../out.md"}})
+	assert.ErrorIs(t, bp.Moves[1].Err, ErrTraversalPath)
+	assert.NotContains(t, bp.Edits, "a.md")
+	assert.Equal(t, 1, bp.Withheld)
+}
+
+// TestDestResolver_CountsNeedABatch locks that a pass run without a
+// batch counts nothing.
+func TestDestResolver_CountsNeedABatch(t *testing.T) {
+	r := &destResolver{}
+	r.countStale("a.md", "b.md", "c.md")
+	r.countBlocked(holderIndex("c.md"), stemTarget{dst: "z/c.md", key: "c", isStem: true})
+	assert.Nil(t, r.batch)
 }

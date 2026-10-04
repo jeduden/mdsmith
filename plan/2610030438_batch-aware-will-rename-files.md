@@ -55,7 +55,7 @@ then reports it.
    Keep `dropConflictingTextEdits` and `dropCrossMoveEdits`
    only as guards, with tests proving they no longer fire for
    these cases.
-4. Unit tests: two moved files linking each other in the same
+4. [x] Unit tests: two moved files linking each other in the same
    new folder and in different new folders, wikilinks between
    moved files, and a three-file cycle.
 5. [x] Cover the case only one move rewrites. `docs/a.md` links
@@ -73,7 +73,7 @@ then reports it.
    `refactor.Move` refuses `a.md` because `b.md` exists in the
    pre-batch snapshot, so links to `a.md` stay stale and the
    warning does not count them.
-8. Guard `[[stem]]` rewrites against a stem two moves share.
+8. [x] Guard `[[stem]]` rewrites against a stem two moves share.
    One request moves `x/a.md` to `x/c.md` and `y/b.md` to
    `y/c.md`. Each move checks the new stem against the
    pre-batch snapshot, finds no `c`, and rewrites its links to
@@ -84,7 +84,7 @@ then reports it.
    to `a/Manual.md`. The first move rewrites every `[[Guide]]`
    to `[[Manual]]`, which after the batch reaches
    `a/Manual.md`, the former sibling.
-9. Rewrite folder-prefixed `[[stem]]` links when two moves
+9. [x] Rewrite folder-prefixed `[[stem]]` links when two moves
    leave a shared stem. One request moves `x/guide.md` to
    `x/manual.md` and `y/guide.md` to `y/howto.md`. The move of
    `x/guide.md`, which `[[guide]]` reaches, rewrites those links
@@ -97,7 +97,7 @@ then reports it.
     rewrites of each link between them, and the kept text is
     right. The warning still says "withheld 4 link rewrite(s)"
     for those two links: it counts edits, not links.
-11. Count a rewrite that assumes an unplanned move stayed put.
+11. [x] Count a rewrite that assumes an unplanned move stayed put.
     One request moves `docs/a.md` to `other/a.md` and
     `docs/b.md` onto an existing `x/b.md`. The move of `a.md`
     spells its `b.md` link as `../docs/b.md`, a path the batch

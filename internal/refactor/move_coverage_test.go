@@ -70,6 +70,14 @@ func holderIndex(files ...string) *linkgraph.WikilinkIndex {
 	return linkgraph.NewWikilinkIndexFromPaths(files)
 }
 
+// wikilinkRewriteSafe composes the two checks appendWikilinkStemEdits
+// runs for a lone move: src wins oldStem in idx, and newKey reaches
+// dst once src has moved there.
+func wikilinkRewriteSafe(idx *linkgraph.WikilinkIndex, src, dst, oldStem, newKey string, newIsStem bool) bool {
+	t := stemTarget{dst: dst, key: newKey, isStem: newIsStem}
+	return idx.StemResolvesTo(oldStem, src) && t.reaches(idx.Moved(map[string]string{src: dst}))
+}
+
 func TestWikilinkRewriteSafe_OldStem(t *testing.T) {
 	files := []string{"a.md", "docs/API.md", "api/api.md", "img/api.png", "notes/b.mdx", "notes/c.markdown"}
 	for name, tc := range map[string]struct {
@@ -583,7 +591,7 @@ func TestStemSiblings(t *testing.T) {
 	assert.Nil(t, stemSiblings([]string{"docs/guide.md"}, "docs/guide.md"))
 }
 
-func TestWikilinkNamesSibling(t *testing.T) {
+func TestWikilinkNamedSibling(t *testing.T) {
 	siblings := []string{"ref/guide.md", "x/api/v1/guide.md"}
 	for lead, want := range map[string]bool{
 		"[[":            false,
@@ -599,11 +607,15 @@ func TestWikilinkNamesSibling(t *testing.T) {
 		"[[y/x/api/v1/": false,
 	} {
 		t.Run(lead, func(t *testing.T) {
-			assert.Equal(t, want, wikilinkNamesSibling([]byte(lead), "docs/guide.md", siblings))
+			_, named := wikilinkNamedSibling([]byte(lead), "docs/guide.md", siblings)
+			assert.Equal(t, want, named)
 		})
 	}
-	assert.False(t, wikilinkNamesSibling([]byte("[[ref/"), "a/ref/guide.md", siblings),
-		"a prefix that names src's folder too reaches src")
+	_, named := wikilinkNamedSibling([]byte("[[ref/"), "a/ref/guide.md", siblings)
+	assert.False(t, named, "a prefix that names src's folder too reaches src")
+	sib, named := wikilinkNamedSibling([]byte("[[v1/"), "docs/guide.md", siblings)
+	assert.True(t, named)
+	assert.Equal(t, "x/api/v1/guide.md", sib)
 }
 
 func TestFolderNames(t *testing.T) {

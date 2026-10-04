@@ -113,34 +113,7 @@ func validateBatch(ws Workspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
 	b := &moveBatch{members: map[string]batchMember{}}
 	landing := map[string]int{}
 	for i, pr := range pairs {
-		m := BatchMove{Src: index.NormalizePath(pr.Src), Dst: index.NormalizePath(pr.Dst)}
-		switch _, seen := b.members[m.Src]; {
-		case !workspaceRelative(m.Src):
-			m.Err = ErrTraversalPath
-		case m.Src == m.Dst:
-			m.Err = ErrSameFile
-		case seen:
-			m.Err = ErrDuplicateSource
-		default:
-			key, _, ok := ws.Resolve(m.Src)
-			dstOK := workspaceRelative(m.Dst)
-			if ok {
-				m.Key = key
-				member := batchMember{}
-				if dstOK {
-					member.dst = m.Dst
-					landing[m.Dst]++
-				}
-				b.members[m.Src] = member
-			}
-			switch {
-			case !dstOK:
-				m.Err = ErrTraversalPath
-			case !ok:
-				m.Err = SourceNotFoundError{Src: m.Src}
-			}
-		}
-		moves[i] = m
+		moves[i] = b.admit(ws, pr, landing)
 	}
 	for i := range moves {
 		m := &moves[i]
@@ -160,6 +133,46 @@ func validateBatch(ws Workspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
 	return moves, b
 }
 
+// admit normalizes pr and records its source as a batch member when it
+// is readable, counting the member's destination in landing. The
+// returned move carries the checks Move runs first, in Move's order: a
+// traversal path, an equal source and destination, then a missing
+// source; a source an earlier pair moves fails as well. A pair that
+// passes still awaits the destination checks in validateBatch.
+func (b *moveBatch) admit(ws Workspace, pr MovePair, landing map[string]int) BatchMove {
+	m := BatchMove{Src: index.NormalizePath(pr.Src), Dst: index.NormalizePath(pr.Dst)}
+	_, seen := b.members[m.Src]
+	switch {
+	case !workspaceRelative(m.Src):
+		m.Err = ErrTraversalPath
+		return m
+	case m.Src == m.Dst:
+		m.Err = ErrSameFile
+		return m
+	case seen:
+		m.Err = ErrDuplicateSource
+		return m
+	}
+	key, _, ok := ws.Resolve(m.Src)
+	dstOK := workspaceRelative(m.Dst)
+	if ok {
+		m.Key = key
+		member := batchMember{}
+		if dstOK {
+			member.dst = m.Dst
+			landing[m.Dst]++
+		}
+		b.members[m.Src] = member
+	}
+	switch {
+	case !dstOK:
+		m.Err = ErrTraversalPath
+	case !ok:
+		m.Err = SourceNotFoundError{Src: m.Src}
+	}
+	return m
+}
+
 // resolves reports whether ws can read the file p.
 func resolves(ws Workspace, p string) bool {
 	_, _, ok := ws.Resolve(p)
@@ -172,8 +185,7 @@ func resolves(ws Workspace, p string) bool {
 type moveBatch struct {
 	members  map[string]batchMember
 	withheld int
-	post     *linkgraph.WikilinkIndex
-	postRead bool
+	post     *linkgraph.WikilinkIndex // postIndex, built on first use
 }
 
 // batchMember is one moved file: dst is where the host puts it (empty
