@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"io/fs"
-	"maps"
 	"path"
 	"regexp"
 	"slices"
@@ -218,6 +217,7 @@ func WikilinkIndexAtDir(dir string) *WikilinkIndex {
 type WikilinkIndex struct {
 	stems map[string][]string // lowercased stem → sorted .md paths
 	names map[string][]string // lowercased filename → sorted any-ext paths
+	base  *WikilinkIndex      // Moved's receiver: holds every key stems and names lack
 }
 
 // NewWikilinkIndex walks root once and returns a lookup table that
@@ -279,29 +279,62 @@ func NewWikilinkIndexFromPaths(paths []string) *WikilinkIndex {
 // only removes its source (the file leaves the workspace), and a
 // destination already indexed is held once. A source idx lacks has
 // nothing to remove, but its destination still joins: the file exists
-// once the move has run. idx itself is not changed. A nil index returns nil: it
-// stands for a root that could not be walked, which no move changes.
-// A batch of renames planned together reads it to learn which file a
-// `[[stem]]` reaches after the batch.
+// once the move has run. idx itself is not changed. A nil index
+// returns nil: it stands for a root that could not be walked, which no
+// move changes. A batch of renames planned together reads it to learn
+// which file a `[[stem]]` reaches after the batch.
+//
+// The result is an overlay on idx: it holds only the keys the moves
+// touch and reads every other key from idx, so its cost follows the
+// moves, not the workspace. idx must not change while it is in use.
 func (idx *WikilinkIndex) Moved(moves map[string]string) *WikilinkIndex {
 	if idx == nil {
 		return nil
 	}
-	held := map[string]bool{}
-	for _, paths := range idx.names {
-		for _, p := range paths {
-			held[p] = true
+	out := &WikilinkIndex{stems: map[string][]string{}, names: map[string][]string{}, base: idx}
+	touch := func(p string) {
+		base := path.Base(p)
+		out.names[FileNameKey(base)] = nil
+		if stem, ok := FileStemKey(base); ok {
+			out.stems[stem] = nil
 		}
 	}
-	for src := range moves {
-		delete(held, src)
+	for src, dst := range moves {
+		touch(src)
+		if dst != "" {
+			touch(dst)
+		}
+	}
+	for key := range out.names {
+		out.names[key] = movedPaths(idx.NamePaths(key), moves, func(base string) bool { return FileNameKey(base) == key })
+	}
+	for key := range out.stems {
+		out.stems[key] = movedPaths(idx.StemPaths(key), moves, func(base string) bool {
+			stem, ok := FileStemKey(base)
+			return ok && stem == key
+		})
+	}
+	return out
+}
+
+// movedPaths returns paths, one key's holders, once moves has run:
+// without every source, and with every indexed destination whose base
+// name holds the key, each held once, in resolver order. paths is not
+// changed.
+func movedPaths(paths []string, moves map[string]string, holds func(base string) bool) []string {
+	out := make([]string, 0, len(paths)+1)
+	for _, p := range paths {
+		if _, gone := moves[p]; !gone {
+			out = append(out, p)
+		}
 	}
 	for _, dst := range moves {
-		if dst != "" {
-			held[dst] = true
+		if dst != "" && WikilinkIndexed(dst) && holds(path.Base(dst)) && !slices.Contains(out, dst) {
+			out = append(out, dst)
 		}
 	}
-	return NewWikilinkIndexFromPaths(slices.Collect(maps.Keys(held)))
+	sortByDepthThenName(out)
+	return out
 }
 
 // newEmptyWikilinkIndex returns an index with no files, ready for add.
@@ -345,12 +378,12 @@ func (idx *WikilinkIndex) Resolve(target string) (string, bool) {
 	}
 	wantName, wantStem, stemMode := wikilinkSearchKey(target)
 	if stemMode {
-		if matches, ok := idx.stems[FileNameKey(wantStem)]; ok && len(matches) > 0 {
+		if matches := idx.StemPaths(FileNameKey(wantStem)); len(matches) > 0 {
 			return matches[0], true
 		}
 		return "", false
 	}
-	if matches, ok := idx.names[FileNameKey(wantName)]; ok && len(matches) > 0 {
+	if matches := idx.NamePaths(FileNameKey(wantName)); len(matches) > 0 {
 		return matches[0], true
 	}
 	return "", false
@@ -360,10 +393,12 @@ func (idx *WikilinkIndex) Resolve(target string) (string, bool) {
 // stem key (as FileStemKey returns it), shallowest first. The slice is
 // the index's own: callers must not modify it. A nil index returns nil.
 func (idx *WikilinkIndex) StemPaths(key string) []string {
-	if idx == nil {
-		return nil
+	for ; idx != nil; idx = idx.base {
+		if paths, ok := idx.stems[key]; ok || idx.base == nil {
+			return paths
+		}
 	}
-	return idx.stems[key]
+	return nil
 }
 
 // StemResolvesTo reports whether a `[[stem]]` link keyed by key (as
@@ -404,10 +439,12 @@ func resolvesTo(paths []string, p string) bool {
 // The slice is the index's own: callers must not modify it. A nil
 // index returns nil.
 func (idx *WikilinkIndex) NamePaths(key string) []string {
-	if idx == nil {
-		return nil
+	for ; idx != nil; idx = idx.base {
+		if paths, ok := idx.names[key]; ok || idx.base == nil {
+			return paths
+		}
 	}
-	return idx.names[key]
+	return nil
 }
 
 // WikilinkIndexed reports whether NewWikilinkIndex's walk prunes no
