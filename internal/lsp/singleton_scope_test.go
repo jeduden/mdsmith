@@ -3,7 +3,6 @@ package lsp
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -127,10 +126,33 @@ func TestSingletonNoScopeNeverClaims(t *testing.T) {
 		"a scope-less server must never be superseded")
 	assert.NotContains(t, plugin.out.String(), "mdsmith/superseded")
 
-	entries, err := os.ReadDir(dir)
-	require.NoError(t, err)
-	require.Len(t, entries, 1, "only the scoped key has an owner record")
-	assert.Equal(t, workspaceKey("/work/space", "ws-uuid")+".owner", entries[0].Name())
-	assert.Empty(t, reg.current(workspaceKey("/work/space", "")),
-		"no owner is ever written under the scope-less (legacy) key")
+	assert.Equal(t, laterVSCode.srv.instanceID, reg.current(workspaceKey("/work/space", "")),
+		"only scoped servers write the legacy root-only record; the scope-less one never does")
+}
+
+// The first upgrade from a root-only build: the leaked host's old
+// server polls the legacy sha256(root) record. A scoped server writes
+// its id there once at claim, so that orphan sees a new owner and
+// exits, while the scoped server itself never watches the legacy key.
+func TestSingletonScopedClaimReapsLegacyRootOnlyOrphan(t *testing.T) {
+	t.Parallel()
+	reg := fileRegistry{dir: t.TempDir()}
+	legacy := workspaceKey("/work/space", "")
+	require.NoError(t, reg.claim(legacy, "old-binary"))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	oldExited := make(chan struct{})
+	go watchSingleton(ctx, legacy, "old-binary", time.Millisecond, reg.current, func() { close(oldExited) })
+
+	scoped := newScopedServer(t, reg)
+	scoped.initialize("ws-uuid")
+
+	select {
+	case <-oldExited:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the root-only orphan must see a new legacy owner and step aside")
+	}
+	require.NoError(t, reg.claim(legacy, "another-old-binary"))
+	assert.False(t, scoped.superseded(30*time.Millisecond),
+		"the scoped server must not watch the legacy key")
 }

@@ -176,16 +176,18 @@ sends one has opted in by definition.
 
 The key format changes from `sha256(root)` to
 `sha256(root + "\x00" + scope)`. An empty scope reproduces the
-old key byte for byte. But a no-token server never claims, so it
-never reads or writes that record. An older root-only binary
-still claims the legacy key and still contends with other older
-binaries. A new no-token server just runs alongside it. Only the
-VS Code (now UUID-keyed) path moves to a new key.
+old key byte for byte. A no-token server never claims, so it
+never reads or writes that record. A scoped server writes its id
+to the legacy record once at claim and never watches it. An
+older root-only binary polling that record then sees a new owner
+and steps aside, exactly as before scopes. Only the VS Code (now
+UUID-keyed) path watches a new key.
 
-Old `.owner` records written under the legacy root-only key are
-not migrated. They are tiny files in the user cache dir, and
-nothing reads them once VS Code keys by UUID. They are harmless;
-the plan does not add a prune.
+Keys are now per root and scope, and a scope changes whenever
+`workspaceState` is cleared or its write fails. So every claim
+prunes `.owner` records (and leftover claim temp files) older
+than 30 days. A pruned record of a live server reads as "no
+owner", which the watcher treats as "still ours".
 
 ### Rollout
 
@@ -202,11 +204,9 @@ handle normal exits. The real cost is: for the override case
 only, the "Two mdsmith servers running" note can recur until the
 extension updates.
 
-The first update from a pre-scope build is a one-time gap too.
-The leaked host still runs the old binary, which watches the
-legacy root-only key. The new server claims the UUID key, so it
-never reaps that orphan. Killing the old extension host once
-clears it, as the troubleshooting note says.
+The first update from a pre-scope build is covered. The leaked
+host still runs the old binary. That binary watches the old
+key. The new server writes that key once, so the old one exits.
 
 ### Documentation
 
@@ -278,6 +278,10 @@ short. Room comes from re-wrapping its narrow prose paragraphs to
       from the pre-existing empty-root guard.
 - [x] There is exactly one key function; an empty scope yields
       the legacy root-only key (a unit test pins this).
+- [x] A scoped claim writes the legacy root-only record once
+      and never watches it, so a pre-scope orphan exits on the
+      first upgrade.
+- [x] A claim prunes registry records older than 30 days.
 - [x] The VS Code extension sends
       `initializationOptions.mdsmith.singletonScope` = a UUID it
       persists in `workspaceState`; a `bun:test` asserts the

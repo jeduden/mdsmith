@@ -109,6 +109,15 @@ func (s *Server) startSingletonWatch(root, scope string) {
 			s.logger.Printf("lsp: workspace singleton claim failed: %v", err)
 			return
 		}
+		// Also take the legacy root-only record once, never watching it.
+		// An older root-only binary (the leaked host on the first upgrade
+		// to a scoped build) polls that record and steps aside when it
+		// sees a new owner, exactly as it did before scopes. A no-token
+		// server never writes it, so new clients without a scope still
+		// coexist with everything.
+		if err := s.singletonClaim(workspaceKey(root, ""), s.instanceID); err != nil {
+			s.logger.Printf("lsp: legacy workspace singleton claim failed: %v", err)
+		}
 		go watchSingleton(s.runCtx, key, s.instanceID, s.singletonInterval, s.singletonCurrent, func() {
 			s.logger.Printf("lsp: superseded by a newer server for this workspace; exiting")
 			s.shutdown.Store(true)
@@ -140,10 +149,10 @@ type supersededParams struct {
 // turns a NUL-bearing scope into the opt-out, so none reaches here and
 // a NUL-free root cannot be split two ways. An empty scope
 // hashes the cleaned root alone — the legacy root-only key, byte for
-// byte — so there is one derivation, not two. startSingletonWatch never
-// claims with an empty scope, so that branch pins the format only: a
-// no-token server neither reads nor writes the legacy record an older
-// root-only binary may still use, and the two simply coexist.
+// byte — so there is one derivation, not two. startSingletonWatch uses
+// that legacy key only for a scoped server's one-shot write that steps
+// an older root-only binary aside; it never watches it, and a no-token
+// server neither reads nor writes it.
 func workspaceKey(root, scope string) string {
 	h := sha256.New()
 	_, _ = io.WriteString(h, filepath.Clean(root))
@@ -185,6 +194,13 @@ func defaultRegistry() fileRegistry {
 	return fileRegistry{dir: filepath.Join(base, "mdsmith", "lsp-singleton")}
 }
 
+// singletonRecordMaxAge is how long an owner record may go unwritten
+// before a claim prunes it. Each record is written only at claim time,
+// so the age is time since its owner started. A pruned record of a
+// still-running server reads as "no owner", which watchSingleton treats
+// as "still ours", so pruning never reaps a live server.
+const singletonRecordMaxAge = 30 * 24 * time.Hour
+
 func (r fileRegistry) path(key string) string {
 	return filepath.Join(r.dir, key+".owner")
 }
@@ -209,7 +225,35 @@ func (r fileRegistry) claim(key, id string) error {
 		_ = os.Remove(tmp)
 		return err
 	}
+	pruneStaleRecords(r.dir, r.path(key), time.Now().Add(-singletonRecordMaxAge))
 	return nil
+}
+
+// pruneStaleRecords removes owner records (and leftover claim temp
+// files) in dir last modified before cutoff, keeping the path keep.
+// Keys are per root and scope, and a scope can change on every
+// activation, so without this the directory would grow without bound.
+// It is best effort: any error just leaves the entry in place.
+func pruneStaleRecords(dir, keep string, cutoff time.Time) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || (!strings.HasSuffix(name, ".owner") && !strings.HasSuffix(name, ".tmp")) {
+			continue
+		}
+		p := filepath.Join(dir, name)
+		if p == keep {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		_ = os.Remove(p)
+	}
 }
 
 // current returns the instance id currently recorded for key, or "" if

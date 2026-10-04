@@ -175,7 +175,9 @@ func TestStartSingletonWatchSupersedesAndNotifies(t *testing.T) {
 	s.singletonInterval = time.Millisecond
 	var claimedKey, claimedID string
 	s.singletonClaim = func(key, id string) error {
-		claimedKey, claimedID = key, id
+		if claimedKey == "" {
+			claimedKey, claimedID = key, id
+		}
 		return nil
 	}
 	s.singletonCurrent = func(string) string { return "newer-instance" }
@@ -196,6 +198,40 @@ func TestStartSingletonWatchSupersedesAndNotifies(t *testing.T) {
 		"must notify the editor before exiting so its client does not restart us")
 	assert.Contains(t, buf.String(), `"reason":"superseded"`,
 		"must serialize the superseded reason payload the supersededParams struct declares")
+}
+
+// A failed legacy write is logged and ignored: the scoped claim
+// already succeeded, so the watcher still runs on the scoped key.
+func TestStartSingletonWatchIgnoresLegacyClaimFailure(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
+	s.instanceID = "me"
+	s.singletonInterval = time.Millisecond
+	scoped := workspaceKey("/work/space", "scope")
+	s.singletonClaim = func(key, _ string) error {
+		if key != scoped {
+			return io.ErrClosedPipe
+		}
+		return nil
+	}
+	watched := make(chan string, 1)
+	s.singletonCurrent = func(key string) string {
+		select {
+		case watched <- key:
+		default:
+		}
+		return "me"
+	}
+	s.startSingletonWatch("/work/space", "scope")
+	select {
+	case key := <-watched:
+		assert.Equal(t, scoped, key, "the watcher polls the scoped key only")
+	case <-time.After(2 * time.Second):
+		t.Fatal("a failed legacy write must not stop the scoped watcher")
+	}
 }
 
 func TestStartSingletonWatchNoopWithoutClaimSeam(t *testing.T) {
@@ -219,9 +255,9 @@ func TestStartSingletonWatchClaimsOnlyOnce(t *testing.T) {
 	s.runCtx = ctx
 	s.instanceID = "me"
 	s.singletonInterval = time.Hour // keep the watcher idle
-	var claims int
-	s.singletonClaim = func(string, string) error {
-		claims++
+	var claims []string
+	s.singletonClaim = func(key, _ string) error {
+		claims = append(claims, key)
 		return nil
 	}
 	s.singletonCurrent = func(string) string { return "me" }
@@ -229,7 +265,8 @@ func TestStartSingletonWatchClaimsOnlyOnce(t *testing.T) {
 	s.startSingletonWatch("/work/space", "scope")
 	s.startSingletonWatch("/work/space", "scope") // a stray re-initialize must not re-claim
 	s.startSingletonWatch("/other", "scope")      // nor one with a different root
-	assert.Equal(t, 1, claims, "claim is guarded by the watch Once, so it runs exactly once")
+	assert.Equal(t, []string{workspaceKey("/work/space", "scope"), workspaceKey("/work/space", "")}, claims,
+		"claim is guarded by the watch Once: the scoped key, then the legacy key, exactly once")
 }
 
 func TestNewDefaultOnSupersededExitCallsOsExit(t *testing.T) {
@@ -276,7 +313,9 @@ func TestHandleInitializeClaimsWorkspaceSingleton(t *testing.T) {
 	s.singletonInterval = time.Hour // keep the watcher idle for the test
 	var claimedKey, claimedID string
 	s.singletonClaim = func(key, id string) error {
-		claimedKey, claimedID = key, id
+		if claimedKey == "" {
+			claimedKey, claimedID = key, id
+		}
 		return nil
 	}
 	s.singletonCurrent = func(string) string { return "me" }
@@ -456,6 +495,53 @@ func TestFileRegistryClaimRemovesTempOnRenameFailure(t *testing.T) {
 	assert.Error(t, r.claim("k", "id"))
 	_, statErr := os.Stat(r.path("k") + "." + "id" + ".tmp")
 	assert.True(t, os.IsNotExist(statErr), "a failed claim must not leave its temp file behind")
+}
+
+func TestFileRegistryClaimPrunesStaleRecords(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	r := fileRegistry{dir: dir}
+	old := time.Now().Add(-2 * singletonRecordMaxAge)
+	stale := filepath.Join(dir, "stale.owner")
+	require.NoError(t, os.WriteFile(stale, []byte("x"), 0o600))
+	require.NoError(t, os.Chtimes(stale, old, old))
+	fresh := filepath.Join(dir, "fresh.owner")
+	require.NoError(t, os.WriteFile(fresh, []byte("y"), 0o600))
+
+	require.NoError(t, r.claim("mine", "me"))
+
+	assert.NoFileExists(t, stale, "a record untouched past the max age must be pruned on claim")
+	assert.FileExists(t, fresh, "a recent record belongs to a live server and must stay")
+	assert.Equal(t, "me", r.current("mine"))
+}
+
+func TestPruneStaleRecords(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	old := now.Add(-2 * time.Hour)
+	write := func(name string, mtime time.Time) string {
+		p := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(p, []byte("x"), 0o600))
+		require.NoError(t, os.Chtimes(p, mtime, mtime))
+		return p
+	}
+	staleOwner := write("a.owner", old)
+	staleTmp := write("a.owner.id.tmp", old)
+	keep := write("k.owner", old)
+	freshOwner := write("b.owner", now)
+	foreign := write("notes.txt", old)
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "d.owner"), 0o755))
+
+	pruneStaleRecords(dir, keep, now.Add(-time.Hour))
+
+	assert.NoFileExists(t, staleOwner)
+	assert.NoFileExists(t, staleTmp)
+	assert.FileExists(t, keep, "the record just claimed is never pruned")
+	assert.FileExists(t, freshOwner)
+	assert.FileExists(t, foreign, "only registry records are pruned")
+	assert.DirExists(t, filepath.Join(dir, "d.owner"), "directories are left alone")
+	pruneStaleRecords(filepath.Join(dir, "missing"), "", now) // an unreadable dir is a no-op
 }
 
 func TestFileRegistryCurrentEmptyWhenNotReadable(t *testing.T) {
