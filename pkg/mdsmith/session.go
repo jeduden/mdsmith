@@ -17,6 +17,7 @@ import (
 	"hash/fnv"
 	"math"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/jeduden/mdsmith/internal/bytelimit"
@@ -389,6 +390,24 @@ func (s *Session) fixRules() []rule.Rule {
 	return rule.CloneInstances(s.rules)
 }
 
+// cloneNamed is fixRules for a fix that runs only the rules named in
+// names (FixRule): those get a private copy, and every other rule is
+// passed through as the shared instance. The fix path only reads an
+// unnamed rule — its name and category, and its settings when it is
+// configured — and never runs it, so sharing it is as safe as Check's
+// per-worker clone reading it, and a quick-fix does not copy the whole
+// rule set to run one rule.
+func cloneNamed(rules []rule.Rule, names []string) []rule.Rule {
+	out := make([]rule.Rule, len(rules))
+	for i, rl := range rules {
+		out[i] = rl
+		if slices.Contains(names, rl.Name()) {
+			out[i] = rule.CloneInstance(rl)
+		}
+	}
+	return out
+}
+
 // FixRule applies only the named fixable rules to source and returns
 // the rewritten bytes plus a Changed flag. It is the LSP per-rule
 // quick-fix entry point (today's fix.SourceWithRules): a lightbulb that
@@ -402,7 +421,7 @@ func (s *Session) fixRules() []rule.Rule {
 func (s *Session) FixRule(uri string, source []byte, names []string) (FixResult, error) {
 	fixed, err := fixpkg.SourceWithRules(fixpkg.SourceOptions{
 		Config:           s.cfg,
-		Rules:            s.fixRules(),
+		Rules:            cloneNamed(s.rules, names),
 		Path:             uri,
 		Source:           source,
 		RootDir:          s.rootDir,

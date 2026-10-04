@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,4 +39,29 @@ func TestSessionFixConcurrentWithCheckIsRaceFree(t *testing.T) {
 		}
 	}
 	wg.Wait()
+}
+
+// FixRule runs Fix only on the named rules, so only those need a
+// private copy: cloneNamed copies them and passes every other rule
+// through as the shared instance, which the fix path only reads (its
+// name, category and settings) and never runs.
+func TestCloneNamedCopiesOnlyNamedRules(t *testing.T) {
+	s, err := NewSession(SessionOptions{Workspace: NewMemWorkspace(nil), Config: ConfigYAML("")})
+	require.NoError(t, err)
+	defer s.Dispose()
+
+	got := cloneNamed(s.rules, []string{"include", "line-length"})
+	require.Len(t, got, len(s.rules))
+	cloned := 0
+	for i, rl := range got {
+		switch rl.Name() {
+		case "include", "line-length":
+			assert.NotSame(t, s.rules[i], rl, rl.Name())
+			assert.Equal(t, s.rules[i], rl, rl.Name())
+			cloned++
+		default:
+			assert.Same(t, s.rules[i], rl, rl.Name())
+		}
+	}
+	assert.Equal(t, 2, cloned)
 }
