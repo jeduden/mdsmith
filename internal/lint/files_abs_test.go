@@ -77,3 +77,25 @@ func TestResolveFilesResolvesWorkingDirectoryOnce(t *testing.T) {
 	assert.Len(t, files, 20)
 	assert.LessOrEqual(t, calls, 4, "working directory looked up per file")
 }
+
+// TestResolveFilesRelativePathWithoutWorkingDirectory covers a relative
+// argument whose working directory cannot be resolved: the file is still
+// listed, deduplicated by its given spelling.
+func TestResolveFilesRelativePathWithoutWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a.md"), []byte("# A\n"), 0o644))
+	t.Chdir(root)
+
+	orig := getwdFn
+	getwdFn = func() (string, error) { return "", errors.New("no cwd") }
+	t.Cleanup(func() { getwdFn = orig })
+
+	files, err := ResolveFilesWithOpts([]string{"a.md", "a.md"}, DefaultResolveOpts())
+	require.NoError(t, err)
+	assert.Equal(t, []string{"a.md"}, files)
+}
+
+func TestAbsWithCwd_EmptyPathIsCwd(t *testing.T) {
+	cwd := t.TempDir()
+	assert.Equal(t, filepath.Clean(cwd), absWithCwd("", cwd))
+}
