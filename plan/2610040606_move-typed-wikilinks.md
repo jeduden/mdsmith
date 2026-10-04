@@ -64,7 +64,7 @@ the batch case needs a client that sends other files.
 - [x] Moving `img.png` to `pics/img.png` rewrites
       `[[img.png]]` only when it reached `img.png` before
       the move.
-- [ ] A batch that shadows `img.png` counts each typed
+- [x] A batch that shadows `img.png` counts each typed
       `[[img.png]]` link in `Withheld`.
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues

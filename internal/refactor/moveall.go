@@ -51,10 +51,8 @@ type BatchMove struct {
 // member to a planned member that stops resolving, a `[[stem]]` whose
 // new key another member's destination wins, a `[[stem]]` left as
 // written that another member's destination takes (see stolen), and
-// every path link and `[[stem]]` link to a shadowed path (see
-// countShadowed). A typed `[[name.ext]]` link to a shadowed
-// non-Markdown file is not counted: the index has no edge lookup for
-// it (plan 2610040606).
+// every path link, `[[stem]]` link, and typed `[[name.ext]]` link to
+// a shadowed path (see countShadowed).
 type BatchPlan struct {
 	Plan
 	Moves    []BatchMove
@@ -84,8 +82,8 @@ type BatchPlan struct {
 // stops resolving after the batch. A link inside it to a file the
 // batch leaves in place is not counted: MDS027 flags it if it stops
 // resolving. When a planned member lands on its path, every path link
-// and `[[stem]]` link to it counts too (see countShadowed): it then
-// reaches the newcomer.
+// and wikilink to it counts too (see countShadowed): it then reaches
+// the newcomer.
 //
 // Move is MoveAll with one pair.
 func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
@@ -113,28 +111,29 @@ func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
 	return bp
 }
 
-// countShadowed counts, in the batch, every `[[stem]]` link to
-// vacated: a member whose move was refused, whose path a planned
-// member takes (moveBatch.shadowed). The host still moves vacated, so
-// each link to it then reaches the newcomer; it still resolves, so no
-// rule flags it, and the batch plans no edit for it. A `[[stem]]` link
-// is counted when its stem reaches vacated today. A path link to it is
-// counted in the referrer scan (see appendReferrerEdits), or, in a
-// planned member, by its outbound pass (see outboundEdit), so the
-// workspace is still read once.
+// countShadowed counts, in the batch, every wikilink to vacated: a
+// member whose move was refused, whose path a planned member takes
+// (moveBatch.shadowed). The host still moves vacated, so each link to
+// it then reaches the newcomer; it still resolves, so no rule flags
+// it, and the batch plans no edit for it. A wikilink is counted when
+// its key reaches vacated today: a `[[stem]]` link for a Markdown
+// file, a typed `[[name.ext]]` link for any other (see wikilinkKey). A
+// path link to it is counted in the referrer scan (see
+// appendReferrerEdits), or, in a planned member, by its outbound pass
+// (see outboundEdit), so the workspace is still read once.
 func countShadowed(ws MoveWorkspace, r *destResolver, vacated string) {
-	stem, ok := linkgraph.FileStemKey(path.Base(vacated))
-	if !ok || !linkgraph.WikilinkIndexed(vacated) {
+	if !linkgraph.WikilinkIndexed(vacated) {
 		return
 	}
-	edges := ws.IncomingWikilinkEdges(stem)
-	if len(edges) == 0 || !r.wikilinkIndex().StemResolvesTo(stem, vacated) {
+	k := fileWikilinkKey(vacated)
+	edges := k.edges(ws)
+	if len(edges) == 0 || !k.resolvesTo(r.wikilinkIndex(), vacated) {
 		return
 	}
 	lines := r.edgeReader()
 	for _, e := range edges {
 		if _, row, ok := lines.row(e); ok {
-			if got, _, _, ok := linkgraph.WikilinkStemAt(row, e.SourceCol-1); ok && got == stem {
+			if _, _, ok := k.at(row, e.SourceCol-1); ok {
 				r.batch.withheld++
 			}
 		}

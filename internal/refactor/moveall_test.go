@@ -851,12 +851,16 @@ func TestValidateBatch_Shadowed(t *testing.T) {
 // TestMoveAll_ShadowedWithoutStem covers a shadowed file that no
 // `[[stem]]` link can name: a non-Markdown file, and a Markdown file
 // under a directory the wikilink index skips. Its path links are
-// still counted, by the referrer scan. A typed `[[img.png]]` link is
-// not counted yet, though it reaches the newcomer (plan 2610040606).
+// still counted, by the referrer scan. A typed `[[img.png]]` link
+// reaches the newcomer too and is counted beside it; the skipped
+// Markdown file's `[[b.md]]` never reached it and is not.
 func TestMoveAll_ShadowedWithoutStem(t *testing.T) {
-	for _, tc := range []struct{ old, taken, newcomer string }{
-		{"img.png", "img2.png", "a.png"},
-		{"node_modules/b.md", "node_modules/c.md", "node_modules/a.md"},
+	for _, tc := range []struct {
+		old, taken, newcomer string
+		withheld             int
+	}{
+		{"img.png", "img2.png", "a.png", 2},
+		{"node_modules/b.md", "node_modules/c.md", "node_modules/a.md", 1},
 	} {
 		t.Run(tc.old, func(t *testing.T) {
 			bp := MoveAll(newMemWorkspace(map[string]string{
@@ -867,7 +871,7 @@ func TestMoveAll_ShadowedWithoutStem(t *testing.T) {
 			}), []MovePair{{tc.old, tc.taken}, {tc.newcomer, tc.old}})
 			assert.Equal(t, DestinationExistsError{Dst: tc.taken}, bp.Moves[0].Err)
 			require.NoError(t, bp.Moves[1].Err)
-			assert.Equal(t, 1, bp.Withheld)
+			assert.Equal(t, tc.withheld, bp.Withheld)
 		})
 	}
 }
@@ -912,12 +916,14 @@ func TestCountShadowed(t *testing.T) {
 		"x/c.md":  "# C\n",
 		"c.md":    "# C\n",
 		"img.png": "png",
-		"n.md":    "# N\n\n[[b]] [[x/b]] [[c]]\n",
+		"x/a.png": "png",
+		"n.md":    "# N\n\n[[b]] [[x/b]] [[c]] ![[img.png]] [[a.png]]\n",
 	})
 	for vacated, want := range map[string]int{
 		"b.md":    2, // wins `b`: both `[[b]]` links are counted
 		"x/c.md":  0, // c.md wins `c`
-		"img.png": 0, // no stem key
+		"img.png": 1, // wins the name `img.png`
+		"x/a.png": 1, // the only `a.png`
 		"q.md":    0, // no `[[q]]` link
 	} {
 		r := &destResolver{ws: ws, batch: newMoveBatch()}
