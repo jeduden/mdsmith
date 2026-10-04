@@ -62,3 +62,24 @@ func TestPruneStaleSkipsWorldWritableParent(t *testing.T) {
 type fakeInfo struct{ os.FileInfo }
 
 func (fakeInfo) Sys() any { return nil }
+
+// A registry dir that passes the safety check but cannot be listed
+// leaves prune a no-op rather than an error.
+func TestPruneStaleToleratesUnreadableRegistryDir(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any directory")
+	}
+	dir := filepath.Join(t.TempDir(), "lsp-singleton")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	p := filepath.Join(dir, "x.owner")
+	writeStale(t, p)
+	require.NoError(t, os.Chmod(dir, 0o300))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	assert.NotPanics(t, func() {
+		pruneStale(dir, "pruner", time.Now().Add(-time.Hour))
+	})
+	require.NoError(t, os.Chmod(dir, 0o700))
+	assert.FileExists(t, p)
+}

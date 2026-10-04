@@ -111,3 +111,22 @@ func TestPruneStaleRestoresNonRegularQuarantine(t *testing.T) {
 
 	assert.DirExists(t, p, "the non-regular quarantine is moved back, not removed")
 }
+
+// A directory whose name looks like a record is not a record: prune
+// leaves it, and what is inside it, alone.
+func TestPruneStaleSkipsDirectoryNamedLikeRecord(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "lsp-singleton")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+	sub := filepath.Join(dir, "x.owner")
+	require.NoError(t, os.Mkdir(sub, 0o700))
+	inner := filepath.Join(sub, "y.owner")
+	writeStale(t, inner)
+	old := time.Now().Add(-2 * time.Hour)
+	require.NoError(t, os.Chtimes(sub, old, old))
+
+	pruneStale(dir, "pruner", time.Now().Add(-time.Hour))
+
+	assert.DirExists(t, sub)
+	assert.FileExists(t, inner)
+}
