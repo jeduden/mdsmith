@@ -228,7 +228,7 @@ the same workspace is unaffected.
    ([server_lifecycle.go](../internal/lsp/server_lifecycle.go)).
    Drive the new empty-scope no-op red/green, distinct from the
    existing empty-root / empty-instanceID guard.
-4. [ ] VS Code: generate a UUID once and persist it in
+4. [x] VS Code: generate a UUID once and persist it in
    `context.workspaceState`; send it as
    `initializationOptions.mdsmith.singletonScope`
    ([extension.ts](../editors/vscode/src/extension.ts) /
@@ -260,7 +260,7 @@ the same workspace is unaffected.
       from the pre-existing empty-root guard.
 - [x] There is exactly one key function; an empty scope yields
       the legacy root-only key (a unit test pins this).
-- [ ] The VS Code extension sends
+- [x] The VS Code extension sends
       `initializationOptions.mdsmith.singletonScope` = a UUID it
       persists in `workspaceState`; a `bun:test` asserts the
       token is sent and is stable across activations.

@@ -17,6 +17,8 @@ const TransportKindStdio = 0;
 
 import {
   buildClientOptions,
+  ensureSingletonScope,
+  SINGLETON_SCOPE_KEY,
   buildServerOptions,
   decideClose,
   forwardMdsmithConfigChange,
@@ -123,6 +125,74 @@ describe("buildClientOptions", () => {
     const opts = buildClientOptions(watcher, channel);
     expect(opts.outputChannel as unknown).toBe(channel as unknown);
     expect(opts.outputChannelName).toBeUndefined();
+  });
+
+  test("sends the singleton scope under initializationOptions.mdsmith", () => {
+    const opts = buildClientOptions({}, undefined, "ws-uuid");
+    expect(opts.initializationOptions).toEqual({ mdsmith: { singletonScope: "ws-uuid" } });
+  });
+
+  test("omits initializationOptions without a singleton scope", () => {
+    // No scope means the server's workspace singleton stays off for
+    // this client; sending an empty object would be noise.
+    expect(buildClientOptions({}).initializationOptions).toBeUndefined();
+    expect(buildClientOptions({}, undefined, "").initializationOptions).toBeUndefined();
+  });
+});
+
+// FakeMemento stands in for vscode.ExtensionContext.workspaceState: a
+// key/value store VS Code persists to disk per workspace. Sharing one
+// instance across two Wiring activations models an extension reload or
+// update reading the same stored state back.
+class FakeMemento {
+  readonly values = new Map<string, unknown>();
+  updates = 0;
+  updateRejection: Error | undefined;
+  get<T>(key: string): T | undefined {
+    return this.values.get(key) as T | undefined;
+  }
+  async update(key: string, value: unknown): Promise<void> {
+    this.updates++;
+    if (this.updateRejection) throw this.updateRejection;
+    this.values.set(key, value);
+  }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+describe("ensureSingletonScope", () => {
+  test("generates a UUID once and persists it in workspaceState", async () => {
+    const state = new FakeMemento();
+    const id = await ensureSingletonScope(state);
+    expect(id).toMatch(UUID_RE);
+    expect(state.get<string>(SINGLETON_SCOPE_KEY)).toBe(id);
+    expect(state.updates).toBe(1);
+  });
+
+  test("reuses the stored id without rewriting it", async () => {
+    const state = new FakeMemento();
+    state.values.set(SINGLETON_SCOPE_KEY, "stored-id");
+    expect(await ensureSingletonScope(state)).toBe("stored-id");
+    expect(await ensureSingletonScope(state)).toBe("stored-id");
+    expect(state.updates).toBe(0);
+  });
+
+  test("replaces a stored value that is not a non-empty string", async () => {
+    for (const bad of ["", 42, null, { id: "x" }]) {
+      const state = new FakeMemento();
+      state.values.set(SINGLETON_SCOPE_KEY, bad);
+      const id = await ensureSingletonScope(state);
+      expect(id).toMatch(UUID_RE);
+      expect(state.get<string>(SINGLETON_SCOPE_KEY)).toBe(id);
+    }
+  });
+
+  test("still returns a fresh id when persisting it fails", async () => {
+    // A failed write must not block the server start; the id then only
+    // lasts this activation, so the server still starts singleton-scoped.
+    const state = new FakeMemento();
+    state.updateRejection = new Error("disk full");
+    expect(await ensureSingletonScope(state)).toMatch(UUID_RE);
   });
 });
 
@@ -484,6 +554,7 @@ class FakeClient {
 interface ClientOptionsCapture {
   errorHandler?: { closed(): { action: number }; markSuperseded?(): void };
   middleware?: { provideHover?: unknown };
+  initializationOptions?: { mdsmith?: { singletonScope?: string } };
 }
 
 // makeFakeApi builds a minimal stand-in for the `vscode` namespace
@@ -585,9 +656,14 @@ function makeFakeApi(overrides?: {
 }
 
 // makeContext builds a fake ExtensionContext exposing only the
-// subscriptions array and extensionPath the Wiring class uses.
-function makeContext(): { subscriptions: Array<{ dispose(): void }>; extensionPath: string } {
-  return { subscriptions: [], extensionPath: "/ext" };
+// subscriptions array, extensionPath, and workspaceState the Wiring
+// class uses. Pass a shared memento to model a reload of one workspace.
+function makeContext(workspaceState: FakeMemento = new FakeMemento()): {
+  subscriptions: Array<{ dispose(): void }>;
+  extensionPath: string;
+  workspaceState: FakeMemento;
+} {
+  return { subscriptions: [], extensionPath: "/ext", workspaceState };
 }
 
 // makeWiring constructs a Wiring with a fake api and a createClient
@@ -713,6 +789,42 @@ describe("Wiring LSP client lifecycle", () => {
     expect(opts.errorHandler).toBeDefined();
     expect(typeof opts.errorHandler?.closed).toBe("function");
     expect(opts.middleware?.provideHover).toBeDefined();
+  });
+
+  test("sends a persisted per-workspace UUID as the singleton scope", async () => {
+    const { wiring, lastClient } = makeWiring();
+    const ctx = makeContext();
+    await wiring.activate(ctx);
+    const scope = lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope;
+    expect(scope).toMatch(UUID_RE);
+    expect(ctx.workspaceState.get<string>(SINGLETON_SCOPE_KEY)).toBe(scope);
+  });
+
+  test("keeps the singleton scope stable across activations of one workspace", async () => {
+    // The VS Code upgrade hand-off: the leaked host and the fresh host
+    // read the same workspaceState from disk, so their servers share one
+    // owner record and the newest wins. Two Wiring activations over one
+    // memento model that.
+    const state = new FakeMemento();
+    const first = makeWiring();
+    await first.wiring.activate(makeContext(state));
+    const second = makeWiring();
+    await second.wiring.activate(makeContext(state));
+    const a = first.lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope;
+    const b = second.lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope;
+    expect(a).toMatch(UUID_RE);
+    expect(b).toBe(a);
+  });
+
+  test("restartServer reuses the singleton scope", async () => {
+    const { wiring, clients } = makeWiring();
+    const ctx = makeContext();
+    await wiring.activate(ctx);
+    await wiring.restartServer(ctx);
+    const a = clients[0].clientOptions.initializationOptions?.mdsmith?.singletonScope;
+    const b = clients[1].clientOptions.initializationOptions?.mdsmith?.singletonScope;
+    expect(a).toMatch(UUID_RE);
+    expect(b).toBe(a);
   });
 
   test("restartServer stops the old client and starts a fresh one", async () => {

@@ -19,6 +19,8 @@ import type {
   TransportKind
 } from "vscode-languageclient/node";
 
+import { randomUUID } from "node:crypto";
+
 import type { BinaryCandidate } from "./binary";
 import { resolveBinary as resolveBinaryImpl, findBinaryCandidates as findBinaryCandidatesImpl } from "./binary";
 import { MdsmithErrorHandler } from "./commands/error-handler";
@@ -93,7 +95,8 @@ export interface OutputChannelLike {
 
 export function buildClientOptions(
   configWatcher: FileSystemWatcherLike,
-  outputChannel?: OutputChannelLike
+  outputChannel?: OutputChannelLike,
+  singletonScope?: string
 ): LanguageClientOptions {
   const opts: LanguageClientOptions = {
     documentSelector: [
@@ -105,6 +108,14 @@ export function buildClientOptions(
       fileEvents: configWatcher as never
     }
   };
+  if (singletonScope) {
+    // Opt this client into the server's newest-wins workspace
+    // singleton. The server keys its owner record on the workspace root
+    // plus this token, so only servers sharing the token (a leaked
+    // extension host's orphan and its fresh respawn) supersede each
+    // other; other clients on the workspace send no token and coexist.
+    opts.initializationOptions = { mdsmith: { singletonScope } };
+  }
   if (outputChannel) {
     // Sharing one OutputChannel between palette commands and the LSP
     // client avoids two channels with the same name once the client
@@ -394,11 +405,47 @@ export interface WiringDeps {
   stdioTransport?: TransportKind;
 }
 
+// MementoLike is the slice of vscode.Memento (ExtensionContext.
+// workspaceState) that ensureSingletonScope reads and writes.
+export interface MementoLike {
+  get<T>(key: string): T | undefined;
+  update(key: string, value: unknown): Thenable<void>;
+}
+
 // ExtensionContextLike is the slice of vscode.ExtensionContext that
-// Wiring consumes: the disposables array and the extension install path.
+// Wiring consumes: the disposables array, the extension install path,
+// and the per-workspace state that holds the singleton scope.
 export interface ExtensionContextLike {
   subscriptions: Array<{ dispose(): void }>;
   extensionPath: string;
+  workspaceState: MementoLike;
+}
+
+// SINGLETON_SCOPE_KEY is the workspaceState key holding this
+// workspace's singleton scope id.
+export const SINGLETON_SCOPE_KEY = "mdsmith.singletonScope";
+
+// ensureSingletonScope returns this workspace's singleton scope: a UUID
+// generated once and persisted in workspaceState. VS Code writes that
+// store to disk and reads it back unchanged after a reload or update,
+// so a leaked extension host and its fresh replacement send the same
+// token and their servers contend for one owner record — newest wins.
+// vscode.env.sessionId is not used: it is per extension-host process
+// and may differ between the two hosts, which would silently stop the
+// orphan from being reaped. A failed write still returns the fresh id;
+// the server then stays scoped for this activation only.
+export async function ensureSingletonScope(state: MementoLike): Promise<string> {
+  const stored = state.get<unknown>(SINGLETON_SCOPE_KEY);
+  if (typeof stored === "string" && stored !== "") {
+    return stored;
+  }
+  const id = randomUUID();
+  try {
+    await state.update(SINGLETON_SCOPE_KEY, id);
+  } catch {
+    // Best effort; see the doc comment.
+  }
+  return id;
 }
 
 // DidChangeConfigurationNotificationType is the notification id Wiring
@@ -498,7 +545,8 @@ export class Wiring {
     this.disposeConfigWatcher();
     this.configWatcher = this.api.workspace.createFileSystemWatcher("**/.mdsmith.yml");
     context.subscriptions.push(this.configWatcher);
-    const clientOptions = buildClientOptions(this.configWatcher, this.getOutputChannel());
+    const singletonScope = await ensureSingletonScope(context.workspaceState);
+    const clientOptions = buildClientOptions(this.configWatcher, this.getOutputChannel(), singletonScope);
     // Replace the default ErrorHandler (DoNotRestart after 5 close
     // events in 3 minutes) with one that gives the user a clear recovery
     // path. We let the client keep restarting up to a higher per-window
