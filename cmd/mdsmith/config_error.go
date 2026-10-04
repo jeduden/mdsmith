@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,12 +18,11 @@ import (
 // jump to the offending value; any other error keeps the plain
 // `mdsmith: <error>` line. The caller still exits 2.
 func printConfigError(w io.Writer, err error) {
-	var le *config.LoadError
-	if !errors.As(err, &le) || !le.Positioned() || le.File == "" {
+	d, ok := config.PositionedDiagnostic(err)
+	if !ok {
 		_, _ = fmt.Fprintf(w, "mdsmith: %v\n", err)
 		return
 	}
-	d := le.Diagnostic()
 	d.File = displayPath(d.File)
 	f := &output.TextFormatter{}
 	_ = f.Format(w, []lint.Diagnostic{d}) // best-effort write to stderr

@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"errors"
 	"path/filepath"
 	"strings"
 
@@ -12,11 +11,10 @@ import (
 // configLoadDiagnostic returns the diagnostic for a config load failure
 // that carries a position in a config file, or nil when err has none.
 func configLoadDiagnostic(err error) *lint.Diagnostic {
-	var le *config.LoadError
-	if !errors.As(err, &le) || !le.Positioned() || le.File == "" {
+	d, ok := config.PositionedDiagnostic(err)
+	if !ok {
 		return nil
 	}
-	d := le.Diagnostic()
 	return &d
 }
 
@@ -128,23 +126,16 @@ func (s *Server) isWatchedConfigChange(path string) bool {
 		return true
 	}
 	root = filepath.Clean(root)
-	return isDirOrAncestor(owner, root) || isDirOrAncestor(resolveDir(owner), resolveDir(root))
-}
-
-// resolveDir returns dir with symlinks resolved, or dir unchanged when
-// it cannot be resolved (it was deleted, or never existed).
-func resolveDir(dir string) string {
-	if r, err := filepath.EvalSymlinks(dir); err == nil {
-		return r
-	}
-	return dir
+	return isDirOrAncestor(owner, root) || isDirOrAncestor(resolveSymlinks(owner), resolveSymlinks(root))
 }
 
 // sameDir reports whether a and b name the same directory, lexically or
-// once symlinks are resolved.
+// once symlinks are resolved (resolveSymlinks keeps a directory that
+// cannot be resolved — deleted, or never created — as its absolute
+// path).
 func sameDir(a, b string) bool {
 	a, b = filepath.Clean(a), filepath.Clean(b)
-	return a == b || resolveDir(a) == resolveDir(b)
+	return a == b || resolveSymlinks(a) == resolveSymlinks(b)
 }
 
 // sameFile reports whether a and b name the same file: the same base

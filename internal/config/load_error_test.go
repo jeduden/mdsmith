@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -49,6 +50,24 @@ foreign-regions:
 		File: p, Line: 5, Column: 5, RuleID: "config", RuleName: "config",
 		Severity: lint.Error, Message: le.Message,
 	}, d)
+}
+
+func TestPositionedDiagnostic(t *testing.T) {
+	positioned := &LoadError{
+		File: "c.yml", Message: "m", Severity: lint.Error, Err: errors.New("w: m"), Line: 2, Column: 3,
+	}
+	d, ok := PositionedDiagnostic(fmt.Errorf("loading config: %w", positioned))
+	require.True(t, ok)
+	assert.Equal(t, positioned.Diagnostic(), d)
+
+	for name, err := range map[string]error{
+		"not a LoadError": errors.New("plain"),
+		"no position":     &LoadError{File: "c.yml", Message: "m", Err: errors.New("m")},
+		"no file":         &LoadError{Message: "m", Err: errors.New("m"), Line: 2, Column: 3},
+	} {
+		_, ok := PositionedDiagnostic(err)
+		assert.False(t, ok, name)
+	}
 }
 
 func TestLoad_SyntaxErrorPointsAtLine(t *testing.T) {

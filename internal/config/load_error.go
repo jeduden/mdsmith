@@ -58,6 +58,18 @@ func (e *LoadError) Diagnostic() lint.Diagnostic {
 	}
 }
 
+// PositionedDiagnostic returns the diagnostic for a config load failure
+// that carries a position in a named config file. ok is false for any
+// other error, which callers report as plain text. The CLI prints the
+// diagnostic and the language server publishes it on the config file.
+func PositionedDiagnostic(err error) (d lint.Diagnostic, ok bool) {
+	var le *LoadError
+	if !errors.As(err, &le) || !le.Positioned() || le.File == "" {
+		return lint.Diagnostic{}, false
+	}
+	return le.Diagnostic(), true
+}
+
 // positionError wraps a load failure in a LoadError, resolving the
 // position of the Issue in err's chain. file is the config the bytes
 // came from; resolver lazily builds the PositionResolver over those
