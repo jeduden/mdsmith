@@ -282,9 +282,9 @@ string with no NUL byte; any other value counts as no scope. Only the
 first `initialize` decides.
 
 A client that sends no scope never claims and is never superseded, so
-Neovim, Helix, and the Claude Code plugin coexist with any other server.
-The VS Code extension sends a stored per-workspace UUID; see the
-[VS Code extension reference](../vscode-extension.md).
+Neovim, Helix, and the Claude Code plugin coexist with other servers.
+A scoped server still steps aside a server on a pre-scope build. VS Code
+sends a per-workspace UUID ([extension reference](../vscode-extension.md)).
 
 ## Exit codes
 

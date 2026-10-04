@@ -84,11 +84,17 @@ the extension stores in its workspace state. A Claude Code
 plugin or another editor on the same folder sends no scope,
 so its server runs alongside VS Code's and neither stops the
 other. Two VS Code windows on one folder share the stored id,
-so the newest of those still wins. An orphan left by an older
-build that keyed on the folder alone also steps aside when the
-new server starts. With `mdsmith.path` set to
-a newer binary than an older extension expects, no scope is
-sent and the orphan is not reaped until the extension updates.
+so the newest of those still wins.
+
+An orphan left by an older build that keyed on the folder
+alone also steps aside when the new server starts. So does any
+other server on such a build,
+such as a plugin still on a cached older `mdsmith`. With
+`mdsmith.path` set to a newer binary than an older extension
+expects, no scope is sent and the orphan is not reaped until the
+extension updates. A build from before the singleton leaves an
+orphan that never steps aside: kill its extension host once —
+not the `mdsmith` process, which the host respawns.
 
 ## See also
 
