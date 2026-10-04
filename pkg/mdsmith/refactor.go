@@ -180,7 +180,7 @@ func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 // substitutes overlaySource for that file's bytes so a rename computes
 // against the caller's current buffer rather than the last-saved file.
 func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte) *sessionRefactorWorkspace {
-	paths := sync.OnceValue(func() []string { return walkWorkspacePaths(s.ws.FS()) })
+	paths := sync.OnceValue(func() []string { return walkWorkspacePaths(s.ws.FS(), ownsFS(s.ws)) })
 	return &sessionRefactorWorkspace{
 		IndexEdges: refactor.NewLazyIndexEdges(func() *index.Index {
 			return s.indexRefactorWorkspace(paths(), overlayURI, overlaySource)
@@ -194,10 +194,11 @@ func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte
 
 // walkWorkspacePaths walks fsys once and returns every file path in it.
 // The walk callback swallows per-entry errors, so an unreadable root or
-// subtree just contributes no paths. The walk is fsys's only use, so a
-// closable fsys (an OSWorkspace's os.Root view) is closed once it ends.
-func walkWorkspacePaths(fsys fs.FS) []string {
-	if c, ok := fsys.(io.Closer); ok {
+// subtree just contributes no paths. When owned, the walk is fsys's only
+// use, so a closable fsys (an OSWorkspace's os.Root view) is closed once
+// it ends; an fsys the caller does not own is left open.
+func walkWorkspacePaths(fsys fs.FS, owned bool) []string {
+	if c, ok := fsys.(io.Closer); ok && owned {
 		defer func() { _ = c.Close() }()
 	}
 	var paths []string
@@ -208,6 +209,19 @@ func walkWorkspacePaths(fsys fs.FS) []string {
 		return nil
 	})
 	return paths
+}
+
+// ownsFS reports whether a caller of ws.FS owns the view it gets, and so
+// closes it. An OSWorkspace opens a fresh os.Root per call that nothing
+// else holds. Any other workspace — the LSP's overlay, which shares one
+// cached disk root, or a host's own — may hand out an FS it keeps, so a
+// caller leaves that one open.
+func ownsFS(ws Workspace) bool {
+	switch ws.(type) {
+	case OSWorkspace, *OSWorkspace:
+		return true
+	}
+	return false
 }
 
 // indexRefactorWorkspace indexes the Markdown files among paths, the

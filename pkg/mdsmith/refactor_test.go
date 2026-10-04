@@ -390,12 +390,13 @@ func TestSession_IndexRefactorWorkspace(t *testing.T) {
 		"notes.txt": []byte("[b](sub/b.md#b)\n"),
 	})
 	t.Run("indexes only Markdown files", func(t *testing.T) {
-		idx := s.indexRefactorWorkspace(walkWorkspacePaths(s.ws.FS()), "", nil)
+		idx := s.indexRefactorWorkspace(walkWorkspacePaths(s.ws.FS(), false), "", nil)
 		assert.ElementsMatch(t, []string{"a.md", "sub/b.md"}, idx.Files())
 		assert.Empty(t, idx.IncomingEdges("sub/b.md", "b"))
 	})
 	t.Run("overlay replaces the saved bytes", func(t *testing.T) {
-		idx := s.indexRefactorWorkspace(walkWorkspacePaths(s.ws.FS()), "./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
+		paths := walkWorkspacePaths(s.ws.FS(), false)
+		idx := s.indexRefactorWorkspace(paths, "./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
 		edges := idx.IncomingEdges("sub/b.md", "b")
 		require.Len(t, edges, 1)
 		assert.Equal(t, "a.md", edges[0].SourceFile)
@@ -518,12 +519,41 @@ func TestWalkWorkspacePaths(t *testing.T) {
 		"sub/logo.png": []byte("png"),
 		".git/HEAD":    []byte("ref\n"),
 	})
-	assert.ElementsMatch(t, []string{"a.md", "sub/logo.png", ".git/HEAD"}, walkWorkspacePaths(ws.FS()))
-	assert.Empty(t, walkWorkspacePaths(failFS{}))
+	assert.ElementsMatch(t, []string{"a.md", "sub/logo.png", ".git/HEAD"}, walkWorkspacePaths(ws.FS(), false))
+	assert.Empty(t, walkWorkspacePaths(failFS{}, false))
 }
 
-// closeRecordingWorkspace hands out an FS whose Close is recorded, as
-// an OSWorkspace's os.Root-backed FS is closable.
+// TestWalkWorkspacePaths_ClosesOnlyOwnedFS locks that the walk closes a
+// closable FS the caller owns (an OSWorkspace's fresh os.Root view) and
+// leaves one it does not own open for the workspace that handed it out.
+func TestWalkWorkspacePaths_ClosesOnlyOwnedFS(t *testing.T) {
+	mem := NewMemWorkspace(map[string][]byte{"a.md": []byte("# A\n")})
+	for _, owned := range []bool{true, false} {
+		closed := 0
+		got := walkWorkspacePaths(closeRecordingFS{mem.FS(), &closed}, owned)
+		assert.Equal(t, []string{"a.md"}, got)
+		want := 0
+		if owned {
+			want = 1
+		}
+		assert.Equal(t, want, closed, "owned=%v", owned)
+	}
+}
+
+// TestOwnsFS locks which workspaces hand a caller of FS a view it owns:
+// only an OSWorkspace, which opens a fresh os.Root per call. Any other
+// workspace, the LSP overlay and a host's own included, may hand out an
+// FS it keeps, so a caller must not close it.
+func TestOwnsFS(t *testing.T) {
+	assert.True(t, ownsFS(OSWorkspace{}))
+	assert.True(t, ownsFS(&OSWorkspace{}))
+	assert.False(t, ownsFS(NewMemWorkspace(nil)))
+	assert.False(t, ownsFS(NewOverlayWorkspace(t.TempDir())))
+	assert.False(t, ownsFS(&closeRecordingWorkspace{MemWorkspace: NewMemWorkspace(nil)}))
+}
+
+// closeRecordingWorkspace is a host workspace that hands out a closable
+// FS (say one it keeps open for its lifetime) and records each Close.
 type closeRecordingWorkspace struct {
 	*MemWorkspace
 	closed int
@@ -541,10 +571,11 @@ func (c closeRecordingFS) Close() error {
 	return nil
 }
 
-// TestSession_Move_ClosesWalkedFS locks that the refactor walk closes
-// the FS it walked when that FS holds a handle (an OSWorkspace's
-// os.Root), so a move leaves no root open.
-func TestSession_Move_ClosesWalkedFS(t *testing.T) {
+// TestSession_Move_LeavesHostFSOpen locks that the refactor walk does
+// not close a closable FS a host workspace hands out: the workspace owns
+// it and may hand it out again, so closing it would break the session's
+// next Check. Only an OSWorkspace's fresh view is closed (see ownsFS).
+func TestSession_Move_LeavesHostFSOpen(t *testing.T) {
 	ws := &closeRecordingWorkspace{MemWorkspace: NewMemWorkspace(map[string][]byte{
 		"api.md":   []byte("# API\n"),
 		"guide.md": []byte("See [[api]].\n"),
@@ -556,5 +587,5 @@ func TestSession_Move_ClosesWalkedFS(t *testing.T) {
 	ws.closed = 0
 	_, err = s.Move("api.md", "service.md")
 	require.NoError(t, err)
-	assert.Equal(t, 1, ws.closed)
+	assert.Zero(t, ws.closed)
 }
