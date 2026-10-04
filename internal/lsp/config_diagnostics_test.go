@@ -244,6 +244,19 @@ func TestIsWatchedConfigChange(t *testing.T) {
 		"with no root known, any config-named file reloads")
 }
 
+// TestIsDirOrAncestor pins the directory test behind
+// isWatchedConfigChange, including the filepath.Rel failure when one
+// path is relative and the other absolute.
+func TestIsDirOrAncestor(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join(string(filepath.Separator), "ws", "repo")
+	assert.True(t, isDirOrAncestor(root, root))
+	assert.True(t, isDirOrAncestor(string(filepath.Separator), root))
+	assert.False(t, isDirOrAncestor(filepath.Join(root, "pkg"), root))
+	assert.False(t, isDirOrAncestor(filepath.Join(string(filepath.Separator), "ws", "repo2"), root))
+	assert.False(t, isDirOrAncestor("relative", root))
+}
+
 // TestNestedPyprojectChangeSkipsReload pins that editing a
 // pyproject.toml below the workspace root neither reloads config nor
 // counts as config-only for the wikilink tree check.
