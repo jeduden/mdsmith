@@ -3,7 +3,10 @@ package refactor
 import (
 	"io/fs"
 	"maps"
+	"os"
 	"path"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -1526,4 +1529,59 @@ func TestMoveAll_RefusedHolderMisreadsBareDirectory(t *testing.T) {
 			assert.Equal(t, tc.withheld, bp.Withheld)
 		})
 	}
+}
+
+// foldingWorkspace is a memWorkspace on a case-insensitive file system:
+// a path finds the file stored under any spelling that folds alike, and
+// Stat returns that file's on-disk info, so two spellings of one file
+// are os.SameFile.
+type foldingWorkspace struct {
+	*memWorkspace
+	infos map[string]fs.FileInfo // keyed by foldPath
+}
+
+func newFoldingWorkspace(t *testing.T, files map[string]string) foldingWorkspace {
+	t.Helper()
+	w := foldingWorkspace{newMemWorkspace(files), map[string]fs.FileInfo{}}
+	dir := t.TempDir()
+	for rel := range files {
+		disk := filepath.Join(dir, strconv.Itoa(len(w.infos)))
+		require.NoError(t, os.WriteFile(disk, nil, 0o644))
+		info, err := os.Stat(disk)
+		require.NoError(t, err)
+		w.infos[foldPath(rel)] = info
+	}
+	return w
+}
+
+func (w foldingWorkspace) Stat(file string) (fs.FileInfo, bool) {
+	info, ok := w.infos[foldPath(index.NormalizePath(file))]
+	return info, ok
+}
+
+// TestMoveAll_CaseOnlyRename locks that a rename that changes only the
+// case of a path is planned when the destination is the source itself,
+// as a case-insensitive file system stores both spellings as one file:
+// the destination is not taken, so a link to it is repointed, not
+// counted. On a case-sensitive file system the two spellings are two
+// files, and the move onto the other one is refused as before.
+func TestMoveAll_CaseOnlyRename(t *testing.T) {
+	files := map[string]string{"docs/Guide.md": "# G\n", "r.md": "# R\n\n[g](docs/Guide.md)\n"}
+	bp := MoveAll(newFoldingWorkspace(t, files), []MovePair{{"docs/Guide.md", "docs/guide.md"}})
+	require.NoError(t, bp.Moves[0].Err)
+	assert.Equal(t, []string{"docs/guide.md"}, texts(bp.Edits, "r.md"))
+	assert.Zero(t, bp.Withheld)
+
+	files["docs/guide.md"] = "# Other\n"
+	bp = MoveAll(newMemWorkspace(files), []MovePair{{"docs/Guide.md", "docs/guide.md"}})
+	assert.Equal(t, DestinationExistsError{Dst: "docs/guide.md"}, bp.Moves[0].Err, "two files on a case-sensitive one")
+}
+
+func TestSameFile(t *testing.T) {
+	ws := newFoldingWorkspace(t, map[string]string{"a/B.md": "", "c.md": ""})
+	assert.True(t, sameFile(ws, "a/B.md", "a/b.md"))
+	assert.False(t, sameFile(ws, "a/B.md", "c.md"), "spelled apart")
+	assert.False(t, sameFile(ws, "a/B.md", "A/b.md2"), "spelled apart")
+	assert.False(t, sameFile(newMemWorkspace(map[string]string{"x.md": "", "X.md": ""}), "x.md", "X.md"),
+		"no on-disk info: two files")
 }

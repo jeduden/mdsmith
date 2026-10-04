@@ -171,7 +171,9 @@ func countShadowed(ws MoveWorkspace, r *destResolver, vacated string) {
 // when both paths stay in the workspace, they differ, no earlier pair
 // moves its source, no other member lands on its destination, and its
 // destination is free once the batch has run: absent from the
-// workspace or another member's source.
+// workspace, another member's source, or its own source spelled in
+// another case on a file system that stores both as one file (see
+// sameFile).
 // A refused member whose path another member lands on is recorded as
 // shadowed, whether that lander's move is planned or refused as a
 // duplicate destination: the host may move it there either way.
@@ -188,7 +190,7 @@ func validateBatch(ws MoveWorkspace, pairs []MovePair) ([]BatchMove, *moveBatch)
 			continue
 		}
 		_, vacated := b.members[m.Dst]
-		exists := !vacated && present(ws, m.Dst)
+		exists := !vacated && present(ws, m.Dst) && !sameFile(ws, m.Src, m.Dst)
 		switch {
 		case landing[foldPath(m.Dst)] > 1:
 			m.Err = ErrDuplicateDestination
@@ -252,6 +254,21 @@ func (b *moveBatch) admit(ws MoveWorkspace, pr MovePair, landing map[string]int)
 		m.Err = SourceNotFoundError{Src: m.Src}
 	}
 	return m
+}
+
+// sameFile reports whether the paths a and b, spelled alike but for
+// case, name one file, as a case-insensitive file system stores
+// `Guide.md` and `guide.md`: their on-disk infos are one file (see
+// sameDiskFile). A
+// path with no on-disk info (see MoveWorkspace.Stat) shares its file
+// with no other path.
+func sameFile(ws MoveWorkspace, a, b string) bool {
+	if foldPath(a) != foldPath(b) {
+		return false
+	}
+	ai, _ := ws.Stat(a)
+	bi, _ := ws.Stat(b)
+	return sameDiskFile(ai, bi)
 }
 
 // present reports whether a file sits at p, read or not (see

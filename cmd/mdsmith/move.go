@@ -156,10 +156,11 @@ func applyPlan(w io.Writer, ws cliRenameWorkspace, plan refactor.Plan, format st
 // exists, before anything is written. Execute refuses one too (git mv
 // does; the plain-rename path mirrors it with an Lstat guard), but only
 // after the reference edits are written, so this check keeps the
-// common collision from costing a rollback. It covers the case the
-// planner's read-based check cannot see: a destination over the
-// max-input-size limit, which ws.Resolve reports as absent. Returns 0
-// when op is nil or its destination is free, 2 otherwise.
+// common collision from costing a rollback. It also refuses a
+// case-only rename the planner plans as the source itself on a
+// case-insensitive file system (see refactor.MoveAll): Lstat finds the
+// source under the new spelling, and Execute would refuse it too.
+// Returns 0 when op is nil or its destination is free, 2 otherwise.
 func preflightDestination(rootDir string, op *refactor.FileOp) int {
 	if op == nil {
 		return 0

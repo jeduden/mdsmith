@@ -144,6 +144,10 @@ the link stops resolving, where MDS027 flags it.
    A refused member whose path refused duplicate members
    name is treated as taken too, so a link to it counts
    (`TestMoveAll_ShadowedByDuplicates`).
+   A rename that changes only the case of a path, onto the
+   same file on a case-insensitive file system, is planned,
+   not refused. Before, its destination was taken, so every
+   link to the file was counted (`TestMoveAll_CaseOnlyRename`).
 
 ## Acceptance Criteria
 
@@ -182,3 +186,16 @@ this PR.
    `TestServerMoveWorkspace_Stat`). `mayHoldDir` still reads
    the wikilink index. Without a readable root, `Stat` finds
    no disk file either, so that fallback is a gap they share.
+
+One item is still open and needs its own plan once `PLAN.md`
+has room:
+
+1. `mdsmith move` of a case-only rename on a case-insensitive
+   file system. The planner now plans it, but the CLI's
+   `preflightDestination` in
+   [`move.go`](../cmd/mdsmith/move.go) and the plain-rename
+   guard in `Execute` still find the source under the new
+   spelling with `Lstat` and refuse it. Each guard should
+   skip a destination that `os.SameFile` reads as the
+   source. Only a case-insensitive file system can drive
+   that branch red/green, and Linux CI does not have one.
