@@ -68,8 +68,10 @@ Four facts shape the approach.
    `RuleCfg` bool-or-mapping union and `KindSchemaRef`.
    Re-doing these for TOML would copy fragile code. So
    the conversion runs the other way. Parse the TOML,
-   lift the `[tool.mdsmith]` sub-tree, and re-marshal it
-   to YAML. Then reuse `loadFromBytes` unchanged.
+   lift the `[tool.mdsmith]` sub-tree, and convert it to
+   a positioned `yaml.Node` tree. Then run the shared
+   `loadFromNode` pipeline that `loadFromBytes` now
+   calls after parsing YAML text.
 
 2. `github.com/pelletier/go-toml v1.9.5` is already a
    direct requirement in [go.mod](../go.mod). Only the
@@ -104,9 +106,10 @@ The pyproject source:
 - New paired files in `internal/config`: a
   `//go:build !wasm` file holding the `go-toml` import,
   a `loadPyproject(path)` that converts `[tool.mdsmith]`
-  to a `*Config` via the YAML re-marshal, and a
-  `pyprojectHasMdsmithTable(path)` probe; plus a
-  `//go:build wasm` stub of both that returns an error.
+  to a `yaml.Node` tree for `loadFromNode`, and a
+  `probePyproject(path)` probe; plus a `//go:build wasm`
+  stub of both (the loader errors, the probe finds
+  nothing).
 - `Load` dispatches by extension: `.toml` paths go
   through `loadPyproject`, everything else keeps the YAML
   path. The 1 MB `maxConfigBytes` read cap applies to
@@ -132,8 +135,10 @@ The positioned diagnostics:
 - A position resolver maps a key path to a line and
   column. The YAML resolver reads `yaml.v3` node
   positions and works everywhere, WASM included. The TOML
-  resolver reads `go-toml` tree positions, prepends
-  `tool.mdsmith`, and lives behind the `!wasm` tag.
+  resolver walks the converted node tree, whose nodes
+  carry `go-toml` key positions (inline-table keys are
+  found by scanning the source), and lives behind the
+  `!wasm` tag.
 - Syntax errors come straight from the parser. Both
   `yaml.v3` and `go-toml` report the failing line and
   column on a parse error.
@@ -193,9 +198,10 @@ Phase B — the pyproject source:
 
 5. [x] Red/green: add the paired `internal/config` files
    — `loadPyproject(path)` behind `//go:build !wasm`
-   (parse TOML, lift `[tool.mdsmith]`, re-marshal to YAML,
-   call `loadFromBytes` with the pyproject path as the
-   sidecar anchor and `mergeKinds` true) and a
+   (parse TOML, lift `[tool.mdsmith]`, convert it to a
+   `yaml.Node` tree, call `loadFromNode` with the
+   pyproject path as the sidecar anchor and `mergeKinds`
+   true) and a
    `//go:build wasm` stub returning an error. Test that a
    `[tool.mdsmith]` config and the equivalent
    `.mdsmith.yml` produce an identical `*Config` —
@@ -221,10 +227,10 @@ Phase B — the pyproject source:
    `check`, `fix`, the editor, and the
    build/gitattributes paths.
 9. [x] Red/green: add the TOML position resolver over the
-   `go-toml` tree (prepending `tool.mdsmith`), so a bad
-   value or a syntax error in `[tool.mdsmith]` produces a
-   diagnostic at the right line and column in the
-   `pyproject.toml`.
+   converted node tree (each node stamped with its
+   `go-toml` key position), so a bad value or a syntax
+   error in `[tool.mdsmith]` produces a diagnostic at the
+   right line and column in the `pyproject.toml`.
 10. [x] Red/green: a `pyproject.toml` with a plural
     `[tools.mdsmith]` table but no `[tool.mdsmith]` emits a
     one-line hint pointing at the correct key and is not
