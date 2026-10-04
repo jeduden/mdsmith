@@ -194,10 +194,12 @@ func appendReferrerEdits(changes map[string][]Edit, ws MoveWorkspace, p parser.P
 // list is still read; only the paths its links name from the new
 // folder are looked up (see countMisread). A refused lone Move never
 // gets here: Move returns before planning. As in a planned member's
-// outbound pass, only a Markdown or listed file is parsed.
+// outbound pass, only a Markdown or listed file is parsed, and only
+// when its text may hold a destination (see mayLink).
 func (r *destResolver) countRefusedHolders(p parser.Parser) {
 	for src, m := range r.batch.members {
-		if !refusedLeaving(m, src) || !mdpath.HasMarkdownExt(path.Ext(src)) && !r.listed(src) {
+		if !refusedLeaving(m, src) || !mdpath.HasMarkdownExt(path.Ext(src)) && !r.listed(src) ||
+			!mayLink(r.batch.sources[src]) {
 			continue
 		}
 		for _, d := range locateDests(p, src, r.batch.sources[src]) {
@@ -256,7 +258,7 @@ func (r *destResolver) referrerEdit(d inlineDest, rel string, holder batchMember
 // the `%` do not depend on the base, so each is looked for once, not
 // once per base.
 func mayNameAny(source []byte, bases [][]byte) bool {
-	if len(bases) == 0 || !bytes.Contains(source, linkMark) && !bytes.Contains(source, refDefMark) {
+	if len(bases) == 0 || !mayLink(source) {
 		return false
 	}
 	if bytes.IndexByte(source, '%') >= 0 {
@@ -268,6 +270,13 @@ func mayNameAny(source []byte, bases [][]byte) bool {
 		}
 	}
 	return false
+}
+
+// mayLink reports whether source may hold a destination locateDests
+// reads: an inline link or image needs a `](`, a reference definition a
+// `]:`.
+func mayLink(source []byte) bool {
+	return bytes.Contains(source, linkMark) || bytes.Contains(source, refDefMark)
 }
 
 // unplannedInPlace reports whether m, the batch entry for the file rel,

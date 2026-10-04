@@ -16,6 +16,9 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
+	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
+	"github.com/jeduden/mdsmith/pkg/goldmark/text"
 )
 
 // soloResolver returns a resolver for a batch of one planned move,
@@ -1584,4 +1587,37 @@ func TestSameFile(t *testing.T) {
 	assert.False(t, sameFile(ws, "a/B.md", "A/b.md2"), "spelled apart")
 	assert.False(t, sameFile(newMemWorkspace(map[string]string{"x.md": "", "X.md": ""}), "x.md", "X.md"),
 		"no on-disk info: two files")
+}
+
+// parseCounter counts the Parse calls made through the parser it wraps.
+type parseCounter struct {
+	parser.Parser
+	calls int
+}
+
+func (p *parseCounter) Parse(r text.Reader, opts ...parser.ParseOption) ast.Node {
+	p.calls++
+	return p.Parser.Parse(r, opts...)
+}
+
+// TestDestResolver_CountRefusedHoldersSkipsLinklessText locks that a
+// refused member leaving its folder is parsed only when its text holds
+// a `](` or `]:`, the marks every destination it reads needs.
+func TestDestResolver_CountRefusedHoldersSkipsLinklessText(t *testing.T) {
+	b := newMoveBatch()
+	b.members["docs/a.md"], b.sources["docs/a.md"] = batchMember{dst: "x/a.md"}, []byte("# A\n\nNo links.\n")
+	r := &destResolver{ws: stubWorkspace{}, batch: b}
+	p := &parseCounter{Parser: lint.NewParser()}
+	r.countRefusedHolders(p)
+	assert.Zero(t, p.calls, "no link mark, no parse")
+
+	b.sources["docs/a.md"] = []byte("# A\n\n[r]: c.md\n")
+	r.countRefusedHolders(p)
+	assert.Equal(t, 1, p.calls, "a ref-def mark is parsed")
+}
+
+func TestMayLink(t *testing.T) {
+	assert.True(t, mayLink([]byte("[a](b)")))
+	assert.True(t, mayLink([]byte("[a]: b")))
+	assert.False(t, mayLink([]byte("[a] (b)")))
 }
