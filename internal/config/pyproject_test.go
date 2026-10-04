@@ -347,3 +347,25 @@ func TestPyprojectHasMdsmithTable(t *testing.T) {
 	}
 	assert.False(t, pyprojectHasMdsmithTable(filepath.Join(dir, "missing.toml")))
 }
+
+func TestFileIn(t *testing.T) {
+	dir := t.TempDir()
+	assert.Equal(t, "", FileIn(dir))
+	py := writeCfg(t, dir, "pyproject.toml", "[tool.mdsmith]\n")
+	assert.Equal(t, py, FileIn(dir))
+	yml := writeCfg(t, dir, ".mdsmith.yml", "rules: {}\n")
+	assert.Equal(t, yml, FileIn(dir))
+}
+
+func TestIsConfigFile(t *testing.T) {
+	for path, want := range map[string]bool{
+		"/p/.mdsmith.yml":      true,
+		"/p/pyproject.toml":    true,
+		"pyproject.toml":       true,
+		"/p/my-pyproject.toml": false,
+		"/p/foo.toml":          false,
+		"/p/doc.md":            false,
+	} {
+		assert.Equal(t, want, IsConfigFile(path), path)
+	}
+}

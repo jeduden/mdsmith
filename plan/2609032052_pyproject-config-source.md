@@ -212,7 +212,7 @@ Phase B — the pyproject source:
    the precedence and skip rules above (probe behind the
    same build tag). Extend the discovery tests in
    [config_test.go](../internal/config/config_test.go).
-8. [ ] Red/green: route the native callers through the
+8. [x] Red/green: route the native callers through the
    shared discover-plus-dispatch — the CLI in
    [main.go](../cmd/mdsmith/main.go), the LSP in
    [server_session.go](../internal/lsp/server_session.go),
@@ -252,7 +252,7 @@ Phase C — guardrails and docs:
 
 ## Acceptance Criteria
 
-- [ ] A project whose only config is a `pyproject.toml`
+- [x] A project whose only config is a `pyproject.toml`
       with `[tool.mdsmith]` is linted with that config by
       `mdsmith check` and `mdsmith fix`.
 - [x] The same settings written under `[tool.mdsmith]`
@@ -275,7 +275,7 @@ Phase C — guardrails and docs:
       no `[tool.mdsmith]` is ignored.
 - [x] `--config pyproject.toml` and `--config foo.toml`
       load from the `[tool.mdsmith]` table.
-- [ ] The LSP, build-directive, and gitattributes paths
+- [x] The LSP, build-directive, and gitattributes paths
       honor a pyproject-only project.
 - [ ] The standard-Go and TinyGo WASM builds compile and
       stay within the size budgets; `go-toml` is not

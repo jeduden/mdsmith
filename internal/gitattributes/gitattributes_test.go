@@ -1086,3 +1086,11 @@ func TestWriteGitattributes_RejectsDirectory(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a regular file")
 }
+
+func TestLoadGlobs_ReadsPyprojectTable(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"),
+		[]byte("[project]\nname = \"x\"\n\n[tool.mdsmith]\nignore = [\"vendor/**\"]\n"), 0644))
+	got := LoadGlobs(dir)
+	assert.Equal(t, []string{"vendor/**/*.md", "vendor/**/*.markdown"}, got.Exclude)
+}

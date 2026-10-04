@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"io"
 	"net/textproto"
@@ -113,4 +114,36 @@ func TestReloadConfigUnpositionedErrorPublishesNothing(t *testing.T) {
 	s.reloadConfig()
 	assert.NotContains(t, buf.String(), "textDocument/publishDiagnostics")
 	assert.Contains(t, buf.String(), `"window/logMessage"`)
+}
+
+func TestRegisterWatchersIncludesPyproject(t *testing.T) {
+	t.Parallel()
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.registerWatchers()
+	assert.Contains(t, buf.String(), "**/pyproject.toml")
+}
+
+func TestWatchedPyprojectChangeReloadsConfig(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	py := filepath.Join(dir, "pyproject.toml")
+	require.NoError(t, writeFile(py, "[tool.mdsmith.rules]\nline-length = false\n"))
+
+	s := New(Options{Reader: nil, Writer: &safeBuffer{}})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+
+	raw, err := json.Marshal(didChangeWatchedFilesParams{Changes: []fileEvent{
+		{URI: pathToURI(py), Type: fileChangeCreated},
+	}})
+	require.NoError(t, err)
+	s.handleDidChangeWatchedFiles(context.Background(), raw)
+
+	cfg, path, _ := s.snapshotConfig()
+	assert.Equal(t, py, path)
+	assert.False(t, cfg.Rules["line-length"].Enabled)
+	assert.False(t, watchedFilesTreeChanged([]fileEvent{{URI: pathToURI(py), Type: fileChangeCreated}}),
+		"a config-only create must not flag a wikilink tree change")
 }

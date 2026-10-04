@@ -52,3 +52,12 @@ func TestDisplayPath_GetwdError(t *testing.T) {
 	chdirToRemoved(t)
 	assert.Equal(t, "/x/c.yml", displayPath("/x/c.yml"))
 }
+
+func TestDiscoverConfigPath_FindsPyproject(t *testing.T) {
+	dir := t.TempDir()
+	py := filepath.Join(dir, "pyproject.toml")
+	require.NoError(t, os.WriteFile(py, []byte("[tool.mdsmith]\n"), 0o644))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, ".git"), 0o755))
+	t.Chdir(dir)
+	assert.Equal(t, py, discoverConfigPath(""))
+}

@@ -3,8 +3,9 @@ package lsp
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"time"
+
+	"github.com/jeduden/mdsmith/internal/config"
 )
 
 // textDocument/* document-sync handlers — didOpen, didChange, didSave,
@@ -135,7 +136,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 	mdChanges := make([]string, 0, len(p.Changes))
 	for _, c := range p.Changes {
 		path := uriToPath(c.URI)
-		if strings.HasSuffix(path, ".mdsmith.yml") {
+		if config.IsConfigFile(path) {
 			configChanged = true
 			continue
 		}
@@ -208,7 +209,7 @@ func watchedFilesTreeChanged(changes []fileEvent) bool {
 			// unnecessary wikilink-index rebuild.
 			continue
 		}
-		if strings.HasSuffix(path, ".mdsmith.yml") {
+		if config.IsConfigFile(path) {
 			continue
 		}
 		if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {

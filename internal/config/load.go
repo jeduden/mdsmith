@@ -286,6 +286,30 @@ func rejectRemovedBuildKeys(node *yaml.Node) error {
 	return nil
 }
 
+// FileIn returns the config file that lives directly in dir, or
+// "" when there is none: dir/.mdsmith.yml when it exists, else
+// dir/pyproject.toml when it holds a `[tool.mdsmith]` table. It is the
+// per-directory rule Discover applies at each step of its walk, shared
+// with callers that read one known directory's config (such as the
+// merge-driver glob set at the repository root).
+func FileIn(dir string) string {
+	candidate := filepath.Join(dir, configFileName)
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	if py := filepath.Join(dir, pyprojectFileName); pyprojectHasMdsmithTable(py) {
+		return py
+	}
+	return ""
+}
+
+// IsConfigFile reports whether path names a file that can be an mdsmith
+// config source: a .mdsmith.yml or a pyproject.toml. Watchers use it to
+// decide when a file change must reload config.
+func IsConfigFile(path string) bool {
+	return strings.HasSuffix(path, configFileName) || filepath.Base(path) == pyprojectFileName
+}
+
 // Discover walks up the directory tree from startDir looking for a
 // config file: a .mdsmith.yml, or a pyproject.toml that holds a
 // `[tool.mdsmith]` table. Within one directory .mdsmith.yml wins; across
@@ -297,12 +321,8 @@ func rejectRemovedBuildKeys(node *yaml.Node) error {
 func Discover(startDir string) (string, error) {
 	dir, _ := filepath.Abs(startDir) // filepath.Abs cannot fail when os.Getwd succeeds
 	for {
-		candidate := filepath.Join(dir, configFileName)
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, nil
-		}
-		if py := filepath.Join(dir, pyprojectFileName); pyprojectHasMdsmithTable(py) {
-			return py, nil
+		if found := FileIn(dir); found != "" {
+			return found, nil
 		}
 
 		// Check for .git boundary — if .git exists in this dir,
