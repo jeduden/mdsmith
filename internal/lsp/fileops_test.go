@@ -225,11 +225,10 @@ func TestDidRenameFilesSwapsIndexPath(t *testing.T) {
 
 // TestWillRenameFilesBatchDropsConflictingEdits locks that a batch
 // moving two files which link to each other never returns two edits
-// over the same range: each per-file refactor.Move plans against the
-// pre-batch snapshot, so a.md's link to b.md gets one rewrite from
-// a.md's own move and a different one from b.md's move. Clients reject
-// a WorkspaceEdit with overlapping ranges, which would drop every
-// rewrite in the batch, so the conflicting pair is withheld instead.
+// over the same range: refactor.MoveAll gives a.md's link to b.md one
+// reading, from a.md's new folder, and none here since both land in
+// x/. Clients reject a WorkspaceEdit with overlapping ranges, which
+// would drop every rewrite in the batch.
 func TestWillRenameFilesBatchDropsConflictingEdits(t *testing.T) {
 	t.Parallel()
 	srcA := "# Alpha\n\n[b](b.md)\n"

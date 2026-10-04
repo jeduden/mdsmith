@@ -873,5 +873,7 @@ func TestWikilinkIndex_Moved(t *testing.T) {
 	assert.Equal(t, []string{"img/a.png"}, moved.NamePaths("a.png"))
 	assert.Equal(t, []string{"x/a.md"}, idx.StemPaths("a"), "receiver unchanged")
 	assert.Equal(t, []string{"x/c.md"}, idx.StemPaths("c"), "receiver unchanged")
+	assert.Equal(t, []string{"w/new.md"}, idx.Moved(map[string]string{"nope.md": "w/new.md"}).StemPaths("new"),
+		"a source idx lacks still lands at its destination")
 	assert.Nil(t, (*WikilinkIndex)(nil).Moved(map[string]string{"a.md": "b.md"}))
 }

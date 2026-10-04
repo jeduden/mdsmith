@@ -277,8 +277,9 @@ func NewWikilinkIndexFromPaths(paths []string) *WikilinkIndex {
 // leaves its keys, and each destination joins its own, keyed and
 // ordered as NewWikilinkIndexFromPaths keys them. An empty destination
 // only removes its source (the file leaves the workspace), and a
-// destination already indexed is held once. A source idx lacks is
-// ignored. idx itself is not changed. A nil index returns nil: it
+// destination already indexed is held once. A source idx lacks has
+// nothing to remove, but its destination still joins: the file exists
+// once the move has run. idx itself is not changed. A nil index returns nil: it
 // stands for a root that could not be walked, which no move changes.
 // A batch of renames planned together reads it to learn which file a
 // `[[stem]]` reaches after the batch.
