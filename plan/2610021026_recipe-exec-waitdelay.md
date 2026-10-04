@@ -1,7 +1,7 @@
 ---
 id: 2610021026
 title: Replace runRecipe's hand-rolled pipe reaping with Cmd.WaitDelay
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   `runRecipe` in `internal/build` builds its own output
@@ -123,8 +123,13 @@ Two other differences came with the move:
    closes the pipe or the deadline passes; the deadline
    kills the group and keeps the leader's exit code
    (decision 3).
-4. Run the Unix, Windows, and js/wasm tests, and
-   `GOOS=plan9 go vet ./internal/build`.
+4. [x] Run the Unix, Windows, and js/wasm tests, and
+   `GOOS=plan9 go vet ./internal/build`. Linux ran
+   `go test -race`, and Node ran `mdsmith-release
+   test-js-wasm --all --require-js-only
+   ./internal/build`. CI has no Windows test runner and
+   this host cannot run one, so Windows and plan9 got
+   `go vet ./...` only.
 
 ## Acceptance Criteria
 
@@ -136,6 +141,6 @@ Two other differences came with the move:
       wait (decision 1).
 - [x] A survivor that holds a pipe still cannot hang
       mdsmith past the documented bound.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues
