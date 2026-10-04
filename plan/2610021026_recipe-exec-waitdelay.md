@@ -115,10 +115,14 @@ Two other differences came with the move:
    `WaitDelay` replaces the leader waits and
    `forceLeader`. The red test was
    `TestRunRecipe_DeadlineBeforeStartSpawnsNothing`.
-3. Decide, and document in the `runRecipe` doc comment
-   and [build.md](../docs/guides/directives/build.md),
-   what happens to a child's output when the leader
-   exits early.
+3. [x] Decide, and document in the `runRecipe` doc
+   comment and
+   [build.md](../docs/guides/directives/build.md), what
+   happens to a child's output when the leader exits
+   early. It keeps reaching the caller until the child
+   closes the pipe or the deadline passes; the deadline
+   kills the group and keeps the leader's exit code
+   (decision 3).
 4. Run the Unix, Windows, and js/wasm tests, and
    `GOOS=plan9 go vet ./internal/build`.
 

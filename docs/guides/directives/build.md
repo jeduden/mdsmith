@@ -198,15 +198,14 @@ recipe and exits non-zero when any declared output is out of date, so a
 build step can fail a pull request that forgot to regenerate.
 
 Each recipe's stdout and stderr are captured to
-`.mdsmith/build-logs/<action-id>.log`. A failure prints source, argv,
-exit, duration, log, and the last 20 stderr lines; orphan logs are
-removed at the next fix pass. `--build-stream` forwards output to the
-terminal line by line. `--build-explain TARGET` prints a target's
-ActionID inputs and cache verdict without running the recipe; no match
-exits non-zero. `--build-verify` runs each recipe twice and warns on
-output mismatch, marking the cache entry `unstable`. `--build-jobs N`
-runs up to `N` recipes concurrently (default `1`); disjoint outputs
-make all pairs safe to parallelize.
+`.mdsmith/build-logs/<action-id>.log`. A failure prints source, argv, exit,
+duration, log, and the last 20 stderr lines; orphan logs are removed at the next
+fix pass. `--build-stream` forwards output to the terminal line by line.
+`--build-explain TARGET` prints a target's ActionID inputs and cache verdict
+without running the recipe; no match exits non-zero. `--build-verify` runs each
+recipe twice and warns on output mismatch, marking the cache entry `unstable`.
+`--build-jobs N` runs up to `N` recipes concurrently (default `1`); disjoint
+outputs make all pairs safe to parallelize.
 
 ## Build lifecycle hooks
 
@@ -379,9 +378,10 @@ Each recipe runs in its own group (`Setpgid` on Unix, `RFNOTEG` on plan9,
 the group `SIGTERM`, then `SIGKILL` after up to 5 s; plan9 writes `kill` to its
 `notepg`, then each member's and the leader's `ctl` (an rc `&` job escapes);
 Windows sends `CTRL_BREAK_EVENT` and ends its Job Object; without one, a daemon
-can survive. Each later wait caps at 5 s. Ctrl-C, `SIGTERM`, `SIGHUP` (DEL on
-plan9) in `mdsmith fix` do the same; a second one 250 ms later skips the grace
-and cuts each later wait to 0.1 s.
+can survive. Each later wait caps at 5 s. If the leader exits first, its
+children's output flows until the timeout, which keeps the leader's exit code.
+Ctrl-C, `SIGTERM`, `SIGHUP` (DEL on plan9) in `mdsmith fix` do the same; a
+second one 250 ms later skips the grace and cuts each later wait to 0.1 s.
 mdsmith reports `INTERRUPTED`, then dies of the signal (exit 2 off Unix).
 
 ### Atomic-write hardening
