@@ -311,16 +311,16 @@ func (s *scanner) tryBlockquote() bool {
 	start := s.i
 	depth := blockDepth(line)
 	// Collect the consecutive marker-led lines, stripping one quote level.
-	// codeCapable records whether any stripped line could open a code block
-	// (a fence or a >=4-column indent); the overwhelmingly common
-	// prose-only block quote sets it false and skips the recursive scan and
-	// its allocations entirely.
 	// Size the buffers by the marker-led run at the cursor, plus the
 	// phantom slot an open fence appends. Sizing by the lines left in the
 	// document would reserve the whole remainder for a few lines.
 	hint := markerRun(s.lines, s.i) + 1
 	body := make([][]byte, 0, hint)
 	parentLine := make([]int, 0, hint)
+	// codeCapable records whether any stripped line could open a code block
+	// (a fence or a >=4-column indent); the overwhelmingly common
+	// prose-only block quote sets it false and skips the recursive scan and
+	// its allocations entirely.
 	codeCapable := false
 	// openFence tracks whether a fenced code block opened by a marker line
 	// is still open. A fenced code block inside a quote must keep its `>`

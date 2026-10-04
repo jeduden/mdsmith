@@ -24,14 +24,31 @@ func TestBuildOutlineSplitsSourceOnce(t *testing.T) {
 	}
 	src := []byte(b.String())
 
+	var out []documentSymbol
 	var before, after runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&before)
-	out := buildOutline(src)
+	out = buildOutline(src)
 	runtime.ReadMemStats(&after)
 
 	assert.Len(t, out, 300)
-	const budget = 20 << 20
+	const budget = 8 << 20
 	assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(budget),
 		"buildOutline allocated too much; is the source re-split per symbol?")
+}
+
+func TestRangeInLines_EmptyLines(t *testing.T) {
+	// A nil line table is treated as one empty line, never indexed at -1.
+	r := rangeInLines(1, 1, nil)
+	assert.Equal(t, Range{}, r)
+}
+
+func TestRangeInLines_MatchesRangeForLines(t *testing.T) {
+	src := []byte("héllo\nworld\r\nlast")
+	lines := splitLines(src)
+	for start := 0; start <= 4; start++ {
+		for end := 0; end <= 4; end++ {
+			assert.Equal(t, rangeForLines(start, end, src), rangeInLines(start, end, lines))
+		}
+	}
 }

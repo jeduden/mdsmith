@@ -23,16 +23,22 @@ func TestLayer0BlockquoteAllocScalesWithQuote(t *testing.T) {
 	}
 	lines := bytes.Split(src.Bytes(), []byte{'\n'})
 
+	var scan *Layer0Scan
+	got := allocBytes(func() { scan = scanLayer0(lines) })
+	assert.NotNil(t, scan)
+	const budget = 6 << 20
+	assert.Less(t, got, uint64(budget),
+		"block quote scan allocated by remaining document length")
+}
+
+// allocBytes returns the bytes the process allocated while fn ran.
+func allocBytes(fn func()) uint64 {
 	var before, after runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&before)
-	scan := scanLayer0(lines)
+	fn()
 	runtime.ReadMemStats(&after)
-
-	assert.NotNil(t, scan)
-	const budget = 8 << 20
-	assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(budget),
-		"block quote scan allocated by remaining document length")
+	return after.TotalAlloc - before.TotalAlloc
 }
 
 func TestMarkerRun(t *testing.T) {
@@ -57,14 +63,10 @@ func TestLayer0FenceOpeningQuotesAllocScaleWithQuote(t *testing.T) {
 	}
 	lines := bytes.Split(src.Bytes(), []byte{'\n'})
 
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
-	scan := scanLayer0(lines)
-	runtime.ReadMemStats(&after)
-
+	var scan *Layer0Scan
+	got := allocBytes(func() { scan = scanLayer0(lines) })
 	assert.NotNil(t, scan)
-	assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(32<<20))
+	assert.Less(t, got, uint64(10<<20))
 }
 
 // TestLayer0AlternatingQuotesAndHeadingsAllocScalesWithQuote covers a
@@ -77,12 +79,8 @@ func TestLayer0AlternatingQuotesAndHeadingsAllocScalesWithQuote(t *testing.T) {
 	}
 	lines := bytes.Split(src.Bytes(), []byte{'\n'})
 
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
-	scan := scanLayer0(lines)
-	runtime.ReadMemStats(&after)
-
+	var scan *Layer0Scan
+	got := allocBytes(func() { scan = scanLayer0(lines) })
 	assert.NotNil(t, scan)
-	assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(16<<20))
+	assert.Less(t, got, uint64(4<<20))
 }

@@ -400,7 +400,10 @@ func absWithCwd(path, cwd string) string {
 	if filepath.IsAbs(path) {
 		return filepath.Clean(path)
 	}
-	if volumeNameFn(path) != "" {
+	// A volume-relative ("C:foo") or rooted ("\\foo") Windows path needs
+	// the per-drive resolution only filepath.Abs does; on Unix a rooted
+	// path is already absolute and returned above.
+	if volumeNameFn(path) != "" || (path != "" && os.IsPathSeparator(path[0])) {
 		abs, err := absPathFn(path)
 		if err != nil {
 			return ""
