@@ -306,7 +306,9 @@ func (idx *WikilinkIndex) Moved(moves map[string]string) *WikilinkIndex {
 		}
 	}
 	for key := range out.names {
-		out.names[key] = movedPaths(idx.NamePaths(key), moves, func(base string) bool { return FileNameKey(base) == key })
+		out.names[key] = movedPaths(idx.NamePaths(key), moves, func(base string) bool {
+			return FileNameKey(base) == key
+		})
 	}
 	for key := range out.stems {
 		out.stems[key] = movedPaths(idx.StemPaths(key), moves, func(base string) bool {
