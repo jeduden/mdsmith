@@ -35,7 +35,7 @@ func DefaultConfigPath(dir string) string {
 // from its `[tool.mdsmith]` table; every other path is YAML. A failure
 // is a *LoadError positioned at the offending value when it is known.
 func Load(path string) (*Config, error) {
-	if isTOMLPath(path) {
+	if IsTOMLPath(path) {
 		return loadPyproject(path)
 	}
 	data, err := readLimitedConfig(path)
@@ -49,8 +49,9 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// isTOMLPath reports whether path names a TOML config file.
-func isTOMLPath(path string) bool {
+// IsTOMLPath reports whether path names a TOML config file, one Load
+// reads as a pyproject.toml.
+func IsTOMLPath(path string) bool {
 	return strings.EqualFold(filepath.Ext(path), ".toml")
 }
 

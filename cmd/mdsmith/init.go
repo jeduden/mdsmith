@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	flag "github.com/spf13/pflag"
@@ -119,11 +120,11 @@ func runInit(args []string) int {
 }
 
 // runInitConfig writes .mdsmith.yml from the chosen source, then handles
-// the APM posture when apmFlag is set: it checks whether the file existed
+// the APM posture when apmFlag is set: it checks whether a config existed
 // before writing so it can append the ignore: block (fresh) or print a
 // merge hint (existing). Progress and error output go to w.
 func runInitConfig(configFile, fromMarkdownlint, starterName string, force, apmFlag bool, w io.Writer) error {
-	configExisted, err := statTarget(configFile)
+	existing, err := existingConfig(configFile)
 	if err != nil {
 		return err
 	}
@@ -131,18 +132,34 @@ func runInitConfig(configFile, fromMarkdownlint, starterName string, force, apmF
 		return err
 	}
 	if apmFlag {
-		return applyAPMPosture(configFile, configExisted, force, w)
+		return applyAPMPosture(configFile, existing, force, w)
 	}
 	return nil
 }
 
-// applyAPMPosture writes or prints the APM coexistence posture. When the
-// config already existed and was not forced, it prints a merge hint to w.
+// existingConfig returns the config file init must not shadow, or "":
+// configFile itself when it exists, else a pyproject.toml beside it
+// whose `[tool.mdsmith]` table configures mdsmith — a .mdsmith.yml
+// written there would win over it and silently drop its settings.
+func existingConfig(configFile string) (string, error) {
+	exists, err := statTarget(configFile)
+	if err != nil || exists {
+		return configFile, err
+	}
+	if found := config.FileIn(filepath.Dir(configFile)); found != "" && config.IsTOMLPath(found) {
+		return found, nil
+	}
+	return "", nil
+}
+
+// applyAPMPosture writes or prints the APM coexistence posture. When a
+// config (existing, as existingConfig names it) was there before and the
+// run was not forced, it prints a merge hint for that file to w.
 // Otherwise it appends the ignore: block to configFile.
-func applyAPMPosture(configFile string, configExisted, force bool, w io.Writer) error {
+func applyAPMPosture(configFile, existing string, force bool, w io.Writer) error {
 	globs := apmIgnoreGlobs()
-	if configExisted && !force {
-		printAPMMergeHint(w, globs)
+	if existing != "" && !force {
+		printAPMMergeHint(w, existing, globs)
 		return nil
 	}
 	return appendAPMPosture(configFile, globs)
@@ -234,11 +251,33 @@ func appendAPMPosture(configFile string, ignoreGlobs []string) error {
 }
 
 // printAPMMergeHint writes the APM posture block to w with a preamble
-// instructing the user to merge it by hand into their existing .mdsmith.yml.
-// This is called when the config already exists and was not overwritten.
-func printAPMMergeHint(w io.Writer, ignoreGlobs []string) {
-	_, _ = fmt.Fprintln(w, "mdsmith: --apm: .mdsmith.yml already exists; merge the posture block by hand:")
+// instructing the user to merge it by hand into their existing config
+// file existing — as TOML for a pyproject.toml, else as YAML. This is
+// called when the config already exists and was not overwritten.
+func printAPMMergeHint(w io.Writer, existing string, ignoreGlobs []string) {
+	_, _ = fmt.Fprintf(w, "mdsmith: --apm: %s already exists; merge the posture block by hand:\n",
+		filepath.Base(existing))
+	if config.IsTOMLPath(existing) {
+		_, _ = w.Write(apmPostureTOML(ignoreGlobs))
+		return
+	}
 	_, _ = w.Write(apmPostureBlock(ignoreGlobs))
+}
+
+// apmPostureTOML is apmPostureBlock for a pyproject.toml: the same
+// ignore list as a key of its `[tool.mdsmith]` table.
+func apmPostureTOML(ignoreGlobs []string) []byte {
+	var b strings.Builder
+	b.WriteString("\n# APM coexistence posture — written by mdsmith init --apm\n")
+	b.WriteString("# Keeps mdsmith fix off APM-deployed and APM-compiled files.\n")
+	b.WriteString("# Remove entries for harness directories your repo does not use.\n")
+	b.WriteString("[tool.mdsmith]\n")
+	b.WriteString("ignore = [\n")
+	for _, g := range ignoreGlobs {
+		fmt.Fprintf(&b, "  %s,\n", strconv.Quote(g))
+	}
+	b.WriteString("]\n")
+	return []byte(b.String())
 }
 
 // printInitCatalog lists every config starter and additive pack init can
@@ -261,13 +300,20 @@ func printInitCatalog(w io.Writer) {
 // force is set, so init stays idempotent and never silently clobbers a
 // project's config. Progress and any conversion notes go to w.
 func writeInitConfig(configFile, fromMarkdownlint, starterName string, force bool, w io.Writer) error {
-	exists, err := statTarget(configFile)
+	existing, err := existingConfig(configFile)
 	if err != nil {
 		return err
 	}
-	if exists && !force {
+	switch {
+	case force || existing == "":
+	case existing == configFile:
 		_, _ = fmt.Fprintf(w,
 			"mdsmith: %s already exists, leaving it unchanged (use --force to overwrite)\n", configFile)
+		return nil
+	default:
+		_, _ = fmt.Fprintf(w,
+			"mdsmith: %s configures mdsmith in [tool.mdsmith], leaving it unchanged "+
+				"(use --force to write %s, which takes precedence over it)\n", existing, configFile)
 		return nil
 	}
 	data, source, err := initConfigBytes(fromMarkdownlint, starterName, w)
