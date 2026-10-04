@@ -939,6 +939,34 @@ func TestWikilinkName(t *testing.T) {
 	}
 }
 
+// TestWikilinkKey locks the one-pass key read: a bare or Markdown
+// target keys by stem, a typed one by exact name, each lowercased, and
+// a refused target or an empty stem has no key.
+func TestWikilinkKey(t *testing.T) {
+	for target, want := range map[string]struct {
+		key  string
+		stem bool
+	}{
+		"Page":            {"page", true},
+		"docs/Notes.md":   {"notes", true},
+		"img/Logo.PNG":    {"logo.png", false},
+		`a\b\Guide.mdx `:  {"guide.mdx", false},
+		"x.png.markdown":  {"x.png", true},
+		"folder/x.tar.gz": {"x.tar.gz", false},
+	} {
+		key, stem, ok := WikilinkKey(target)
+		require.True(t, ok, target)
+		assert.Equal(t, want.key, key, target)
+		assert.Equal(t, want.stem, stem, target)
+	}
+	for _, target := range []string{"", "  ", ".md", "../x.png", "/x.md", `C:\x.png`} {
+		key, stem, ok := WikilinkKey(target)
+		assert.False(t, ok, target)
+		assert.False(t, stem, target)
+		assert.Empty(t, key, target)
+	}
+}
+
 // TestWikilinkNameAt locks the name key and base span read at a `[[`
 // column for a typed link; a stem-mode link, a refused target, or a
 // column with no wikilink returns ok=false.

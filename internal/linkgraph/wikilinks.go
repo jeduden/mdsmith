@@ -563,15 +563,35 @@ func ResolveWikiLink(root fs.FS, _ string, target string) (string, bool) {
 // never point at the Markdown files a move relocates. A traversal or
 // absolute target also returns ok=false.
 func WikilinkStem(target string) (string, bool) {
-	target, ok := normalizeTarget(target)
+	key, stem, ok := WikilinkKey(target)
+	if !ok || !stem {
+		return "", false
+	}
+	return key, true
+}
+
+// WikilinkKey reads target once and returns the key it resolves by,
+// with stem reporting the key space: the lowercased basename stem
+// (stem=true, as WikilinkStem returns it) for a bare or Markdown
+// target, or the lowercased exact base name (stem=false, as
+// WikilinkName returns it) for a typed one. ok is false for a target
+// the resolver refuses and for a stem-mode target with an empty stem
+// (`[[.md]]`), which neither key space files a link under. A caller
+// that takes either key, such as the index build, reads each target
+// through it once rather than through both functions.
+func WikilinkKey(target string) (key string, stem, ok bool) {
+	target, ok = normalizeTarget(target)
 	if !ok {
-		return "", false
+		return "", false, false
 	}
-	_, stem, stemMode := wikilinkSearchKey(target)
-	if !stemMode || stem == "" {
-		return "", false
+	name, base, stemMode := wikilinkSearchKey(target)
+	if !stemMode {
+		return FileNameKey(name), false, true
 	}
-	return FileNameKey(stem), true
+	if base == "" {
+		return "", false, false
+	}
+	return FileNameKey(base), true, true
 }
 
 // WikilinkStemAt reads the wikilink whose `[[` starts at bracketStart
@@ -602,18 +622,14 @@ func WikilinkStemAt(row []byte, bracketStart int) (stem string, start, end int, 
 // target resolves by: the lowercased basename (FileNameKey), the key
 // WikilinkIndex.NamePaths files every file under. ok is false for a
 // stem-mode target (bare or Markdown, see WikilinkStem) and for a
-// target the resolver refuses. The two functions split the targets the
-// resolver accepts between them.
+// target the resolver refuses. The two functions split between them
+// every target WikilinkKey keys.
 func WikilinkName(target string) (string, bool) {
-	target, ok := normalizeTarget(target)
-	if !ok {
+	key, stem, ok := WikilinkKey(target)
+	if !ok || stem {
 		return "", false
 	}
-	name, _, stemMode := wikilinkSearchKey(target)
-	if stemMode {
-		return "", false
-	}
-	return FileNameKey(name), true
+	return key, true
 }
 
 // WikilinkNameAt is WikilinkStemAt for a typed link: it returns the

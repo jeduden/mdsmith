@@ -585,13 +585,15 @@ func collectLinkEdges(filePath string, f *lint.File, fmOffset int) []Edge {
 func collectWikilinkEdges(filePath string, f *lint.File, fmOffset int) []Edge {
 	var out []Edge
 	for _, w := range linkgraph.ExtractWikiLinks(f) {
-		kind := EdgeWikilink
-		key, ok := linkgraph.WikilinkStem(w.Target)
+		// One read of the target yields the key and its space, so a
+		// typed link is not normalized twice (once to fail as a stem).
+		key, stem, ok := linkgraph.WikilinkKey(w.Target)
 		if !ok {
-			kind = EdgeWikilinkName
-			if key, ok = linkgraph.WikilinkName(w.Target); !ok {
-				continue
-			}
+			continue
+		}
+		kind := EdgeWikilinkName
+		if stem {
+			kind = EdgeWikilink
 		}
 		out = append(out, Edge{
 			SourceFile:  filePath,
