@@ -42,13 +42,13 @@ then reports it.
 
 ## Tasks
 
-1. Add a batch entry point in
+1. [x] Add a batch entry point in
    [`internal/refactor`](../internal/refactor/move.go), such as
    `MoveAll(ws, []MovePair)`. It resolves each link target
    against the batch rename map, so a link from one moved file
    to another is spelled from the source's new folder to the
    target's new path.
-2. Merge the per-file plans into one `Plan`. Each range gets
+2. [x] Merge the per-file plans into one `Plan`. Each range gets
    one edit, and the incoming-link and outbound-link passes no
    longer both rewrite a link between two moved files.
 3. Switch `handleWillRenameFiles` to the batch entry point.
@@ -58,18 +58,18 @@ then reports it.
 4. Unit tests: two moved files linking each other in the same
    new folder and in different new folders, wikilinks between
    moved files, and a three-file cycle.
-5. Cover the case only one move rewrites. `docs/a.md` links
+5. [x] Cover the case only one move rewrites. `docs/a.md` links
    `../docs/b.md`, and one request moves it to `other/a.md` and
    `docs/b.md` to `docs/sub/b.md`. The token still resolves from
    `other/`, so the move of `a.md` emits no edit. The move of
    `b.md` emits `sub/b.md`, spelled from `docs/`. The stopgap
    withholds it, but the right text is `../docs/sub/b.md`.
-6. Keep a one-sided rewrite that is already right. `docs/a.md`
+6. [x] Keep a one-sided rewrite that is already right. `docs/a.md`
    links `../b.md`, and one request moves it to `other/a.md`
    and `b.md` to `b2.md`. The move of `b.md` emits `../b2.md`,
    which also resolves from `other/`, yet the stopgap withholds
    it.
-7. Plan a chain such as `b.md` to `z.md` plus `a.md` to `b.md`.
+7. [x] Plan a chain such as `b.md` to `z.md` plus `a.md` to `b.md`.
    `refactor.Move` refuses `a.md` because `b.md` exists in the
    pre-batch snapshot, so links to `a.md` stay stale and the
    warning does not count them.

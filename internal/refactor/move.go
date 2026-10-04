@@ -11,7 +11,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
-	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
@@ -95,6 +94,9 @@ func (e SourceNotFoundError) Error() string {
 // `<?include?>`, `<?build?>`, and `<?catalog?>` directive paths are
 // not yet recomputed, so a cross-directory move can leave them stale —
 // a tracked follow-up.
+//
+// Move is MoveAll with one pair; MoveAll plans several moves that run
+// together.
 func Move(ws Workspace, src, dst string) (Plan, error) {
 	p, _, err := MoveWithStemEdits(ws, src, dst)
 	return p, err
@@ -108,36 +110,12 @@ func Move(ws Workspace, src, dst string) (Plan, error) {
 // rewrites that depend on the holder's directory, without planning
 // the stem pass a second time.
 func MoveWithStemEdits(ws Workspace, src, dst string) (Plan, map[string][]Edit, error) {
-	src = index.NormalizePath(src)
-	dst = index.NormalizePath(dst)
-	if !workspaceRelative(src) || !workspaceRelative(dst) {
-		return Plan{}, nil, ErrTraversalPath
+	bp := MoveAll(ws, []MovePair{{Src: src, Dst: dst}})
+	m := bp.Moves[0]
+	if m.Err != nil {
+		return Plan{}, nil, m.Err
 	}
-	if src == dst {
-		return Plan{}, nil, ErrSameFile
-	}
-	srcKey, srcSource, ok := ws.Resolve(src)
-	if !ok {
-		return Plan{}, nil, SourceNotFoundError{Src: src}
-	}
-	if _, _, exists := ws.Resolve(dst); exists {
-		return Plan{}, nil, DestinationExistsError{Dst: dst}
-	}
-
-	changes := map[string][]Edit{}
-	p := lint.NewParser()
-	r := &destResolver{ws: ws, src: src}
-	appendReferrerEdits(changes, ws, p, r, src, dst)
-	stems := map[string][]Edit{}
-	appendWikilinkStemEdits(stems, ws, r, src, dst)
-	for key, edits := range stems {
-		changes[key] = append(changes[key], edits...)
-	}
-	if mdpath.HasMarkdownExt(path.Ext(src)) || r.listed(src) {
-		appendOutboundEdits(changes, p, r, srcKey, src, dst, srcSource)
-	}
-	stableSortEdits(changes)
-	return Plan{Edits: changes, FileOp: &FileOp{From: src, To: dst}}, stems, nil
+	return Plan{Edits: bp.Edits, FileOp: &FileOp{From: m.Src, To: m.Dst}}, bp.StemEdits, nil
 }
 
 // workspaceRelative reports whether p is a safe workspace-relative path
@@ -176,7 +154,10 @@ var (
 // appendReferrerEdits repoints every destination in another workspace
 // file that names src — inline links, images, and reference
 // definitions — so it names dst. A self-reference inside src is left
-// to the outbound pass, so no token is edited twice.
+// to the outbound pass, so no token is edited twice. So is a link in
+// another file the batch moves: that file's own outbound pass spells
+// it from its new folder. A holder whose move could not be planned
+// gets no edit; the link counts as withheld when it stops resolving.
 //
 // Every file is read, but only one mayName admits is parsed. The
 // index is not consulted: it records no edge for an image or a
@@ -196,6 +177,12 @@ func appendReferrerEdits(
 		for _, d := range locateDests(p, rel, source) {
 			ref, ok := r.target(rel, d.dest)
 			if !ok || ref.target != src {
+				continue
+			}
+			if m, moved := r.member(rel); moved {
+				if !m.planned {
+					r.countStale(m.dst, ref.path, dst)
+				}
 				continue
 			}
 			if edit, ok := destEdit(d, ref, rel, dst); ok {
@@ -245,8 +232,16 @@ func outboundEdit(r *destResolver, d inlineDest, src, dst string) (Edit, bool) {
 	// dst — otherwise the token would be rewritten to address the
 	// old (now vacated) location.
 	tgt := ref.target
-	if tgt == src {
+	// A target the batch also moves is named at its new path; one whose
+	// move could not be planned gets no edit (see countStale).
+	if m, moved := r.member(tgt); tgt == src {
 		tgt = dst
+	} else if moved {
+		if !m.planned {
+			r.countStale(dst, ref.path, m.dst)
+			return Edit{}, false
+		}
+		tgt = m.dst
 	}
 	// The reference lives in the moved file, so its new spelling is
 	// computed as if from dst's directory.
@@ -300,7 +295,8 @@ type destRef struct {
 type destResolver struct {
 	ws    Workspace
 	src   string
-	list  []string // nil until paths first runs; never nil after
+	batch *moveBatch // the MoveAll batch; nil when a pass runs alone
+	list  []string   // nil until paths first runs; never nil after
 	files map[string]bool
 }
 
@@ -394,10 +390,11 @@ func literalTarget(refFile string, pre []byte) (lit, target string) {
 	return lit, linkgraph.ResolveRelTarget(refFile, lit)
 }
 
-// exists reports whether p names src or another file the workspace
-// lists.
+// exists reports whether p names src, another batch member, or
+// another file the workspace lists.
 func (r *destResolver) exists(p string) bool {
-	return p == r.src || r.listed(p)
+	_, moved := r.member(p)
+	return p == r.src || moved || r.listed(p)
 }
 
 // listed reports whether the workspace lists p. It builds the lookup
