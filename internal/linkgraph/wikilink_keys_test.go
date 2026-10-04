@@ -89,11 +89,32 @@ func TestStemResolvesTo(t *testing.T) {
 		"unindexed shallower path": {idx, "guide", "guide.md", true},
 		"unindexed sorts first":    {idx, "guide", "ab/guide.md", true},
 		"unindexed sorts later":    {idx, "guide", "zz/guide.md", false},
+		"capitals sort first":      {idx, "guide", "Zz/guide.md", true},
 		"no holder":                {idx, "manual", "docs/manual.md", true},
 		"nil index holds only p":   {nil, "guide", "ref/Guide.md", true},
+		// On a case-insensitive file system Docs/guide.md may be the
+		// indexed docs/guide.md, which sorts after b/guide.md.
+		"holder spelled in other case": {
+			NewWikilinkIndexFromPaths([]string{"b/guide.md", "docs/guide.md"}), "guide", "Docs/guide.md", false,
+		},
+		"first holder in other case": {
+			NewWikilinkIndexFromPaths([]string{"docs/guide.md", "z/guide.md"}), "guide", "Docs/guide.md", false,
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			assert.Equal(t, tc.want, tc.idx.StemResolvesTo(tc.key, tc.p))
 		})
 	}
+}
+
+// TestNameResolvesTo locks that a typed `[[name.ext]]` picks its file
+// by the same order as a `[[stem]]`, counting p as a holder of the
+// exact-name key.
+func TestNameResolvesTo(t *testing.T) {
+	idx := NewWikilinkIndexFromPaths([]string{"img/logo.png", "z/x/Logo.PNG"})
+	assert.True(t, idx.NameResolvesTo("logo.png", "a/logo.png"), "a shallower path wins")
+	assert.False(t, idx.NameResolvesTo("logo.png", "z/logo.png"), "img/ sorts first")
+	assert.False(t, idx.NameResolvesTo("logo.png", "Img/logo.png"), "a holder in other case may be p")
+	assert.True(t, idx.NameResolvesTo("logo.svg", "z/logo.svg"), "no holder")
+	assert.True(t, (*WikilinkIndex)(nil).NameResolvesTo("logo.png", "z/logo.png"), "a nil index holds only p")
 }

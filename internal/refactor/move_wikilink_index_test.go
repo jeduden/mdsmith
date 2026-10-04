@@ -45,30 +45,32 @@ func TestMove_UnlistedStemSiblingBlocksWikilinkRewrite(t *testing.T) {
 
 // TestMove_NodeModulesReadmeDoesNotBlockWikilinkRewrite locks that a
 // listed file under node_modules, which the resolver never indexes,
-// does not count as a same-stem holder.
+// does not count as a same-stem holder. The README is shallower than
+// the moved file, so it would win `[[readme]]` if it were indexed.
 func TestMove_NodeModulesReadmeDoesNotBlockWikilinkRewrite(t *testing.T) {
 	src := "See [[readme]].\n"
 	ws := newUnlistedWorkspace(map[string]string{
-		"docs/readme.md":             "# Readme\n",
+		"docs/api/v1/readme.md":      "# Readme\n",
 		"node_modules/pkg/README.md": "# Pkg\n",
 		"index.md":                   src,
 	})
-	plan, err := Move(ws, "docs/readme.md", "docs/intro.md")
+	plan, err := Move(ws, "docs/api/v1/readme.md", "docs/api/v1/intro.md")
 	require.NoError(t, err)
 	assert.Equal(t, "See [[intro]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
 }
 
 // TestMove_UnlistedTypedNameBlocksWikilinkRewrite locks that a
-// non-Markdown destination is blocked by any file the resolver indexes
-// under its name, listed or not: `[[logo.png]]` reaches the shallower
-// root file, and `[[guide.mdx]]` reaches a/guide.mdx.
+// non-Markdown destination is blocked by a file the resolver indexes
+// under its name, listed or not, that sorts before it: `[[logo.png]]`
+// reaches the shallower root file or a/LOGO.PNG, and `[[guide.mdx]]`
+// reaches a/guide.mdx.
 func TestMove_UnlistedTypedNameBlocksWikilinkRewrite(t *testing.T) {
 	for name, tc := range map[string]struct {
 		src, dst, unlisted, link string
 	}{
 		"root logo.png":    {"docs/logo.md", "docs/logo.png", "logo.png", "[[logo]]"},
 		"unlisted mdx":     {"docs/guide.md", "docs/guide.mdx", "a/guide.mdx", "[[guide]]"},
-		"case-folded name": {"docs/logo.md", "docs/logo.png", "img/LOGO.PNG", "[[logo]]"},
+		"case-folded name": {"docs/logo.md", "docs/logo.png", "a/LOGO.PNG", "[[logo]]"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			ws := newUnlistedWorkspace(map[string]string{

@@ -72,7 +72,6 @@ func holderIndex(files ...string) *linkgraph.WikilinkIndex {
 
 func TestWikilinkRewriteSafe_OldStem(t *testing.T) {
 	files := []string{"a.md", "docs/API.md", "api/api.md", "img/api.png", "notes/b.mdx", "notes/c.markdown"}
-	licenseFiles := []string{"notes/LICENSE", "docs/license.md"}
 	for name, tc := range map[string]struct {
 		files   []string
 		stem    string
@@ -85,7 +84,7 @@ func TestWikilinkRewriteSafe_OldStem(t *testing.T) {
 		"case-folded basename":           {[]string{"docs/API.md"}, "api", true},
 		"markdown extension is stripped": {files, "c", true},
 		"upper-case markdown extension":  {[]string{"docs/Guide.MD"}, "guide", true},
-		"extensionless file is no stem":  {licenseFiles, "license", true},
+		"extensionless file is no stem":  {[]string{"notes/LICENSE"}, "license", false},
 		"stem is not a prefix match":     {files, "ap", false},
 		"typed name is no stem":          {files, "b", false},
 	} {
@@ -94,8 +93,8 @@ func TestWikilinkRewriteSafe_OldStem(t *testing.T) {
 			// The source sorts after every listed file, so any indexed
 			// holder of the stem is the file the link resolves to.
 			const src = "z/z/z/src.md"
-			assert.Equal(t, !tc.holders, wikilinkRewriteSafe(idx, src, tc.stem, "zzz", true))
-			assert.Equal(t, !tc.holders, wikilinkRewriteSafe(idx, src, "zzz", tc.stem, true),
+			assert.Equal(t, !tc.holders, wikilinkRewriteSafe(idx, src, "z/z/z/zzz.md", tc.stem, "zzz", true))
+			assert.Equal(t, !tc.holders, wikilinkRewriteSafe(idx, src, "z/z/z/dst.md", "zzz", tc.stem, true),
 				"a Markdown destination reads stems the same way")
 		})
 	}
@@ -115,14 +114,32 @@ func TestWikilinkRewriteSafe_NewName(t *testing.T) {
 		"no prefix match":              {files, "api", true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tc.safe, wikilinkRewriteSafe(holderIndex(tc.files...), "src.md", "zzz", tc.base, false))
+			// The destination sorts after every listed file, so any
+			// holder of the name is the file the link would reach.
+			idx := holderIndex(tc.files...)
+			assert.Equal(t, tc.safe, wikilinkRewriteSafe(idx, "src.md", "z/z/z/"+tc.base, "zzz", tc.base, false))
 		})
 	}
 }
 
+// TestWikilinkRewriteSafe_DestinationResolution locks that a file
+// already holding the new stem or name blocks the rewrite only when it,
+// not dst, is the file the rewritten link would reach.
+func TestWikilinkRewriteSafe_DestinationResolution(t *testing.T) {
+	idx := holderIndex("z/x/manual.md", "z/x/logo.png")
+	assert.True(t, wikilinkRewriteSafe(idx, "src.md", "a/manual.md", "src", "manual", true),
+		"dst is shallower than the stem holder")
+	assert.False(t, wikilinkRewriteSafe(idx, "src.md", "z/y/w/manual.md", "src", "manual", true),
+		"the stem holder is shallower than dst")
+	assert.True(t, wikilinkRewriteSafe(idx, "src.md", "a/logo.png", "src", "logo.png", false),
+		"dst is shallower than the name holder")
+	assert.False(t, wikilinkRewriteSafe(idx, "src.md", "z/y/w/logo.png", "src", "logo.png", false),
+		"the name holder is shallower than dst")
+}
+
 func TestWikilinkRewriteSafe_SourceResolution(t *testing.T) {
 	safe := func(idx *linkgraph.WikilinkIndex, src string) bool {
-		return wikilinkRewriteSafe(idx, src, "guide", "manual", true)
+		return wikilinkRewriteSafe(idx, src, "z/z/z/manual.md", "guide", "manual", true)
 	}
 	files := []string{"docs/guide.md"}
 	assert.False(t, safe(holderIndex(files...), "z/guide.md"),
@@ -463,9 +480,10 @@ func TestMove_SelfPathLinkStaysValid(t *testing.T) {
 
 // TestMove_UnlistedSourceCountsTowardStemAmbiguity locks that a moved
 // Markdown file absent from ws.Files() (excluded by a `files:` glob,
-// yet still readable through Resolve) counts as a holder of its own
-// stem. One listed same-stem sibling then makes `[[guide]]` ambiguous,
-// so no wikilink is rewritten to the moved file's new name.
+// yet still readable through Resolve) is weighed as a holder of its
+// own stem against the listed ones. The listed docs/guide.md is
+// shallower, so `[[guide]]` resolves to it and no wikilink is
+// rewritten to the moved file's new name.
 func TestMove_UnlistedSourceCountsTowardStemAmbiguity(t *testing.T) {
 	ws := stubWorkspace{
 		wikilinkEdges: []index.Edge{{SourceFile: "index.md", SourceLine: 1, SourceCol: 5}},
@@ -479,7 +497,7 @@ func TestMove_UnlistedSourceCountsTowardStemAmbiguity(t *testing.T) {
 	plan, err := Move(ws, "a/b/guide.md", "a/b/manual.md")
 	require.NoError(t, err)
 	assert.Empty(t, plan.Edits["index.md"],
-		"unlisted source plus a listed sibling: [[guide]] is ambiguous")
+		"a shallower listed sibling wins [[guide]] over the unlisted source")
 }
 
 // countingWorkspace counts Files calls on a wrapped workspace.
@@ -496,7 +514,7 @@ func (w *countingWorkspace) Files() []string {
 // TestMove_ListsFilesOnce locks that a move reads the workspace file
 // list once and shares the normalized copy between the referrer scan,
 // the listed-source check, and, for a workspace with no wikilink
-// index, the wikilink holder count, instead of copying the list per
+// index, the wikilink same-stem guard, instead of copying the list per
 // pass.
 func TestMove_ListsFilesOnce(t *testing.T) {
 	ws := &countingWorkspace{memWorkspace: newMemWorkspace(map[string]string{
@@ -512,11 +530,11 @@ func TestMove_ListsFilesOnce(t *testing.T) {
 	plan, err = Move(nilIdx, "docs/api.md", "docs/service.md")
 	require.NoError(t, err)
 	require.NotEmpty(t, plan.Edits["index.md"])
-	assert.Equal(t, 1, nilIdx.files, "the nil-index holder count reuses the list")
+	assert.Equal(t, 1, nilIdx.files, "the nil-index same-stem guard reuses the list")
 }
 
 // nilIndexCountingWorkspace is a countingWorkspace with no wikilink
-// index, so the move counts wikilink holders in the listed files.
+// index, so the move reads wikilink holders from the listed files.
 type nilIndexCountingWorkspace struct{ countingWorkspace }
 
 func (*nilIndexCountingWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex { return nil }
@@ -547,4 +565,50 @@ func TestAppendWikilinkStemEdits_StaleEdgeKeyMismatch(t *testing.T) {
 			assert.Len(t, changes["d.md"], want)
 		})
 	}
+}
+
+// TestWikilinkRewriteSafe_SourceInOtherCase locks that a source spelled
+// in another letter case than an indexed holder, as a case-insensitive
+// file system accepts, is not taken to win the stem: docs/guide.md may
+// be that very file, and it sorts after b/guide.md.
+func TestWikilinkRewriteSafe_SourceInOtherCase(t *testing.T) {
+	idx := holderIndex("b/guide.md", "docs/guide.md")
+	assert.False(t, wikilinkRewriteSafe(idx, "Docs/guide.md", "docs/manual.md", "guide", "manual", true))
+}
+
+func TestStemSiblings(t *testing.T) {
+	holders := []string{"a/guide.md", "docs/guide.md", "ref/guide.md"}
+	assert.Equal(t, []string{"a/guide.md", "ref/guide.md"}, stemSiblings(holders, "docs/guide.md"))
+	assert.Equal(t, []string{"a/guide.md", "docs/guide.md", "ref/guide.md"}, holders, "the index's slice is left alone")
+	assert.Nil(t, stemSiblings([]string{"docs/guide.md"}, "docs/guide.md"))
+}
+
+func TestWikilinkNamesSibling(t *testing.T) {
+	siblings := []string{"ref/guide.md", "x/api/v1/guide.md"}
+	for lead, want := range map[string]bool{
+		"[[":            false,
+		"[[./":          false,
+		"[[ ref/":       true,
+		`[[REF\`:        true,
+		"[[api/v1/":     true,
+		"[[pi/v1/":      false,
+		"[[docs/":       false,
+		"[[a/../ref/":   true,
+		"[[other/":      false,
+		"[[x/api/v1/":   true,
+		"[[y/x/api/v1/": false,
+	} {
+		t.Run(lead, func(t *testing.T) {
+			assert.Equal(t, want, wikilinkNamesSibling([]byte(lead), "docs/guide.md", siblings))
+		})
+	}
+	assert.False(t, wikilinkNamesSibling([]byte("[[ref/"), "a/ref/guide.md", siblings),
+		"a prefix that names src's folder too reaches src")
+}
+
+func TestFolderNames(t *testing.T) {
+	assert.True(t, folderNames("ref", "ref/guide.md"))
+	assert.True(t, folderNames("Ref", "a/REF/guide.md"))
+	assert.False(t, folderNames("ef", "ref/guide.md"))
+	assert.False(t, folderNames("a/ref", "ref/guide.md"))
 }

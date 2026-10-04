@@ -295,8 +295,8 @@ type destRef struct {
 
 // destResolver reads destinations for a move of src. It also holds the
 // workspace file list, read once per move and normalized, which the
-// referrer scan, the listed checks, and the wikilink holder count of a
-// workspace with no wikilink index share.
+// referrer scan, the listed checks, and the wikilink same-stem guard of
+// a workspace with no wikilink index share.
 type destResolver struct {
 	ws    Workspace
 	src   string
@@ -778,8 +778,10 @@ func skipGap(src []byte, i int) int {
 // the new stem, the whole basename, or either behind `./`. It runs only
 // when `[[old-stem]]` would stop reaching dst: a Markdown dst with
 // another stem, or a dst with a non-Markdown name. A move that keeps the
-// stem leaves wikilinks alone: a stem still resolves to the file at its
-// new path.
+// stem leaves wikilinks alone, since no other spelling would serve
+// better. With a same-stem sibling, though, the new path can sort on
+// the other side of it, and every `[[stem]]` then reaches the other
+// file of the two.
 func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destResolver, src, dst string) {
 	// Both ends are keyed the way NewWikilinkIndex keys files. Only a
 	// Markdown src has a stem key, so moving any other file retargets
@@ -822,14 +824,15 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	// read from ws.WikilinkIndex, the set the resolver reads, listed or
 	// not. src counts as a holder even when that index lacks it.
 	//
-	// The destination stem must be unique too. dst does not exist in the
-	// workspace yet (Move rejected an existing destination), so any file
-	// already carrying newStem is a *different* file: retargeting
-	// `[[oldStem]]` to `[[newStem]]` would make the link resolve to that
-	// sibling (or become ambiguous) instead of the moved file. Leave the
-	// wikilinks alone, mirroring the source-side ambiguity guard.
-	// A Markdown destination is addressed by stem; a typed non-Markdown
-	// destination (`guide.mdx`) is addressed by exact file name.
+	// The destination must win its new key the same way. dst does not
+	// exist in the workspace yet (Move rejected an existing destination),
+	// so any file already carrying newStem is a *different* file. When it
+	// sorts before dst, `[[newStem]]` would reach it, not the moved file,
+	// so the wikilinks are left alone. When dst sorts first, the move
+	// itself hands that file's `[[newStem]]` links to dst, and the
+	// rewritten links reach dst with them. A Markdown destination is
+	// addressed by stem; a typed non-Markdown destination (`guide.mdx`)
+	// is addressed by exact file name.
 	//
 	// Most moves have no `[[oldStem]]` link at all, so the edges are
 	// fetched first and the workspace walk that builds the index is
@@ -849,9 +852,10 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	if idx == nil {
 		idx = linkgraph.NewWikilinkIndexFromPaths(r.paths())
 	}
-	if !wikilinkRewriteSafe(idx, src, oldStem, newKey, dstIsMarkdown) {
+	if !wikilinkRewriteSafe(idx, src, dst, oldStem, newKey, dstIsMarkdown) {
 		return
 	}
+	siblings := stemSiblings(idx.StemPaths(oldStem), src)
 	lines := edgeLines{ws: ws}
 	for _, e := range edges {
 		key, row, ok := lines.row(e)
@@ -863,6 +867,9 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 		// oldStem is rewritten.
 		stem, start, end, ok := linkgraph.WikilinkStemAt(row, e.SourceCol-1)
 		if !ok || stem != oldStem {
+			continue
+		}
+		if len(siblings) > 0 && wikilinkNamesSibling(row[e.SourceCol-1:start], src, siblings) {
 			continue
 		}
 		text := newSpelling
@@ -882,23 +889,70 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	}
 }
 
+// stemSiblings returns the holders of the moved file's stem other than
+// src, in a slice of its own: the files a `[[stem]]` folder prefix can
+// name in its place.
+func stemSiblings(holders []string, src string) []string {
+	var out []string
+	for _, h := range holders {
+		if h != src {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// wikilinkNamesSibling reports whether a wikilink names, by its folder
+// prefix, the folder of one of siblings and not that of src. lead is
+// the link's text from its `[[` up to its base segment. The resolver
+// reads the basename alone, so such a link reaches src while src sorts
+// first, but its author named the sibling, and it reaches that file
+// once src is gone, so it is left as written rather than retargeted. A
+// prefix names a file's folder when it equals the folder's trailing
+// path segments, ignoring case and reading `\` as `/`; a bare link
+// names none.
+func wikilinkNamesSibling(lead []byte, src string, siblings []string) bool {
+	lead = bytes.TrimPrefix(lead, []byte("[["))
+	folder := path.Clean(strings.ReplaceAll(strings.TrimSpace(string(lead)), `\`, "/"))
+	if folder == "." || folderNames(folder, src) {
+		return false
+	}
+	for _, s := range siblings {
+		if folderNames(folder, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// folderNames reports whether folder equals the trailing segments of
+// file's folder, ignoring case.
+func folderNames(folder, file string) bool {
+	dir := strings.ToLower(path.Dir(file))
+	folder = strings.ToLower(folder)
+	return dir == folder || strings.HasSuffix(dir, "/"+folder)
+}
+
 // wikilinkRewriteSafe reports whether retargeting `[[oldStem]]` to
-// newKey keeps every such link on src, reading idx, the index
-// `[[stem]]` resolution reads. That holds when src is the file
-// `[[oldStem]]` resolves to and no file already holds newKey. newKey is
-// a stem when newIsStem (a Markdown destination) and otherwise a
-// lowercased exact basename, since a typed wikilink such as
-// `[[guide.mdx]]` resolves by file name. src always counts as an
-// oldStem holder: the resolver reads it from disk, and an index built
-// before the file existed, or over a host buffer, may not hold it.
-func wikilinkRewriteSafe(idx *linkgraph.WikilinkIndex, src, oldStem, newKey string, newIsStem bool) bool {
+// newKey keeps every such link on the moved file, reading idx, the
+// index `[[stem]]` resolution reads. That holds when src is the file
+// `[[oldStem]]` resolves to and dst is the file newKey will resolve to:
+// a file already holding newKey blocks the rewrite only when it sorts
+// before dst. newKey is a stem when newIsStem (a Markdown destination)
+// and otherwise a lowercased exact basename, since a typed wikilink
+// such as `[[guide.mdx]]` resolves by file name. src always counts as
+// an oldStem holder: the resolver reads it from disk, and an index
+// built before the file existed, or over a host buffer, may not hold
+// it. dst counts as a newKey holder the same way, since it does not
+// exist yet.
+func wikilinkRewriteSafe(idx *linkgraph.WikilinkIndex, src, dst, oldStem, newKey string, newIsStem bool) bool {
 	if !idx.StemResolvesTo(oldStem, src) {
 		return false
 	}
 	if newIsStem {
-		return len(idx.StemPaths(newKey)) == 0
+		return idx.StemResolvesTo(newKey, dst)
 	}
-	return len(idx.NamePaths(newKey)) == 0
+	return idx.NameResolvesTo(newKey, dst)
 }
 
 // dstWikilinkSpelling returns the token a rewritten wikilink names dst

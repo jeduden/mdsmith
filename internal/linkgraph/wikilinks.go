@@ -336,14 +336,34 @@ func (idx *WikilinkIndex) StemPaths(key string) []string {
 // StemResolvesTo reports whether a `[[stem]]` link keyed by key (as
 // FileStemKey returns it) resolves to the workspace-relative path p,
 // counting p as a holder of key even when the index lacks it: the
-// shallowest, then alphabetically first, holder wins. A nil index holds
-// no other file, so p wins.
+// shallowest holder wins, then the first by full path in byte order
+// (so `Docs/` sorts before `archive/`). A nil index holds no other
+// file, so p wins. An indexed path that differs from p in letter case
+// alone keeps p from winning unless it is p exactly (see resolvesTo).
 func (idx *WikilinkIndex) StemResolvesTo(key, p string) bool {
-	paths := idx.StemPaths(key)
+	return resolvesTo(idx.StemPaths(key), p)
+}
+
+// NameResolvesTo is StemResolvesTo for a typed `[[name.ext]]` link
+// keyed by key (as FileNameKey returns it): the files holding that
+// exact name pick the link's file in the same order.
+func (idx *WikilinkIndex) NameResolvesTo(key, p string) bool {
+	return resolvesTo(idx.NamePaths(key), p)
+}
+
+// resolvesTo reports whether p is the first of paths, sorted by
+// compareDepthThenName, once p is counted among them. A path that
+// differs from p in letter case alone may be p itself, as a
+// case-insensitive file system spells it on disk, and then p's own
+// spelling does not say where it sorts: p is not known to win.
+func resolvesTo(paths []string, p string) bool {
 	if len(paths) == 0 || paths[0] == p {
 		return true
 	}
-	return !slices.Contains(paths, p) && compareDepthThenName(p, paths[0]) < 0
+	if slices.ContainsFunc(paths, func(q string) bool { return strings.EqualFold(q, p) }) {
+		return false
+	}
+	return compareDepthThenName(p, paths[0]) < 0
 }
 
 // NamePaths returns the files, of any extension, the resolver reaches
