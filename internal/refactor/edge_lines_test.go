@@ -102,3 +102,24 @@ func TestMoveAll_ReadsEachFileOnce(t *testing.T) {
 	assert.Equal(t, 1, ws.calls["hub.md"])
 	assert.Equal(t, 1, ws.calls["a.md"])
 }
+
+// TestMoveAll_ShadowedPathReadsEachFileOnce locks that counting the
+// links to a shadowed path rides on the referrer scan: b.md's refused
+// move to the existing c.md lets a.md take its path, and hub.md, which
+// links both, is still read once.
+func TestMoveAll_ShadowedPathReadsEachFileOnce(t *testing.T) {
+	ws := &resolveCounter{calls: map[string]int{}, stubWorkspace: stubWorkspace{
+		files: []string{"a.md", "b.md", "c.md", "hub.md"},
+		sources: map[string][]byte{
+			"a.md":   []byte("# A\n"),
+			"b.md":   []byte("# B\n"),
+			"c.md":   []byte("# C\n"),
+			"hub.md": []byte("[a](a.md) [b](b.md)\n"),
+		},
+	}}
+	bp := MoveAll(ws, []MovePair{{"b.md", "c.md"}, {"a.md", "b.md"}})
+	require.Equal(t, DestinationExistsError{Dst: "c.md"}, bp.Moves[0].Err)
+	assert.Equal(t, []string{"b.md"}, texts(bp.Edits, "hub.md"))
+	assert.Equal(t, 1, bp.Withheld)
+	assert.Equal(t, 1, ws.calls["hub.md"])
+}

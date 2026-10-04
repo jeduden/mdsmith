@@ -148,13 +148,15 @@ var (
 // could not be planned gets no edit unless the host keeps it in its
 // folder, where the link is spelled from the same directory whether or
 // not the move runs; otherwise the link counts as withheld when it
-// stops resolving.
+// stops resolving. The same scan counts each link to a shadowed path
+// (see countShadowed) from any file but that path's own and a planned
+// member's.
 //
-// Every file is read, but only one mayName admits for some member is
-// parsed. The index is not consulted: it records no edge for an image
-// or a ref-def, and it reads a literal `what?.md` as `what`.
+// Every file is read, but only one mayNameAny admits is parsed. The
+// index is not consulted: it records no edge for an image or a
+// ref-def, and it reads a literal `what?.md` as `what`.
 func appendReferrerEdits(changes map[string][]Edit, ws Workspace, p parser.Parser, r *destResolver) {
-	bases := r.batch.plannedBases()
+	bases := r.batch.scanBases()
 	if len(bases) == 0 {
 		return
 	}
@@ -168,29 +170,56 @@ func appendReferrerEdits(changes map[string][]Edit, ws Workspace, p parser.Parse
 			continue
 		}
 		for _, d := range locateDests(p, rel, source) {
-			ref, ok := r.target(rel, d.dest)
-			if !ok {
-				continue
-			}
-			tgt, isMember := r.member(ref.target)
-			if !isMember || !tgt.planned {
-				continue
-			}
-			if moved && !unplannedInPlace(holder, rel) {
-				r.countStale(holder.dst, ref.path, tgt.dst)
-				continue
-			}
-			if edit, ok := destEdit(d, ref, rel, tgt.dst); ok {
+			if edit, ok := r.referrerEdit(d, rel, holder, moved); ok {
 				changes[key] = append(changes[key], edit)
 			}
 		}
 	}
 }
 
-// mayNameAny reports whether mayName admits source for any of bases.
+// referrerEdit is appendReferrerEdits for one destination d in the
+// workspace file rel, whose batch entry is holder when moved. It
+// returns the edit that repoints d at a planned member's new path, and
+// counts d instead when it names a shadowed path or when holder's
+// refused move takes d out of the folder it is spelled from.
+func (r *destResolver) referrerEdit(d inlineDest, rel string, holder batchMember, moved bool) (Edit, bool) {
+	ref, ok := r.target(rel, d.dest)
+	if !ok {
+		return Edit{}, false
+	}
+	if r.batch.shadowed[ref.target] {
+		if ref.target != rel {
+			r.batch.withheld++
+		}
+		return Edit{}, false
+	}
+	tgt, isMember := r.member(ref.target)
+	if !isMember || !tgt.planned {
+		return Edit{}, false
+	}
+	if moved && !unplannedInPlace(holder, rel) {
+		r.countStale(holder.dst, ref.path, tgt.dst)
+		return Edit{}, false
+	}
+	return destEdit(d, ref, rel, tgt.dst)
+}
+
+// mayNameAny reports whether source may hold a destination that names
+// a file with one of the base names bases. It needs a `](` or `]:` to
+// open one, and a base written out or a `%` that may escape it: a
+// destination's path, once decoded and cleaned, ends in the base name
+// it names, and cleaning only drops path segments. The link marks and
+// the `%` do not depend on the base, so each is looked for once, not
+// once per base.
 func mayNameAny(source []byte, bases [][]byte) bool {
+	if len(bases) == 0 || !bytes.Contains(source, linkMark) && !bytes.Contains(source, refDefMark) {
+		return false
+	}
+	if bytes.IndexByte(source, '%') >= 0 {
+		return true
+	}
 	for _, base := range bases {
-		if mayName(source, base) {
+		if bytes.Contains(source, base) {
 			return true
 		}
 	}
@@ -203,18 +232,6 @@ func mayNameAny(source []byte, bases [][]byte) bool {
 // after the host moves it, so an edit spelled from rel stays right.
 func unplannedInPlace(m batchMember, rel string) bool {
 	return !m.planned && m.dst != "" && path.Dir(m.dst) == path.Dir(rel)
-}
-
-// mayName reports whether source may hold a destination that names a
-// file with the base name base. It needs a `](` or `]:` to open one,
-// and base written out or a `%` that may escape it: a destination's
-// path, once decoded and cleaned, ends in the base name it names, and
-// cleaning only drops path segments.
-func mayName(source, base []byte) bool {
-	if !bytes.Contains(source, linkMark) && !bytes.Contains(source, refDefMark) {
-		return false
-	}
-	return bytes.Contains(source, base) || bytes.IndexByte(source, '%') >= 0
 }
 
 // appendOutboundEdits recomputes every relative inline link, image and
@@ -246,17 +263,18 @@ func outboundEdit(r *destResolver, d inlineDest, src, dst string) (Edit, bool) {
 	// old (now vacated) location.
 	tgt := ref.target
 	// A target the batch also moves is named at its new path; one whose
-	// move could not be planned gets no edit (see countStale). No
-	// spelling is right both ways: the old path breaks if the host does
-	// move it, and its destination may name the file a refused overwrite
-	// leaves there. Left as written, the link stops resolving, so the
-	// warning counts it and MDS027 flags it rather than letting it reach
-	// the wrong file.
+	// move could not be planned gets no edit, and the warning counts
+	// the link. No spelling is right both ways: the old path breaks if
+	// the host does move it, and its destination may name the file a
+	// refused overwrite leaves there. Left as written, the link either
+	// stops resolving, where MDS027 flags it, or reaches that
+	// destination, which is right only if the host overwrites it — so
+	// it is counted even then.
 	if m, moved := r.member(tgt); tgt == src {
 		tgt = dst
 	} else if moved {
 		if !m.planned {
-			r.countStale(dst, ref.path, m.dst)
+			r.batch.withheld++
 			return Edit{}, false
 		}
 		tgt = m.dst
@@ -828,7 +846,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	self, rewrite := newStemTarget(oldStem, dst)
 	if !rewrite {
 		var kept bool
-		if self, kept = r.keptStemTarget(oldStem, src, dst); !kept {
+		if self, kept = r.keptStemTarget(oldStem, dst); !kept {
 			return
 		}
 	}
@@ -965,23 +983,19 @@ func (t stemTarget) reaches(post *linkgraph.WikilinkIndex) bool {
 // countBlocked), and a renamed sibling takes the links that name it
 // (see siblingTarget). A lone move, or a batch with no such member,
 // leaves the links alone.
-func (r *destResolver) keptStemTarget(oldStem, src, dst string) (stemTarget, bool) {
+func (r *destResolver) keptStemTarget(oldStem, dst string) (stemTarget, bool) {
 	if !linkgraph.WikilinkIndexed(dst) {
 		return stemTarget{}, false
 	}
 	if stem, isStem := linkgraph.FileStemKey(path.Base(dst)); !isStem || stem != oldStem {
 		return stemTarget{}, false
 	}
-	holds := func(p string) bool {
-		stem, isStem := linkgraph.FileStemKey(path.Base(p))
-		return isStem && stem == oldStem
+	// The moving file is a member holding oldStem itself, so another
+	// member holds it too when the count passes one.
+	if r.batch.stemHolders(oldStem) < 2 {
+		return stemTarget{}, false
 	}
-	for s, m := range r.batch.members {
-		if s != src && (holds(s) || holds(m.dst)) {
-			return stemTarget{dst: dst, key: oldStem, isStem: true}, true
-		}
-	}
-	return stemTarget{}, false
+	return stemTarget{dst: dst, key: oldStem, isStem: true}, true
 }
 
 // siblingTarget returns the target a link naming the sibling sib by

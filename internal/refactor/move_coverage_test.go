@@ -368,21 +368,24 @@ func TestAppendReferrerEdits_DefensiveBranches(t *testing.T) {
 	assert.Empty(t, counter.calls)
 }
 
-func TestMayName(t *testing.T) {
-	base := []byte("a.md")
+func TestMayNameAny(t *testing.T) {
+	bases := [][]byte{[]byte("a.md"), []byte("b.md")}
 	for name, tc := range map[string]struct {
 		source string
+		bases  [][]byte
 		want   bool
 	}{
-		"inline link":              {"[x](a.md)", true},
-		"ref-def":                  {"[r]: ./a.md", true},
-		"escaped name":             {"[x](%61.md)", true},
-		"link to another file":     {"[x](b.md)", false},
-		"name with no link mark":   {"See a.md.", false},
-		"escape with no link mark": {"100% a.md", false},
+		"inline link":              {"[x](a.md)", bases, true},
+		"second base":              {"[x](b.md)", bases, true},
+		"ref-def":                  {"[r]: ./a.md", bases, true},
+		"escaped name":             {"[x](%62.md)", bases, true},
+		"link to another file":     {"[x](c.md)", bases, false},
+		"name with no link mark":   {"See b.md.", bases, false},
+		"escape with no link mark": {"100% b.md", bases, false},
+		"no bases":                 {"[x](%62.md)", nil, false},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, tc.want, mayName([]byte(tc.source), base))
+			assert.Equal(t, tc.want, mayNameAny([]byte(tc.source), tc.bases))
 		})
 	}
 }

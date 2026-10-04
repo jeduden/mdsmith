@@ -8,7 +8,6 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/mdpath"
-	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
 )
 
 // ErrDuplicateSource is returned for a batch pair whose source an
@@ -43,12 +42,14 @@ type BatchMove struct {
 // edit, keyed per output target with one edit per range, and no
 // FileOp: Moves lists each pair's relocation and verdict in request
 // order. StemEdits is the `[[stem]]` subset of the edits, keyed the
-// same way. Withheld counts the links between two batch members that
-// stop resolving yet get no edit, because one end's move could not be
-// planned or because no `[[stem]]` spelling reaches the target once
-// the batch has run. Own holds, per planned move's edit key, the
-// edits its outbound pass re-spelled for the file's new folder: the
-// only path edits inside a moved file the batch plans.
+// same way. Withheld counts the links that get no edit yet may not
+// reach their file once the batch has run: one from a planned member
+// to a member whose move could not be planned, one inside such a
+// member that stops resolving, a `[[stem]]` whose new key another
+// member's destination wins, and every link to a shadowed path (see
+// countShadowed). Own holds, per planned move's edit key, the edits
+// its outbound pass re-spelled for the file's new folder: the only
+// path edits inside a planned member's file the batch plans.
 type BatchPlan struct {
 	Plan
 	StemEdits map[string][]Edit
@@ -75,10 +76,10 @@ type BatchPlan struct {
 // source is readable: the host (an editor) moves it anyway. No path
 // edit is planned for a link between it and another member, except a
 // link inside it when it lands in its own folder, which reads the same
-// from there; any other such link counts in Withheld when it stops
-// resolving after the batch. When a planned member lands on its path,
-// every link to it counts too (see countShadowed): it then reaches the
-// newcomer.
+// from there. A link to it from a planned member counts in Withheld;
+// any other link inside it counts when it stops resolving after the
+// batch. When a planned member lands on its path, every link to it
+// counts too (see countShadowed): it then reaches the newcomer.
 //
 // Move is MoveAll with one pair.
 func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
@@ -102,8 +103,8 @@ func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
 		}
 	}
 	for _, m := range moves {
-		if u, ok := b.members[m.Dst]; m.Err == nil && ok && !u.planned {
-			countShadowed(ws, p, r, m.Dst)
+		if m.Err == nil && b.shadowed[m.Dst] {
+			countShadowed(ws, r, m.Dst)
 		}
 	}
 	for _, part := range []map[string][]Edit{bp.Own, bp.StemEdits} {
@@ -118,29 +119,16 @@ func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
 	return bp
 }
 
-// countShadowed counts, in the batch, every link to vacated: a member
-// whose move was refused, whose path a planned member takes. The host
-// still moves vacated, so each such link then reaches the newcomer;
-// it still resolves, so no rule flags it, and the batch plans no edit
-// for it. A path link is counted unless its holder is a planned
-// member, whose outbound pass counts it (see countStale); a
-// `[[stem]]` link is counted when its stem reaches vacated today.
-func countShadowed(ws Workspace, p parser.Parser, r *destResolver, vacated string) {
-	base := []byte(path.Base(vacated))
-	for _, rel := range r.paths() {
-		if m, moved := r.member(rel); rel == vacated || moved && m.planned {
-			continue
-		}
-		_, source, ok := ws.Resolve(rel)
-		if !ok || !mayName(source, base) {
-			continue
-		}
-		for _, d := range locateDests(p, rel, source) {
-			if ref, ok := r.target(rel, d.dest); ok && ref.target == vacated {
-				r.batch.withheld++
-			}
-		}
-	}
+// countShadowed counts, in the batch, every `[[stem]]` link to
+// vacated: a member whose move was refused, whose path a planned
+// member takes (moveBatch.shadowed). The host still moves vacated, so
+// each link to it then reaches the newcomer; it still resolves, so no
+// rule flags it, and the batch plans no edit for it. A `[[stem]]` link
+// is counted when its stem reaches vacated today. A path link to it is
+// counted in the referrer scan (see appendReferrerEdits), or, in a
+// planned member, by its outbound pass (see outboundEdit), so the
+// workspace is still read once.
+func countShadowed(ws Workspace, r *destResolver, vacated string) {
 	stem, ok := linkgraph.FileStemKey(path.Base(vacated))
 	if !ok || !linkgraph.WikilinkIndexed(vacated) {
 		return
@@ -185,6 +173,11 @@ func validateBatch(ws Workspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
 			m.Err = DestinationExistsError{Dst: m.Dst}
 		default:
 			b.members[m.Src] = batchMember{dst: m.Dst, planned: true}
+		}
+	}
+	for _, m := range moves {
+		if u, ok := b.members[m.Dst]; m.Err == nil && ok && !u.planned {
+			b.shadowed[m.Dst] = true
 		}
 	}
 	return moves, b
@@ -238,18 +231,46 @@ func resolves(ws Workspace, p string) bool {
 }
 
 // moveBatch is the shared state of one MoveAll run: every member's new
-// path and whether its move was planned, and the count of links left
-// stale without an edit.
+// path and whether its move was planned, the refused members whose
+// path a planned member takes, and the count of links left stale
+// without an edit.
 type moveBatch struct {
 	members  map[string]batchMember
 	sources  map[string][]byte // each member's text, as admit read it
+	shadowed map[string]bool   // see countShadowed
 	withheld int
 	post     *linkgraph.WikilinkIndex // postIndex, built on first use
+	stems    map[string]int           // stemHolders, built on first use
+}
+
+// stemHolders returns how many members hold the stem key stem with
+// their source or their destination, each member counted once. The
+// counts are built on the first call, once every verdict is in, so a
+// batch of kept-stem moves reads its members once, not once per move.
+func (b *moveBatch) stemHolders(stem string) int {
+	if b.stems == nil {
+		b.stems = map[string]int{}
+		for src, m := range b.members {
+			s, ok := linkgraph.FileStemKey(path.Base(src))
+			if ok {
+				b.stems[s]++
+			}
+			if m.dst == "" {
+				continue
+			}
+			if d, dok := linkgraph.FileStemKey(path.Base(m.dst)); dok && (!ok || d != s) {
+				b.stems[d]++
+			}
+		}
+	}
+	return b.stems[stem]
 }
 
 // newMoveBatch returns an empty batch, ready for admit.
 func newMoveBatch() *moveBatch {
-	return &moveBatch{members: map[string]batchMember{}, sources: map[string][]byte{}}
+	return &moveBatch{
+		members: map[string]batchMember{}, sources: map[string][]byte{}, shadowed: map[string]bool{},
+	}
 }
 
 // batchMember is one moved file: dst is where the host puts it (empty
@@ -260,13 +281,14 @@ type batchMember struct {
 	planned bool
 }
 
-// plannedBases returns the base name of every planned member's
-// source, each once: the names a link to some member spells out.
-func (b *moveBatch) plannedBases() [][]byte {
+// scanBases returns, each once, the base name of every planned
+// member's source and of every shadowed path: the names a link the
+// referrer scan reads spells out.
+func (b *moveBatch) scanBases() [][]byte {
 	seen := map[string]bool{}
 	var bases [][]byte
 	for src, m := range b.members {
-		if base := path.Base(src); m.planned && !seen[base] {
+		if base := path.Base(src); (m.planned || b.shadowed[src]) && !seen[base] {
 			seen[base] = true
 			bases = append(bases, []byte(base))
 		}

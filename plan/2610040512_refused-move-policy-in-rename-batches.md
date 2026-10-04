@@ -32,8 +32,9 @@ fail.
 Plan 2610030438 settled these cases:
 
 - A link from a planned holder to a refused file gets no edit.
-  It stops resolving, so the warning counts it and MDS027 flags
-  it.
+  The warning counts it, even when it reads as the refused
+  destination from the holder's new folder, and MDS027 flags
+  it when it stops resolving.
 - A link inside a refused file gets no edit, unless that file
   stays in its own folder.
 - A link to a refused file whose old path another planned

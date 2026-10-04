@@ -215,8 +215,11 @@ func TestMoveAll_Validation(t *testing.T) {
 	assert.ErrorIs(t, bp.Moves[8].Err, ErrTraversalPath)
 }
 
-// TestMoveAll_SingleMatchesMove locks that a one-pair batch plans the
-// same edits Move does.
+// TestMoveAll_SingleMatchesMove locks what a one-pair batch plans, the
+// plan Move returns: the moved file's outbound link and self-link
+// re-spelled from its new folder, the incoming link repointed, and
+// `[[b]]`, which names another file, left alone. Move is MoveAll with
+// one pair, so comparing the two alone would lock nothing.
 func TestMoveAll_SingleMatchesMove(t *testing.T) {
 	files := map[string]string{
 		"docs/a.md": "# A\n\n[b](b.md) [[b]] [self](a.md)\n",
@@ -227,6 +230,10 @@ func TestMoveAll_SingleMatchesMove(t *testing.T) {
 	require.NoError(t, err)
 	bp := MoveAll(ws, []MovePair{{"docs/a.md", "x/c.md"}})
 	require.NoError(t, bp.Moves[0].Err)
+	assert.Equal(t, []string{"c.md", "../docs/b.md"}, texts(bp.Edits, "docs/a.md"))
+	assert.Equal(t, []string{"../x/c.md"}, texts(bp.Edits, "docs/b.md"))
+	assert.Len(t, bp.Edits, 2)
+	assert.Zero(t, bp.Withheld)
 	assert.Equal(t, p.Edits, bp.Edits)
 	assert.Equal(t, &FileOp{From: "docs/a.md", To: "x/c.md"}, p.FileOp)
 }
@@ -339,6 +346,23 @@ func TestMoveAll_UnplannedTargetCounted(t *testing.T) {
 	assert.Equal(t, 1, bp.Withheld)
 }
 
+// TestMoveAll_UnplannedTargetOnItsDestinationCounted covers a link to
+// an unplanned move that, read from the holder's new folder, names the
+// refused destination: docs/p.md's `r.md` reaches x/r.md from x/,
+// which is docs/r.md only if the host overwrites it and the old x/r.md
+// otherwise. No spelling is right both ways, so it is counted.
+func TestMoveAll_UnplannedTargetOnItsDestinationCounted(t *testing.T) {
+	bp := MoveAll(newMemWorkspace(map[string]string{
+		"docs/p.md": "# P\n\n[r](r.md)\n",
+		"docs/r.md": "# R\n",
+		"x/r.md":    "# Old\n",
+	}), []MovePair{{"docs/p.md", "x/p.md"}, {"docs/r.md", "x/r.md"}})
+	require.NoError(t, bp.Moves[0].Err)
+	assert.Equal(t, DestinationExistsError{Dst: "x/r.md"}, bp.Moves[1].Err)
+	assert.NotContains(t, bp.Edits, "docs/p.md")
+	assert.Equal(t, 1, bp.Withheld)
+}
+
 // TestMoveAll_UnplannedHolder covers a link inside a file whose move
 // was not planned: it is counted only when it stops resolving.
 func TestMoveAll_UnplannedHolder(t *testing.T) {
@@ -421,22 +445,22 @@ func TestDestResolver_KeptStemTarget(t *testing.T) {
 	self := batchMember{dst: "z/guide.md", planned: true}
 	want := stemTarget{dst: "z/guide.md", key: "guide", isStem: true}
 
-	_, ok := soloResolver(nil, "x/guide.md", "z/guide.md").keptStemTarget("guide", "x/guide.md", "z/guide.md")
+	_, ok := soloResolver(nil, "x/guide.md", "z/guide.md").keptStemTarget("guide", "z/guide.md")
 	assert.False(t, ok, "a lone move")
 	_, ok = batch(map[string]batchMember{"x/guide.md": self, "a.md": {dst: "b.md"}}).
-		keptStemTarget("guide", "x/guide.md", "z/guide.md")
+		keptStemTarget("guide", "z/guide.md")
 	assert.False(t, ok, "no other member holds the stem")
 	r := batch(map[string]batchMember{"x/guide.md": self, "a.md": {dst: "guide.md"}})
-	got, ok := r.keptStemTarget("guide", "x/guide.md", "z/guide.md")
+	got, ok := r.keptStemTarget("guide", "z/guide.md")
 	require.True(t, ok, "another member lands on the stem")
 	assert.Equal(t, want, got)
 	got, ok = batch(map[string]batchMember{"x/guide.md": self, "y/Guide.md": {dst: "y/howto.md"}}).
-		keptStemTarget("guide", "x/guide.md", "z/guide.md")
+		keptStemTarget("guide", "z/guide.md")
 	require.True(t, ok, "another member leaves the stem")
 	assert.Equal(t, want, got)
-	_, ok = r.keptStemTarget("guide", "x/guide.md", "z/manual.md")
+	_, ok = r.keptStemTarget("guide", "z/manual.md")
 	assert.False(t, ok, "a new stem")
-	_, ok = r.keptStemTarget("guide", "x/guide.md", "node_modules/guide.md")
+	_, ok = r.keptStemTarget("guide", "node_modules/guide.md")
 	assert.False(t, ok, "an unindexed destination")
 }
 
@@ -561,10 +585,77 @@ func TestMoveBatch_Admit(t *testing.T) {
 	assert.ErrorIs(t, b.admit(ws, MovePair{"a.md", "y.md"}, landing).Err, ErrDuplicateSource)
 }
 
-func TestMoveBatch_PlannedBases(t *testing.T) {
+func TestDestResolver_ReferrerEdit(t *testing.T) {
+	dest := func(d string) inlineDest {
+		row := "[x](" + d + ")"
+		return inlineDest{dest: []byte(d), row: []byte(row), ps: 4}
+	}
+	b := newMoveBatch()
+	b.members["docs/t.md"] = batchMember{dst: "z/t.md", planned: true}
+	b.members["docs/v.md"] = batchMember{dst: "docs/w.md"}
+	b.members["docs/h.md"] = batchMember{dst: "y/h.md"}
+	b.shadowed["docs/v.md"] = true
+	r := &destResolver{ws: stubWorkspace{}, batch: b}
+
+	e, ok := r.referrerEdit(dest("t.md"), "docs/a.md", batchMember{}, false)
+	require.True(t, ok, "a planned target is repointed")
+	assert.Equal(t, "../z/t.md", e.NewText)
+	_, ok = r.referrerEdit(dest("https://x"), "docs/a.md", batchMember{}, false)
+	assert.False(t, ok, "an external link")
+	_, ok = r.referrerEdit(dest("other.md"), "docs/a.md", batchMember{}, false)
+	assert.False(t, ok, "a target the batch does not move")
+	assert.Zero(t, b.withheld)
+
+	_, ok = r.referrerEdit(dest("v.md"), "docs/a.md", batchMember{}, false)
+	assert.False(t, ok)
+	assert.Equal(t, 1, b.withheld, "a link to a shadowed path is counted")
+	_, ok = r.referrerEdit(dest("v.md"), "docs/v.md", b.members["docs/v.md"], true)
+	assert.False(t, ok)
+	assert.Equal(t, 1, b.withheld, "the shadowed file's link to itself is not")
+
+	_, ok = r.referrerEdit(dest("t.md"), "docs/h.md", b.members["docs/h.md"], true)
+	assert.False(t, ok, "a refused holder leaving its folder")
+	assert.Equal(t, 2, b.withheld, "its link stops resolving from y/")
+	e, ok = r.referrerEdit(dest("t.md"), "docs/h.md", batchMember{dst: "docs/h2.md"}, true)
+	require.True(t, ok, "a refused holder kept in its folder")
+	assert.Equal(t, "../z/t.md", e.NewText)
+}
+
+func TestMoveBatch_StemHolders(t *testing.T) {
+	b := newMoveBatch()
+	b.members["x/guide.md"] = batchMember{dst: "z/guide.md", planned: true}
+	b.members["y/Guide.md"] = batchMember{dst: "y/howto.md"}
+	b.members["q/other.md"] = batchMember{dst: "guide.md", planned: true}
+	b.members["img/a.png"] = batchMember{}
+	assert.Equal(t, 3, b.stemHolders("guide"), "a member holding the stem at both ends counts once")
+	assert.Equal(t, 1, b.stemHolders("howto"))
+	assert.Equal(t, 1, b.stemHolders("other"))
+	assert.Zero(t, b.stemHolders("a"), "a non-Markdown member holds no stem")
+	b.members["n.md"] = batchMember{dst: "guide.md"}
+	assert.Equal(t, 3, b.stemHolders("guide"), "built once, on the first call")
+}
+
+func TestMoveBatch_ScanBases(t *testing.T) {
 	b := newMoveBatch()
 	b.members["x/a.md"] = batchMember{dst: "z/a.md", planned: true}
 	b.members["y/a.md"] = batchMember{dst: "q/a.md", planned: true}
 	b.members["b.md"] = batchMember{dst: "c.md"}
-	assert.Equal(t, [][]byte{[]byte("a.md")}, b.plannedBases(), "each planned base once; unplanned left out")
+	assert.Equal(t, [][]byte{[]byte("a.md")}, b.scanBases(), "each planned base once; unplanned left out")
+	b.shadowed["b.md"] = true
+	assert.ElementsMatch(t, [][]byte{[]byte("a.md"), []byte("b.md")}, b.scanBases(), "a shadowed path is scanned")
+}
+
+// TestValidateBatch_Shadowed locks that a refused member whose path a
+// planned member takes is recorded as shadowed, and a vacated path
+// whose own move is planned is not.
+func TestValidateBatch_Shadowed(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"a.md": "# A\n", "b.md": "# B\n", "c.md": "# C\n", "d.md": "# D\n", "e.md": "# E\n",
+	})
+	moves, b := validateBatch(ws, []MovePair{{"b.md", "c.md"}, {"a.md", "b.md"}, {"d.md", "z.md"}, {"e.md", "d.md"}})
+	require.Equal(t, DestinationExistsError{Dst: "c.md"}, moves[0].Err)
+	for _, m := range moves[1:] {
+		require.NoError(t, m.Err)
+	}
+	assert.Equal(t, map[string]bool{"b.md": true}, b.shadowed)
 }
