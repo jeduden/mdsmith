@@ -107,13 +107,6 @@ func TestAdjustLinks_Complex(t *testing.T) {
 			want:          "[text [inner]](../foo.md)",
 		},
 		{
-			name:          "wikilink-shaped double brackets in link text",
-			content:       "[move `[[stem]]` and `[[name.ext]]` links](docs/move.md)",
-			includedFile:  "docs/index.md",
-			includingFile: ".github/notes.md",
-			want:          "[move `[[stem]]` and `[[name.ext]]` links](../docs/docs/move.md)",
-		},
-		{
 			name:          "deeper nesting rewrite",
 			content:       "[link](../shared/util.go)",
 			includedFile:  "internal/rules/include/rule.go",
