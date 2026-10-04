@@ -65,8 +65,13 @@ done, so only the cancellation is missing.
    SIGKILL at once. mdsmith still waits for the reap, so
    no recipe is orphaned.
 6. Run hooks through `runRecipe` (keeping mdsmith's
-   environment), so a cancelled or timed-out hook gets the
-   same group kill and its children die with it.
+   environment), so a done context starts no hook and an
+   interrupted hook reports as interrupted. Keep hooks in
+   mdsmith's own process group (`sharedGroup`) and kill
+   only the hook process on cancel: a dev server a
+   before-hook backgrounds must outlive the hook (a Windows
+   Job Object would kill it on close), get the terminal's
+   Ctrl-C, and a hook may prompt on `/dev/tty`.
 7. Print the last stdout and stderr lines in the
    `INTERRUPTED` report, as the timeout report does.
 8. Document the behavior next to the timeout paragraph in
@@ -78,8 +83,10 @@ done, so only the cancellation is missing.
       process from the recipe's group running (Unix test).
 - [x] An interrupted build is reported as interrupted, not
       as timed out.
-- [x] Interrupting a hook also kills the children it
-      spawned (Unix test).
+- [x] Interrupting a hook kills the hook process; the
+      children it backgrounds stay in mdsmith's process
+      group, so the terminal's Ctrl-C reaches them
+      (Unix test).
 - [x] A second Ctrl-C ends a run whose recipe ignores
       SIGTERM before the 5 s grace period runs out.
 - [x] `GOOS=plan9 go vet ./...` and

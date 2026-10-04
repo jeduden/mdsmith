@@ -244,8 +244,8 @@ Each hook entry has three fields:
 | `params`  | no       | Map of param name to literal string value                        |
 | `name`    | no       | Display label for `OK`/`FAIL` output; defaults to the executable |
 
-Hooks are config-level: once per build pass, in mdsmith's environment, each
-in its own process group, so the recipe kill path also ends a hook's children.
+Hooks run once per build pass in mdsmith's environment and process group; a
+timeout or interrupt kills only the hook, so a server it backgrounds survives.
 
 ### Execution order
 

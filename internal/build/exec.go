@@ -99,6 +99,14 @@ type runOpts struct {
 	inheritEnv bool
 	// label names the process in start errors; empty means "recipe".
 	label string
+	// sharedGroup keeps the process in mdsmith's own process group (no
+	// Setpgid, Job Object, or RFNOTEG), and a cancel or timeout kills
+	// only its leader: signalling the group would hit mdsmith. Hooks
+	// set it. A before-hook may background a dev server that must
+	// outlive the hook, which a Job Object's kill-on-close would end;
+	// in the terminal's foreground group the Ctrl-C reaches that server
+	// and a hook can prompt on /dev/tty without SIGTTIN.
+	sharedGroup bool
 }
 
 // runRecipe executes argv with a hermetic environment, a fixed working
@@ -179,7 +187,9 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	if !o.inheritEnv {
 		cmd.Env = buildEnv(o.exec, o.defExec)
 	}
-	configureProcessGroup(cmd)
+	if !o.sharedGroup {
+		configureProcessGroup(cmd)
+	}
 
 	err := cmd.Start()
 	ro.closeChildEnds()
@@ -188,8 +198,10 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		return -1, false, fmt.Errorf("starting %s: %w", o.processLabel(), err)
 	}
 
-	jobCleanup := afterStartFn(cmd)
-	if jobCleanup != nil {
+	kill := func() { killGroupFn(cmd, forceKillFrom(ctx)) }
+	if o.sharedGroup {
+		kill = func() { forceKillLeaderFn(cmd) }
+	} else if jobCleanup := afterStartFn(cmd); jobCleanup != nil {
 		defer jobCleanup()
 	}
 
@@ -211,11 +223,11 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 			}
 			return exitResult(err)
 		case <-ctx.Done():
-			killGroupFn(cmd, forceKillFrom(ctx))
+			kill()
 			return timeoutResult(ctx, ro, err)
 		}
 	case <-ctx.Done():
-		killGroupFn(cmd, forceKillFrom(ctx))
+		kill()
 		reaped, waitErr := waitAtMost(done, reapWait)
 		if !reaped {
 			// The group kill left the leader running (Windows when the

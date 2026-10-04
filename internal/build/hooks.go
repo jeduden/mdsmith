@@ -95,18 +95,21 @@ func announceHook(ctx context.Context, name string, w io.Writer) {
 }
 
 // runHook executes a single hook and returns a HookResult on failure, nil
-// on success. It runs through runRecipe, so a hook gets a recipe's
-// process-group isolation and group kill: a cancel (CLI interrupt) or
-// the hook timeout ends the hook's children too, not only its leader.
-// Unlike a recipe it keeps mdsmith's environment and runs in root.
+// on success. It runs through runRecipe, so a done context starts no
+// hook and a cancel (CLI interrupt) reports as one. Unlike a recipe it
+// keeps mdsmith's environment, runs in root, and stays in mdsmith's
+// process group (sharedGroup): a cancel or the hook timeout kills the
+// hook process itself, and a child it backgrounded (a dev server)
+// outlives it and gets the terminal's Ctrl-C as before.
 func runHook(ctx context.Context, tokens []string, root string) *HookResult {
 	code, _, err := runRecipe(ctx, runOpts{
-		argv:       tokens,
-		dir:        root,
-		stdout:     os.Stderr,
-		stderr:     os.Stderr,
-		inheritEnv: true,
-		label:      "hook",
+		argv:        tokens,
+		dir:         root,
+		stdout:      os.Stderr,
+		stderr:      os.Stderr,
+		inheritEnv:  true,
+		label:       "hook",
+		sharedGroup: true,
 	})
 	if err == nil {
 		return nil
