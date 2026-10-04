@@ -937,11 +937,7 @@ func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *dest
 				}
 			}
 		}
-		if !r.knowsHolders(t.wikilinkKey) {
-			continue
-		}
-		if !t.reaches(post) {
-			r.countBlocked(post, t, old, dst)
+		if r.blocked(post, t, old, dst) {
 			continue
 		}
 		if !needed {
@@ -1172,6 +1168,20 @@ func (r *destResolver) wikilinkIndex() *linkgraph.WikilinkIndex {
 		}
 	}
 	return r.wl
+}
+
+// blocked reports whether a link by the key old must stay as written
+// rather than name t: t's holders are unknown (see knowsHolders), or t
+// does not reach its file in post, which countBlocked then counts.
+func (r *destResolver) blocked(post *linkgraph.WikilinkIndex, t wikilinkTarget, old wikilinkKey, dst string) bool {
+	if !r.knowsHolders(t.wikilinkKey) {
+		return true
+	}
+	if !t.reaches(post) {
+		r.countBlocked(post, t, old, dst)
+		return true
+	}
+	return false
 }
 
 // knowsHolders reports whether wikilinkIndex knows every file keyed by
