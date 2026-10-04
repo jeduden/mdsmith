@@ -739,6 +739,16 @@ func TestReportBuildFailure_DeadlineSpentBeforeStart(t *testing.T) {
 	assert.Equal(t, "TIMEOUT book.html before start\n", buf.String())
 }
 
+func TestReportInterrupt_NamesSecondInterruptSIGKILL(t *testing.T) {
+	// A second Ctrl-C escalated the kill: the report must not say only
+	// SIGTERM was sent.
+	var buf strings.Builder
+	err := fmt.Errorf("recipe cancelled (%w): %w", buildexec.ErrForceKilled, context.Canceled)
+	reportInterrupt("book.html", targetRunResult{Result: buildexec.Result{TimedOut: true, Err: err}}, &buf)
+	assert.Contains(t, buf.String(),
+		"  "+buildexec.TimeoutKillAction+", then SIGKILL on a second interrupt\n")
+}
+
 func TestReportInterrupt_PrintsStreamTails(t *testing.T) {
 	// A recipe killed by the interrupt keeps the last lines of both
 	// streams, as a timeout does, so the user sees what it was doing.

@@ -113,9 +113,10 @@ func stubKillGroup(t *testing.T, fn func(*exec.Cmd)) {
 	t.Helper()
 	oldKill, oldReap := killGroupFn, reapWait
 	pgid := 0
-	killGroupFn = func(cmd *exec.Cmd, _ <-chan struct{}) {
+	killGroupFn = func(cmd *exec.Cmd, _ <-chan struct{}) bool {
 		pgid = cmd.Process.Pid
 		fn(cmd)
+		return false
 	}
 	reapWait = 100 * time.Millisecond
 	t.Cleanup(func() {
@@ -345,10 +346,28 @@ func TestRunRecipe_ForceKillSkipsGrace(t *testing.T) {
 	assert.True(t, timedOut, "the kill path ran")
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.Less(t, time.Since(start), 10*time.Second, "force must cut the SIGTERM grace short")
+	assert.ErrorIs(t, err, ErrForceKilled, "the report must name the SIGKILL")
+}
+
+func TestRunRecipe_CancelWithinGraceIsNotForceKilled(t *testing.T) {
+	// A recipe that exits on SIGTERM never reaches the escalation, even
+	// when a second interrupt arrives later.
+	script := writeScript(t, t.TempDir(), "plain.sh", `exec sleep 60`)
+	force := make(chan struct{})
+	ctx, cancel := context.WithCancel(WithForceKill(context.Background(), force))
+	defer cancel()
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+	_, _, err := runRecipe(ctx, runOpts{argv: []string{script}, dir: t.TempDir(), defExec: defaultExecConfig()})
+	close(force)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.NotErrorIs(t, err, ErrForceKilled)
 }
 
 func TestKillGroupUntil_NilProcess(t *testing.T) {
 	force := make(chan struct{})
 	close(force)
-	killGroupUntil(&exec.Cmd{}, force)
+	assert.False(t, killGroupUntil(&exec.Cmd{}, force))
 }

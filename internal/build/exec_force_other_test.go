@@ -14,5 +14,5 @@ func TestKillGroupUntil_NonUnix_NilProcess(t *testing.T) {
 	// returns at once for a command that never started.
 	force := make(chan struct{})
 	close(force)
-	assert.NotPanics(t, func() { killGroupUntil(&exec.Cmd{}, force) })
+	assert.False(t, killGroupUntil(&exec.Cmd{}, force), "no grace, so nothing escalates")
 }

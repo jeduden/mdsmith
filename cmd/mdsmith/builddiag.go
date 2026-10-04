@@ -163,6 +163,10 @@ func reportInterrupt(name string, res targetRunResult, w io.Writer) {
 	_, _ = fmt.Fprintf(w, "INTERRUPTED %s after %s\n", name, res.Duration.Round(time.Millisecond))
 	printStreamTail("stdout", res.StdoutTail, w)
 	printStreamTail("stderr", res.StderrTail, w)
+	if errors.Is(res.Err, buildexec.ErrForceKilled) {
+		_, _ = fmt.Fprintf(w, "  %s, then %v\n", buildexec.TimeoutKillAction, buildexec.ErrForceKilled)
+		return
+	}
 	_, _ = fmt.Fprintf(w, "  %s\n", buildexec.TimeoutKillAction)
 }
 

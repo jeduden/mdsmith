@@ -37,10 +37,11 @@ func killGroup(cmd *exec.Cmd) { killGroupUntil(cmd, nil) }
 // killGroupUntil is killGroup with an escape hatch: once force is
 // closed (a second CLI interrupt, see WithForceKill), it stops waiting
 // out the grace period and sends SIGKILL at once. A nil force never
-// fires, which is killGroup.
-func killGroupUntil(cmd *exec.Cmd, force <-chan struct{}) {
+// fires, which is killGroup. It reports whether force cut the grace
+// short while the group was still alive.
+func killGroupUntil(cmd *exec.Cmd, force <-chan struct{}) bool {
 	if cmd.Process == nil {
-		return
+		return false
 	}
 	pgid := cmd.Process.Pid // Setpgid made pgid == leader pid
 	_ = signalGroup(pgid, syscall.SIGTERM)
@@ -50,17 +51,20 @@ func killGroupUntil(cmd *exec.Cmd, force <-chan struct{}) {
 	poll := time.NewTicker(50 * time.Millisecond)
 	defer poll.Stop()
 	deadline := time.Now().Add(gracePeriod)
+	forced := false
 	for time.Now().Before(deadline) {
 		if signalGroup(pgid, 0) != nil {
-			return // group is gone
+			return false // group is gone
 		}
 		select {
 		case <-force:
+			forced = true
 			deadline = time.Now() // escalated: skip the rest of the grace
 		case <-poll.C:
 		}
 	}
 	_ = signalGroup(pgid, syscall.SIGKILL)
+	return forced
 }
 
 // signalGroup sends sig to the process group pgid. It returns the syscall

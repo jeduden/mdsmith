@@ -114,6 +114,10 @@ type runOpts struct {
 // report must not name one. It is wrapped with the context's error.
 var ErrNotStarted = errors.New("before start")
 
+// ErrForceKilled marks a cancelled run whose group a second interrupt
+// SIGKILLed before the SIGTERM grace ran out (Unix only).
+var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
+
 // runRecipe executes argv with a hermetic environment, a fixed working
 // directory, and process-group isolation. No shell is invoked: argv[0]
 // is the program and argv[1:] its arguments.
@@ -204,7 +208,8 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		return -1, false, fmt.Errorf("starting %s: %w", o.processLabel(), err)
 	}
 
-	kill := func() { killGroupFn(cmd, forceKillFrom(ctx)) }
+	forced := false
+	kill := func() { forced = killGroupFn(cmd, forceKillFrom(ctx)) }
 	if o.sharedGroup {
 		kill = func() { forceKillLeaderFn(cmd) }
 	} else if jobCleanup := afterStartFn(cmd); jobCleanup != nil {
@@ -230,7 +235,7 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 			return exitResult(err)
 		case <-ctx.Done():
 			kill()
-			return timeoutResult(ctx, ro, err)
+			return timeoutResult(ctx, ro, err, forced)
 		}
 	case <-ctx.Done():
 		kill()
@@ -244,7 +249,7 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 			forceKillLeaderFn(cmd)
 			_, waitErr = waitAtMost(done, reapWait)
 		}
-		return timeoutResult(ctx, ro, waitErr)
+		return timeoutResult(ctx, ro, waitErr, forced)
 	}
 }
 
@@ -269,14 +274,18 @@ func exitResult(err error) (int, bool, error) {
 // timeoutResult finishes a run whose context ended after the kill: it
 // waits at most reapWait for captured output to drain, abandons the
 // pipes if a survivor still holds them, and reports the timeout or
-// cancellation with the exit code waitErr carries.
-func timeoutResult(ctx context.Context, ro *recipeOutput, waitErr error) (int, bool, error) {
+// cancellation with the exit code waitErr carries. forced (a second
+// interrupt escalated the kill) wraps ErrForceKilled into a cancel.
+func timeoutResult(ctx context.Context, ro *recipeOutput, waitErr error, forced bool) (int, bool, error) {
 	if drained, _ := waitAtMost(ro.drained, reapWait); !drained {
 		ro.abandon()
 	}
 	exitCode := exitCodeOf(waitErr)
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return exitCode, true, fmt.Errorf("recipe timed out: %w", ctx.Err())
+	}
+	if forced {
+		return exitCode, true, fmt.Errorf("recipe cancelled (%w): %w", ErrForceKilled, ctx.Err())
 	}
 	return exitCode, true, fmt.Errorf("recipe cancelled: %w", ctx.Err())
 }
@@ -316,7 +325,8 @@ var afterStartFn = afterStart
 
 // killGroupFn indirects killGroupUntil so a test can model a group
 // kill that leaves the recipe running. Its second argument is the
-// WithForceKill channel of the run's context.
+// WithForceKill channel of the run's context; it reports whether that
+// channel escalated the kill.
 var killGroupFn = killGroupUntil
 
 // forceKillLeaderFn indirects forceKillLeader so a test can check that
