@@ -91,8 +91,9 @@ type BatchPlan struct {
 // batch does not plan to move counts only when the member leaves its
 // folder and the link, read from there, names another file that may
 // be there after the batch (see countMisread); one that stops
-// resolving is left to MDS027. When a planned member lands on its
-// path, every path link and wikilink to it counts too (see
+// resolving is left to MDS027. When another member may land on its
+// path, planned or refused as a duplicate destination, every path link
+// and wikilink to it counts too (see
 // countShadowed): it then reaches the newcomer. When it lands on a
 // file outside the batch, every path link and wikilink to that file
 // counts as well: no client says whether the host overwrites it, and
@@ -122,10 +123,8 @@ func planBatch(ws MoveWorkspace, moves []BatchMove, b *moveBatch) BatchPlan {
 			appendOutboundEdits(bp.Edits, p, r, m.Key, m.Src, m.Dst, b.sources[m.Src])
 		}
 	}
-	for _, m := range moves {
-		if m.Err == nil && b.shadowed[m.Dst] {
-			countShadowed(ws, r, m.Dst)
-		}
+	for vacated := range b.shadowed {
+		countShadowed(ws, r, vacated)
 	}
 	for dst := range b.overwritten {
 		countShadowed(ws, r, dst)
@@ -136,7 +135,7 @@ func planBatch(ws MoveWorkspace, moves []BatchMove, b *moveBatch) BatchPlan {
 }
 
 // countShadowed counts, in the batch, every wikilink to vacated: a
-// member whose move was refused, whose path a planned member takes
+// member whose move was refused, whose path another member may take
 // (moveBatch.shadowed), or a file a refused member lands on
 // (moveBatch.overwritten). The host still moves vacated, or may
 // replace it, so each link to it then reaches the newcomer; it still
@@ -176,6 +175,9 @@ func countShadowed(ws MoveWorkspace, r *destResolver, vacated string) {
 // moves its source, no other member lands on its destination, and its
 // destination is free once the batch has run: absent from the
 // workspace or another member's source.
+// A refused member whose path another member lands on is recorded as
+// shadowed, whether that lander's move is planned or refused as a
+// duplicate destination: the host may move it there either way.
 func validateBatch(ws MoveWorkspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
 	moves := make([]BatchMove, len(pairs))
 	b := newMoveBatch()
@@ -203,7 +205,8 @@ func validateBatch(ws MoveWorkspace, pairs []MovePair) ([]BatchMove, *moveBatch)
 		}
 	}
 	for _, m := range moves {
-		if u, ok := b.members[m.Dst]; m.Err == nil && ok && !u.planned {
+		lander, moved := b.members[m.Src]
+		if u, ok := b.members[m.Dst]; moved && lander.dst == m.Dst && ok && !u.planned {
 			b.shadowed[m.Dst] = true
 		}
 	}
@@ -261,7 +264,7 @@ func resolves(ws MoveWorkspace, p string) bool {
 
 // moveBatch is the shared state of one MoveAll run: every member's new
 // path and whether its move was planned, the refused members whose
-// path a planned member takes, and the count of links left stale
+// path another member may take, and the count of links left stale
 // without an edit.
 type moveBatch struct {
 	members  map[string]batchMember

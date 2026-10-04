@@ -1047,6 +1047,36 @@ func TestValidateBatch_Shadowed(t *testing.T) {
 	assert.Equal(t, map[string]bool{"b.md": true}, b.shadowed)
 }
 
+// TestValidateBatch_ShadowedByDuplicates locks that a refused member
+// whose path refused duplicate-destination members land on is shadowed
+// too: the host may still move one of them there. A lander whose
+// source is not readable moves nothing, so it shadows nothing.
+func TestValidateBatch_ShadowedByDuplicates(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{
+		"docs/h.md": "# H\n", "x/h.md": "# Old\n", "r2.md": "# R2\n", "r3.md": "# R3\n",
+		"g.md": "# G\n", "y.md": "# Y\n",
+	})
+	moves, b := validateBatch(ws, []MovePair{
+		{"docs/h.md", "x/h.md"}, {"r2.md", "docs/h.md"}, {"r3.md", "docs/h.md"},
+		{"g.md", "y.md"}, {"missing.md", "g.md"}, {"nope.md", "g.md"},
+	})
+	require.Equal(t, DestinationExistsError{Dst: "x/h.md"}, moves[0].Err)
+	require.Equal(t, ErrDuplicateDestination, moves[1].Err)
+	assert.Equal(t, map[string]bool{"docs/h.md": true}, b.shadowed)
+}
+
+// TestMoveAll_ShadowedByDuplicates covers a link from an unmoved file
+// to a refused member that refused duplicates land on: whichever the
+// host moves there, the link then reaches it, so it is counted.
+func TestMoveAll_ShadowedByDuplicates(t *testing.T) {
+	bp := MoveAll(newMemWorkspace(map[string]string{
+		"docs/h.md": "# H\n", "x/h.md": "# Old\n", "r2.md": "# R2\n", "r3.md": "# R3\n",
+		"n.md": "# N\n\n[h](docs/h.md)\n",
+	}), []MovePair{{"docs/h.md", "x/h.md"}, {"r2.md", "docs/h.md"}, {"r3.md", "docs/h.md"}})
+	assert.Empty(t, bp.Edits)
+	assert.Equal(t, 1, bp.Withheld, "n.md's link to docs/h.md")
+}
+
 // TestMoveAll_ShadowedWithoutStem covers a shadowed file that no
 // `[[stem]]` link can name: a non-Markdown file, and a Markdown file
 // under a directory the wikilink index skips. Its path links are
