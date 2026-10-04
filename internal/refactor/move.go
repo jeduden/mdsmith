@@ -180,16 +180,22 @@ func appendReferrerEdits(changes map[string][]Edit, ws Workspace, p parser.Parse
 // referrerEdit is appendReferrerEdits for one destination d in the
 // workspace file rel, whose batch entry is holder when moved. It
 // returns the edit that repoints d at a planned member's new path, and
-// counts d instead when it names a shadowed path or when holder's
-// refused move takes d out of the folder it is spelled from.
+// counts d instead when it names a shadowed path (see countShadowed)
+// or when holder's refused move takes d out of the folder it is
+// spelled from.
 func (r *destResolver) referrerEdit(d inlineDest, rel string, holder batchMember, moved bool) (Edit, bool) {
 	ref, ok := r.target(rel, d.dest)
 	if !ok {
 		return Edit{}, false
 	}
 	if r.batch.shadowed[ref.target] {
+		// The newcomer takes the path, so a link to it is counted. A
+		// shadowed file's link to itself is counted too, unless it
+		// still names the file from where the host moves it.
 		if ref.target != rel {
 			r.batch.withheld++
+		} else {
+			r.countStale(holder.dst, ref.path, holder.dst)
 		}
 		return Edit{}, false
 	}

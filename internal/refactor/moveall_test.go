@@ -163,16 +163,43 @@ func TestMoveAll_ChainOntoRefusedMove(t *testing.T) {
 	assert.Equal(t, []string{"b.md"}, texts(bp.Edits, "n.md"))
 	assert.Equal(t, 2, bp.Withheld)
 
-	// A planned holder's link is counted once, by its outbound pass,
-	// and the refused file's link to itself is not counted.
+	// A planned holder's link is counted once, by its outbound pass.
 	bp = MoveAll(newMemWorkspace(map[string]string{
 		"a.md": "# A\n",
-		"b.md": "# B\n\n[self](b.md)\n",
+		"b.md": "# B\n",
 		"c.md": "# C\n",
 		"d.md": "# D\n\n[b](b.md)\n",
 	}), []MovePair{{"b.md", "c.md"}, {"a.md", "b.md"}, {"d.md", "e.md"}})
 	require.NoError(t, bp.Moves[2].Err)
 	assert.Equal(t, 1, bp.Withheld)
+}
+
+// TestMoveAll_ShadowedSelfLink covers a refused file's links to
+// itself when a planned member takes its path. Once the host moves it,
+// a path link and a `[[stem]]` link alike reach the newcomer, so both
+// are counted; a path link that still names the file from where it
+// lands is not.
+func TestMoveAll_ShadowedSelfLink(t *testing.T) {
+	for _, tc := range []struct {
+		name, self, taken string
+		want              int
+	}{
+		{"path", "[self](b.md)", "c.md", 1},
+		{"stem", "[[b]]", "c.md", 1},
+		{"path still names it", "[self](b.md)", "x/b.md", 0},
+		{"stem reaches newcomer", "[[b]]", "x/b.md", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bp := MoveAll(newMemWorkspace(map[string]string{
+				"a.md":   "# A\n",
+				"b.md":   "# B\n\n" + tc.self + "\n",
+				tc.taken: "# T\n",
+			}), []MovePair{{"b.md", tc.taken}, {"a.md", "b.md"}})
+			assert.Equal(t, DestinationExistsError{Dst: tc.taken}, bp.Moves[0].Err)
+			require.NoError(t, bp.Moves[1].Err)
+			assert.Equal(t, tc.want, bp.Withheld)
+		})
+	}
 }
 
 // TestMoveAll_Swap covers two files trading places.
@@ -612,11 +639,14 @@ func TestDestResolver_ReferrerEdit(t *testing.T) {
 	assert.Equal(t, 1, b.withheld, "a link to a shadowed path is counted")
 	_, ok = r.referrerEdit(dest("v.md"), "docs/v.md", b.members["docs/v.md"], true)
 	assert.False(t, ok)
-	assert.Equal(t, 1, b.withheld, "the shadowed file's link to itself is not")
+	assert.Equal(t, 2, b.withheld, "the shadowed file's link to itself reaches the newcomer")
+	_, ok = r.referrerEdit(dest("v.md"), "docs/v.md", batchMember{dst: "q/v.md"}, true)
+	assert.False(t, ok)
+	assert.Equal(t, 2, b.withheld, "a self-link that still names the file is not counted")
 
 	_, ok = r.referrerEdit(dest("t.md"), "docs/h.md", b.members["docs/h.md"], true)
 	assert.False(t, ok, "a refused holder leaving its folder")
-	assert.Equal(t, 2, b.withheld, "its link stops resolving from y/")
+	assert.Equal(t, 3, b.withheld, "its link stops resolving from y/")
 	e, ok = r.referrerEdit(dest("t.md"), "docs/h.md", batchMember{dst: "docs/h2.md"}, true)
 	require.True(t, ok, "a refused holder kept in its folder")
 	assert.Equal(t, "../z/t.md", e.NewText)

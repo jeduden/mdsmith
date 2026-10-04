@@ -40,7 +40,9 @@ Plan 2610030438 settled these cases:
 - A link to a refused file whose old path another planned
   member takes is counted in the warning (`countShadowed`).
   Without the count, the link would silently reach the
-  newcomer.
+  newcomer. The refused file's own links to itself count the
+  same way, unless a path link still names the file from
+  where it lands.
 
 Code review of PR #907 asked whether a planned holder should
 instead spell such a link to the refused file's destination.
