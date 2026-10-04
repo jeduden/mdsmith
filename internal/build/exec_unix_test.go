@@ -379,3 +379,75 @@ func TestKillGroupUntil_NilProcess(t *testing.T) {
 	close(force)
 	assert.False(t, killGroupUntil(&exec.Cmd{}, force))
 }
+
+func TestRunRecipe_ForceSkipsDrainWaitForSetsidDaemon(t *testing.T) {
+	// A setsid daemon leaves the recipe's group but keeps the captured
+	// stdout pipe. After a second interrupt the group is SIGKILLed;
+	// runRecipe must then give the drain one short poll, not a whole
+	// reapWait, before it abandons the pipe.
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("no setsid")
+	}
+	old := gracePeriod
+	gracePeriod = 20 * time.Second
+	t.Cleanup(func() { gracePeriod = old })
+	require.Equal(t, 5*time.Second, reapWait, "the default reapWait")
+
+	dir := t.TempDir()
+	ready := filepath.Join(dir, "ready.pid")
+	daemonPID := filepath.Join(dir, "daemon.pid")
+	script := writeScript(t, t.TempDir(), "daemon.sh",
+		`setsid sh -c 'echo $$ > "`+daemonPID+`"; exec sleep 30' &
+trap '' TERM; echo $$ > "`+ready+`"; while :; do sleep 0.05; done`)
+	t.Cleanup(func() {
+		if pid := waitForPID(daemonPID); pid > 0 {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
+
+	force := make(chan struct{})
+	ctx, cancel := context.WithCancel(WithForceKill(context.Background(), force))
+	defer cancel()
+	forcedAt := make(chan time.Time, 1)
+	go func() {
+		waitForPID(ready)
+		waitForPID(daemonPID)
+		cancel()
+		time.Sleep(200 * time.Millisecond)
+		forcedAt <- time.Now()
+		close(force)
+	}()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+		stdout:  &lockedBuffer{},
+	})
+	took := time.Since(<-forcedAt)
+	require.ErrorIs(t, err, ErrForceKilled)
+	assert.True(t, timedOut)
+	assert.Less(t, took, time.Second, "a second interrupt must not wait out reapWait")
+}
+
+func TestRunRecipe_ForceShortensLeaderReap(t *testing.T) {
+	// The group kill leaves the leader running (stubKillGroup does
+	// nothing). With force already closed, the leader reap and the
+	// wait after the leader-only kill each take one short poll.
+	stubKillGroup(t, func(*exec.Cmd) {})
+	reapWait = 3 * time.Second
+	script := writeScript(t, t.TempDir(), "slow.sh", `exec sleep 30`)
+
+	force := make(chan struct{})
+	close(force)
+	ctx, cancel := context.WithTimeout(WithForceKill(context.Background(), force), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	assert.True(t, timedOut)
+	assert.Less(t, time.Since(start), 1500*time.Millisecond, "a closed force must not wait out reapWait")
+}

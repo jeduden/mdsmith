@@ -116,13 +116,37 @@ func TestWaitAtMost(t *testing.T) {
 	done := make(chan error, 1)
 	want := errors.New("exit 1")
 	done <- want
-	ok, err := waitAtMost(done, time.Second)
+	ok, err := waitAtMost(done, time.Second, nil)
 	assert.True(t, ok)
 	assert.Same(t, want, err)
 
-	ok, err = waitAtMost(done, time.Millisecond)
+	ok, err = waitAtMost(done, time.Millisecond, nil)
 	assert.False(t, ok, "an empty channel times out")
 	assert.NoError(t, err)
+}
+
+func TestWaitAtMost_ForceCutsTheWaitShort(t *testing.T) {
+	// A closed force (a second interrupt) ends a long wait after
+	// forcedReapWait instead of the whole d.
+	force := make(chan struct{})
+	close(force)
+	start := time.Now()
+	ok, _ := waitAtMost(make(chan error), 5*time.Second, force)
+	assert.False(t, ok)
+	assert.GreaterOrEqual(t, time.Since(start), forcedReapWait)
+	assert.Less(t, time.Since(start), 2*time.Second)
+
+	// A wait already shorter than forcedReapWait keeps its own bound.
+	start = time.Now()
+	ok, _ = waitAtMost(make(chan error), 10*time.Millisecond, force)
+	assert.False(t, ok)
+	assert.Less(t, time.Since(start), forcedReapWait)
+
+	// A value that arrives inside the cut wait is still received.
+	done := make(chan error, 1)
+	done <- nil
+	ok, _ = waitAtMost(done, 5*time.Second, force)
+	assert.True(t, ok)
 }
 
 // TestRunRecipe_CancelledBeforeStartSpawnsNothing checks that a context

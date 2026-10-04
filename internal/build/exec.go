@@ -175,7 +175,8 @@ var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
 // and waits at most reapWait again. It then waits at most reapWait
 // for captured output to drain and closes its end of
 // the pipes (recipeOutput.abandon), so a survivor that holds a captured
-// pipe open cannot hang mdsmith. On Unix and Windows the close also
+// pipe open cannot hang mdsmith. Once a second interrupt closes the
+// WithForceKill channel, each of those waits ends forcedReapWait later. On Unix and Windows the close also
 // ends the copy goroutine and frees the fd; plan9 cannot cancel a
 // blocked read, so there they last until the survivor's next write or
 // exit. Captured output written after runRecipe returns is dropped,
@@ -258,7 +259,7 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		}
 	case <-ctx.Done():
 		kill()
-		reaped, waitErr := waitAtMost(done, reapWait)
+		reaped, waitErr := waitAtMost(done, reapWait, force)
 		if !reaped {
 			// The group kill left the leader running (Windows when the
 			// Job Object could not be set up and the recipe ignores
@@ -266,7 +267,7 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 			// catch; done is buffered, so the Wait goroutine exits
 			// whenever the leader does.
 			forceKillLeaderFn(cmd)
-			_, waitErr = waitAtMost(done, reapWait)
+			_, waitErr = waitAtMost(done, reapWait, force)
 		}
 		return timeoutResult(ctx, ro, waitErr, forced)
 	}
@@ -291,13 +292,14 @@ func exitResult(err error) (int, bool, error) {
 }
 
 // timeoutResult finishes a run whose context ended after the kill: it
-// waits at most reapWait for captured output to drain, abandons the
+// waits at most reapWait (forcedReapWait once a second interrupt closed
+// the WithForceKill channel) for captured output to drain, abandons the
 // pipes if a survivor still holds them, and reports the timeout or
 // cancellation with the exit code waitErr carries. forced (a second
 // interrupt escalated the kill) wraps ErrForceKilled into either one:
 // a timed-out recipe still in its grace is cut short by it too.
 func timeoutResult(ctx context.Context, ro *recipeOutput, waitErr error, forced bool) (int, bool, error) {
-	if drained, _ := waitAtMost(ro.drained, reapWait); !drained {
+	if drained, _ := waitAtMost(ro.drained, reapWait, forceKillFrom(ctx)); !drained {
 		ro.abandon()
 	}
 	exitCode := exitCodeOf(waitErr)
@@ -356,20 +358,38 @@ var forceKillLeaderFn = forceKillLeader
 
 // reapWait bounds each wait after a timeout kill: for the leader after
 // killGroup, for it again after the leader-only fallback kill, and for
-// captured output to drain. It is a var so a test can shorten it.
+// captured output to drain (forcedReapWait after a second interrupt). It is a var so a test can shorten it.
 var reapWait = 5 * time.Second
+
+// forcedReapWait bounds each reapWait wait once a second interrupt
+// closed the WithForceKill channel: the kill already escalated to
+// SIGKILL, so one short poll reaps a leader it reached, and a survivor
+// outside the group (a setsid daemon holding a captured pipe) costs no
+// more than that before runRecipe abandons it.
+const forcedReapWait = 100 * time.Millisecond
 
 // waitAtMost receives from ch for up to d. It reports true and the
 // received value (the zero value once ch is closed), or false and the
-// zero value when d elapses first.
-func waitAtMost[T any](ch <-chan T, d time.Duration) (bool, T) {
+// zero value when the wait runs out first. Once force is closed (a
+// second interrupt, see WithForceKill) the wait ends at most
+// forcedReapWait later; a nil force never fires. It still waits that
+// long, so a leader the SIGKILL reached is reaped, not orphaned.
+func waitAtMost[T any](ch <-chan T, d time.Duration, force <-chan struct{}) (bool, T) {
 	t := time.NewTimer(d)
 	defer t.Stop()
-	select {
-	case v := <-ch:
-		return true, v
-	case <-t.C:
-		var zero T
-		return false, zero
+	deadline := time.Now().Add(d)
+	for {
+		select {
+		case v := <-ch:
+			return true, v
+		case <-t.C:
+			var zero T
+			return false, zero
+		case <-force:
+			force = nil // fires once; a nil channel blocks
+			if short := time.Now().Add(forcedReapWait); short.Before(deadline) {
+				t.Reset(forcedReapWait)
+			}
+		}
 	}
 }
