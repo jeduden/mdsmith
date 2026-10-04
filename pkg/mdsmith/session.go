@@ -343,7 +343,7 @@ func (s *Session) Check(uri string, source []byte) ([]Diagnostic, error) {
 func (s *Session) Fix(uri string, source []byte) (FixResult, error) {
 	fixed, err := fixpkg.Source(fixpkg.SourceOptions{
 		Config:           s.cfg,
-		Rules:            s.rules,
+		Rules:            s.fixRules(),
 		Path:             uri,
 		Source:           source,
 		RootDir:          s.rootDir,
@@ -380,6 +380,15 @@ func (s *Session) Fix(uri string, source []byte) (FixResult, error) {
 	}, nil
 }
 
+// fixRules returns a private copy of the session's rule set for one
+// fix call. Check clones the shared set per worker (rule.CloneInstance
+// reads every field) and may run concurrently with a fix, so a fix must
+// not run the shared instances: a stateful rule such as include writes
+// its own fields, and locks its own mutex, during Fix.
+func (s *Session) fixRules() []rule.Rule {
+	return rule.CloneInstances(s.rules)
+}
+
 // FixRule applies only the named fixable rules to source and returns
 // the rewritten bytes plus a Changed flag. It is the LSP per-rule
 // quick-fix entry point (today's fix.SourceWithRules): a lightbulb that
@@ -393,7 +402,7 @@ func (s *Session) Fix(uri string, source []byte) (FixResult, error) {
 func (s *Session) FixRule(uri string, source []byte, names []string) (FixResult, error) {
 	fixed, err := fixpkg.SourceWithRules(fixpkg.SourceOptions{
 		Config:           s.cfg,
-		Rules:            s.rules,
+		Rules:            s.fixRules(),
 		Path:             uri,
 		Source:           source,
 		RootDir:          s.rootDir,

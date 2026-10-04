@@ -42,9 +42,13 @@ func CloneRule(r Rule) Rule {
 // the per-file effective-config lookup is keyed by Name(), so a clone
 // that zeroed Name() would silently skip the rule.
 //
-// An embedded sync.Mutex (or similar) is copied while unlocked —
-// clones are taken from pristine, idle rule instances before any
-// Check runs — so the copy is a valid, independent lock. The shallow
+// The copy reads every field of r without synchronization, so r must
+// be idle: no goroutine may be running Check or Fix on it. A rule set
+// shared between goroutines (a session's) is therefore only ever run
+// through per-call copies (CloneInstances) — never itself — so a
+// stateful rule's fields are not written while being copied, and an
+// embedded sync.Mutex (or similar) is copied while unlocked, a valid,
+// independent lock. The shallow
 // copy shares slice/map backing with the source; that is safe because
 // ConfigureRule clones again before applying per-file settings (once
 // per config signature, since the engine caches the configured rule
@@ -59,4 +63,17 @@ func CloneInstance(r Rule) Rule {
 	newPtr := reflect.New(rv.Elem().Type())
 	newPtr.Elem().Set(rv.Elem())
 	return newPtr.Interface().(Rule)
+}
+
+// CloneInstances returns CloneInstance of each rule in rules, a rule
+// set no other caller holds. A caller that runs Check or Fix on a rule
+// set it shares — a session's, which a concurrent Check clones per
+// worker — runs a fresh set from here instead, so stateful rules never
+// write fields of an instance someone is copying.
+func CloneInstances(rules []Rule) []Rule {
+	out := make([]Rule, len(rules))
+	for i, rl := range rules {
+		out[i] = CloneInstance(rl)
+	}
+	return out
 }
