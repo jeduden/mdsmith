@@ -17,6 +17,10 @@ import (
 // pyprojectTable is the key path of mdsmith's table in pyproject.toml.
 var pyprojectTable = []string{"tool", "mdsmith"}
 
+// pluralTable is the common misspelling `[tools.mdsmith]`. It is never
+// read as config; its presence only earns a hint.
+var pluralTable = []string{"tools", "mdsmith"}
+
 // loadPyproject reads the `[tool.mdsmith]` table of a pyproject.toml
 // (or any TOML file) and loads it as config. The table has the same
 // shape as `.mdsmith.yml`: it is converted to a YAML node tree and run
@@ -64,6 +68,22 @@ func pyprojectHasMdsmithTable(path string) bool {
 	return tree.GetPath(pyprojectTable) != nil
 }
 
+// pyprojectPluralHint returns a one-line hint when the TOML file at
+// path has a plural `[tools.mdsmith]` table, or "" otherwise. Discovery
+// only asks about a file that is not a config source (so it has no
+// `[tool.mdsmith]`); an unreadable or unparseable file earns no hint.
+func pyprojectPluralHint(path string) string {
+	data, err := readLimitedConfig(path)
+	if err != nil {
+		return ""
+	}
+	tree, err := toml.LoadBytes(data)
+	if err != nil || tree.GetPath(pluralTable) == nil {
+		return ""
+	}
+	return path + ": [tools.mdsmith] is not read; rename the table to [tool.mdsmith]"
+}
+
 // mdsmithHeaderRe matches a line that opens a `[tool.mdsmith]` or
 // `[tool.mdsmith.<sub>]` header (array-of-tables and unclosed forms
 // included) or a `tool.mdsmith.<key> =` dotted key.
@@ -76,6 +96,10 @@ func mdsmithTable(tree *toml.Tree, path string) (*toml.Tree, error) {
 	case *toml.Tree:
 		return v, nil
 	case nil:
+		if tree.GetPath(pluralTable) != nil {
+			return nil, fmt.Errorf(
+				"%s: no [tool.mdsmith] table; found [tools.mdsmith] — rename it to [tool.mdsmith]", path)
+		}
 		return nil, fmt.Errorf("%s: no [tool.mdsmith] table", path)
 	default:
 		return nil, fmt.Errorf("%s: [tool.mdsmith] must be a table, got %T", path, v)

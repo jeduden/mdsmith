@@ -319,23 +319,41 @@ func IsConfigFile(path string) bool {
 // or reaches the filesystem root. Returns the path to the config file,
 // or "" if none was found.
 func Discover(startDir string) (string, error) {
+	found, _ := discover(startDir)
+	return found, nil
+}
+
+// DiscoverHints returns the one-line hints Discover's walk collects for
+// files it passed over that look like a misplaced config: a
+// pyproject.toml whose table is the plural `[tools.mdsmith]`. Callers
+// print them so the author learns why the table is not read.
+func DiscoverHints(startDir string) []string {
+	_, hints := discover(startDir)
+	return hints
+}
+
+// discover is the walk behind Discover and DiscoverHints.
+func discover(startDir string) (found string, hints []string) {
 	dir, _ := filepath.Abs(startDir) // filepath.Abs cannot fail when os.Getwd succeeds
 	for {
 		if found := FileIn(dir); found != "" {
-			return found, nil
+			return found, hints
+		}
+		if hint := pyprojectPluralHint(filepath.Join(dir, pyprojectFileName)); hint != "" {
+			hints = append(hints, hint)
 		}
 
 		// Check for .git boundary — if .git exists in this dir,
 		// this is the repo root and we should not search further up.
 		gitDir := filepath.Join(dir, ".git")
 		if info, err := os.Stat(gitDir); err == nil && info.IsDir() {
-			return "", nil
+			return "", hints
 		}
 
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			// Reached filesystem root
-			return "", nil
+			return "", hints
 		}
 		dir = parent
 	}

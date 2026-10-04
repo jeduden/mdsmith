@@ -16,3 +16,7 @@ func TestLoadPyproject_UnsupportedInWASM(t *testing.T) {
 func TestPyprojectHasMdsmithTable_FalseInWASM(t *testing.T) {
 	assert.False(t, pyprojectHasMdsmithTable("pyproject.toml"))
 }
+
+func TestPyprojectPluralHint_EmptyInWASM(t *testing.T) {
+	assert.Equal(t, "", pyprojectPluralHint("pyproject.toml"))
+}

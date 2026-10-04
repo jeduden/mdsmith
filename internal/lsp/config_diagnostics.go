@@ -53,3 +53,14 @@ func (s *Server) publishConfigDiagnostic(d *lint.Diagnostic) {
 	_ = s.t.writeNotification("textDocument/publishDiagnostics",
 		publishDiagnosticsParams{URI: uri, Diagnostics: toLSPAll([]lint.Diagnostic{*d}, source, root)})
 }
+
+// logDiscoverHints reports, as warnings, the hints config discovery
+// collects under root — a pyproject.toml with a plural
+// `[tools.mdsmith]` table that is not read as config.
+func (s *Server) logDiscoverHints(root string) {
+	for _, hint := range config.DiscoverHints(root) {
+		s.logger.Printf("config: %s", hint)
+		_ = s.t.writeNotification("window/logMessage",
+			logMessageParams{Type: messageTypeWarning, Message: "mdsmith: " + hint})
+	}
+}

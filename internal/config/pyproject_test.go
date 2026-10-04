@@ -369,3 +369,37 @@ func TestIsConfigFile(t *testing.T) {
 		assert.Equal(t, want, IsConfigFile(path), path)
 	}
 }
+
+func TestDiscover_PluralToolsTableIsHintedNotUsed(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0o755))
+	py := writeCfg(t, root, "sub/pyproject.toml", "[tools.mdsmith]\nfiles = [\"*.md\"]\n")
+	start := filepath.Join(root, "sub")
+
+	got, err := Discover(start)
+	require.NoError(t, err)
+	assert.Equal(t, "", got, "a plural table is not a config source")
+	assert.Equal(t, []string{
+		py + ": [tools.mdsmith] is not read; rename the table to [tool.mdsmith]",
+	}, DiscoverHints(start))
+
+	// A singular table alongside the plural one is used, with no hint.
+	writeCfg(t, root, "sub/pyproject.toml", "[tools.mdsmith]\n[tool.mdsmith]\nfiles = []\n")
+	got, err = Discover(start)
+	require.NoError(t, err)
+	assert.Equal(t, py, got)
+	assert.Empty(t, DiscoverHints(start))
+}
+
+func TestPyprojectPluralHint(t *testing.T) {
+	dir := t.TempDir()
+	assert.Equal(t, "", pyprojectPluralHint(filepath.Join(dir, "missing.toml")))
+	assert.Equal(t, "", pyprojectPluralHint(writeCfg(t, dir, "bad.toml", "[tools.mdsmith\n")))
+	assert.Equal(t, "", pyprojectPluralHint(writeCfg(t, dir, "none.toml", "[project]\n")))
+}
+
+func TestLoadPyproject_PluralOnlyErrorCarriesHint(t *testing.T) {
+	p := writeCfg(t, t.TempDir(), "pyproject.toml", "[tools.mdsmith]\nfiles = []\n")
+	_, err := Load(p)
+	assert.ErrorContains(t, err, "no [tool.mdsmith] table; found [tools.mdsmith] — rename it to [tool.mdsmith]")
+}

@@ -147,3 +147,17 @@ func TestWatchedPyprojectChangeReloadsConfig(t *testing.T) {
 	assert.False(t, watchedFilesTreeChanged([]fileEvent{{URI: pathToURI(py), Type: fileChangeCreated}}),
 		"a config-only create must not flag a wikilink tree change")
 }
+
+func TestReloadConfigLogsPluralTableHint(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	require.NoError(t, writeFile(filepath.Join(dir, "pyproject.toml"), "[tools.mdsmith]\nfiles = []\n"))
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.reloadConfig()
+	assert.Contains(t, buf.String(), "[tools.mdsmith] is not read; rename the table to [tool.mdsmith]")
+	assert.Contains(t, buf.String(), `"type":2`)
+}

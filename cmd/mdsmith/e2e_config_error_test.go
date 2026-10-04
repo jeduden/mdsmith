@@ -88,3 +88,16 @@ func TestE2E_PyprojectBadValueExitsTwo(t *testing.T) {
 	assert.Equal(t, 2, exitCode)
 	assert.Contains(t, stderr, "pyproject.toml:5:1 config convention: unknown convention")
 }
+
+// A plural [tools.mdsmith] table earns a one-line hint and is not used.
+func TestE2E_PyprojectPluralTableHint(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, ".git"), 0o755))
+	writeFixture(t, dir, "pyproject.toml", "[tools.mdsmith.rules]\nno-trailing-spaces = false\n")
+	writeFixture(t, dir, "a.md", "# Title\n\nSome text. \n")
+	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", "a.md")
+	assert.Equal(t, 1, exitCode, "defaults apply, so the trailing space is flagged")
+	assert.Contains(t, stderr,
+		"mdsmith: hint: "+filepath.Join(dir, "pyproject.toml")+
+			": [tools.mdsmith] is not read; rename the table to [tool.mdsmith]\n")
+}

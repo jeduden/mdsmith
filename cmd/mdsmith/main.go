@@ -556,6 +556,9 @@ func loadConfigRaw(configPath string) (*config.Config, string, error) {
 	if err != nil {
 		return config.Merge(defaults, nil), "", nil
 	}
+	for _, hint := range config.DiscoverHints(cwd) {
+		fmt.Fprintf(os.Stderr, "mdsmith: hint: %s\n", hint)
+	}
 
 	if discovered == "" {
 		return config.Merge(defaults, nil), "", nil

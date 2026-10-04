@@ -225,7 +225,7 @@ Phase B — the pyproject source:
    value or a syntax error in `[tool.mdsmith]` produces a
    diagnostic at the right line and column in the
    `pyproject.toml`.
-10. [ ] Red/green: a `pyproject.toml` with a plural
+10. [x] Red/green: a `pyproject.toml` with a plural
     `[tools.mdsmith]` table but no `[tool.mdsmith]` emits a
     one-line hint pointing at the correct key and is not
     used as a config source.
@@ -280,7 +280,7 @@ Phase C — guardrails and docs:
 - [ ] The standard-Go and TinyGo WASM builds compile and
       stay within the size budgets; `go-toml` is not
       linked into the WASM artifact.
-- [ ] A plural `[tools.mdsmith]` table produces a hint
+- [x] A plural `[tools.mdsmith]` table produces a hint
       and is not used as config.
 - [ ] Reference docs describe the discovery order, the
       pyproject source, and positioned config diagnostics.
