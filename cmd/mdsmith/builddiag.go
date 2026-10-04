@@ -153,13 +153,16 @@ func reportBuildFailure(bt buildTarget, res targetRunResult, w io.Writer) {
 // build context was cancelled (CLI interrupt), not because it ran out of
 // time. res.TimedOut is set only when the kill path ran, so a recipe the
 // interrupt reached before it started gets no kill line; a running
-// one's group was already killed before this is called.
+// one's group was already killed before this is called, and its last
+// stdout and stderr lines print as in the timeout block.
 func reportInterrupt(name string, res targetRunResult, w io.Writer) {
 	if !res.TimedOut {
 		_, _ = fmt.Fprintf(w, "INTERRUPTED %s before start\n", name)
 		return
 	}
 	_, _ = fmt.Fprintf(w, "INTERRUPTED %s after %s\n", name, res.Duration.Round(time.Millisecond))
+	printStreamTail("stdout", res.StdoutTail, w)
+	printStreamTail("stderr", res.StderrTail, w)
 	_, _ = fmt.Fprintf(w, "  %s\n", buildexec.TimeoutKillAction)
 }
 

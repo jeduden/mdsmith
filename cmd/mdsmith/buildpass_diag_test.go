@@ -727,3 +727,20 @@ func TestReportTimeout_NamesThisPlatformsKill(t *testing.T) {
 	reportTimeout("book.html", targetRunResult{}, &buf)
 	assert.Contains(t, buf.String(), "  "+buildexec.TimeoutKillAction+"\n")
 }
+
+func TestReportInterrupt_PrintsStreamTails(t *testing.T) {
+	// A recipe killed by the interrupt keeps the last lines of both
+	// streams, as a timeout does, so the user sees what it was doing.
+	var buf strings.Builder
+	res := targetRunResult{Result: buildexec.Result{
+		TimedOut:   true,
+		StdoutTail: []string{"compiling chapter 7"},
+		StderrTail: []string{"warning: slow font"},
+	}}
+	reportInterrupt("book.html", res, &buf)
+	out := buf.String()
+	assert.Contains(t, out, "INTERRUPTED book.html after")
+	assert.Contains(t, out, "compiling chapter 7")
+	assert.Contains(t, out, "warning: slow font")
+	assert.Contains(t, out, "  "+buildexec.TimeoutKillAction+"\n")
+}
