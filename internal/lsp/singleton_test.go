@@ -604,6 +604,33 @@ func TestStartSingletonWatchSkipsPruneOnFailedClaim(t *testing.T) {
 	s.startSingletonWatch("/w", "scope")
 }
 
+// An entry listed by ReadDir can vanish before the prune stats it (a
+// concurrent prune or claim removed it). The prune must skip it rather
+// than read a nil FileInfo. ReadDir lists names sorted, so hook 0 on
+// "a.owner" deletes "b.owner" before the loop reaches it.
+func TestPruneStaleSkipsEntryVanishedBeforeStat(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	now := time.Now()
+	old := now.Add(-2 * time.Hour)
+	a := filepath.Join(dir, "a.owner")
+	b := filepath.Join(dir, "b.owner")
+	for _, p := range []string{a, b} {
+		require.NoError(t, os.WriteFile(p, []byte("old"), 0o600))
+		require.NoError(t, os.Chtimes(p, old, old))
+	}
+
+	var stale []string
+	pruneStale(dir, "pruner", now.Add(-time.Hour), func(path string) {
+		stale = append(stale, path)
+		if path == a {
+			require.NoError(t, os.Remove(b))
+		}
+	})
+	assert.NoFileExists(t, a, "the first stale record is still pruned")
+	assert.Equal(t, []string{a}, stale, "the vanished entry is skipped before it is judged stale")
+}
+
 // A claim can rename a fresh record onto a path between the stale
 // check and the removal. The prune must then leave that fresh record
 // in place rather than delete a live server's claim.
