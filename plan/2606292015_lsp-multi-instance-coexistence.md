@@ -287,31 +287,32 @@ the scope is per VS Code workspace.
 
 ## Follow-ups
 
-`PLAN.md` sits at its 300-line MDS022 cap, so, as plan
-2610030438 did, these are recorded here. File each as its own
-opus plan once `PLAN.md` has room.
+`PLAN.md` sits at its 300-line MDS022 cap, so, as plan 2610030438 did, these
+are recorded here. File each as its own opus plan once `PLAN.md` has room.
 
-1. **Workspace identity change.** Reap a server left by a host
-   leaked across the storage URI change above. Look for a
-   per-window id that survives a host restart, or a one-shot
-   claim of the previous scope. Two open windows that share a
-   first folder must still coexist. Then drop the limit note
-   in the extension reference.
-2. **Fix-path prototype race.** `go test -race ./internal/lsp/`
-   fails on origin/main (afd30920a), for example in
-   `TestCodeActionSourceFixAll`. `checker.ConfigureEnabledRules`
-   returns a rule with no settings and no `FileResetter`
-   unchanged. So `Session.Fix` runs `toc.(*Rule).Check` on the
-   registered prototype, and its lazy `engineOnce.Do` writes
-   the rule. At the same time a debounced lint's
-   `engine.cloneRules` copies that rule with
-   `rule.CloneInstance`. Catalog, build, conciseness-scoring
-   and external-link share the lazy `sync.Once` pattern. Write
-   a failing `-race` test of concurrent `Session.Fix` and
-   `Session.Check`. Then give every fix and check path private
-   rule instances, cached per config signature. Add a CI
-   `go test -race` step for `internal/lsp`, `internal/engine`,
-   `internal/fix` and `pkg/mdsmith`.
+1. **Workspace identity change.** Reap a server leaked across the storage URI
+   change above (a restart-stable per-window id, or a one-shot claim of the old
+   scope) while windows sharing a first folder coexist; drop the limit note.
+2. **Fix-path prototype race.** `go test -race ./internal/lsp/` fails on
+   origin/main (afd30920a): `Session.Fix` runs `toc.(*Rule).Check` on the
+   registered prototype (`checker.ConfigureEnabledRules` returns it unchanged),
+   whose lazy `engineOnce.Do` writes it while `engine.cloneRules` copies it.
+   Catalog, build, conciseness-scoring and external-link share the pattern. Add
+   a failing `-race` test of concurrent `Session.Fix` and `Session.Check`,
+   private rule instances per config signature, and CI `go test -race` for
+   `internal/{lsp,engine,fix}` and `pkg/mdsmith`.
+3. **Shared temp-dir prune.** If `os.UserCacheDir` fails, the registry falls
+   back to a shared `/tmp/mdsmith`, where another user can plant
+   `lsp-singleton` as a symlink so prune removes old `*.tmp`, `*.owner` and
+   `*.prune` files in its target. Skip prune on that fallback, or refuse a
+   registry dir that is a symlink or owned by another user.
+4. **Retire the legacy claim.** Each scoped start writes the root-only record,
+   superseding a pre-scope client on that root; set a removal release.
+5. **NUL root and seams.** Reject `%00` in `uriToPath`/`pickRoot` for every
+   caller and drop the singleton-only guard. Replace `pruneStale`'s positional
+   `hooks ...func(string)` with named seams, and read `initializationOptions`
+   from the raw params map instead of the custom `UnmarshalJSON`, which made
+   the other initialize fields case-sensitive.
 
 ## ...
 
