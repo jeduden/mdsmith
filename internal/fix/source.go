@@ -93,11 +93,12 @@ func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 		MaxInputBytes:    maxBytes,
 		SourceFS:         opts.SourceFS,
 	}
-	lf, dirFS, fmKinds, fmFields, err := f.prepareFile(opts.Path, opts.Source)
+	pf, err := f.prepareFile(opts.Path, opts.Source)
 	if err != nil {
 		return nil, err
 	}
-	defer f.releaseRoots(lf, opts.Path)
+	defer pf.release()
+	lf, dirFS, fmKinds, fmFields := pf.lf, pf.dirFS, pf.kinds, pf.fields
 	effective := f.effectiveWithCategories(opts.Path, fmKinds, fmFields)
 	// Surface configuration errors (invalid rule settings, etc.)
 	// instead of silently producing a fix that omits the affected

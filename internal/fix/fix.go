@@ -377,8 +377,6 @@ func (f *Fixer) fixOnce(paths []string) *Result {
 func (f *Fixer) fixFile(path string) (
 	[]lint.Diagnostic, []lint.Diagnostic, string, bool, []error,
 ) {
-	var errs []error
-
 	source, err := bytelimit.ReadFileLimited(path, f.MaxInputBytes)
 	if err != nil {
 		return nil, nil, "", false, []error{fmt.Errorf("reading %q: %w", path, err)}
@@ -389,11 +387,12 @@ func (f *Fixer) fixFile(path string) (
 		return nil, nil, "", false, []error{fmt.Errorf("stat %q: %w", path, err)}
 	}
 
-	lf, dirFS, fmKinds, fmFields, prepErr := f.prepareFile(path, source)
+	pf, prepErr := f.prepareFile(path, source)
 	if prepErr != nil {
 		return nil, nil, "", false, []error{prepErr}
 	}
-	defer f.releaseRoots(lf, path)
+	defer pf.release()
+	lf, dirFS, fmKinds, fmFields := pf.lf, pf.dirFS, pf.kinds, pf.fields
 
 	effective, key := f.effectiveCachedForFix(path, fmKinds, fmFields)
 
@@ -404,7 +403,9 @@ func (f *Fixer) fixFile(path string) (
 	foreignDiags := foreignregion.Apply(lf, f.Config, path)
 	beforeDiags := checker.CheckConfiguredRules(lf, fc.all, false, 1)
 	beforeDiags = append(beforeDiags, foreignDiags...)
-	errs = append(errs, fc.errs...)
+	// A copy: fc.errs is cached per config key, so appending to it
+	// in place would leak this file's errors into the next file's.
+	errs := append([]error(nil), fc.errs...)
 
 	current := f.applyFixPasses(path, lf.Source, fc.fixable, lf, dirFS, &errs)
 	// Undo any fixer edit that landed inside a declared foreign region —
@@ -753,36 +754,52 @@ func (f *Fixer) logRules(effective map[string]config.RuleCfg) {
 	}
 }
 
+// preparedFile is prepareFile's result: the parsed file, its dirFS, the
+// validated front-matter kinds, the full FM mapping (for the
+// kind-assignment `fields-present:` selector), and release, which
+// closes the roots wireFileFS opened for the file once its fix ends.
+type preparedFile struct {
+	lf      *lint.File
+	dirFS   fs.FS
+	kinds   []string
+	fields  map[string]any
+	release func()
+}
+
 // prepareFile parses a lint.File from source, configures its FS/RootDir,
-// and resolves the file's front-matter kinds and full FM mapping. Returns
-// the file, its dirFS, the validated kind list, the FM mapping (for the
-// kind-assignment `fields-present:` selector), and any error.
-func (f *Fixer) prepareFile(path string, source []byte) (*lint.File, fs.FS, []string, map[string]any, error) {
+// and resolves the file's front-matter kinds and full FM mapping. On
+// success the caller defers the result's release.
+func (f *Fixer) prepareFile(path string, source []byte) (preparedFile, error) {
 	lf, err := lint.NewFileFromSource(path, source, f.StripFrontMatter)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("parsing %q: %w", path, err)
+		return preparedFile{}, fmt.Errorf("parsing %q: %w", path, err)
 	}
 	lf.MaxInputBytes = f.MaxInputBytes
 	lf.DryRun = f.DryRun
 	kinds, err := lint.ParseFrontMatterKinds(lf.FrontMatter)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err)
+		return preparedFile{}, fmt.Errorf("parsing front-matter kinds in %q: %w", path, err)
 	}
 	if err := config.ValidateFrontMatterKinds(f.Config, path, kinds); err != nil {
-		return nil, nil, nil, nil, err
+		return preparedFile{}, err
 	}
 	fields, err := parseFieldsForSelector(f.Config, path, lf.FrontMatter)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return preparedFile{}, err
 	}
-	return lf, f.wireFileFS(lf, path), kinds, fields, nil
+	dirFS, release := f.wireFileFS(lf, path)
+	return preparedFile{lf: lf, dirFS: dirFS, kinds: kinds, fields: fields, release: release}, nil
 }
 
 // wireFileFS sets lf's FS, RootFS/RootDir, and gitignore hook and returns
-// its FS. It runs after prepareFile's last error return, so no failed
-// prepare holds a root; the caller defers releaseRoots once lf's fix ends.
-func (f *Fixer) wireFileFS(lf *lint.File, path string) fs.FS {
+// its FS plus a release that closes exactly the roots it opened: its own
+// directory unless the caller lent SourceFS, and the project root for a
+// file below RootDir. A lent SourceFS stays open for its owner. It runs
+// after prepareFile's last error return, so no failed prepare holds a
+// root.
+func (f *Fixer) wireFileFS(lf *lint.File, path string) (fs.FS, func()) {
 	dir := filepath.Dir(path)
+	var ownFS, ownRoot fs.FS
 	if f.SourceFS != nil {
 		// In-memory callers (LSP) supply an explicit FS rooted at the
 		// document's real on-disk directory; the path itself can be
@@ -790,6 +807,7 @@ func (f *Fixer) wireFileFS(lf *lint.File, path string) fs.FS {
 		lf.FS = f.SourceFS
 	} else {
 		lf.FS = lint.OpenRootFS(dir)
+		ownFS = lf.FS
 	}
 	gitignoreDir := dir
 	if f.RootDir != "" {
@@ -799,6 +817,7 @@ func (f *Fixer) wireFileFS(lf *lint.File, path string) fs.FS {
 			lf.RootFS = lf.FS
 		} else {
 			lf.SetRootDir(f.RootDir)
+			ownRoot = lf.RootFS
 		}
 		gitignoreDir = f.RootDir
 	}
@@ -806,18 +825,9 @@ func (f *Fixer) wireFileFS(lf *lint.File, path string) fs.FS {
 	lf.GitignoreFunc = func() *gitignore.Matcher {
 		return f.cachedGitignore(gd)
 	}
-	return lf.FS
-}
-
-// releaseRoots closes the roots wireFileFS opened for lf at path: its
-// own directory unless the caller lent SourceFS, and the project root
-// for a file below RootDir. A lent SourceFS stays open for its owner.
-func (f *Fixer) releaseRoots(lf *lint.File, path string) {
-	if f.SourceFS == nil {
-		lint.CloseFS(lf.FS)
-	}
-	if f.RootDir != "" && filepath.Dir(path) != f.RootDir {
-		lint.CloseFS(lf.RootFS)
+	return lf.FS, func() {
+		lint.CloseFS(ownFS)
+		lint.CloseFS(ownRoot)
 	}
 }
 
