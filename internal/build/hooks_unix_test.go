@@ -108,7 +108,7 @@ func TestRunHook_SuccessLeavesBackgroundChild(t *testing.T) {
 func TestRunHook_InstallsNoJobObject(t *testing.T) {
 	var calls int
 	old := afterStartFn
-	afterStartFn = func(*exec.Cmd) func() { calls++; return nil }
+	afterStartFn = func(cmd *exec.Cmd) groupKiller { calls++; return afterStart(cmd) }
 	t.Cleanup(func() { afterStartFn = old })
 
 	script := writeScript(t, t.TempDir(), "noop.sh", `exit 0`)

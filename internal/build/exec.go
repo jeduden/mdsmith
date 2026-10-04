@@ -101,7 +101,7 @@ type runOpts struct {
 	label string
 	// sharedGroup keeps the process in mdsmith's own process group (no
 	// Setpgid, Job Object, or RFNOTEG), and a cancel or timeout signals
-	// only its leader (killLeaderUntil): signalling the group would hit
+	// only its leader (sharedGroupKiller): signalling the group would hit
 	// mdsmith. Hooks
 	// set it. A before-hook may background a dev server that must
 	// outlive the hook, which a Job Object's kill-on-close would end;
@@ -138,10 +138,10 @@ var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
 // is the program and argv[1:] its arguments. A hook opts out of the
 // environment (inheritEnv) and the group (sharedGroup); the group and
 // kill notes below then do not apply: a cancel or timeout signals only
-// its leader with killLeaderUntil, which on Unix is SIGTERM, up to
-// gracePeriod, then SIGKILL (a closed WithForceKill channel skips the
-// grace), so a hook that traps TERM runs its cleanup; elsewhere it is
-// forceKillLeader at once.
+// its leader through sharedGroupKiller's killer, which on Unix is
+// SIGTERM, up to gracePeriod, then SIGKILL (a closed WithForceKill
+// channel skips the grace), so a hook that traps TERM runs its cleanup;
+// elsewhere it is an uncatchable leader kill at once.
 //
 // The recipe runs in its own process group (Setpgid on Unix;
 // CREATE_NEW_PROCESS_GROUP plus a Job Object on Windows). On timeout
@@ -170,13 +170,18 @@ var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
 // and on Windows with a Job Object.
 //
 // After the kill, runRecipe waits at most reapWait for the leader to
-// exit. If it has not (a leader that ignored the group kill), it kills
-// the leader directly with forceKillLeader, a kill it cannot catch,
-// and waits at most reapWait again. It then waits at most reapWait
-// for captured output to drain and closes its end of
-// the pipes (recipeOutput.abandon), so a survivor that holds a captured
+// exit. If it has not (a leader that ignored the group kill), it calls
+// the killer's forceLeader, which kills the leader directly with a kill
+// it cannot catch (on plan9 it does nothing, as kill already ended in
+// that kill), and waits at most reapWait again. On plan9 that second
+// wait is still useful: a ctl kill takes effect only when the leader
+// next returns from a system call, so a leader blocked in one can
+// outlast the first wait and die during the second. It then waits at most
+// reapWait for captured output to drain and closes its end of the pipes
+// (recipeOutput.abandon), so a survivor that holds a captured
 // pipe open cannot hang mdsmith. Once a second interrupt closes the
-// WithForceKill channel, each of those waits ends forcedReapWait later. On Unix and Windows the close also
+// WithForceKill channel, each of those waits ends forcedReapWait later.
+// On Unix and Windows the close also
 // ends the copy goroutine and frees the fd; plan9 cannot cancel a
 // blocked read, so there they last until the survivor's next write or
 // exit. Captured output written after runRecipe returns is dropped,
@@ -227,14 +232,18 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		return -1, false, fmt.Errorf("starting %s: %w", o.processLabel(), err)
 	}
 
-	forced := false
-	force := forceKillFrom(ctx)
-	kill := func() { forced = killGroupFn(cmd, force) }
+	// The killer is this run's kill state, owned here and closed on
+	// return. A hook (sharedGroup) gets a leader-only one and skips
+	// afterStart, so it gets no Job Object whose kill-on-close would end
+	// a dev server it backgrounded.
+	var killer groupKiller
 	if o.sharedGroup {
-		kill = func() { forced = killLeaderUntil(cmd, force) }
-	} else if jobCleanup := afterStartFn(cmd); jobCleanup != nil {
-		defer jobCleanup()
+		killer = sharedGroupKiller(cmd)
+	} else {
+		killer = afterStartFn(cmd)
 	}
+	defer killer.close()
+	force := forceKillFrom(ctx)
 
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
@@ -254,19 +263,21 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 			}
 			return exitResult(err)
 		case <-ctx.Done():
-			kill()
+			forced := killer.kill(force)
 			return timeoutResult(ctx, ro, err, forced)
 		}
 	case <-ctx.Done():
-		kill()
+		forced := killer.kill(force)
 		reaped, waitErr := waitAtMost(done, reapWait, force)
 		if !reaped {
 			// The group kill left the leader running (Windows when the
 			// Job Object could not be set up and the recipe ignores
-			// CTRL_BREAK). Kill it directly with a kill it cannot
-			// catch; done is buffered, so the Wait goroutine exits
+			// CTRL_BREAK, or a Unix leader that left its group).
+			// forceLeader kills it directly with a kill it cannot
+			// catch; plan9's does nothing, as its kill already ended in
+			// one. done is buffered, so the Wait goroutine exits
 			// whenever the leader does.
-			forceKillLeaderFn(cmd)
+			killer.forceLeader()
 			_, waitErr = waitAtMost(done, reapWait, force)
 		}
 		return timeoutResult(ctx, ro, waitErr, forced)
@@ -323,6 +334,36 @@ func exitCodeOf(err error) int {
 	return -1
 }
 
+// groupKiller is one recipe's kill state, owned by runRecipe. afterStart
+// builds it once the recipe has started; a hook (sharedGroup) gets
+// sharedGroupKiller's leader-only one instead. A platform with no group
+// to kill (exec_other.go) returns a killer that kills only the leader.
+type groupKiller interface {
+	// kill ends the recipe's whole group (or only its leader where the
+	// platform has no group, plan9 captured none, or the run is a hook).
+	// force is the run context's WithForceKill channel: on Unix, once it
+	// is closed, kill skips what is left of the SIGTERM grace period and
+	// sends SIGKILL at once; elsewhere kill has no grace and ignores it.
+	// kill reports whether force cut the grace short while the target
+	// was still alive. It can leave the leader running: Windows without
+	// a Job Object sends only CTRL_BREAK, which the recipe can ignore,
+	// and a Unix leader can leave its group; runRecipe then calls
+	// forceLeader. A killer for a command that never started does
+	// nothing and reports false.
+	kill(force <-chan struct{}) bool
+	// close releases what afterStart captured. runRecipe calls it once,
+	// on return.
+	close()
+	// forceLeader kills only the recipe's leader, with a kill it cannot
+	// catch. runRecipe calls it when kill left the leader running (a
+	// Unix leader that left its group, Windows without a Job Object).
+	// On plan9 it does nothing, as kill already ends in that same
+	// uncatchable kill. On targets with no group (exec_other.go) kill is
+	// this same leader kill, so a repeat only finds the leader gone. A
+	// command that never started is a no-op.
+	forceLeader()
+}
+
 // forceKillKey is the context key WithForceKill stores its channel under.
 type forceKillKey struct{}
 
@@ -342,23 +383,15 @@ func forceKillFrom(ctx context.Context) <-chan struct{} {
 	return force
 }
 
-// afterStartFn indirects afterStart so a test can install a non-nil job
-// cleanup and exercise the deferred-cleanup branch on Unix.
+// afterStartFn indirects afterStart so a test can install a stub
+// killer: one that records a call, or models a group kill that leaves
+// the recipe running.
 var afterStartFn = afterStart
 
-// killGroupFn indirects killGroupUntil so a test can model a group
-// kill that leaves the recipe running. Its second argument is the
-// WithForceKill channel of the run's context; it reports whether that
-// channel escalated the kill.
-var killGroupFn = killGroupUntil
-
-// forceKillLeaderFn indirects forceKillLeader so a test can check that
-// runRecipe's leader-only fallback uses it.
-var forceKillLeaderFn = forceKillLeader
-
 // reapWait bounds each wait after a timeout kill: for the leader after
-// killGroup, for it again after the leader-only fallback kill, and for
-// captured output to drain (forcedReapWait after a second interrupt). It is a var so a test can shorten it.
+// the killer's kill, for it again after its forceLeader, and for
+// captured output to drain (forcedReapWait after a second interrupt).
+// It is a var so a test can shorten it.
 var reapWait = 5 * time.Second
 
 // forcedReapWait bounds each reapWait wait once a second interrupt

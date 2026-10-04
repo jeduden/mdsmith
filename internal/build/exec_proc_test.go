@@ -17,13 +17,43 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRunRecipe_NonNilJobCleanup(t *testing.T) {
+// stubKiller is a groupKiller whose kill, close, and forceLeader run
+// the given funcs; a nil func does nothing.
+type stubKiller struct{ killFn, closeFn, forceFn func() }
+
+func (k stubKiller) forceLeader() {
+	if k.forceFn != nil {
+		k.forceFn()
+	}
+}
+
+// kill runs killFn and reports false: a stub never escalates.
+func (k stubKiller) kill(<-chan struct{}) bool {
+	if k.killFn != nil {
+		k.killFn()
+	}
+	return false
+}
+
+func (k stubKiller) close() {
+	if k.closeFn != nil {
+		k.closeFn()
+	}
+}
+
+func TestRunRecipe_ClosesKillerOnReturn(t *testing.T) {
 	skipWithoutPOSIXTools(t, "sh")
-	// On Unix afterStart returns nil; inject a non-nil cleanup so runRecipe
-	// installs and runs the deferred-cleanup branch.
-	var ran atomic.Bool
+	// runRecipe owns the killer afterStart returns and must close it
+	// on return. A recipe that exits on its own is never killed.
+	var ran, killed atomic.Bool
 	old := afterStartFn
-	afterStartFn = func(*exec.Cmd) func() { return func() { ran.Store(true) } }
+	afterStartFn = func(*exec.Cmd) groupKiller {
+		return stubKiller{
+			closeFn: func() { ran.Store(true) },
+			killFn:  func() { killed.Store(true) },
+			forceFn: func() { killed.Store(true) },
+		}
+	}
 	t.Cleanup(func() { afterStartFn = old })
 
 	stage := t.TempDir()
@@ -37,7 +67,42 @@ func TestRunRecipe_NonNilJobCleanup(t *testing.T) {
 		defExec: defaultExecConfig(),
 	})
 	require.NoError(t, err)
-	assert.True(t, ran.Load(), "deferred job cleanup must run")
+	assert.True(t, ran.Load(), "the killer must be closed on return")
+	assert.False(t, killed.Load(), "a recipe that exited on its own must not be killed")
+}
+
+func TestRunRecipe_ClosesKillerOnTimeout(t *testing.T) {
+	skipWithoutPOSIXTools(t, "sh")
+	// The timeout return must close the killer too, after its kill: on
+	// Windows close is what fires KILL_ON_JOB_CLOSE, and on plan9 it
+	// frees the notepg file. This test needs sh, so it skips on both;
+	// the ordering it checks is runRecipe's, shared by every platform,
+	// and TestClose_Windows_* and TestClose_Plan9_* cover each close.
+	// The stub forwards to the real killer, so the recipe's group still
+	// dies.
+	var killed, closedAfterKill atomic.Bool
+	old := afterStartFn
+	afterStartFn = func(cmd *exec.Cmd) groupKiller {
+		inner := afterStart(cmd)
+		return stubKiller{
+			killFn:  func() { killed.Store(true); inner.kill(nil) },
+			forceFn: inner.forceLeader,
+			closeFn: func() { closedAfterKill.Store(killed.Load()); inner.close() },
+		}
+	}
+	t.Cleanup(func() { afterStartFn = old })
+
+	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 120`)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	require.True(t, timedOut)
+	assert.True(t, closedAfterKill.Load(), "the killer must be closed after the timeout kill")
 }
 
 func TestRunRecipe_HermeticEnvVisibleToProcess(t *testing.T) {

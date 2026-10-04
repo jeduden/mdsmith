@@ -24,40 +24,58 @@ func configureProcessGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
-// afterStart is a no-op on Unix; the Job Object equivalent is Windows
-// only. It returns nil so runRecipe installs no cleanup defer.
-func afterStart(*exec.Cmd) func() { return nil }
+// pgKiller is the groupKiller on Unix. The process group needs no state
+// beyond the leader's pid, which is the pgid. The embedded leaderKill
+// supplies forceLeader.
+type pgKiller struct{ leaderKill }
 
-// killGroup terminates the recipe's whole process group. It sends
+// afterStart holds no state on Unix; the Job Object equivalent is
+// Windows only.
+func afterStart(cmd *exec.Cmd) groupKiller { return pgKiller{leaderKill{cmd}} }
+
+// close has nothing to release.
+func (pgKiller) close() {}
+
+// kill terminates the recipe's whole process group. It sends
 // SIGTERM first, waits up to gracePeriod for the group to exit, then
 // sends SIGKILL. Signaling the negative pgid reaches every process in
-// the group, so a recipe's background children are killed too.
-func killGroup(cmd *exec.Cmd) { killGroupUntil(cmd, nil) }
-
-// killGroupUntil is killGroup with an escape hatch: once force is
-// closed (a second CLI interrupt, see WithForceKill), it stops waiting
-// out the grace period and sends SIGKILL at once. A nil force never
-// fires, which is killGroup. It reports whether force cut the grace
-// short while the group was still alive.
-func killGroupUntil(cmd *exec.Cmd, force <-chan struct{}) bool {
-	if cmd.Process == nil {
+// the group, so a recipe's background children are killed too. Once
+// force is closed (a second CLI interrupt, see WithForceKill), it stops
+// waiting out the grace period and sends SIGKILL at once; a nil force
+// never fires. It reports whether force cut the grace short while the
+// group was still alive. A nil Process (the command never started) is
+// a no-op.
+func (k pgKiller) kill(force <-chan struct{}) bool {
+	if k.cmd.Process == nil {
 		return false
 	}
-	pgid := cmd.Process.Pid // Setpgid made pgid == leader pid
+	pgid := k.cmd.Process.Pid // Setpgid made pgid == leader pid
 	return termThenKill(func(sig syscall.Signal) error { return signalGroup(pgid, sig) }, force)
 }
 
-// killLeaderUntil is killGroupUntil for a run in mdsmith's own process
-// group (a hook, sharedGroup): signalling the group would hit mdsmith,
-// so SIGTERM, the grace period, and the SIGKILL reach the leader alone.
-// A hook that traps TERM runs its cleanup. The existence probe goes
-// through cmd.Process, which fails once runRecipe's Wait reaped the
-// leader, so a reused pid is never signalled.
-func killLeaderUntil(cmd *exec.Cmd, force <-chan struct{}) bool {
-	if cmd.Process == nil {
+// leaderTermKiller is the Unix groupKiller for a run in mdsmith's own
+// process group (a hook, sharedGroup). The embedded leaderKill supplies
+// forceLeader.
+type leaderTermKiller struct{ leaderKill }
+
+// sharedGroupKiller returns the killer for a hook: it holds no state,
+// as the hook has no group of its own.
+func sharedGroupKiller(cmd *exec.Cmd) groupKiller { return leaderTermKiller{leaderKill{cmd}} }
+
+// close has nothing to release.
+func (leaderTermKiller) close() {}
+
+// kill is pgKiller's kill for a hook: signalling the group would hit
+// mdsmith, so SIGTERM, the grace period, and the SIGKILL reach the
+// leader alone. A hook that traps TERM runs its cleanup. The existence
+// probe goes through cmd.Process, which fails once runRecipe's Wait
+// reaped the leader, so a reused pid is never signalled. A nil Process
+// is a no-op.
+func (k leaderTermKiller) kill(force <-chan struct{}) bool {
+	if k.cmd.Process == nil {
 		return false
 	}
-	return termThenKill(func(sig syscall.Signal) error { return cmd.Process.Signal(sig) }, force)
+	return termThenKill(func(sig syscall.Signal) error { return k.cmd.Process.Signal(sig) }, force)
 }
 
 // termThenKill sends SIGTERM through signal, polls with signal 0 (an
