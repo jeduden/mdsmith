@@ -292,8 +292,7 @@ type destRef struct {
 // a workspace with no wikilink index share.
 type destResolver struct {
 	ws    Workspace
-	src   string
-	batch *moveBatch // the MoveAll batch; nil when a pass runs alone
+	batch *moveBatch // the MoveAll batch; a lone Move is a batch of one
 	list  []string   // nil until paths first runs; never nil after
 	files map[string]bool
 
@@ -391,11 +390,11 @@ func literalTarget(refFile string, pre []byte) (lit, target string) {
 	return lit, linkgraph.ResolveRelTarget(refFile, lit)
 }
 
-// exists reports whether p names src, another batch member, or
-// another file the workspace lists.
+// exists reports whether p names a batch member or another file the
+// workspace lists.
 func (r *destResolver) exists(p string) bool {
 	_, moved := r.member(p)
-	return p == r.src || moved || r.listed(p)
+	return moved || r.listed(p)
 }
 
 // listed reports whether the workspace lists p. It builds the lookup
@@ -845,7 +844,7 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destRes
 	if !idx.StemResolvesTo(oldStem, src) {
 		return
 	}
-	post := r.postIndex(idx, src, dst)
+	post := r.postIndex(idx)
 	siblings := stemSiblings(idx.StemPaths(oldStem), src)
 	lines := edgeLines{ws: ws}
 	for _, e := range edges {
@@ -947,7 +946,7 @@ func (t stemTarget) reaches(post *linkgraph.WikilinkIndex) bool {
 // (see siblingTarget). A lone move, or a batch with no such member,
 // leaves the links alone.
 func (r *destResolver) keptStemTarget(oldStem, src, dst string) (stemTarget, bool) {
-	if r.batch == nil || !linkgraph.WikilinkIndexed(dst) {
+	if !linkgraph.WikilinkIndexed(dst) {
 		return stemTarget{}, false
 	}
 	if stem, isStem := linkgraph.FileStemKey(path.Base(dst)); !isStem || stem != oldStem {
@@ -982,9 +981,6 @@ func (r *destResolver) siblingTarget(oldStem, sib string) (stemTarget, bool) {
 // t.key in post. A file outside the batch that wins it is not counted:
 // a lone move leaves such a link alone too.
 func (r *destResolver) countBlocked(post *linkgraph.WikilinkIndex, t stemTarget) {
-	if r.batch == nil {
-		return
-	}
 	// t does not reach its file in post, so some other file holds
 	// t.key there and sorts first.
 	holders := post.StemPaths(t.key)
@@ -1014,12 +1010,9 @@ func (r *destResolver) wikilinkIndex() *linkgraph.WikilinkIndex {
 }
 
 // postIndex returns idx as it reads once the batch has run: every
-// member's source removed and its destination added. A resolver with
-// no batch applies only the move of src to dst.
-func (r *destResolver) postIndex(idx *linkgraph.WikilinkIndex, src, dst string) *linkgraph.WikilinkIndex {
-	if r.batch == nil {
-		return idx.Moved(map[string]string{src: dst})
-	}
+// member's source removed and its destination added. It is built once
+// per batch.
+func (r *destResolver) postIndex(idx *linkgraph.WikilinkIndex) *linkgraph.WikilinkIndex {
 	if r.batch.post == nil {
 		moves := make(map[string]string, len(r.batch.members))
 		for s, m := range r.batch.members {

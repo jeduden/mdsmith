@@ -66,7 +66,7 @@ func TestLiteralTarget(t *testing.T) {
 }
 
 func TestDestResolver_Exists(t *testing.T) {
-	r := &destResolver{ws: stubWorkspace{files: []string{"b.md", "./sub/c.md"}}, src: "a.md"}
+	r := soloResolver(stubWorkspace{files: []string{"b.md", "./sub/c.md"}}, "a.md", "moved/a.md")
 	assert.True(t, r.exists("a.md"), "the moved file")
 	assert.Nil(t, r.files, "naming src lists no files")
 	assert.True(t, r.exists("b.md"))
@@ -76,7 +76,7 @@ func TestDestResolver_Exists(t *testing.T) {
 }
 
 func TestDestResolver_Listed(t *testing.T) {
-	r := &destResolver{ws: stubWorkspace{files: []string{"b.md", "./x.mdx"}}, src: "a.md"}
+	r := soloResolver(stubWorkspace{files: []string{"b.md", "./x.mdx"}}, "a.md", "moved/a.md")
 	assert.False(t, r.listed("a.md"), "src counts only when the workspace lists it")
 	assert.True(t, r.listed("b.md"))
 	assert.True(t, r.listed("x.mdx"), "listed paths are normalized")

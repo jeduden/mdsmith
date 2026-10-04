@@ -9,6 +9,12 @@ import (
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 )
 
+// soloResolver returns a resolver for a batch of one planned move,
+// src to dst, as Move builds it.
+func soloResolver(ws Workspace, src, dst string) *destResolver {
+	return &destResolver{ws: ws, batch: &moveBatch{members: map[string]batchMember{src: {dst: dst, planned: true}}}}
+}
+
 // moveAll runs MoveAll over files and fails the test when any pair
 // could not be planned.
 func moveAll(t *testing.T, files map[string]string, pairs ...MovePair) BatchPlan {
@@ -415,7 +421,7 @@ func TestDestResolver_KeptStemTarget(t *testing.T) {
 	self := batchMember{dst: "z/guide.md", planned: true}
 	want := stemTarget{dst: "z/guide.md", key: "guide", isStem: true}
 
-	_, ok := (&destResolver{}).keptStemTarget("guide", "x/guide.md", "z/guide.md")
+	_, ok := soloResolver(nil, "x/guide.md", "z/guide.md").keptStemTarget("guide", "x/guide.md", "z/guide.md")
 	assert.False(t, ok, "a lone move")
 	_, ok = batch(map[string]batchMember{"x/guide.md": self, "a.md": {dst: "b.md"}}).
 		keptStemTarget("guide", "x/guide.md", "z/guide.md")
@@ -444,15 +450,6 @@ func TestMoveAll_TargetLeavesWorkspace(t *testing.T) {
 	assert.ErrorIs(t, bp.Moves[1].Err, ErrTraversalPath)
 	assert.NotContains(t, bp.Edits, "a.md")
 	assert.Equal(t, 1, bp.Withheld)
-}
-
-// TestDestResolver_CountsNeedABatch locks that a pass run without a
-// batch counts nothing.
-func TestDestResolver_CountsNeedABatch(t *testing.T) {
-	r := &destResolver{}
-	r.countStale("a.md", "b.md", "c.md")
-	r.countBlocked(holderIndex("c.md"), stemTarget{dst: "z/c.md", key: "c", isStem: true})
-	assert.Nil(t, r.batch)
 }
 
 func TestNewStemTarget(t *testing.T) {
@@ -497,12 +494,12 @@ func TestDestResolver_SiblingTarget(t *testing.T) {
 }
 
 func TestDestResolver_Member(t *testing.T) {
-	_, ok := (&destResolver{}).member("a.md")
-	assert.False(t, ok, "no batch, no members")
-	r := &destResolver{batch: &moveBatch{members: map[string]batchMember{"a.md": {dst: "b.md", planned: true}}}}
+	r := soloResolver(nil, "a.md", "b.md")
 	m, ok := r.member("a.md")
 	assert.True(t, ok)
 	assert.Equal(t, batchMember{dst: "b.md", planned: true}, m)
+	_, ok = r.member("b.md")
+	assert.False(t, ok, "a destination is no member")
 }
 
 // wikilinkIndexCountingWorkspace counts WikilinkIndex calls.
@@ -533,7 +530,7 @@ func TestDestResolver_WikilinkIndex(t *testing.T) {
 
 func TestDestResolver_PostIndex(t *testing.T) {
 	idx := holderIndex("a.md", "b.md")
-	alone := (&destResolver{}).postIndex(idx, "a.md", "x/c.md")
+	alone := soloResolver(nil, "a.md", "x/c.md").postIndex(idx)
 	assert.Equal(t, []string{"x/c.md"}, alone.StemPaths("c"))
 	assert.Empty(t, alone.StemPaths("a"))
 
@@ -541,8 +538,8 @@ func TestDestResolver_PostIndex(t *testing.T) {
 		"a.md": {dst: "x/c.md", planned: true},
 		"b.md": {},
 	}}}
-	post := r.postIndex(idx, "a.md", "x/c.md")
-	assert.Same(t, post, r.postIndex(idx, "a.md", "x/c.md"), "built once per batch")
+	post := r.postIndex(idx)
+	assert.Same(t, post, r.postIndex(idx), "built once per batch")
 	assert.Empty(t, post.StemPaths("b"), "a member leaving the workspace is removed")
 }
 

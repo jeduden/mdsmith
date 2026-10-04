@@ -72,10 +72,10 @@ func holderIndex(files ...string) *linkgraph.WikilinkIndex {
 
 // wikilinkRewriteSafe composes the two checks appendWikilinkStemEdits
 // runs for a lone move: src wins oldStem in idx, and newKey reaches
-// dst once src has moved there.
+// dst in the resolver's post-move index.
 func wikilinkRewriteSafe(idx *linkgraph.WikilinkIndex, src, dst, oldStem, newKey string, newIsStem bool) bool {
 	t := stemTarget{dst: dst, key: newKey, isStem: newIsStem}
-	return idx.StemResolvesTo(oldStem, src) && t.reaches(idx.Moved(map[string]string{src: dst}))
+	return idx.StemResolvesTo(oldStem, src) && t.reaches(soloResolver(nil, src, dst).postIndex(idx))
 }
 
 func TestWikilinkRewriteSafe_OldStem(t *testing.T) {
@@ -162,7 +162,7 @@ func TestWikilinkRewriteSafe_SourceResolution(t *testing.T) {
 	// The nil-index fallback indexes r.paths(), which normalizes the
 	// listing, so a source listed as `./z/guide.md` is found as itself,
 	// not as a second holder that outsorts it.
-	r := &destResolver{ws: stubWorkspace{files: []string{"./z/guide.md"}}, src: "z/guide.md"}
+	r := &destResolver{ws: stubWorkspace{files: []string{"./z/guide.md"}}}
 	assert.True(t, safe(linkgraph.NewWikilinkIndexFromPaths(r.paths()), "z/guide.md"),
 		"a source listed with a ./ prefix is still indexed")
 }
@@ -294,7 +294,7 @@ func TestOutboundEdit(t *testing.T) {
 		require.GreaterOrEqual(t, ps, 0)
 		return inlineDest{dest: []byte(dest), row: []byte(row), line: 4, ps: ps}
 	}
-	r := &destResolver{ws: stubWorkspace{}, src: "docs/a.md"}
+	r := soloResolver(stubWorkspace{}, "docs/a.md", "guide/x/a.md")
 	t.Run("relative path is re-spelled from dst", func(t *testing.T) {
 		e, ok := outboundEdit(r, located("![](./b.png)", "./b.png"), "docs/a.md", "guide/x/a.md")
 		require.True(t, ok)
@@ -356,7 +356,7 @@ func TestAppendReferrerEdits_DefensiveBranches(t *testing.T) {
 		},
 		unresolvable: map[string]bool{"gone.md": true},
 	}
-	r := &destResolver{ws: ws, src: "a.md"}
+	r := soloResolver(ws, "a.md", "docs/a.md")
 	appendReferrerEdits(changes, ws, lint.NewParser(), r, "a.md", "docs/a.md")
 	assert.Empty(t, changes, "every file hits a skip branch")
 }
@@ -396,7 +396,7 @@ func TestAppendWikilinkStemEdits_DefensiveBranches(t *testing.T) {
 	}
 	// Basename changes (api -> service) so the pass runs, but every edge
 	// hits a skip branch.
-	appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: "api.md"}, "api.md", "service.md")
+	appendWikilinkStemEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
 	assert.Empty(t, changes)
 }
 
@@ -414,7 +414,7 @@ func TestAppendReferrerEdits_RefDefShapesAndSkips(t *testing.T) {
 		},
 		unresolvable: map[string]bool{"gone.md": true},
 	}
-	r := &destResolver{ws: ws, src: "a.md"}
+	r := soloResolver(ws, "a.md", "docs/a.md")
 	appendReferrerEdits(changes, ws, lint.NewParser(), r, "a.md", "docs/a.md")
 	require.Len(t, changes["hit.md"], 1)
 	assert.Equal(t, "docs/a.md", changes["hit.md"][0].NewText)
@@ -426,7 +426,7 @@ func TestAppendReferrerEdits_RefDefShapesAndSkips(t *testing.T) {
 // to dst over a workspace holding only src.
 func outbound(changes map[string][]Edit, src, dst string, source []byte) {
 	ws := stubWorkspace{files: []string{src}}
-	r := &destResolver{ws: ws, src: src}
+	r := soloResolver(ws, src, dst)
 	appendOutboundEdits(changes, lint.NewParser(), r, src, src, dst, source)
 }
 
@@ -569,7 +569,7 @@ func TestAppendWikilinkStemEdits_StaleEdgeKeyMismatch(t *testing.T) {
 				files:   []string{"api.md", "d.md"},
 				sources: map[string][]byte{"d.md": []byte(row + "\n")},
 			}
-			appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: "api.md"}, "api.md", "service.md")
+			appendWikilinkStemEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
 			assert.Len(t, changes["d.md"], want)
 		})
 	}

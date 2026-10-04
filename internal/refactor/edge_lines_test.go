@@ -36,7 +36,7 @@ func TestAppendWikilinkStemEdits_ReadsEachSourceOnce(t *testing.T) {
 		sources: map[string][]byte{"index.md": []byte("[[api]]\n[[api]]\n[[api]]\n")},
 	}}
 	changes := map[string][]Edit{}
-	appendWikilinkStemEdits(changes, ws, &destResolver{ws: ws, src: "api.md"}, "api.md", "service.md")
+	appendWikilinkStemEdits(changes, ws, soloResolver(ws, "api.md", "service.md"), "api.md", "service.md")
 	require.Len(t, changes["index.md"], 3)
 	assert.Equal(t, 1, ws.calls["index.md"])
 }

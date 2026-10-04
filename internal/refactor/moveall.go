@@ -95,7 +95,6 @@ func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
 		if m.Err != nil {
 			continue
 		}
-		r.src = m.Src
 		appendReferrerEdits(bp.Edits, ws, p, r, m.Src, m.Dst)
 		appendWikilinkStemEdits(bp.StemEdits, ws, r, m.Src, m.Dst)
 		if _, source, ok := ws.Resolve(m.Src); ok && (mdpath.HasMarkdownExt(path.Ext(m.Src)) || r.listed(m.Src)) {
@@ -104,7 +103,6 @@ func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
 	}
 	for _, m := range moves {
 		if u, ok := b.members[m.Dst]; m.Err == nil && ok && !u.planned {
-			r.src = m.Dst
 			countShadowed(ws, p, r, m.Dst)
 		}
 	}
@@ -255,12 +253,8 @@ type batchMember struct {
 	planned bool
 }
 
-// member returns the batch entry for the workspace file p. A resolver
-// with no batch (a test driving one pass directly) has no members.
+// member returns the batch entry for the workspace file p.
 func (r *destResolver) member(p string) (batchMember, bool) {
-	if r.batch == nil {
-		return batchMember{}, false
-	}
 	m, ok := r.batch.members[p]
 	return m, ok
 }
@@ -270,9 +264,6 @@ func (r *destResolver) member(p string) (batchMember, bool) {
 // file landing at target. It counts only when that link stops
 // resolving, or when either end leaves the workspace.
 func (r *destResolver) countStale(holder, refPath, target string) {
-	if r.batch == nil {
-		return
-	}
 	if holder == "" || target == "" || linkgraph.ResolveRelTarget(holder, refPath) != target {
 		r.batch.withheld++
 	}
