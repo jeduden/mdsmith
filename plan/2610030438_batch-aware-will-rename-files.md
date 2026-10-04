@@ -1,7 +1,7 @@
 ---
 id: 2610030438
 title: Batch-aware planning for multi-file willRenameFiles
-status: "🔲"
+status: "🔳"
 summary: >-
   When one workspace/willRenameFiles request moves several Markdown
   files that link to each other, plan every link rewrite against the

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"io/fs"
+	"maps"
 	"path"
 	"regexp"
 	"slices"
@@ -269,6 +270,37 @@ func NewWikilinkIndexFromPaths(paths []string) *WikilinkIndex {
 	}
 	idx.sort()
 	return idx
+}
+
+// Moved returns a new index that reads as idx will once every move in
+// moves (workspace-relative source → destination) has run: each source
+// leaves its keys, and each destination joins its own, keyed and
+// ordered as NewWikilinkIndexFromPaths keys them. An empty destination
+// only removes its source (the file leaves the workspace), and a
+// destination already indexed is held once. A source idx lacks is
+// ignored. idx itself is not changed. A nil index returns nil: it
+// stands for a root that could not be walked, which no move changes.
+// A batch of renames planned together reads it to learn which file a
+// `[[stem]]` reaches after the batch.
+func (idx *WikilinkIndex) Moved(moves map[string]string) *WikilinkIndex {
+	if idx == nil {
+		return nil
+	}
+	held := map[string]bool{}
+	for _, paths := range idx.names {
+		for _, p := range paths {
+			held[p] = true
+		}
+	}
+	for src := range moves {
+		delete(held, src)
+	}
+	for _, dst := range moves {
+		if dst != "" {
+			held[dst] = true
+		}
+	}
+	return NewWikilinkIndexFromPaths(slices.Collect(maps.Keys(held)))
 }
 
 // newEmptyWikilinkIndex returns an index with no files, ready for add.
