@@ -62,9 +62,10 @@ for the edge index and once for `WikilinkIndex`.
 
 ## Design
 
-- Read the session's cached index when the LSP has seen a
-  file event since the last walk or has file-watch
-  registration. Otherwise walk fresh, as today.
+- Read the session's cached index once the client accepts
+  the `**/*` file-watch registration. A watched-file event
+  alone proves nothing: a client may sync a narrower glob.
+  Otherwise walk fresh, as today.
 - Make `OpenRootFS` return a closer (or an `fs.FS` that
   implements `io.Closer`). Every one-shot caller closes it
   after its walk. A run-cache owner closes it when the

@@ -132,9 +132,9 @@ type Server struct {
 	// in production; the seam lets a test drive rebuildSession's failure
 	// branch (and the nil-session guards downstream of it) red/green.
 	newSession func(mdsmith.SessionOptions) (*mdsmith.Session, error)
-	// watchingFiles is set once the server asks the client to watch
-	// files (registerWatchers) or receives a watched-file event for a
-	// non-config file: from then on a file create or delete reaches
+	// watchingFiles is set once the client accepts the `**/*` watcher
+	// registration (awaitWatchersAck): from then on a file create or
+	// delete reaches
 	// session.InvalidateWikilinks, so the session's cached wikilink
 	// index is fresh and a move reads it instead of walking the root.
 	watchingFiles atomic.Bool

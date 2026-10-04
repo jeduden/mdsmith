@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/jeduden/mdsmith/internal/mdpath"
 )
@@ -105,7 +106,7 @@ func (s *Server) handleInitialized(ctx context.Context) {
 	// instant re-lint when they edit .mdsmith.yml in another window.
 	if caps.Workspace != nil && caps.Workspace.DidChangeWatchedFiles != nil &&
 		caps.Workspace.DidChangeWatchedFiles.DynamicRegistration {
-		s.registerWatchers()
+		s.registerWatchers(ctx)
 	}
 }
 
@@ -126,11 +127,16 @@ func (s *Server) handleInitialized(ctx context.Context) {
 // registration silently ignore it. There is no polling fallback;
 // when the watcher is absent, the index still updates from open
 // buffer events.
-func (s *Server) registerWatchers() {
-	s.watchingFiles.Store(true)
+//
+// A move trusts the session's cached wikilink index only once the
+// client answers this request without an error (awaitWatchersAck): a
+// client that rejects the registration, or never answers, keeps every
+// move walking the root fresh.
+func (s *Server) registerWatchers(ctx context.Context) {
 	id := s.nextReqID.Add(1)
 	// json.Marshal(int64) cannot fail; ignoring the error is safe.
 	idJSON, _ := json.Marshal(id)
+	ch := s.registerPendingResponse(string(idJSON))
 	// Watch .mdsmith.yml plus every Markdown file, the extension set
 	// derived from mdpath so the watch scope tracks the single source
 	// of truth alongside discovery and the merge driver.
@@ -143,7 +149,7 @@ func (s *Server) registerWatchers() {
 	watchers = append(watchers, fileSystemWatcher{
 		GlobPattern: "**/*", Kind: watchKindCreate | watchKindDelete,
 	})
-	_ = s.t.writeRequest(idJSON, "client/registerCapability",
+	err := s.t.writeRequest(idJSON, "client/registerCapability",
 		registrationParams{Registrations: []registration{{
 			ID:     "mdsmith-watch",
 			Method: "workspace/didChangeWatchedFiles",
@@ -151,4 +157,27 @@ func (s *Server) registerWatchers() {
 				Watchers: watchers,
 			},
 		}}})
+	if err != nil {
+		s.unregisterPendingResponse(string(idJSON))
+		return
+	}
+	go s.awaitWatchersAck(ctx, string(idJSON), ch)
+}
+
+// awaitWatchersAck waits for the client's reply to the watcher
+// registration with id and marks the server as watching only on a
+// success reply. An error reply, a missing reply within fetchTimeout,
+// or ctx ending leaves the flag unset.
+func (s *Server) awaitWatchersAck(ctx context.Context, id string, ch chan rpcResponse) {
+	defer s.unregisterPendingResponse(id)
+	timeout := time.NewTimer(s.fetchTimeout)
+	defer timeout.Stop()
+	select {
+	case resp := <-ch:
+		if resp.Error == nil {
+			s.watchingFiles.Store(true)
+		}
+	case <-timeout.C:
+	case <-ctx.Done():
+	}
 }

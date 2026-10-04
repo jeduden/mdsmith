@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -60,41 +61,78 @@ func moveStem(t *testing.T, s *Server, root, rel, dst string) map[string][]strin
 	return out
 }
 
+// ackWatchers registers s's file watchers and answers the registration
+// request as a client that accepted it, then waits for the server to
+// record the acknowledgement.
+func ackWatchers(t *testing.T, s *Server) {
+	t.Helper()
+	s.registerWatchers(context.Background())
+	id, err := json.Marshal(s.nextReqID.Load())
+	require.NoError(t, err)
+	s.deliverResponse(string(id), rpcResponse{Result: json.RawMessage("null")})
+	require.Eventually(t, s.watchingFiles.Load, testPollDeadline, time.Millisecond)
+}
+
 // TestWillRenameReusesCachedWikilinkIndexWhenWatching locks that a move
 // batch with a `[[stem]]` edge reads the session's warm wikilink index
-// once the server watches files, rather than walking the root on the
-// request goroutine. Registration and a received watched-file event
-// each count as watching.
+// once the client has accepted the watcher registration, rather than
+// walking the root on the request goroutine.
 func TestWillRenameReusesCachedWikilinkIndexWhenWatching(t *testing.T) {
 	t.Parallel()
-	for name, watch := range map[string]func(*Server){
-		"watcher registration": func(s *Server) { s.registerWatchers() },
-		"watched-file event": func(s *Server) {
-			raw, err := json.Marshal(didChangeWatchedFilesParams{Changes: []fileEvent{
-				{URI: "file:///elsewhere/x.md", Type: fileChangeChanged},
-			}})
-			require.NoError(t, err)
-			s.handleDidChangeWatchedFiles(context.Background(), raw)
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			root := writeWikilinkTree(t, map[string]string{
-				"api.md": "# API\n", "guide.md": "See [[api]].\n",
-			})
-			s := New(Options{Writer: io.Discard})
-			s.rootDir = root
-			walks := countWikilinkWalks(s)
-			watch(s)
-			sess, _ := s.currentSession()
-			require.NotNil(t, sess)
-			require.NotNil(t, sess.WikilinkIndex(), "warm the session's index")
+	root := writeWikilinkTree(t, map[string]string{
+		"api.md": "# API\n", "guide.md": "See [[api]].\n",
+	})
+	s := New(Options{Writer: io.Discard})
+	s.rootDir = root
+	walks := countWikilinkWalks(s)
+	ackWatchers(t, s)
+	sess, _ := s.currentSession()
+	require.NotNil(t, sess)
+	require.NotNil(t, sess.WikilinkIndex(), "warm the session's index")
 
-			got := moveStem(t, s, root, "api.md", "service.md")
-			assert.Equal(t, []string{"service"}, got["guide.md"])
-			assert.Zero(t, walks.Load(), "a watched move reads the cached index")
-		})
+	got := moveStem(t, s, root, "api.md", "service.md")
+	assert.Equal(t, []string{"service"}, got["guide.md"])
+	assert.Zero(t, walks.Load(), "a watched move reads the cached index")
+}
+
+// TestRegisterWatchersTrustsOnlyAcceptedRegistration locks that sending
+// the registration request alone does not make a move trust the cached
+// index: a client may reject it, or never answer. Only a success reply
+// does; an error reply leaves the move walking fresh.
+func TestRegisterWatchersTrustsOnlyAcceptedRegistration(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Writer: io.Discard})
+	s.registerWatchers(context.Background())
+	assert.False(t, s.watchingFiles.Load(), "an unanswered registration is not a watch")
+
+	id, err := json.Marshal(s.nextReqID.Load())
+	require.NoError(t, err)
+	s.deliverResponse(string(id), rpcResponse{Error: &responseError{Code: -32601, Message: "no"}})
+	assert.Never(t, s.watchingFiles.Load, 50*time.Millisecond, time.Millisecond,
+		"a rejected registration is not a watch")
+}
+
+// TestWatchedEventAloneKeepsFreshWalk locks that a watched-file event
+// does not make a move trust the cached index. A client may sync a
+// narrower glob statically (`**/*.md`, case-sensitive) that never
+// reports an image or a `.MD` create, so only an accepted `**/*`
+// registration proves every file-set change reaches the server.
+func TestWatchedEventAloneKeepsFreshWalk(t *testing.T) {
+	t.Parallel()
+	root := writeWikilinkTree(t, map[string]string{"guide.md": "# G\n"})
+	s := New(Options{Writer: io.Discard})
+	s.rootDir = root
+	walks := countWikilinkWalks(s)
+	for _, typ := range []int{fileChangeChanged, fileChangeCreated} {
+		raw, err := json.Marshal(didChangeWatchedFilesParams{Changes: []fileEvent{
+			{URI: pathToURI(filepath.Join(root, "x.md")), Type: typ},
+		}})
+		require.NoError(t, err)
+		s.handleDidChangeWatchedFiles(context.Background(), raw)
 	}
+
+	require.NotNil(t, s.moveWikilinkIndex(root))
+	assert.Equal(t, int32(1), walks.Load(), "an event alone proves no full watch")
 }
 
 // TestWillRenameWalksFreshWithoutWatching locks the fallback: with no
@@ -131,7 +169,7 @@ func TestMoveWikilinkIndexWalksWhenSessionMissing(t *testing.T) {
 		return nil, errors.New("boom")
 	}
 	walks := countWikilinkWalks(s)
-	s.registerWatchers()
+	ackWatchers(t, s)
 
 	idx := s.moveWikilinkIndex(root)
 	require.NotNil(t, idx)
@@ -151,7 +189,7 @@ func TestMoveWikilinkIndexWalksWhenSessionRootDiffers(t *testing.T) {
 	s := New(Options{Writer: io.Discard})
 	s.rootDir = oldRoot
 	walks := countWikilinkWalks(s)
-	s.registerWatchers()
+	ackWatchers(t, s)
 	sess, _ := s.currentSession()
 	require.NotNil(t, sess)
 	require.NotNil(t, sess.WikilinkIndex(), "warm the old root's index")
@@ -172,7 +210,7 @@ func TestDidRenameFilesDropsCachedWikilinkIndex(t *testing.T) {
 	root := writeWikilinkTree(t, map[string]string{"api.md": "# API\n"})
 	s := New(Options{Writer: io.Discard})
 	s.rootDir = root
-	s.registerWatchers()
+	ackWatchers(t, s)
 	sess, _ := s.currentSession()
 	require.NotNil(t, sess)
 	require.Equal(t, []string{"api.md"}, sess.WikilinkIndex().StemPaths("api"))
@@ -235,7 +273,7 @@ func TestRegisterWatchersReportsEveryCreateAndDelete(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
 	s := New(Options{Writer: &buf})
-	s.registerWatchers()
+	s.registerWatchers(context.Background())
 	out := buf.String()
 	body := out[strings.Index(out, "{"):]
 	var msg struct {
@@ -265,7 +303,7 @@ func TestMoveWikilinkIndexWalksWhenRootOutsideWorkspace(t *testing.T) {
 	s := New(Options{Writer: io.Discard})
 	s.rootDir = folder
 	walks := countWikilinkWalks(s)
-	s.registerWatchers()
+	ackWatchers(t, s)
 	cfg, _, _ := s.resolveConfig("")
 	s.rebuildSession(cfg, filepath.Join(outside, ".mdsmith.yml"))
 	require.NotNil(t, s.sessionAt(outside))
@@ -283,7 +321,7 @@ func TestMoveWikilinkIndexReadsCacheUnderWorkspace(t *testing.T) {
 	s := New(Options{Writer: io.Discard})
 	s.rootDir = folder
 	walks := countWikilinkWalks(s)
-	s.registerWatchers()
+	ackWatchers(t, s)
 	cfg, _, _ := s.resolveConfig("")
 	s.rebuildSession(cfg, filepath.Join(nested, ".mdsmith.yml"))
 
@@ -332,4 +370,18 @@ func TestWatchesRootResolvesSymlinks(t *testing.T) {
 	s := New(Options{Writer: io.Discard})
 	s.rootDir = folder
 	assert.False(t, s.watchesRoot(link))
+}
+
+// TestRegisterWatchersWriteFailureLeavesNoPendingReply locks that a
+// registration the transport failed to send drops its pending-reply
+// slot at once rather than leaving it, and a waiter, behind.
+func TestRegisterWatchersWriteFailureLeavesNoPendingReply(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Writer: failingWriter{}})
+	s.registerWatchers(context.Background())
+	s.pendingRespMu.Lock()
+	n := len(s.pendingResp)
+	s.pendingRespMu.Unlock()
+	assert.Zero(t, n)
+	assert.False(t, s.watchingFiles.Load())
 }

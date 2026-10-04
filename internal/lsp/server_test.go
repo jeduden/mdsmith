@@ -536,7 +536,7 @@ func TestRegisterWatchersWritesRequest(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
-	s.registerWatchers()
+	s.registerWatchers(context.Background())
 	out := buf.String()
 	assert.Contains(t, out, "client/registerCapability")
 	assert.Contains(t, out, "**/.mdsmith.yml")
