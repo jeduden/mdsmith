@@ -103,8 +103,9 @@ const (
 	// holds the lowercased basename stem it resolves by; TargetFile is
 	// empty and Unresolved is set, because a stem match needs the whole
 	// workspace and cannot be resolved during the per-file build. The
-	// move planner keys these by stem via IncomingWikilinkEdges; every
-	// path-based reverse-edge query skips them like any unresolved edge.
+	// move planner keys these by stem via IncomingWikilinkEdges. They
+	// are kept in FileEntry.Wikilinks, not Outgoing, so no path-based
+	// query or OutgoingEdges view ever sees one.
 	EdgeWikilink
 	// EdgeWikilinkName is a typed Obsidian-style `[[name.ext]]` link (or
 	// `![[name.ext]]` embed), which resolves by exact file name rather
@@ -116,15 +117,6 @@ const (
 	// planner keys these via IncomingWikilinkNameEdges.
 	EdgeWikilinkName
 )
-
-// IsWikilink reports whether k is EdgeWikilink or EdgeWikilinkName: an
-// Unresolved edge with no TargetFile, keyed by stem or exact name, that
-// only the move planner reads. A view that lists a file's edges by
-// target file (deps, call hierarchy) skips these, since the target is
-// not known until the whole workspace is resolved.
-func (k EdgeKind) IsWikilink() bool {
-	return k == EdgeWikilink || k == EdgeWikilinkName
-}
 
 // Edge records one reference from a source position to a target.
 //
@@ -162,8 +154,14 @@ type FileEntry struct {
 	Path string
 	// Symbols are this file's symbols, in document order.
 	Symbols []Symbol
-	// Outgoing are the references this file emits.
+	// Outgoing are the references this file emits, except wikilinks.
 	Outgoing []Edge
+	// Wikilinks are this file's EdgeWikilink and EdgeWikilinkName
+	// edges, in document order. They are kept out of Outgoing because
+	// a wikilink names its file by key, not by path, so it has no
+	// TargetFile for a view over OutgoingEdges to show; only the move
+	// planner reads them, through the IncomingWikilink*Edges lookups.
+	Wikilinks []Edge
 	// Title is the front-matter `title:` value if set, "" otherwise.
 	Title string
 	// Kinds are the front-matter `kinds:` values if set.
@@ -570,7 +568,7 @@ func (i *Index) wikilinkEdges(kind EdgeKind, key string) []Edge {
 	defer i.mu.RUnlock()
 	var out []Edge
 	for _, fe := range i.files {
-		for _, e := range fe.Outgoing {
+		for _, e := range fe.Wikilinks {
 			if e.Kind == kind && e.TargetLabel == key {
 				out = append(out, e)
 			}

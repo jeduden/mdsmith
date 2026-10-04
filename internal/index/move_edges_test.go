@@ -152,25 +152,12 @@ func TestIncomingWikilinkNameEdges(t *testing.T) {
 func TestCollectWikilinkEdges_SkipsRefusedTarget(t *testing.T) {
 	idx := New("/root")
 	idx.Update("a.md", []byte("See [[.md]] and [[api]].\n"))
-	var wl []Edge
-	for _, e := range idx.OutgoingEdges("a.md") {
-		if e.Kind.IsWikilink() {
-			wl = append(wl, e)
-		}
-	}
+	fe, ok := idx.File("a.md")
+	require.True(t, ok)
+	wl := fe.Wikilinks
 	require.Len(t, wl, 1)
 	assert.Equal(t, EdgeWikilink, wl[0].Kind)
 	assert.Equal(t, "api", wl[0].TargetLabel)
-}
-
-// TestEdgeKind_IsWikilink locks which kinds are wikilink edges: the
-// stem and the exact-name kind, and no other.
-func TestEdgeKind_IsWikilink(t *testing.T) {
-	assert.True(t, EdgeWikilink.IsWikilink())
-	assert.True(t, EdgeWikilinkName.IsWikilink())
-	for _, k := range []EdgeKind{EdgeAnchorLink, EdgeFileLink, EdgeRefLink, EdgeInclude, EdgeCatalog, EdgeBuild} {
-		assert.False(t, k.IsWikilink(), k)
-	}
 }
 
 // TestWikilinkEdges locks the shared lookup: only edges of the asked
@@ -181,4 +168,23 @@ func TestWikilinkEdges(t *testing.T) {
 	assert.Len(t, idx.wikilinkEdges(EdgeWikilinkName, "x.png"), 2)
 	assert.Len(t, idx.wikilinkEdges(EdgeWikilink, "x.png"), 1)
 	assert.Empty(t, idx.wikilinkEdges(EdgeWikilinkName, "X.png"), "the key is not folded here")
+}
+
+// TestWikilinkEdgesKeptOutOfOutgoing locks that wikilink edges live in
+// FileEntry.Wikilinks, not Outgoing: they carry no target file, so a
+// view that ranges over OutgoingEdges (deps, the call hierarchy) never
+// sees one, while the move planner's key lookups still find them.
+func TestWikilinkEdgesKeptOutOfOutgoing(t *testing.T) {
+	idx := New("/root")
+	idx.Update("a.md", []byte("See [[api]], ![[img.png]] and [b](b.md).\n"))
+	out := idx.OutgoingEdges("a.md")
+	require.Len(t, out, 1)
+	assert.Equal(t, EdgeFileLink, out[0].Kind)
+	fe, ok := idx.File("a.md")
+	require.True(t, ok)
+	require.Len(t, fe.Wikilinks, 2)
+	assert.Equal(t, EdgeWikilink, fe.Wikilinks[0].Kind)
+	assert.Equal(t, EdgeWikilinkName, fe.Wikilinks[1].Kind)
+	assert.Len(t, idx.IncomingWikilinkEdges("api"), 1)
+	assert.Len(t, idx.IncomingWikilinkNameEdges("img.png"), 1)
 }

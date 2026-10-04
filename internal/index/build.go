@@ -127,7 +127,7 @@ func buildFileEntry(filePath string, source []byte) *FileEntry {
 	// then Obsidian-style wikilinks (keyed by stem for the move planner).
 	fe.Outgoing = append(fe.Outgoing, collectLinkEdges(fe.Path, lf, fmOffset)...)
 	fe.Outgoing = append(fe.Outgoing, collectDirectiveEdges(fe.Path, lf, fmOffset)...)
-	fe.Outgoing = append(fe.Outgoing, collectWikilinkEdges(fe.Path, lf, fmOffset)...)
+	fe.Wikilinks = collectWikilinkEdges(fe.Path, lf, fmOffset)
 
 	return fe
 }

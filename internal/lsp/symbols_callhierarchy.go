@@ -199,10 +199,8 @@ func (s *Server) handleOutgoingCalls(msg *requestMessage) {
 	groups := make(map[string]*bucket, len(edges))
 	for _, e := range edges {
 		// Same-file anchor / ref-style links are intra-document and
-		// don't fit the cross-file call-graph view. A wikilink edge
-		// names its file by stem or exact name, which the index leaves
-		// unresolved, so it has no file to point at either.
-		if e.Kind == index.EdgeAnchorLink || e.Kind == index.EdgeRefLink || e.Kind.IsWikilink() {
+		// don't fit the cross-file call-graph view.
+		if e.Kind == index.EdgeAnchorLink || e.Kind == index.EdgeRefLink {
 			continue
 		}
 		// Heading-scoped item: skip edges outside the section's
