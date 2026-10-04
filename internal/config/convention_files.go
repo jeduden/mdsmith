@@ -212,7 +212,7 @@ func parseConventionFile(path string) (UserConvention, error) {
 		if errors.Is(err, io.EOF) {
 			return UserConvention{}, fmt.Errorf("%s: empty convention file", path)
 		}
-		return UserConvention{}, fmt.Errorf("parsing %s: %w", path, attachFile(path, err))
+		return UserConvention{}, fmt.Errorf("parsing %s: %w", path, attachFile(path, yamlErrorIssue(err)))
 	}
 	return body, nil
 }

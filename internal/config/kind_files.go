@@ -188,7 +188,7 @@ func parseKindFile(path string) (KindBody, error) {
 		if errors.Is(err, io.EOF) {
 			return KindBody{}, fmt.Errorf("%s: empty kind file", path)
 		}
-		return KindBody{}, fmt.Errorf("parsing %s: %w", path, attachFile(path, err))
+		return KindBody{}, fmt.Errorf("parsing %s: %w", path, attachFile(path, yamlErrorIssue(err)))
 	}
 	return body, nil
 }

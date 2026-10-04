@@ -88,6 +88,31 @@ func TestLoad_FileKindIssuePointsIntoKindFile(t *testing.T) {
 	assert.Equal(t, 1, le.Column)
 }
 
+// A YAML type or unknown-key error in a kind file is positioned at the
+// line the parser reports in that file, not left unpositioned.
+func TestLoad_FileKindYAMLErrorPointsIntoKindFile(t *testing.T) {
+	dir := t.TempDir()
+	p := writeCfg(t, dir, ".mdsmith.yml", "rules: {}\n")
+	kf := writeCfg(t, dir, ".mdsmith/kinds/plan.yml", "rules: {}\npath-pattern: [x]\n")
+	_, err := Load(p)
+	le := requireLoadError(t, err)
+	assert.Equal(t, kf, le.File)
+	assert.Equal(t, 2, le.Line)
+	assert.Equal(t, 1, le.Column)
+	assert.Contains(t, err.Error(), "loading kind files: parsing "+kf+": yaml: unmarshal errors")
+}
+
+func TestLoad_FileConventionYAMLErrorPointsIntoConventionFile(t *testing.T) {
+	dir := t.TempDir()
+	p := writeCfg(t, dir, ".mdsmith.yml", "rules: {}\n")
+	cf := writeCfg(t, dir, ".mdsmith/conventions/mine.yml", "flavor: commonmark\nnope: 1\n")
+	_, err := Load(p)
+	le := requireLoadError(t, err)
+	assert.Equal(t, cf, le.File)
+	assert.Equal(t, 2, le.Line)
+	assert.Equal(t, 1, le.Column)
+}
+
 func TestLoad_FileConventionIssuePointsIntoConventionFile(t *testing.T) {
 	dir := t.TempDir()
 	p := writeCfg(t, dir, ".mdsmith.yml", "rules: {}\n")
