@@ -98,7 +98,7 @@ func (e SourceNotFoundError) Error() string {
 //
 // Move is MoveAll with one pair; MoveAll plans several moves that run
 // together.
-func Move(ws Workspace, src, dst string) (Plan, error) {
+func Move(ws MoveWorkspace, src, dst string) (Plan, error) {
 	bp := MoveAll(ws, []MovePair{{Src: src, Dst: dst}})
 	m := bp.Moves[0]
 	if m.Err != nil {
@@ -156,7 +156,7 @@ var (
 // Every file is read, but only one mayNameAny admits is parsed. The
 // index is not consulted: it records no edge for an image or a
 // ref-def, and it reads a literal `what?.md` as `what`.
-func appendReferrerEdits(changes map[string][]Edit, ws Workspace, p parser.Parser, r *destResolver) {
+func appendReferrerEdits(changes map[string][]Edit, ws MoveWorkspace, p parser.Parser, r *destResolver) {
 	bases := r.batch.scanBases()
 	if len(bases) == 0 {
 		return
@@ -336,7 +336,7 @@ type destRef struct {
 // referrer scan, the listed checks, and the wikilink same-stem guard of
 // a workspace with no wikilink index share.
 type destResolver struct {
-	ws    Workspace
+	ws    MoveWorkspace
 	batch *moveBatch // the MoveAll batch; a lone Move is a batch of one
 	list  []string   // nil until paths first runs; never nil after
 	files map[string]bool
@@ -838,7 +838,7 @@ func skipGap(src []byte, i int) int {
 // the other side of it, and every `[[stem]]` then reaches the other
 // file of the two. In a batch, a kept stem another member also holds
 // is read against the batch (see keptStemTarget).
-func appendWikilinkStemEdits(changes map[string][]Edit, ws Workspace, r *destResolver, src, dst string) {
+func appendWikilinkStemEdits(changes map[string][]Edit, ws MoveWorkspace, r *destResolver, src, dst string) {
 	// Both ends are keyed the way NewWikilinkIndex keys files. Only a
 	// Markdown src has a stem key, so moving any other file retargets
 	// no `[[stem]]` link. An empty src key (`docs/.md`) matches no edge,

@@ -92,7 +92,7 @@ func guardRenameEdits(planned map[string][]refactor.Edit) (map[string][]textEdit
 // planRenameBatch runs refactor.MoveAll over the renames in files,
 // read against root. A pair with an empty or unchanged path is
 // skipped, and a pair listed twice is planned once.
-func planRenameBatch(ws refactor.Workspace, root string, files []fileRename) refactor.BatchPlan {
+func planRenameBatch(ws refactor.MoveWorkspace, root string, files []fileRename) refactor.BatchPlan {
 	var pairs []refactor.MovePair
 	seen := map[refactor.MovePair]bool{}
 	for _, f := range files {

@@ -6,10 +6,11 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 )
 
-// IndexEdges implements the four index-backed Workspace methods
-// (IncomingAnchorEdges, IncomingPathEdges, IncomingWikilinkEdges,
-// Files) by forwarding to an index. A host embeds it and adds its own
-// Resolve, so a new index-backed Workspace method is written once.
+// IndexEdges implements the four index-backed Workspace and
+// MoveWorkspace methods (IncomingAnchorEdges, IncomingPathEdges,
+// IncomingWikilinkEdges, Files) by forwarding to an index. A host
+// embeds it and adds its own Resolve (and, for a move, WikilinkIndex),
+// so a new index-backed method is written once.
 //
 // The getter is called on every query; IndexEdges itself caches
 // nothing. It is unexported, so a host builds an IndexEdges only
@@ -18,7 +19,7 @@ import (
 // it — never a raw builder that would re-index per query. The zero
 // value, or a getter that returns nil, answers every query with no
 // edges and no files. Methods use value receivers so a host used by
-// value still satisfies Workspace.
+// value still satisfies the seam.
 type IndexEdges struct {
 	get func() *index.Index
 }
@@ -53,12 +54,12 @@ func (e IndexEdges) IncomingAnchorEdges(file, slug string) []index.Edge {
 	return e.index().IncomingEdges(file, slug)
 }
 
-// IncomingPathEdges implements Workspace.
+// IncomingPathEdges implements MoveWorkspace.
 func (e IndexEdges) IncomingPathEdges(file string) []index.Edge {
 	return e.index().IncomingPathEdges(file)
 }
 
-// IncomingWikilinkEdges implements Workspace.
+// IncomingWikilinkEdges implements MoveWorkspace.
 func (e IndexEdges) IncomingWikilinkEdges(stem string) []index.Edge {
 	return e.index().IncomingWikilinkEdges(stem)
 }

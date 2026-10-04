@@ -479,7 +479,7 @@ func TestMove_NonMarkdownSourceLeavesWikilinksAlone(t *testing.T) {
 				}
 				ws := newMemWorkspace(files)
 				// An unlisted source is still resolvable on disk.
-				var w Workspace = ws
+				var w MoveWorkspace = ws
 				if !listed {
 					w = unlistedSource{memWorkspace: ws, rel: "LICENSE", body: "MIT\n"}
 				}

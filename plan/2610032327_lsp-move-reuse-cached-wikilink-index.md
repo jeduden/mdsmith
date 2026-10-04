@@ -83,7 +83,7 @@ for the edge index and once for `WikilinkIndex`.
    fails.
 4. [x] Close the root in `linkgraph.WikilinkIndexAtDir`,
    backlinks, and the MDS027 run cache.
-5. Write a failing compile-level test: a heading-rename
+5. [x] Write a failing compile-level test: a heading-rename
    stub with no `WikilinkIndex` method satisfies the seam
    `refactor.Heading` takes. Split `Workspace` into that seam
    and a move seam that adds the path, wikilink-edge, and

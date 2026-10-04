@@ -366,7 +366,7 @@ func (s *Server) moveWikilinkIndex(root string) *linkgraph.WikilinkIndex {
 	return s.walkWikilinks(root)
 }
 
-// WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
+// WikilinkIndex implements refactor.MoveWorkspace: the index `[[stem]]`
 // resolution reads, over the whole workspace root on disk, or nil when
 // that root is unreadable.
 func (w lspRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {

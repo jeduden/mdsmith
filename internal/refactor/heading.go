@@ -27,9 +27,7 @@ import (
 //   - what files exist?
 //   - what key + bytes back a workspace-relative path?
 //
-// A file move (see Move) shares the seam and also asks which edges
-// name a file by path or by `[[stem]]`, and which files a `[[stem]]`
-// resolves against (WikilinkIndex).
+// A file move asks more; see MoveWorkspace.
 //
 // The LSP server backs it with its warm index plus open buffers; the
 // `mdsmith rename` CLI with a transient index plus disk reads. The
@@ -39,6 +37,23 @@ type Workspace interface {
 	// IncomingAnchorEdges returns every workspace edge whose target
 	// is (file, slug). file is workspace-relative.
 	IncomingAnchorEdges(file, slug string) []index.Edge
+	// Files lists every workspace-relative file path the workspace
+	// knows about.
+	Files() []string
+	// Resolve maps a workspace-relative path to the opaque key its
+	// edits group under and the file's current bytes (open-buffer
+	// text when the surface has one, else disk). ok is false when
+	// the file is unreadable.
+	Resolve(file string) (key string, source []byte, ok bool)
+}
+
+// MoveWorkspace is the seam a file move (Move, MoveAll) needs: the
+// heading seam plus which edges name a file by path or by `[[stem]]`,
+// and which files a `[[stem]]` resolves against. A heading-rename
+// surface implements only Workspace, so it never builds a wikilink
+// index it does not read.
+type MoveWorkspace interface {
+	Workspace
 	// IncomingPathEdges returns every edge that addresses file by a
 	// rewritable path (a file link, an include, or a resolved build
 	// input), ignoring any anchor. A file move rewrites these.
@@ -54,18 +69,10 @@ type Workspace interface {
 	// is taken, so it must cover the same file set the resolver does. A
 	// nil index (no readable root) makes the move read the Files list
 	// instead. An implementation may walk the
-	// whole root on every call (the CLI and Session ones do; the LSP
-	// one memoizes), so a planner calls it at most once per plan and
+	// whole root on every call (the CLI one does; the LSP and Session
+	// ones memoize), so a planner calls it at most once per plan and
 	// only once it has a `[[stem]]` edge to guard.
 	WikilinkIndex() *linkgraph.WikilinkIndex
-	// Files lists every workspace-relative file path the workspace
-	// knows about.
-	Files() []string
-	// Resolve maps a workspace-relative path to the opaque key its
-	// edits group under and the file's current bytes (open-buffer
-	// text when the surface has one, else disk). ok is false when
-	// the file is unreadable.
-	Resolve(file string) (key string, source []byte, ok bool)
 }
 
 // ErrEmptyHeadingSlug is returned when the new heading text slugifies

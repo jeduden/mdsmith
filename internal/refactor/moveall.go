@@ -88,7 +88,7 @@ type BatchPlan struct {
 // reaches the newcomer.
 //
 // Move is MoveAll with one pair.
-func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
+func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
 	moves, b := validateBatch(ws, pairs)
 	bp := BatchPlan{Plan: Plan{Edits: map[string][]Edit{}}, Moves: moves}
 	p := lint.NewParser()
@@ -122,7 +122,7 @@ func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
 // counted in the referrer scan (see appendReferrerEdits), or, in a
 // planned member, by its outbound pass (see outboundEdit), so the
 // workspace is still read once.
-func countShadowed(ws Workspace, r *destResolver, vacated string) {
+func countShadowed(ws MoveWorkspace, r *destResolver, vacated string) {
 	stem, ok := linkgraph.FileStemKey(path.Base(vacated))
 	if !ok || !linkgraph.WikilinkIndexed(vacated) {
 		return
@@ -147,7 +147,7 @@ func countShadowed(ws Workspace, r *destResolver, vacated string) {
 // moves its source, no other member lands on its destination, and its
 // destination is free once the batch has run: absent from the
 // workspace or another member's source.
-func validateBatch(ws Workspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
+func validateBatch(ws MoveWorkspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
 	moves := make([]BatchMove, len(pairs))
 	b := newMoveBatch()
 	landing := map[string]int{}
@@ -184,7 +184,7 @@ func validateBatch(ws Workspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
 // equal source and destination, then a missing source; a source an
 // earlier pair moves fails as well. A pair that passes still awaits
 // the destination checks in validateBatch.
-func (b *moveBatch) admit(ws Workspace, pr MovePair, landing map[string]int) BatchMove {
+func (b *moveBatch) admit(ws MoveWorkspace, pr MovePair, landing map[string]int) BatchMove {
 	m := BatchMove{Src: index.NormalizePath(pr.Src), Dst: index.NormalizePath(pr.Dst)}
 	_, seen := b.members[m.Src]
 	switch {
@@ -221,7 +221,7 @@ func (b *moveBatch) admit(ws Workspace, pr MovePair, landing map[string]int) Bat
 }
 
 // resolves reports whether ws can read the file p.
-func resolves(ws Workspace, p string) bool {
+func resolves(ws MoveWorkspace, p string) bool {
 	_, _, ok := ws.Resolve(p)
 	return ok
 }
