@@ -46,10 +46,12 @@ done, so only the cancellation is missing.
    syscall.SIGTERM)` (on plan9 `os.Interrupt` maps to the
    "interrupt" note) and pass it down to the build pass
    instead of `context.Background()`. Install the handler
-   only around a build pass that can start a recipe or
-   hook, so the lint-fix pass, `--no-build`, and the
-   dry-run, check-stale, and explain modes keep the
-   default signal action.
+   only around the dispatch of recipes and hooks, so the
+   target scan, a pass with no target, the lint-fix pass,
+   `--no-build`, and the dry-run, check-stale, and explain
+   modes keep the default signal action. Skip a signal
+   the process started with ignored (a background job's
+   SIGINT), since `Notify` would un-ignore it.
 3. Make sure a cancelled build reports an interrupt error,
    not a timeout, and that mdsmith exits 2 after the
    recipes are reaped. This covers a target not yet

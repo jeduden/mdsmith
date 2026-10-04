@@ -1506,6 +1506,24 @@ func TestRunBuildPassInterruptible_InterruptedExitsTwo(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(root, "out.txt"))
 }
 
+// TestRunBuildPassInterruptible_NoTargetInstallsNoHandler covers a pass
+// that collects no target: it starts no recipe or hook, so the handler
+// is not installed around its file scan and an interrupt keeps its
+// default action. A done parent context then leaves the exit code alone.
+func TestRunBuildPassInterruptible_NoTargetInstallsNoHandler(t *testing.T) {
+	root := t.TempDir()
+	cfg := buildPassCfg("    mk:\n      command: touch {outputs}\n")
+	p := filepath.Join(root, "doc.md")
+	require.NoError(t, os.WriteFile(p, []byte("# No build here\n"), 0o644))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var buf strings.Builder
+	code := runBuildPassInterruptible(cfg, filepath.Join(root, ".mdsmith.yml"), []string{p},
+		buildPassOpts{ctx: ctx, timeout: time.Second, noCache: true}, &buf)
+	assert.Equal(t, 0, code, buf.String())
+}
+
 // TestRunBuildPassInterruptible_DryRunInstallsNoHandler covers a pass
 // that starts no process: it runs as plain runBuildPass, so its exit
 // code is the pass's own.

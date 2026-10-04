@@ -47,6 +47,10 @@ type buildPassOpts struct {
 	// Cancelling it (CLI interrupt) kills the running recipes' process
 	// groups. Nil means context.Background().
 	ctx context.Context
+	// interruptible installs the SIGINT/SIGTERM handler around the
+	// dispatch of recipes and hooks (dispatchInterruptible). Only
+	// runBuildPassInterruptible, the fix entry point, sets it.
+	interruptible bool
 }
 
 // context returns the parent context for recipe and hook runs.
@@ -234,7 +238,9 @@ func runBuildPass(
 			_, _ = fmt.Fprintf(w, "mdsmith: %v\n", err)
 		}
 	}
-	return dispatchWithHooks(builder, targets, cfg, root, opts, cache, timeout, errs, w)
+	return dispatchInterruptible(opts, func(o buildPassOpts) int {
+		return dispatchWithHooks(builder, targets, cfg, root, o, cache, timeout, errs, w)
+	})
 }
 
 // ensureTrusted checks the build trust gate and returns false (printing a
