@@ -30,6 +30,7 @@ import {
   RUN_ON_TYPE,
   type ClientLike,
   type FileSystemWatcherLike,
+  type MementoLike,
   type RestartPolicyState,
   type VscodeApi
 } from "./wiring";
@@ -148,6 +149,10 @@ class FakeMemento {
   readonly values = new Map<string, unknown>();
   updates = 0;
   updateRejection: Error | undefined;
+  // updateSettles, when set, is awaited before update() resolves, so a
+  // test controls when the storage write settles (VS Code's Memento
+  // updates its in-memory value at once and settles the write later).
+  updateSettles: Promise<void> | undefined;
   get<T>(key: string): T | undefined {
     return this.values.get(key) as T | undefined;
   }
@@ -155,36 +160,49 @@ class FakeMemento {
     this.updates++;
     if (this.updateRejection) throw this.updateRejection;
     this.values.set(key, value);
+    await this.updateSettles;
   }
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 describe("ensureSingletonScope", () => {
-  test("generates a UUID once and persists it in workspaceState", async () => {
+  test("generates a UUID once and persists it in workspaceState", () => {
     const state = new FakeMemento();
-    const id = await ensureSingletonScope(state);
+    const id = ensureSingletonScope(state);
     expect(id).toMatch(UUID_RE);
     expect(state.get<string>(SINGLETON_SCOPE_KEY)).toBe(id);
     expect(state.updates).toBe(1);
   });
 
-  test("reuses the stored id without rewriting it", async () => {
+  test("reuses the stored id without rewriting it", () => {
     const state = new FakeMemento();
     state.values.set(SINGLETON_SCOPE_KEY, "stored-id");
-    expect(await ensureSingletonScope(state)).toBe("stored-id");
-    expect(await ensureSingletonScope(state)).toBe("stored-id");
+    expect(ensureSingletonScope(state)).toBe("stored-id");
+    expect(ensureSingletonScope(state)).toBe("stored-id");
     expect(state.updates).toBe(0);
   });
 
-  test("replaces a stored value that is not a non-empty string", async () => {
+  test("replaces a stored value that is not a non-empty string", () => {
     for (const bad of ["", 42, null, { id: "x" }]) {
       const state = new FakeMemento();
       state.values.set(SINGLETON_SCOPE_KEY, bad);
-      const id = await ensureSingletonScope(state);
+      const id = ensureSingletonScope(state);
       expect(id).toMatch(UUID_RE);
       expect(state.get<string>(SINGLETON_SCOPE_KEY)).toBe(id);
     }
+  });
+
+  test("returns the id without waiting for the write to settle", () => {
+    // startServer must not await the storage write: an await there sits
+    // between installing the config watcher and recording the client, so
+    // a deactivate() or restartServer() in that gap would leave a client
+    // started behind its back.
+    const state = new FakeMemento();
+    state.updateSettles = new Promise<void>(() => {});
+    const id = ensureSingletonScope(state);
+    expect(id).toMatch(UUID_RE);
+    expect(state.get<string>(SINGLETON_SCOPE_KEY)).toBe(id);
   });
 
   test("still returns a fresh id when persisting it fails", async () => {
@@ -192,7 +210,20 @@ describe("ensureSingletonScope", () => {
     // lasts this activation, so the server still starts singleton-scoped.
     const state = new FakeMemento();
     state.updateRejection = new Error("disk full");
-    expect(await ensureSingletonScope(state)).toMatch(UUID_RE);
+    expect(ensureSingletonScope(state)).toMatch(UUID_RE);
+    // Let the rejected write settle: it must be handled, not surface as
+    // an unhandled rejection.
+    await Promise.resolve();
+  });
+
+  test("still returns a fresh id when update throws synchronously", () => {
+    const state: MementoLike = {
+      get: () => undefined,
+      update: () => {
+        throw new Error("storage closed");
+      },
+    };
+    expect(ensureSingletonScope(state)).toMatch(UUID_RE);
   });
 });
 
@@ -814,6 +845,24 @@ describe("Wiring LSP client lifecycle", () => {
     const b = second.lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope;
     expect(a).toMatch(UUID_RE);
     expect(b).toBe(a);
+  });
+
+  test("a deactivate during the first activation leaves no client running", async () => {
+    // First activation on a workspace writes a fresh scope id. If
+    // startServer awaited that write, deactivate() would land in the gap
+    // with no client recorded yet, and the activation would then start a
+    // client nobody stops.
+    let settle!: () => void;
+    const state = new FakeMemento();
+    state.updateSettles = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const { wiring, clients } = makeWiring();
+    const activation = wiring.activate(makeContext(state));
+    await wiring.deactivate();
+    settle();
+    await activation;
+    expect(clients.filter((c) => c.isRunning())).toHaveLength(0);
   });
 
   test("restartServer reuses the singleton scope", async () => {

@@ -1,7 +1,6 @@
 package lsp
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -15,36 +14,19 @@ import (
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
-// lockedBuffer is a bytes.Buffer safe to read while the watcher
-// goroutine writes the superseded notification to it.
-type lockedBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *lockedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-func (b *lockedBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
-}
-
 // scopedServer is one mdsmith lsp instance wired to a shared on-disk
 // registry, standing in for a separate process on the same workspace.
+// out is a safeBuffer so the test can read it while the watcher
+// goroutine writes the superseded notification.
 type scopedServer struct {
 	srv    *Server
-	out    *lockedBuffer
+	out    *safeBuffer
 	exited chan struct{}
 }
 
 func newScopedServer(t *testing.T, reg fileRegistry) *scopedServer {
 	t.Helper()
-	out := &lockedBuffer{}
+	out := &safeBuffer{}
 	s := New(Options{Reader: nil, Writer: out, Rules: rule.All()})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

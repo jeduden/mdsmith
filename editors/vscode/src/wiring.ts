@@ -434,16 +434,26 @@ export const SINGLETON_SCOPE_KEY = "mdsmith.singletonScope";
 // and may differ between the two hosts, which would silently stop the
 // orphan from being reaped. A failed write still returns the fresh id;
 // the server then stays scoped for this activation only.
-export async function ensureSingletonScope(state: MementoLike): Promise<string> {
+//
+// It returns synchronously and does not await the write. VS Code's
+// Memento updates its in-memory value before the returned promise
+// settles, so a later get() already sees the id. Not awaiting keeps
+// startServer free of an await between installing the config watcher
+// and recording the client: a deactivate() or restartServer() in that
+// gap would otherwise find no client to stop, and the resumed start
+// would launch one behind its back.
+export function ensureSingletonScope(state: MementoLike): string {
   const stored = state.get<unknown>(SINGLETON_SCOPE_KEY);
   if (typeof stored === "string" && stored !== "") {
     return stored;
   }
   const id = randomUUID();
   try {
-    await state.update(SINGLETON_SCOPE_KEY, id);
+    state.update(SINGLETON_SCOPE_KEY, id).then(undefined, () => {
+      // Best effort; see the doc comment.
+    });
   } catch {
-    // Best effort; see the doc comment.
+    // A synchronous throw is dropped the same way.
   }
   return id;
 }
@@ -545,7 +555,7 @@ export class Wiring {
     this.disposeConfigWatcher();
     this.configWatcher = this.api.workspace.createFileSystemWatcher("**/.mdsmith.yml");
     context.subscriptions.push(this.configWatcher);
-    const singletonScope = await ensureSingletonScope(context.workspaceState);
+    const singletonScope = ensureSingletonScope(context.workspaceState);
     const clientOptions = buildClientOptions(this.configWatcher, this.getOutputChannel(), singletonScope);
     // Replace the default ErrorHandler (DoNotRestart after 5 close
     // events in 3 minutes) with one that gives the user a clear recovery

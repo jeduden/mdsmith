@@ -136,11 +136,13 @@ type supersededParams struct {
 // the same workspace and scope contend for the same owner record, while
 // different scopes on one workspace get different records and coexist.
 //
-// A non-empty scope is framed as root + "\x00" + scope so no root/scope
-// split can collide with another. An empty scope hashes the cleaned root
-// alone — the legacy root-only key, byte for byte — so every caller
-// shares this one derivation and an older root-only binary still agrees
-// with a no-token client.
+// A non-empty scope is framed as root + "\x00" + scope, so a split is
+// unambiguous for any root and scope free of NUL bytes. An empty scope
+// hashes the cleaned root alone — the legacy root-only key, byte for
+// byte — so there is one derivation, not two. startSingletonWatch never
+// claims with an empty scope, so that branch pins the format only: a
+// no-token server neither reads nor writes the legacy record an older
+// root-only binary may still use, and the two simply coexist.
 func workspaceKey(root, scope string) string {
 	h := sha256.New()
 	_, _ = io.WriteString(h, filepath.Clean(root))

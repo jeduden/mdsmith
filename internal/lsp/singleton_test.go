@@ -348,16 +348,16 @@ func TestWorkspaceKeyScopeSameRootSameScopeMatches(t *testing.T) {
 func TestWorkspaceKeyScopeEmptyIsLegacyRootOnlyKey(t *testing.T) {
 	t.Parallel()
 	// The pre-scope derivation: sha256 over the cleaned root alone. An
-	// empty scope must reproduce it byte for byte so a no-token client
-	// and an older root-only binary still agree on one key.
+	// empty scope must reproduce it byte for byte, so the one key
+	// function keeps the legacy format rather than growing a sibling.
 	legacy := sha256.Sum256([]byte("/a/b"))
 	assert.Equal(t, hex.EncodeToString(legacy[:]), workspaceKey("/a/b/", ""))
 }
 
 func TestWorkspaceKeyScopeSeparatorPreventsAmbiguity(t *testing.T) {
 	t.Parallel()
-	// Without the NUL separator, root "/a" + scope "b" and root "/a"
-	// + scope "" over a root spelled "/ab" could hash the same bytes.
+	// Without the NUL separator, root "/a" with scope "b" and root
+	// "/ab" with no scope would hash the same bytes, "/ab".
 	assert.NotEqual(t, workspaceKey("/a", "b"), workspaceKey("/ab", ""),
 		"root and scope must be framed so their concatenation is unambiguous")
 }

@@ -105,8 +105,8 @@ When the scope is empty or absent, the server does not claim the
 registry and does not start the watcher. The singleton is then a
 no-op for that client. So a client opts in by sending a scope and
 opts out by sending nothing. An empty scope also hashes to the
-legacy root-only key, so a no-token client and an old root-only
-binary still agree on the same key (see Backward compatibility).
+legacy root-only key, so the one key function keeps the old
+format (see Backward compatibility).
 
 ### What each client sends
 
@@ -176,9 +176,11 @@ sends one has opted in by definition.
 
 The key format changes from `sha256(root)` to
 `sha256(root + "\x00" + scope)`. An empty scope reproduces the
-old key byte for byte. So a no-token client, and an older
-root-only binary, still key the same way and still see each
-other. Only the VS Code (now UUID-keyed) path moves to a new key.
+old key byte for byte. But a no-token server never claims, so it
+never reads or writes that record. An older root-only binary
+still claims the legacy key and still contends with other older
+binaries. A new no-token server just runs alongside it. Only the
+VS Code (now UUID-keyed) path moves to a new key.
 
 Old `.owner` records written under the legacy root-only key are
 not migrated. They are tiny files in the user cache dir, and
@@ -199,6 +201,12 @@ subsystem exists for. EOF and the `processId` watchdog still
 handle normal exits. The real cost is: for the override case
 only, the "Two mdsmith servers running" note can recur until the
 extension updates.
+
+The first update from a pre-scope build is a one-time gap too.
+The leaked host still runs the old binary, which watches the
+legacy root-only key. The new server claims the UUID key, so it
+never reaps that orphan. Killing the old extension host once
+clears it, as the troubleshooting note says.
 
 ### Documentation
 
