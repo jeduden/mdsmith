@@ -22,14 +22,19 @@ import (
 // Server runs the LSP loop over a transport pair. One Server instance
 // serves one client.
 type Server struct {
-	t              *transport
-	rules          []rule.Rule
-	debounce       time.Duration
-	fetchTimeout   time.Duration
-	discoverConfig func(string) (string, error)
-	onConfigReload func(cfgPath string)
-	logger         *vlog.Logger
-	docs           *documentStore
+	t            *transport
+	rules        []rule.Rule
+	debounce     time.Duration
+	fetchTimeout time.Duration
+	// watchAckTimeout bounds the wait for the client's reply to the
+	// watcher registration (awaitWatchersAck). It is far longer than
+	// fetchTimeout: nothing blocks on the reply, and a client busy at
+	// startup that answers late should still turn on index reuse.
+	watchAckTimeout time.Duration
+	discoverConfig  func(string) (string, error)
+	onConfigReload  func(cfgPath string)
+	logger          *vlog.Logger
+	docs            *documentStore
 
 	configMu   sync.RWMutex
 	config     *config.Config
@@ -253,18 +258,19 @@ func New(opts Options) *Server {
 		logger = &vlog.Logger{}
 	}
 	s := &Server{
-		t:              newTransport(opts.Reader, opts.Writer),
-		rules:          opts.Rules,
-		debounce:       debounce,
-		fetchTimeout:   2 * time.Second,
-		discoverConfig: config.Discover,
-		onConfigReload: opts.OnConfigReload,
-		logger:         logger,
-		docs:           newDocumentStore(),
-		settings:       userSettings{Run: runOnType},
-		pending:        make(map[string]*pendingLint),
-		pendingResp:    make(map[string]chan rpcResponse),
-		diags:          make(map[string][]Diagnostic),
+		t:               newTransport(opts.Reader, opts.Writer),
+		rules:           opts.Rules,
+		debounce:        debounce,
+		fetchTimeout:    2 * time.Second,
+		watchAckTimeout: time.Minute,
+		discoverConfig:  config.Discover,
+		onConfigReload:  opts.OnConfigReload,
+		logger:          logger,
+		docs:            newDocumentStore(),
+		settings:        userSettings{Run: runOnType},
+		pending:         make(map[string]*pendingLint),
+		pendingResp:     make(map[string]chan rpcResponse),
+		diags:           make(map[string][]Diagnostic),
 		// Parent-process watchdog defaults; Run() overwrites runCtx
 		// with its own context. Tests override these seams.
 		runCtx:         context.Background(),

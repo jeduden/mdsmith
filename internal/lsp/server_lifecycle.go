@@ -168,10 +168,11 @@ func (s *Server) registerWatchers(ctx context.Context) {
 // registration with id and marks the server as watching only on a
 // success reply, first dropping any wikilink index cached before the
 // watch began (see dropPreWatchWikilinks). An error reply, a missing
-// reply within fetchTimeout, or ctx ending leaves the flag unset.
+// reply within watchAckTimeout, or ctx ending leaves the flag unset. A
+// late reply is safe to trust: the drop happens when it arrives.
 func (s *Server) awaitWatchersAck(ctx context.Context, id string, ch chan rpcResponse) {
 	defer s.unregisterPendingResponse(id)
-	timeout := time.NewTimer(s.fetchTimeout)
+	timeout := time.NewTimer(s.watchAckTimeout)
 	defer timeout.Stop()
 	select {
 	case resp := <-ch:

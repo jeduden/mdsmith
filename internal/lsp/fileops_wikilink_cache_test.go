@@ -423,13 +423,29 @@ func pendingReplies(s *Server) int {
 	return len(s.pendingResp)
 }
 
-// TestRegisterWatchersUnansweredTimesOut locks that a client which
-// never answers the registration leaves the server not watching, and
-// the waiter gives up after fetchTimeout and drops its pending slot.
-func TestRegisterWatchersUnansweredTimesOut(t *testing.T) {
+// TestRegisterWatchersAcceptsAckSlowerThanFetchTimeout locks that the
+// registration reply gets its own deadline, not the 2s fetchTimeout a
+// configuration fetch uses: a client busy at startup that answers late
+// still turns on index reuse.
+func TestRegisterWatchersAcceptsAckSlowerThanFetchTimeout(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Writer: io.Discard})
 	s.fetchTimeout = time.Millisecond
+	s.registerWatchers(context.Background())
+	time.Sleep(20 * time.Millisecond)
+	id, err := json.Marshal(s.nextReqID.Load())
+	require.NoError(t, err)
+	s.deliverResponse(string(id), rpcResponse{Result: json.RawMessage("null")})
+	require.Eventually(t, s.watchingFiles.Load, testPollDeadline, time.Millisecond)
+}
+
+// TestRegisterWatchersUnansweredTimesOut locks that a client which
+// never answers the registration leaves the server not watching, and
+// the waiter gives up after watchAckTimeout and drops its pending slot.
+func TestRegisterWatchersUnansweredTimesOut(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Writer: io.Discard})
+	s.watchAckTimeout = time.Millisecond
 	s.registerWatchers(context.Background())
 	require.Eventually(t, func() bool { return pendingReplies(s) == 0 },
 		testPollDeadline, time.Millisecond)
@@ -442,7 +458,7 @@ func TestRegisterWatchersUnansweredTimesOut(t *testing.T) {
 func TestRegisterWatchersStopsOnContextDone(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Writer: io.Discard})
-	s.fetchTimeout = time.Hour
+	s.watchAckTimeout = time.Hour
 	ctx, cancel := context.WithCancel(context.Background())
 	s.registerWatchers(ctx)
 	cancel()
