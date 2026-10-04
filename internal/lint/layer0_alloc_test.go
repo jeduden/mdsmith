@@ -35,10 +35,35 @@ func TestLayer0BlockquoteAllocScalesWithQuote(t *testing.T) {
 		"block quote scan allocated by remaining document length")
 }
 
-func TestNonBlankRun(t *testing.T) {
-	lines := [][]byte{[]byte("a"), []byte("b"), []byte(""), []byte("c")}
-	assert.Equal(t, 2, nonBlankRun(lines, 0))
-	assert.Equal(t, 0, nonBlankRun(lines, 2))
-	assert.Equal(t, 1, nonBlankRun(lines, 3))
-	assert.Equal(t, 0, nonBlankRun(lines, 4))
+func TestQuoteRun(t *testing.T) {
+	lines := [][]byte{
+		[]byte("> a"), []byte("lazy"), []byte("> b"), []byte("# H"),
+		[]byte("> c"), []byte(""), []byte("> d"),
+	}
+	assert.Equal(t, 3, quoteRun(lines, 0), "quote and lazy lines stop at a heading")
+	assert.Equal(t, 0, quoteRun(lines, 3))
+	assert.Equal(t, 1, quoteRun(lines, 4), "stops at a blank line")
+	assert.Equal(t, 0, quoteRun(lines, 5))
+	assert.Equal(t, 1, quoteRun(lines, 6))
+	assert.Equal(t, 0, quoteRun(lines, 7))
+}
+
+// TestLayer0AlternatingQuotesAndHeadingsAllocScalesWithQuote covers a
+// document with no blank lines: each one-line quote must size its
+// buffers by the quote, not by the heading-interrupted run after it.
+func TestLayer0AlternatingQuotesAndHeadingsAllocScalesWithQuote(t *testing.T) {
+	var src bytes.Buffer
+	for i := 0; i < 5000; i++ {
+		src.WriteString("> q\n# H\n")
+	}
+	lines := bytes.Split(src.Bytes(), []byte{'\n'})
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	scan := scanLayer0(lines)
+	runtime.ReadMemStats(&after)
+
+	assert.NotNil(t, scan)
+	assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(16<<20))
 }

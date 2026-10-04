@@ -201,7 +201,6 @@ type validRefDefMatch struct {
 	bodyLine  int
 	rawLabel  string
 	normLabel string
-	matchIdx  []int
 }
 
 // validRefDefMatches returns the ref-def regex matches that fall
@@ -217,8 +216,8 @@ func validRefDefMatches(body []byte) []validRefDefMatch {
 // refDefMatchesIn is validRefDefMatches over body's already-parsed
 // root.
 func refDefMatchesIn(body []byte, root ast.Node) []validRefDefMatch {
-	consumed := contentBlockLines(root, body)
 	idx := newBodyLineIndex(body)
+	consumed := contentBlockLines(root, idx)
 	var out []validRefDefMatch
 	for _, m := range index.RefDefRegexpMatches(body) {
 		bodyLine := idx.lineOfOffset(m[2])
@@ -231,7 +230,6 @@ func refDefMatchesIn(body []byte, root ast.Node) []validRefDefMatch {
 			bodyLine:  bodyLine,
 			rawLabel:  string(raw),
 			normLabel: norm,
-			matchIdx:  m,
 		})
 	}
 	return out
@@ -243,9 +241,8 @@ func refDefMatchesIn(body []byte, root ast.Node) []validRefDefMatch {
 // is by definition not a def. The Document root and
 // LinkReferenceDefinition nodes are skipped: the former spans the
 // whole buffer, the latter IS the line a real def lives on.
-func contentBlockLines(root ast.Node, body []byte) map[int]struct{} {
+func contentBlockLines(root ast.Node, idx bodyLineIndex) map[int]struct{} {
 	out := map[int]struct{}{}
-	idx := newBodyLineIndex(body)
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil

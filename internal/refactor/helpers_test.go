@@ -160,7 +160,7 @@ func TestContentBlockLines(t *testing.T) {
 	// line does not appear in the result.
 	body := []byte("paragraph text\n\n[label]: https://example.com\n")
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	got := contentBlockLines(root, body)
+	got := contentBlockLines(root, newBodyLineIndex(body))
 
 	_, hasPara := got[1]
 	assert.True(t, hasPara, "paragraph line should appear in content block lines")
@@ -172,7 +172,7 @@ func TestContentBlockLines(t *testing.T) {
 func TestContentBlockLines_EmptyBody(t *testing.T) {
 	body := []byte{}
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	got := contentBlockLines(root, body)
+	got := contentBlockLines(root, newBodyLineIndex(body))
 	assert.NotNil(t, got)
 	assert.Empty(t, got)
 }
@@ -182,7 +182,7 @@ func TestContentBlockLines_CodeBlockLinesConsumed(t *testing.T) {
 	// their lines appear in the result.
 	body := []byte("```\ncode line\n```\n\n[ref]: u\n")
 	root := lint.NewParser().Parse(text.NewReader(body), parser.WithContext(parser.NewContext()))
-	got := contentBlockLines(root, body)
+	got := contentBlockLines(root, newBodyLineIndex(body))
 
 	_, hasCode := got[2]
 	assert.True(t, hasCode, "code block content line should appear in content block lines")
