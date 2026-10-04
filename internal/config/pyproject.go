@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"math"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/pelletier/go-toml"
 	"gopkg.in/yaml.v3"
 )
@@ -22,9 +20,11 @@ var pyprojectTable = []string{"tool", "mdsmith"}
 // loadPyproject reads the `[tool.mdsmith]` table of a pyproject.toml
 // (or any TOML file) and loads it as config. The table has the same
 // shape as `.mdsmith.yml`: it is converted to a YAML node tree and run
-// through the shared loadFromNode pipeline, so the custom YAML decoders, sidecar
-// discovery (anchored next to path), and validation all apply
-// unchanged.
+// through the shared loadFromNode pipeline, so the custom YAML
+// decoders, sidecar discovery (anchored next to path), and validation
+// all apply unchanged. Every generated node carries the line and column
+// of its key in the TOML source, so a failure is positioned in the
+// pyproject.toml.
 func loadPyproject(path string) (*Config, error) {
 	data, err := readLimitedConfig(path)
 	if err != nil {
@@ -32,17 +32,16 @@ func loadPyproject(path string) (*Config, error) {
 	}
 	tree, err := toml.LoadBytes(data)
 	if err != nil {
-		return nil, positionError(fmt.Errorf("parsing %s: %w", path, err), path, nil)
+		return nil, positionError(fmt.Errorf("parsing %s: %w", path, tomlErrorIssue(err)), path, nil)
 	}
 	table, err := mdsmithTable(tree, path)
 	if err != nil {
 		return nil, positionError(err, path, nil)
 	}
-	cfg, err := loadFromNode(tomlTableToDoc(table), path, true)
+	doc := tomlTableToDoc(table, data)
+	cfg, err := loadFromNode(doc, path, true)
 	if err != nil {
-		// The generated nodes carry no TOML positions yet, so the
-		// error is reported unpositioned on the pyproject file.
-		return nil, &LoadError{File: path, Message: err.Error(), Severity: lint.Error, Err: err}
+		return nil, positionError(err, path, func() PositionResolver { return pyprojectResolver(doc) })
 	}
 	return cfg, nil
 }
@@ -81,49 +80,6 @@ func mdsmithTable(tree *toml.Tree, path string) (*toml.Tree, error) {
 	default:
 		return nil, fmt.Errorf("%s: [tool.mdsmith] must be a table, got %T", path, v)
 	}
-}
-
-// tomlTableToDoc renders a TOML table as a YAML document node with the
-// same structure. The node goes straight to loadFromNode: no YAML text
-// is generated, so nothing larger than the capped TOML read is ever
-// materialised.
-func tomlTableToDoc(table *toml.Tree) *yaml.Node {
-	return &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{tomlToNode(table)}}
-}
-
-// tomlToNode converts one go-toml value to a yaml.Node.
-func tomlToNode(v any) *yaml.Node {
-	switch t := v.(type) {
-	case *toml.Tree:
-		return tomlTreeToNode(t)
-	case []*toml.Tree:
-		seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
-		for _, sub := range t {
-			seq.Content = append(seq.Content, tomlTreeToNode(sub))
-		}
-		return seq
-	case []any:
-		seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
-		for _, el := range t {
-			seq.Content = append(seq.Content, tomlToNode(el))
-		}
-		return seq
-	}
-	return tomlScalarNode(v)
-}
-
-// tomlTreeToNode converts a TOML table to a YAML mapping with its keys
-// sorted by name. Key order carries no meaning in mdsmith config —
-// every mapping decodes into a Go map — and go-toml v1 records no
-// source position inside inline tables to recover it from anyway.
-func tomlTreeToNode(t *toml.Tree) *yaml.Node {
-	keys := t.Keys()
-	sort.Strings(keys)
-	m := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-	for _, k := range keys {
-		m.Content = append(m.Content, strNode(k), tomlToNode(t.Get(k)))
-	}
-	return m
 }
 
 // strNode is a double-quoted YAML string, so a value such as "true" or

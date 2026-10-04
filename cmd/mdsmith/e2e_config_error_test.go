@@ -78,12 +78,13 @@ func TestE2E_PyprojectOnlyProject(t *testing.T) {
 	assert.Equal(t, "# Title\n\nSome text. \n", string(got), "disabled rule leaves the trailing space")
 }
 
-// A bad value in [tool.mdsmith] fails the run with exit 2.
+// A bad value in [tool.mdsmith] is a positioned diagnostic in the
+// pyproject.toml, exit 2.
 func TestE2E_PyprojectBadValueExitsTwo(t *testing.T) {
 	dir := t.TempDir()
-	writeFixture(t, dir, "pyproject.toml", "[tool.mdsmith]\nconvention = \"nope\"\n")
+	writeFixture(t, dir, "pyproject.toml", "[project]\nname = \"x\"\n\n[tool.mdsmith]\nconvention = \"nope\"\n")
 	writeFixture(t, dir, "a.md", "# Title\n")
 	_, stderr, exitCode := runBinaryInDir(t, dir, "", "check", ".")
 	assert.Equal(t, 2, exitCode)
-	assert.Contains(t, stderr, "unknown convention")
+	assert.Contains(t, stderr, "pyproject.toml:5:1 config convention: unknown convention")
 }

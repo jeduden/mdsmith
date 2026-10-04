@@ -220,7 +220,7 @@ Phase B — the pyproject source:
    pyproject-only project is linted identically by
    `check`, `fix`, the editor, and the
    build/gitattributes paths.
-9. [ ] Red/green: add the TOML position resolver over the
+9. [x] Red/green: add the TOML position resolver over the
    `go-toml` tree (prepending `tool.mdsmith`), so a bad
    value or a syntax error in `[tool.mdsmith]` produces a
    diagnostic at the right line and column in the
@@ -261,10 +261,10 @@ Phase C — guardrails and docs:
       conventions.
 - [x] A bad value in `.mdsmith.yml` produces a diagnostic
       at the offending line and column.
-- [ ] A bad value in a `pyproject.toml` `[tool.mdsmith]`
+- [x] A bad value in a `pyproject.toml` `[tool.mdsmith]`
       table produces a diagnostic at the offending line
       and column in the `pyproject.toml`.
-- [ ] A syntax error in either file points at the failing
+- [x] A syntax error in either file points at the failing
       line.
 - [x] The CLI prints config errors as
       `file:line:column` diagnostics; the LSP shows them as

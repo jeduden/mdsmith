@@ -173,7 +173,12 @@ func yamlWalk(node *yaml.Node, path KeyPath) *yaml.Node {
 		if key == nil {
 			break
 		}
-		last, node = key, val
+		if key.Line > 0 {
+			// A node built from TOML may carry no position; keep
+			// the nearest positioned ancestor.
+			last = key
+		}
+		node = val
 	}
 	return last
 }

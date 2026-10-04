@@ -190,7 +190,7 @@ arr = [[1, 2], ["a"]]
 tables = [{a = 1}, {a = 2}]
 `)
 	require.NoError(t, err)
-	doc := tomlTableToDoc(tree)
+	doc := tomlTableToDoc(tree, nil)
 	var got map[string]any
 	require.NoError(t, doc.Decode(&got))
 	assert.Equal(t, "true", got["s"])
@@ -221,14 +221,14 @@ tables = [{a = 1}, {a = 2}]
 func TestTOMLConversionSortsKeys(t *testing.T) {
 	tree, err := toml.Load("zeta = 1\nalpha = 2\nmid = { z = 1, a = 2 }\n")
 	require.NoError(t, err)
-	out, err := yaml.Marshal(tomlTableToDoc(tree))
+	out, err := yaml.Marshal(tomlTableToDoc(tree, nil))
 	require.NoError(t, err)
 	assert.Equal(t, "\"alpha\": 2\n\"mid\":\n    \"a\": 2\n    \"z\": 1\n\"zeta\": 1\n", string(out))
 }
 
 func TestTOMLConversionStringifiesForeignValues(t *testing.T) {
 	// go-toml never yields these; a hand-built tree keeps their text.
-	n := tomlToNode([]any{complex(1, 2)})
+	n := tomlConverter{}.value([]any{complex(1, 2)}, toml.Position{})
 	require.Len(t, n.Content, 1)
 	assert.Equal(t, "!!str", n.Content[0].Tag)
 	assert.Equal(t, "(1+2i)", n.Content[0].Value)
@@ -236,7 +236,7 @@ func TestTOMLConversionStringifiesForeignValues(t *testing.T) {
 	tree, err := toml.Load("[a]\nx = 1\n")
 	require.NoError(t, err)
 	tree.SetPath([]string{"a", "y"}, struct{}{})
-	seq := tomlToNode([]*toml.Tree{tree})
+	seq := tomlConverter{}.value([]*toml.Tree{tree}, toml.Position{})
 	assert.Equal(t, yaml.SequenceNode, seq.Kind)
 	require.Len(t, seq.Content, 1)
 }
