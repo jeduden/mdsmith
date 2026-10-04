@@ -136,9 +136,9 @@ func TestConfigureProcessGroup_Plan9_SetsRFNOTEG(t *testing.T) {
 }
 
 func TestKill_Plan9_FallsBackToLeaderKill(t *testing.T) {
-	// When afterStart could not open the notepg file, kill must
-	// still kill the leader. exec leaves no rc parent behind to leak.
-	stubProcRoot(t) // empty, so the notepg open fails
+	// When afterStart captured no group, kill must still kill the
+	// leader. exec leaves no rc parent behind to leak.
+	stubProcRoot(t) // empty, so afterStart reads no noteid
 
 	script := writeRC(t, t.TempDir(), "slow.rc", `exec sleep 120`)
 	cmd := exec.Command(script)

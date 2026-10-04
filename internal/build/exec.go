@@ -201,8 +201,10 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		if !reaped {
 			// The group kill left the leader running (Windows when the
 			// Job Object could not be set up and the recipe ignores
-			// CTRL_BREAK). Kill it directly with a kill it cannot
-			// catch; done is buffered, so the Wait goroutine exits
+			// CTRL_BREAK, or a Unix leader that left its group).
+			// forceLeader kills it directly with a kill it cannot
+			// catch; plan9's does nothing, as its kill already ended in
+			// one. done is buffered, so the Wait goroutine exits
 			// whenever the leader does.
 			killer.forceLeader()
 			_, waitErr = waitAtMost(done, reapWait)
@@ -260,27 +262,12 @@ type groupKiller interface {
 	// forceLeader kills only the recipe's leader, with a kill it cannot
 	// catch. runRecipe calls it when kill left the leader running (a
 	// Unix leader that left its group, Windows without a Job Object).
-	// It does nothing where kill already ends in that same kill. A
+	// On plan9 it does nothing, as kill already ends in that same
+	// uncatchable kill. On targets with no group (exec_other.go) kill is
+	// this same leader kill, so a repeat only finds the leader gone. A
 	// command that never started is a no-op.
 	forceLeader()
 }
-
-// killCmdLeader kills cmd's leader process with killLeader and ignores
-// its error (the leader may already have exited). It is the shared
-// forceLeader body on Unix and Windows, and the whole kill on targets
-// with no group (exec_other.go). A nil Process (the command never
-// started) is a no-op.
-func killCmdLeader(cmd *exec.Cmd) {
-	if cmd.Process == nil {
-		return
-	}
-	_ = killLeader(cmd.Process)
-}
-
-// killLeader kills one process: SIGKILL on Unix, TerminateProcess on
-// Windows. It is a var so a test can check which process a killer
-// kills without killing one, as on js/wasm, where none can start.
-var killLeader = (*os.Process).Kill
 
 // afterStartFn indirects afterStart so a test can install a stub
 // killer: one that records a call, or models a group kill that leaves

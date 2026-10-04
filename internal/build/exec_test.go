@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -124,28 +123,4 @@ func TestWaitAtMost(t *testing.T) {
 	ok, err = waitAtMost(done, time.Millisecond)
 	assert.False(t, ok, "an empty channel times out")
 	assert.NoError(t, err)
-}
-
-func TestKillCmdLeader_NilProcessIsNoOp(t *testing.T) {
-	called := false
-	old := killLeader
-	killLeader = func(*os.Process) error { called = true; return nil }
-	t.Cleanup(func() { killLeader = old })
-
-	assert.NotPanics(t, func() { killCmdLeader(&exec.Cmd{}) })
-	assert.False(t, called, "a command that never started has no leader to kill")
-}
-
-func TestKillCmdLeader_KillsLeaderAndIgnoresError(t *testing.T) {
-	var got *os.Process
-	old := killLeader
-	killLeader = func(p *os.Process) error {
-		got = p
-		return errors.New("kill failed")
-	}
-	t.Cleanup(func() { killLeader = old })
-
-	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	assert.NotPanics(t, func() { killCmdLeader(cmd) })
-	assert.Same(t, cmd.Process, got)
 }

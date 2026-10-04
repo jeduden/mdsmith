@@ -95,14 +95,14 @@ func TestAfterStart_Plan9_NilProcess(t *testing.T) {
 	assert.Nil(t, groupOf(afterStart(&exec.Cmd{})))
 }
 
-func TestAfterStart_Plan9_NoProcEntryReturnsNil(t *testing.T) {
+func TestAfterStart_Plan9_NoProcEntryCapturesNoGroup(t *testing.T) {
 	// A leader that exited before afterStart ran has no /proc entry.
 	stubProcRoot(t) // empty, so <root>/42 has neither noteid nor notepg
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
 	assert.Nil(t, groupOf(afterStart(cmd)))
 }
 
-func TestAfterStart_Plan9_UnreadableNoteIDReturnsNil(t *testing.T) {
+func TestAfterStart_Plan9_UnreadableNoteIDCapturesNoGroup(t *testing.T) {
 	// Without the noteid, afterStart cannot tell the notepg file from
 	// mdsmith's own group's, so it must not keep it.
 	fakeNotePg(t, stubProcRoot(t), "42")

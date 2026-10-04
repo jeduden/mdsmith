@@ -105,8 +105,8 @@ func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
 }
 
 // stubKillGroup swaps afterStartFn for one that returns a killer whose
-// kill runs fn and whose forceLeader kills the leader and sets the
-// returned flag, and shortens reapWait for one test.
+// kill runs fn and whose forceLeader sets the returned flag and runs
+// the real Unix forceLeader, and shortens reapWait for one test.
 // The stub leaves survivors on purpose, so cleanup SIGKILLs the
 // recipe's whole process group (Setpgid made pgid == leader pid):
 // an orphan would otherwise keep the test binary's stderr open and
@@ -122,7 +122,7 @@ func stubKillGroup(t *testing.T, fn func(*exec.Cmd)) *atomic.Bool {
 			killFn: func() { fn(cmd) },
 			forceFn: func() {
 				forced.Store(true)
-				_ = cmd.Process.Kill()
+				afterStart(cmd).forceLeader()
 			},
 		}
 	}
@@ -160,6 +160,11 @@ func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
 	assert.True(t, forced.Load(), "the reap fallback must use forceLeader")
 }
 
+func TestClose_Unix_IsNoOp(t *testing.T) {
+	// The process group holds no state, so close has nothing to release.
+	assert.NotPanics(t, afterStart(&exec.Cmd{}).close)
+}
+
 func TestForceLeader_Unix_NilProcess(t *testing.T) {
 	assert.NotPanics(t, afterStart(&exec.Cmd{}).forceLeader)
 }
@@ -168,10 +173,18 @@ func TestForceLeader_Unix_KillsLeader(t *testing.T) {
 	cmd := exec.Command("sleep", "30")
 	configureProcessGroup(cmd)
 	require.NoError(t, cmd.Start())
-	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
 
 	afterStart(cmd).forceLeader()
-	err := cmd.Wait()
+	// Bound the wait so a forceLeader that kills nothing fails now,
+	// not when sleep exits on its own.
+	reaped, err := waitAtMost(done, 5*time.Second)
+	if !reaped {
+		_ = cmd.Process.Kill()
+		<-done
+	}
+	require.True(t, reaped, "forceLeader must kill the leader")
 	var ee *exec.ExitError
 	require.ErrorAs(t, err, &ee)
 	assert.Equal(t, -1, ee.ExitCode(), "the leader must die of a signal")

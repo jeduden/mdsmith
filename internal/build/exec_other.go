@@ -27,8 +27,9 @@ func afterStart(cmd *exec.Cmd) groupKiller { return leaderKiller{cmd} }
 // command never started) is a no-op.
 func (k leaderKiller) kill() { k.forceLeader() }
 
-// forceLeader kills the recipe's leader process (killCmdLeader). A nil
-// Process is a no-op.
+// forceLeader kills the recipe's leader process (killCmdLeader), the
+// same kill as kill, so after kill it only finds the leader gone and
+// ignores the error. A nil Process is a no-op.
 func (k leaderKiller) forceLeader() { killCmdLeader(k.cmd) }
 
 // close has nothing to release.

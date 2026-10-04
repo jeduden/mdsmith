@@ -77,9 +77,12 @@ failed.
    already ends in it. Delete `forceKillLeaderFn` and
    the shared `exec_leader_kill.go`. The Unix,
    Windows, and `exec_other.go` killers share one
-   `killCmdLeader` helper in `exec.go`, so the
-   leader kill has a single body behind the
-   `killLeader` test hook.
+   `killCmdLeader` helper in `exec_leader.go`, so
+   the leader kill has a single body behind the
+   `killLeader` test hook. That file is tagged
+   `!plan9`: there `(*os.Process).Kill` posts a
+   catchable note, so plan9 cannot call it by
+   mistake.
 
 ## Acceptance Criteria
 

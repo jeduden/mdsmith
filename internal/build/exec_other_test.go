@@ -3,7 +3,6 @@
 package build
 
 import (
-	"errors"
 	"os"
 	"os/exec"
 	"testing"
@@ -28,17 +27,10 @@ func TestKill_Other_NilProcess(t *testing.T) {
 func TestKill_Other_KillsLeaderAndIgnoresError(t *testing.T) {
 	// No subprocess can start under js/wasm, so killLeader is stubbed:
 	// kill must hand it the recipe's leader and swallow its error.
-	var got *os.Process
-	old := killLeader
-	killLeader = func(p *os.Process) error {
-		got = p
-		return errors.New("kill failed")
-	}
-	t.Cleanup(func() { killLeader = old })
-
+	got := stubKillLeader(t)
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
 	assert.NotPanics(t, afterStart(cmd).kill)
-	assert.Same(t, cmd.Process, got, "kill must kill the leader")
+	assert.Same(t, cmd.Process, *got, "kill must kill the leader")
 }
 
 func TestForceLeader_Other_NilProcess(t *testing.T) {
@@ -46,17 +38,10 @@ func TestForceLeader_Other_NilProcess(t *testing.T) {
 }
 
 func TestForceLeader_Other_KillsLeader(t *testing.T) {
-	var got *os.Process
-	old := killLeader
-	killLeader = func(p *os.Process) error {
-		got = p
-		return errors.New("kill failed")
-	}
-	t.Cleanup(func() { killLeader = old })
-
+	got := stubKillLeader(t)
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
 	assert.NotPanics(t, afterStart(cmd).forceLeader)
-	assert.Same(t, cmd.Process, got)
+	assert.Same(t, cmd.Process, *got)
 }
 
 func TestTimeoutKillAction_Other(t *testing.T) {
