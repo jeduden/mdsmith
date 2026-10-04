@@ -3,6 +3,7 @@ package mdsmith
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path"
 	"sync"
@@ -193,8 +194,12 @@ func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte
 
 // walkWorkspacePaths walks fsys once and returns every file path in it.
 // The walk callback swallows per-entry errors, so an unreadable root or
-// subtree just contributes no paths.
+// subtree just contributes no paths. The walk is fsys's only use, so a
+// closable fsys (an OSWorkspace's os.Root view) is closed once it ends.
 func walkWorkspacePaths(fsys fs.FS) []string {
+	if c, ok := fsys.(io.Closer); ok {
+		defer func() { _ = c.Close() }()
+	}
 	var paths []string
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {

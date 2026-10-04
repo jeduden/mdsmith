@@ -521,3 +521,40 @@ func TestWalkWorkspacePaths(t *testing.T) {
 	assert.ElementsMatch(t, []string{"a.md", "sub/logo.png", ".git/HEAD"}, walkWorkspacePaths(ws.FS()))
 	assert.Empty(t, walkWorkspacePaths(failFS{}))
 }
+
+// closeRecordingWorkspace hands out an FS whose Close is recorded, as
+// an OSWorkspace's os.Root-backed FS is closable.
+type closeRecordingWorkspace struct {
+	*MemWorkspace
+	closed int
+}
+
+func (w *closeRecordingWorkspace) FS() fs.FS { return closeRecordingFS{w.MemWorkspace.FS(), &w.closed} }
+
+type closeRecordingFS struct {
+	fs.FS
+	closed *int
+}
+
+func (c closeRecordingFS) Close() error {
+	*c.closed++
+	return nil
+}
+
+// TestSession_Move_ClosesWalkedFS locks that the refactor walk closes
+// the FS it walked when that FS holds a handle (an OSWorkspace's
+// os.Root), so a move leaves no root open.
+func TestSession_Move_ClosesWalkedFS(t *testing.T) {
+	ws := &closeRecordingWorkspace{MemWorkspace: NewMemWorkspace(map[string][]byte{
+		"api.md":   []byte("# API\n"),
+		"guide.md": []byte("See [[api]].\n"),
+	})}
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+
+	ws.closed = 0
+	_, err = s.Move("api.md", "service.md")
+	require.NoError(t, err)
+	assert.Equal(t, 1, ws.closed)
+}
