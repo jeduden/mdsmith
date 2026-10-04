@@ -267,7 +267,7 @@ timeout or interrupt kills only the hook, so a server it backgrounds survives.
 The exit code priority: lint-fix errors → `before`-fail → recipe-fail →
 `after`-fail → 0. A failing `before` hook means setup is incomplete and
 recipes would produce garbage; a failing `after` hook means teardown is
-broken but artifacts are already written.
+broken but artifacts are already written. An interrupt skips the `after` hooks.
 
 ### Hook argv rules
 

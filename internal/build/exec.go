@@ -120,7 +120,10 @@ var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
 
 // runRecipe executes argv with a hermetic environment, a fixed working
 // directory, and process-group isolation. No shell is invoked: argv[0]
-// is the program and argv[1:] its arguments.
+// is the program and argv[1:] its arguments. A hook opts out of the
+// environment (inheritEnv) and the group (sharedGroup); the group and
+// kill notes below then do not apply, and a cancel or timeout kills
+// only its leader with forceKillLeader.
 //
 // The recipe runs in its own process group (Setpgid on Unix;
 // CREATE_NEW_PROCESS_GROUP plus a Job Object on Windows). On timeout

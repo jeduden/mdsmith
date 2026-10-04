@@ -326,12 +326,15 @@ func TestRunRecipe_ForceKillSkipsGrace(t *testing.T) {
 	gracePeriod = 20 * time.Second
 	t.Cleanup(func() { gracePeriod = old })
 
-	script := writeScript(t, t.TempDir(), "ignore.sh", `trap '' TERM; sleep 60`)
+	// The script records its pid only once the trap is set: a cancel
+	// that beat the trap would end it on SIGTERM, with no escalation.
+	ready := filepath.Join(t.TempDir(), "ready.pid")
+	script := writeScript(t, t.TempDir(), "ignore.sh", `trap '' TERM; echo $$ > "`+ready+`"; sleep 60`)
 	force := make(chan struct{})
 	ctx, cancel := context.WithCancel(WithForceKill(context.Background(), force))
 	defer cancel()
 	go func() {
-		time.Sleep(200 * time.Millisecond)
+		waitForPID(ready)
 		cancel()
 		time.Sleep(300 * time.Millisecond)
 		close(force)
