@@ -139,12 +139,15 @@ func (s *Server) startSingletonWatch(root, scope string) {
 		// Prune once, after both claims, so a start scans the registry
 		// directory a single time. The scan runs on the watcher
 		// goroutine, before its first poll, so the initialize response
-		// never waits on a directory read.
+		// never waits on a directory read. runCtx is read here, on the
+		// dispatch goroutine, as startParentWatch does, not inside the
+		// spawned goroutine.
+		ctx := s.runCtx
 		go func() {
 			if s.singletonPrune != nil {
 				s.singletonPrune(s.instanceID)
 			}
-			watchSingleton(s.runCtx, key, s.instanceID, s.singletonInterval, s.singletonCurrent, onSuperseded)
+			watchSingleton(ctx, key, s.instanceID, s.singletonInterval, s.singletonCurrent, onSuperseded)
 		}()
 	})
 }
@@ -290,11 +293,14 @@ func pruneStale(dir, id string, cutoff time.Time, hooks ...func(string)) {
 		if e.IsDir() || !isRegistryRecord(name) {
 			continue
 		}
-		info, err := e.Info()
+		// Stat now rather than via e.Info(): on Windows and plan9 the
+		// DirEntry caches what ReadDir saw, so an entry removed or
+		// re-claimed since would still read as present and stale.
+		p := filepath.Join(dir, name)
+		info, err := os.Lstat(p)
 		if err != nil || !info.ModTime().Before(cutoff) {
 			continue
 		}
-		p := filepath.Join(dir, name)
 		hook(0, p)
 		if strings.HasSuffix(name, ".prune") {
 			// Already a quarantine file: nothing renames onto it.

@@ -595,13 +595,39 @@ func TestStartSingletonWatchPrunesOffInitializePath(t *testing.T) {
 	}
 }
 
+// The prune runs on a spawned goroutine, so the test waits a window for
+// it: an assertion that only fires inside that goroutine would land
+// after the test returned and never fail it.
 func TestStartSingletonWatchSkipsPruneOnFailedClaim(t *testing.T) {
 	t.Parallel()
 	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
 	s.instanceID = "me"
+	s.singletonInterval = time.Hour
 	s.singletonClaim = func(string, string) error { return io.ErrClosedPipe }
-	s.singletonPrune = func(string) { t.Error("a failed claim must not prune") }
+	s.singletonCurrent = func(string) string { return "me" }
+	var pruned atomic.Bool
+	s.singletonPrune = func(string) { pruned.Store(true) }
 	s.startSingletonWatch("/w", "scope")
+	assert.Never(t, pruned.Load, 30*time.Millisecond, time.Millisecond, "a failed claim must not prune")
+}
+
+func TestIsRegistryRecord(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]bool{
+		"abc.owner":                 true,
+		"abc.owner.id.tmp":          true,
+		"abc.owner.id.prune":        true,
+		"abc.owner.id.tmp.id.prune": true,
+		"notes.txt":                 false,
+		"abc.owner.bak":             false,
+		"owner":                     false,
+		"":                          false,
+	} {
+		assert.Equal(t, want, isRegistryRecord(name), name)
+	}
 }
 
 // An entry listed by ReadDir can vanish before the prune stats it (a
