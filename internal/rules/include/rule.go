@@ -70,7 +70,6 @@ var maxIncludeDepthMsg = "include depth exceeds maximum (" + strconv.Itoa(maxInc
 // remain unaffected.
 type Rule struct {
 	mu      sync.Mutex
-	engine  *gensection.Engine
 	visited map[string]struct{} // files in current include chain
 	chain   []string            // ordered chain for cycle diagnostics
 }
@@ -90,11 +89,13 @@ func (r *Rule) RuleID() string { return "MDS021" }
 // RuleName implements gensection.Directive.
 func (r *Rule) RuleName() string { return "include" }
 
+// getEngine returns a gensection engine bound to r. It is built per
+// call rather than cached in the struct: rule.CloneInstance copies the
+// struct, and a copied engine would stay bound to the source rule, so
+// the clone's Generate would read the source's (nil) include chain and
+// skip nested expansion. NewEngine only wraps r.
 func (r *Rule) getEngine() *gensection.Engine {
-	if r.engine == nil {
-		r.engine = gensection.NewEngine(r)
-	}
-	return r.engine
+	return gensection.NewEngine(r)
 }
 
 // Check implements rule.Rule.
