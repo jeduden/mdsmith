@@ -79,14 +79,14 @@ failed.
 
 ## Acceptance Criteria
 
-- [ ] No global map keyed by `*exec.Cmd` remains in
+- [x] No global map keyed by `*exec.Cmd` remains in
       `internal/build`.
-- [ ] No `forceKillLeaderFn` hook remains, and the
+- [x] No `forceKillLeaderFn` hook remains, and the
       plan9 killer does not kill the leader twice.
-- [ ] The Unix kill-path tests and the plan9 fake-`/proc`
+- [x] The Unix kill-path tests and the plan9 fake-`/proc`
       tests pass unchanged in what they assert.
-- [ ] `GOOS=plan9 go vet ./...`, `GOOS=windows go vet
+- [x] `GOOS=plan9 go vet ./...`, `GOOS=windows go vet
       ./...`, and `GOOS=js GOARCH=wasm go build ./...`
       pass.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

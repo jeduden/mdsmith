@@ -41,8 +41,22 @@ func TestKill_Other_KillsLeaderAndIgnoresError(t *testing.T) {
 	assert.Same(t, cmd.Process, got, "kill must kill the leader")
 }
 
-func TestForceKillLeader_Other_NilProcess(t *testing.T) {
-	assert.NotPanics(t, func() { forceKillLeader(&exec.Cmd{}) })
+func TestForceLeader_Other_NilProcess(t *testing.T) {
+	assert.NotPanics(t, afterStart(&exec.Cmd{}).forceLeader)
+}
+
+func TestForceLeader_Other_KillsLeader(t *testing.T) {
+	var got *os.Process
+	old := killLeader
+	killLeader = func(p *os.Process) error {
+		got = p
+		return errors.New("kill failed")
+	}
+	t.Cleanup(func() { killLeader = old })
+
+	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
+	assert.NotPanics(t, afterStart(cmd).forceLeader)
+	assert.Same(t, cmd.Process, got)
 }
 
 func TestTimeoutKillAction_Other(t *testing.T) {

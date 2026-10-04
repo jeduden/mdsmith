@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestForceKillLeader_Windows_NilProcess(t *testing.T) {
-	assert.NotPanics(t, func() { forceKillLeader(&exec.Cmd{}) })
+func TestForceLeader_Windows_NilProcess(t *testing.T) {
+	assert.NotPanics(t, afterStart(&exec.Cmd{}).forceLeader)
 }
 
 func TestTimeoutKillAction_Windows(t *testing.T) {

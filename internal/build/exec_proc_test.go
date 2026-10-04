@@ -17,9 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// stubKiller is a groupKiller whose kill and close run the given funcs;
-// a nil func does nothing.
-type stubKiller struct{ killFn, closeFn func() }
+// stubKiller is a groupKiller whose kill, close, and forceLeader run
+// the given funcs; a nil func does nothing.
+type stubKiller struct{ killFn, closeFn, forceFn func() }
+
+func (k stubKiller) forceLeader() {
+	if k.forceFn != nil {
+		k.forceFn()
+	}
+}
 
 func (k stubKiller) kill() {
 	if k.killFn != nil {

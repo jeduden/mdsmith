@@ -127,7 +127,7 @@ type runOpts struct {
 //
 // After the kill, runRecipe waits at most reapWait for the leader to
 // exit. If it has not (a leader that ignored the group kill), it kills
-// the leader directly with forceKillLeader, a kill it cannot catch,
+// the leader directly with the killer's forceLeader, a kill it cannot catch,
 // and waits at most reapWait again. It then waits at most reapWait
 // for captured output to drain and closes its end of
 // the pipes (recipeOutput.abandon), so a survivor that holds a captured
@@ -200,7 +200,7 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 			// CTRL_BREAK). Kill it directly with a kill it cannot
 			// catch; done is buffered, so the Wait goroutine exits
 			// whenever the leader does.
-			forceKillLeaderFn(cmd)
+			killer.forceLeader()
 			_, waitErr = waitAtMost(done, reapWait)
 		}
 		return timeoutResult(ctx, ro, waitErr)
@@ -253,16 +253,18 @@ type groupKiller interface {
 	// close releases what afterStart captured. runRecipe calls it once,
 	// on return.
 	close()
+	// forceLeader kills only the recipe's leader, with a kill it cannot
+	// catch. runRecipe calls it when kill left the leader running (a
+	// Unix leader that left its group, Windows without a Job Object).
+	// It does nothing where kill already ends in that same kill. A
+	// command that never started is a no-op.
+	forceLeader()
 }
 
 // afterStartFn indirects afterStart so a test can install a stub
 // killer: one that records a call, or models a group kill that leaves
 // the recipe running.
 var afterStartFn = afterStart
-
-// forceKillLeaderFn indirects forceKillLeader so a test can check that
-// runRecipe's leader-only fallback uses it.
-var forceKillLeaderFn = forceKillLeader
 
 // reapWait bounds each wait after a timeout kill: for the leader after
 // killGroup, for it again after the leader-only fallback kill, and for

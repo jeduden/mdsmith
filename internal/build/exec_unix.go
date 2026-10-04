@@ -35,6 +35,15 @@ func afterStart(cmd *exec.Cmd) groupKiller { return pgKiller{cmd} }
 // close has nothing to release.
 func (pgKiller) close() {}
 
+// forceLeader kills only the leader with SIGKILL, which it cannot
+// catch. A nil Process is a no-op.
+func (k pgKiller) forceLeader() {
+	if k.cmd.Process == nil {
+		return
+	}
+	_ = k.cmd.Process.Kill()
+}
+
 // kill terminates the recipe's whole process group. It sends
 // SIGTERM first, waits up to gracePeriod for the group to exit, then
 // sends SIGKILL. Signaling the negative pgid reaches every process in

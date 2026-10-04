@@ -224,6 +224,18 @@ func TestKill_Plan9_FailedWriteStillKillsLeader(t *testing.T) {
 	assert.Equal(t, "kill", readFile(t, ctl))
 }
 
+func TestForceLeader_Plan9_DoesNotKillLeaderAgain(t *testing.T) {
+	// kill already ends in the uncatchable leader kill, so forceLeader
+	// must not repeat it by writing to ctl or posting a note.
+	root := stubProcRoot(t)
+	ctl := fakeProc(t, root, "42", "9")
+	noted := stubNoteKill(t)
+
+	afterStart(&exec.Cmd{Process: &os.Process{Pid: 42}}).forceLeader()
+	assert.Empty(t, readFile(t, ctl))
+	assert.Empty(t, *noted)
+}
+
 func TestForceKillLeader_Plan9_WritesCtl(t *testing.T) {
 	ctl := fakeProc(t, stubProcRoot(t), "42", "9")
 	noted := stubNoteKill(t)

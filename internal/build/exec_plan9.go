@@ -184,6 +184,11 @@ func killIfInGroup(dir, id string) bool {
 	return err == nil
 }
 
+// forceLeader does nothing: kill already ends in forceKillLeader, the
+// uncatchable leader kill, so a second one after a failed first would
+// only repeat it.
+func (k *noteKiller) forceLeader() {}
+
 // kill kills the recipe's whole note group, so a recipe's
 // children that stayed in the group die with it. There is no grace
 // period. When afterStart captured the group, it first writes "kill"

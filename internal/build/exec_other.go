@@ -28,20 +28,19 @@ func afterStart(cmd *exec.Cmd) groupKiller { return leaderKiller{cmd} }
 
 // kill terminates only the recipe's leader process. A nil Process (the
 // command never started) is a no-op.
-func (k leaderKiller) kill() { forceKillLeader(k.cmd) }
+func (k leaderKiller) kill() { k.forceLeader() }
+
+// forceLeader kills the recipe's leader process with killLeader. A nil
+// Process is a no-op.
+func (k leaderKiller) forceLeader() {
+	if k.cmd.Process == nil {
+		return
+	}
+	_ = killLeader(k.cmd.Process)
+}
 
 // close has nothing to release.
 func (leaderKiller) close() {}
-
-// forceKillLeader kills the recipe's leader process with killLeader.
-// runRecipe also uses it when the group kill left the leader running.
-// A nil Process is a no-op.
-func forceKillLeader(cmd *exec.Cmd) {
-	if cmd.Process == nil {
-		return
-	}
-	_ = killLeader(cmd.Process)
-}
 
 // killLeader kills one process. It is a var so a js/wasm test, where no
 // subprocess can start, can check that killGroup kills the leader.
