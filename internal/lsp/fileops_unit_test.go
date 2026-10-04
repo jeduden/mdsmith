@@ -209,48 +209,8 @@ func ref(line int, text string) refactor.Edit {
 	}
 }
 
-func TestDropCrossMoveEdits(t *testing.T) {
-	t.Parallel()
-	t.Run("an edit the batch did not plan for the moved file is dropped", func(t *testing.T) {
-		t.Parallel()
-		moves := []plannedMove{{key: "a", changesDir: true, own: []refactor.Edit{ref(1, "own")}}}
-		merged := map[string][]textEdit{
-			"a": {edAt(1, 0, 4, "own"), edAt(3, 0, 4, "x")},
-			"c": {edAt(1, 0, 4, "y")},
-		}
-		dropCrossMoveEdits(merged, moves, nil)
-		assert.Equal(t, map[string][]textEdit{
-			"a": {edAt(1, 0, 4, "own")},
-			"c": {edAt(1, 0, 4, "y")},
-		}, merged)
-	})
-	t.Run("a key left empty is deleted", func(t *testing.T) {
-		t.Parallel()
-		merged := map[string][]textEdit{"a": {edAt(3, 0, 4, "x")}}
-		dropCrossMoveEdits(merged, []plannedMove{{key: "a", changesDir: true}}, nil)
-		assert.Empty(t, merged)
-	})
-	t.Run("same-directory rename keeps every edit", func(t *testing.T) {
-		t.Parallel()
-		merged := map[string][]textEdit{"a": {edAt(3, 0, 4, "x")}}
-		dropCrossMoveEdits(merged, []plannedMove{{key: "a"}, {key: "b", changesDir: true}}, nil)
-		assert.Equal(t, map[string][]textEdit{"a": {edAt(3, 0, 4, "x")}}, merged)
-	})
-}
-
-// A `[[stem]]` rewrite inside a file whose move could not be planned
-// is kept: it names its target by stem, not by a path from the
-// holder's directory. A path rewrite there is dropped.
-func TestDropCrossMoveEdits_KeepsStemRewrites(t *testing.T) {
-	t.Parallel()
-	moves := []plannedMove{{key: "a", changesDir: true}}
-	merged := map[string][]textEdit{"a": {edAt(3, 0, 4, "c"), edAt(5, 0, 4, "x")}}
-	dropCrossMoveEdits(merged, moves, map[string][]refactor.Edit{"a": {ref(3, "c")}})
-	assert.Equal(t, map[string][]textEdit{"a": {edAt(3, 0, 4, "c")}}, merged)
-}
-
-// TestGuardRenameEdits_BatchCasesDropNothing locks that the two guards
-// no longer fire on the cases the pre-batch planner needed them for:
+// TestGuardRenameEdits_BatchCasesDropNothing locks that the guard
+// no longer fires on the cases the pre-batch planner needed them for:
 // links between two moved files in one new folder or different ones,
 // an agreeing pair of rewrites, a rewrite only the target's move
 // touched, a right one-sided rewrite, a wikilink between moved files,
@@ -371,17 +331,13 @@ func TestPlanRenameBatch(t *testing.T) {
 		"docs/b.md": "# B\n",
 		"x/y/a.md":  "# Old\n",
 	})
-	t.Run("an unplanned move is kept without own edits", func(t *testing.T) {
+	t.Run("an unplanned move gets only the stem rewrite", func(t *testing.T) {
 		t.Parallel()
 		batch := planRenameBatch(ws, root, []fileRename{
 			{OldURI: uri("docs/a.md"), NewURI: uri("x/y/a.md")},
 			{OldURI: uri("docs/b.md"), NewURI: uri("x/y/c.md")},
 		})
-		require.Len(t, batch.moves, 2)
-		assert.Equal(t, plannedMove{key: "docs/a.md", changesDir: true}, batch.moves[0])
-		assert.Equal(t, "docs/b.md", batch.moves[1].key)
-		assert.Len(t, batch.edits["docs/a.md"], 1, "the stem rewrite; `b.md` still resolves from x/y/")
-		assert.Len(t, batch.stems["docs/a.md"], 1)
+		assert.Equal(t, []string{"c"}, editTexts(batch.edits["docs/a.md"]), "`b.md` still resolves from x/y/")
 	})
 	t.Run("skips empty, unchanged, repeated, and unreadable pairs", func(t *testing.T) {
 		t.Parallel()
@@ -392,27 +348,16 @@ func TestPlanRenameBatch(t *testing.T) {
 			{OldURI: "untitled:x", NewURI: uri("docs/z.md")},
 			{OldURI: uri("gone.md"), NewURI: uri("gone2.md")},
 		})
-		require.Len(t, batch.moves, 1)
-		assert.False(t, batch.moves[0].changesDir)
+		assert.Equal(t, []string{"c", "c.md"}, editTexts(batch.edits["docs/a.md"]), "docs/b.md is planned once")
+		assert.Len(t, batch.edits, 1)
 	})
-	t.Run("a planned move keeps the edits inside it", func(t *testing.T) {
-		t.Parallel()
-		batch := planRenameBatch(ws, root, []fileRename{
-			{OldURI: uri("docs/a.md"), NewURI: uri("other/a.md")},
-		})
-		require.Len(t, batch.moves, 1)
-		assert.Len(t, batch.moves[0].own, 1)
-		assert.Equal(t, batch.edits["docs/a.md"], batch.moves[0].own)
-	})
-	t.Run("own holds only the moved file's outbound edits", func(t *testing.T) {
+	t.Run("a moved file gets its stem and path rewrites", func(t *testing.T) {
 		t.Parallel()
 		batch := planRenameBatch(ws, root, []fileRename{
 			{OldURI: uri("docs/a.md"), NewURI: uri("docs/z/a.md")},
 			{OldURI: uri("docs/b.md"), NewURI: uri("docs/z/c.md")},
 		})
-		require.Len(t, batch.moves, 2)
 		assert.Equal(t, []string{"c", "c.md"}, editTexts(batch.edits["docs/a.md"]))
-		assert.Equal(t, []string{"c.md"}, editTexts(batch.moves[0].own), "not the [[b]] stem rewrite")
 	})
 }
 
@@ -458,18 +403,17 @@ func TestServerRenameWorkspace_WikilinkIndex(t *testing.T) {
 	assert.Nil(t, s.renameWorkspace(filepath.Join(root, "missing")).WikilinkIndex())
 }
 
-// TestGuardRenameEdits locks that the guards still drop, and count,
-// what a plan should never hold: two overlapping edits, and a path
-// edit inside a moved file the batch did not plan for it.
+// TestGuardRenameEdits locks that the guard still drops, and counts,
+// what a plan should never hold: overlapping edits. A key left with no
+// edit is deleted.
 func TestGuardRenameEdits(t *testing.T) {
 	t.Parallel()
 	merged, dropped := guardRenameEdits(renameBatch{
-		moves: []plannedMove{{key: "m", changesDir: true}},
 		edits: map[string][]refactor.Edit{
 			"a": {ref(1, "x"), ref(1, "y"), ref(2, "z")},
-			"m": {ref(1, "p")},
+			"m": {ref(1, "p"), ref(1, "q")},
 		},
 	})
 	assert.Equal(t, map[string][]textEdit{"a": {edAt(2, 0, 4, "z")}}, merged)
-	assert.Equal(t, 3, dropped)
+	assert.Equal(t, 4, dropped)
 }

@@ -52,9 +52,11 @@ then reports it.
    one edit, and the incoming-link and outbound-link passes no
    longer both rewrite a link between two moved files.
 3. [x] Switch `handleWillRenameFiles` to the batch entry point.
-   Keep `dropConflictingTextEdits` and `dropCrossMoveEdits`
-   only as guards, with tests proving they no longer fire for
-   these cases.
+   Keep `dropConflictingTextEdits` only as a guard, with tests
+   proving it no longer fires for these cases. Remove
+   `dropCrossMoveEdits`: the batch plans no path edit inside a
+   member that changes folder except its own outbound ones, so
+   no input can drive it.
 4. [x] Unit tests: two moved files linking each other in the same
    new folder and in different new folders, wikilinks between
    moved files, and a three-file cycle.

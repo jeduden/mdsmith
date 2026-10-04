@@ -75,20 +75,17 @@ func TestMoveAll_DifferentNewFolders(t *testing.T) {
 	assert.Equal(t, []string{"../y/b.md"}, texts(bp.Edits, "a.md"))
 	assert.Equal(t, []string{"../x/a.md"}, texts(bp.Edits, "b.md"))
 	assert.Zero(t, bp.Withheld)
-	assert.Equal(t, []string{"../y/b.md"}, texts(bp.Own, "a.md"))
 }
 
-// TestMoveAll_OwnExcludesStemEdits locks that Own holds only a moved
-// file's outbound path edits, not a `[[stem]]` rewrite another move
-// plans inside it.
-func TestMoveAll_OwnExcludesStemEdits(t *testing.T) {
+// TestMoveAll_StemAndPathEditsInMovedFile locks that a moved file gets
+// both its outbound path rewrite and the `[[stem]]` rewrite another
+// move plans inside it, one edit each.
+func TestMoveAll_StemAndPathEditsInMovedFile(t *testing.T) {
 	bp := moveAll(t, map[string]string{
 		"a.md": "# A\n\n[[b]] [b](b.md)\n",
 		"b.md": "# B\n",
 	}, MovePair{"a.md", "x/a.md"}, MovePair{"b.md", "y/c.md"})
 	assert.Equal(t, []string{"../y/c.md", "c"}, texts(bp.Edits, "a.md"))
-	assert.Equal(t, []string{"../y/c.md"}, texts(bp.Own, "a.md"))
-	assert.Equal(t, []string{"c"}, texts(bp.StemEdits, "a.md"))
 }
 
 func TestMoveAll_ThreeFileCycle(t *testing.T) {
@@ -273,7 +270,6 @@ func TestMoveAll_WikilinksBetweenMovedFiles(t *testing.T) {
 	}, MovePair{"a.md", "x/a2.md"}, MovePair{"b.md", "y/b2.md"})
 	assert.Equal(t, []string{"../y/b2.md", "b2"}, texts(bp.Edits, "a.md"))
 	assert.Equal(t, []string{"a2"}, texts(bp.Edits, "b.md"))
-	assert.Equal(t, []string{"b2"}, texts(bp.StemEdits, "a.md"))
 	assert.Zero(t, bp.Withheld)
 }
 

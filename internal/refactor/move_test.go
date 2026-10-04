@@ -62,9 +62,8 @@ func TestMove_WikilinkStemRewrittenWhenBasenameChanges(t *testing.T) {
 	assert.Equal(t, "See [[service]] and [[service#usage]] and [[service|the API]].\n", got)
 }
 
-// MoveAll's StemEdits holds exactly the `[[stem]]` rewrites among its
-// edits, keyed the same way, leaving out its path rewrites, and its
-// edits match Move's plan.
+// MoveAll plans a moved file's `[[stem]]` and path rewrites alike, and
+// its edits match Move's plan.
 func TestMoveAll_StemEdits(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{
 		"api.md":   "# API\n",
@@ -76,18 +75,14 @@ func TestMoveAll_StemEdits(t *testing.T) {
 	bp := MoveAll(ws, []MovePair{{"./api.md", "service.md"}})
 	require.NoError(t, bp.Moves[0].Err)
 	assert.Equal(t, want.Edits, bp.Edits)
-	require.Len(t, bp.Edits["guide.md"], 2, "one stem and one path rewrite")
-	stems := bp.StemEdits
-	require.Len(t, stems["guide.md"], 1)
-	assert.Equal(t, "service", stems["guide.md"][0].NewText)
-	assert.Contains(t, bp.Edits["guide.md"], stems["guide.md"][0])
+	assert.Equal(t, []string{"service.md", "service"}, texts(bp.Edits, "guide.md"))
 
 	kept := MoveAll(ws, []MovePair{{"api.md", "docs/api.md"}})
-	assert.Empty(t, kept.StemEdits, "a kept stem needs no rewrite")
+	assert.Equal(t, []string{"docs/api.md"}, texts(kept.Edits, "guide.md"), "a kept stem needs no rewrite")
 
 	refused := MoveAll(ws, []MovePair{{"api.md", "guide.md"}})
 	assert.ErrorAs(t, refused.Moves[0].Err, &DestinationExistsError{})
-	assert.Empty(t, refused.StemEdits)
+	assert.Empty(t, refused.Edits)
 }
 
 func TestMove_WikilinksUntouchedWhenBasenameKept(t *testing.T) {

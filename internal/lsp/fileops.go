@@ -3,7 +3,6 @@ package lsp
 import (
 	"encoding/json"
 	"fmt"
-	"path"
 	"slices"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -45,11 +44,11 @@ func markdownFileOperationCapabilities() *workspaceServerCapabilities {
 // performs the rename, and any stranded link surfaces as an MDS027
 // diagnostic. A rename pair listed twice is planned once.
 //
-// dropConflictingTextEdits and dropCrossMoveEdits stay as guards: the
-// batch plans one edit per range and no path rewrite inside a moved
-// file it did not plan for that file's new location, so neither drops
-// anything. A window/logMessage warning counts every link the batch
-// left stale (refactor.BatchPlan.Withheld) plus any edit a guard drops.
+// dropConflictingTextEdits stays as a guard: the batch plans one edit
+// per range, so it drops nothing, but an overlap would make the client
+// reject the whole reply. A window/logMessage warning counts every
+// link the batch left stale (refactor.BatchPlan.Withheld) plus any
+// edit the guard drops.
 func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 	var p renameFilesParams
 	if err := json.Unmarshal(msg.Params, &p); err != nil {
@@ -75,37 +74,24 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 }
 
 // guardRenameEdits converts the batch's edits to LSP text edits and
-// runs both guards over them, returning the kept edits and how many
-// the guards dropped.
+// runs dropConflictingTextEdits over each file's, returning the kept
+// edits and how many the guard dropped.
 func guardRenameEdits(batch renameBatch) (map[string][]textEdit, int) {
 	merged := map[string][]textEdit{}
-	total, kept := 0, 0
+	dropped := 0
 	for key, edits := range batch.edits {
-		merged[key] = toTextEdits(edits)
-		total += len(edits)
-	}
-	for key, edits := range merged {
-		edits = dropConflictingTextEdits(edits)
-		if len(edits) == 0 {
-			delete(merged, key)
-			continue
+		kept := dropConflictingTextEdits(toTextEdits(edits))
+		dropped += len(edits) - len(kept)
+		if len(kept) > 0 {
+			merged[key] = kept
 		}
-		merged[key] = edits
 	}
-	dropCrossMoveEdits(merged, batch.moves, batch.stems)
-	for _, edits := range merged {
-		kept += len(edits)
-	}
-	return merged, total - kept
+	return merged, dropped
 }
 
 // planRenameBatch runs refactor.MoveAll over the renames in files,
 // read against root. A pair with an empty or unchanged path is
-// skipped, and a pair listed twice is planned once. Every move whose
-// source is readable is recorded in request order, planned or not,
-// because the editor moves it anyway; a planned move keeps the path
-// edits its own outbound pass planned (refactor.BatchPlan.Own), for
-// dropCrossMoveEdits.
+// skipped, and a pair listed twice is planned once.
 func planRenameBatch(ws refactor.Workspace, root string, files []fileRename) renameBatch {
 	var pairs []refactor.MovePair
 	seen := map[refactor.MovePair]bool{}
@@ -121,75 +107,15 @@ func planRenameBatch(ws refactor.Workspace, root string, files []fileRename) ren
 		pairs = append(pairs, pair)
 	}
 	bp := refactor.MoveAll(ws, pairs)
-	batch := renameBatch{edits: bp.Edits, stems: bp.StemEdits, withheld: bp.Withheld}
-	for _, m := range bp.Moves {
-		if m.Key == "" {
-			continue
-		}
-		pm := plannedMove{key: m.Key, changesDir: path.Dir(m.Src) != path.Dir(m.Dst)}
-		if m.Err == nil {
-			pm.own = bp.Own[m.Key]
-		}
-		batch.moves = append(batch.moves, pm)
-	}
-	return batch
+	return renameBatch{edits: bp.Edits, withheld: bp.Withheld}
 }
 
 // renameBatch is one willRenameFiles request after planning: the
-// batch's edits and their `[[stem]]` subset, keyed by edit key, every
-// moved file, and the count of links the batch left stale
-// (refactor.BatchPlan.Withheld).
+// batch's edits, keyed by edit key, and the count of links the batch
+// left stale (refactor.BatchPlan.Withheld).
 type renameBatch struct {
-	moves    []plannedMove
 	edits    map[string][]refactor.Edit
-	stems    map[string][]refactor.Edit
 	withheld int
-}
-
-// plannedMove is one moved file of a willRenameFiles batch: key is its
-// edit key (its URI as ws.Resolve returns it), changesDir reports
-// whether the move lands in another directory, and own holds the edits
-// the batch planned inside the file for its new location — nil when
-// its move could not be planned.
-type plannedMove struct {
-	key        string
-	changesDir bool
-	own        []refactor.Edit
-}
-
-// dropCrossMoveEdits withholds from merged every path rewrite inside a
-// file moved to a new directory that the batch did not plan for that
-// file's new location. Such a rewrite would be spelled from the file's
-// old directory, so its text would be wrong once the file lands
-// elsewhere. A `[[stem]]` rewrite (from stems) is kept: it names its
-// target by stem, which no directory change affects. A rename within
-// one directory keeps every edit: the spelling base does not change.
-// refactor.MoveAll plans no such rewrite, so this is a guard: a path
-// edit inside a file whose move could not be planned is the one it
-// would drop. Keys left with no edit are deleted.
-func dropCrossMoveEdits(merged map[string][]textEdit, moves []plannedMove, stems map[string][]refactor.Edit) {
-	for _, m := range moves {
-		if !m.changesDir {
-			continue
-		}
-		edits, ok := merged[m.key]
-		if !ok {
-			continue
-		}
-		keep := map[textEdit]bool{}
-		for _, e := range toTextEdits(m.own) {
-			keep[e] = true
-		}
-		for _, e := range toTextEdits(stems[m.key]) {
-			keep[e] = true
-		}
-		edits = slices.DeleteFunc(edits, func(e textEdit) bool { return !keep[e] })
-		if len(edits) == 0 {
-			delete(merged, m.key)
-			continue
-		}
-		merged[m.key] = edits
-	}
 }
 
 // handleDidRenameFiles processes the workspace/didRenameFiles

@@ -41,21 +41,16 @@ type BatchMove struct {
 // BatchPlan is the merged result of MoveAll. Its Plan holds every
 // edit, keyed per output target with one edit per range, and no
 // FileOp: Moves lists each pair's relocation and verdict in request
-// order. StemEdits is the `[[stem]]` subset of the edits, keyed the
-// same way. Withheld counts the links that get no edit yet may not
+// order. Withheld counts the links that get no edit yet may not
 // reach their file once the batch has run: one from a planned member
 // to a member whose move could not be planned, one inside such a
 // member that stops resolving, a `[[stem]]` whose new key another
 // member's destination wins, and every link to a shadowed path (see
-// countShadowed). Own holds, per planned move's edit key, the edits
-// its outbound pass re-spelled for the file's new folder: the only
-// path edits inside a planned member's file the batch plans.
+// countShadowed).
 type BatchPlan struct {
 	Plan
-	StemEdits map[string][]Edit
-	Own       map[string][]Edit
-	Moves     []BatchMove
-	Withheld  int
+	Moves    []BatchMove
+	Withheld int
 }
 
 // MoveAll plans a batch of file moves that run together, as one LSP
@@ -84,12 +79,7 @@ type BatchPlan struct {
 // Move is MoveAll with one pair.
 func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
 	moves, b := validateBatch(ws, pairs)
-	bp := BatchPlan{
-		Plan:      Plan{Edits: map[string][]Edit{}},
-		StemEdits: map[string][]Edit{},
-		Own:       map[string][]Edit{},
-		Moves:     moves,
-	}
+	bp := BatchPlan{Plan: Plan{Edits: map[string][]Edit{}}, Moves: moves}
 	p := lint.NewParser()
 	r := &destResolver{ws: ws, batch: b}
 	appendReferrerEdits(bp.Edits, ws, p, r)
@@ -97,9 +87,9 @@ func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
 		if m.Err != nil {
 			continue
 		}
-		appendWikilinkStemEdits(bp.StemEdits, ws, r, m.Src, m.Dst)
+		appendWikilinkStemEdits(bp.Edits, ws, r, m.Src, m.Dst)
 		if mdpath.HasMarkdownExt(path.Ext(m.Src)) || r.listed(m.Src) {
-			appendOutboundEdits(bp.Own, p, r, m.Key, m.Src, m.Dst, b.sources[m.Src])
+			appendOutboundEdits(bp.Edits, p, r, m.Key, m.Src, m.Dst, b.sources[m.Src])
 		}
 	}
 	for _, m := range moves {
@@ -107,14 +97,7 @@ func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
 			countShadowed(ws, r, m.Dst)
 		}
 	}
-	for _, part := range []map[string][]Edit{bp.Own, bp.StemEdits} {
-		for key, edits := range part {
-			bp.Edits[key] = append(bp.Edits[key], edits...)
-		}
-	}
 	stableSortEdits(bp.Edits)
-	stableSortEdits(bp.StemEdits)
-	stableSortEdits(bp.Own)
 	bp.Withheld = b.withheld
 	return bp
 }
