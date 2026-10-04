@@ -1,9 +1,8 @@
 # Plans
 
 <?catalog
-{glob: ["plan/*.md", "!plan/proto.md"], sort: "numeric:id",
-row: "| {id} | {status} | {model} | [{title}]({filename}) |",
-header: "| ID | Status | Model | Title |\n|-----|--------|-------|-------|\n"}
+{glob: ["plan/[0-9]*.md"], header: "|ID|Status|Model|Title|\n|-|-|-|-|\n",
+sort: "numeric:id", row: "|{id}|{status}|{model}|[{title}]({filename})|"}
 ?>
 | ID         | Status | Model  | Title                                                                                                                                                   |
 | ---------- | ------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -297,4 +296,5 @@ header: "| ID | Status | Model | Title |\n|-----|--------|-------|-------|\n"}
 | 2610032327 | 🔲     | opus   | [Reuse the cached wikilink index for LSP moves and close its root](plan/2610032327_lsp-move-reuse-cached-wikilink-index.md)                             |
 | 2610040512 | 🔲     | opus   | [Refused-move policy in willRenameFiles batches](plan/2610040512_refused-move-policy-in-rename-batches.md)                                              |
 | 2610040606 | 🔲     | opus   | [Rewrite and count typed wikilinks on move](plan/2610040606_move-typed-wikilinks.md)                                                                    |
+| 2610040911 | 🔲     | opus   | [Bound a timed-out recipe's leader reap and group kill](plan/2610040911_recipe-leader-reap-bounds.md)                                                   |
 <?/catalog?>
