@@ -342,10 +342,10 @@ func (r *destResolver) mayHoldDir(p string) bool {
 // mayOccupy reports whether a file may sit at the workspace path p
 // once the batch has run: a member lands there, or a file there stays,
 // which a planned move from p rules out and a refused one does not.
-// Such a file is read, not looked up in the workspace list: the list
-// may leave out a file a link reaches, such as an image or an ignored
-// Markdown file. Each path is read once per plan (see
-// destResolver.readable).
+// Such a file is stat'ed, not looked up in the workspace list: the
+// list may leave out a file a link reaches, such as an image or an
+// ignored Markdown file. Each path is stat'ed once per plan (see
+// destResolver.present) and never read.
 func (r *destResolver) mayOccupy(p string) bool {
 	if r.batch.dsts[p] {
 		return true
@@ -356,13 +356,13 @@ func (r *destResolver) mayOccupy(p string) bool {
 	if p == "" {
 		return false
 	}
-	ok, seen := r.readable[p]
+	ok, seen := r.present[p]
 	if !seen {
-		if r.readable == nil {
-			r.readable = map[string]bool{}
+		if r.present == nil {
+			r.present = map[string]bool{}
 		}
-		ok = resolves(r.ws, p)
-		r.readable[p] = ok
+		ok = present(r.ws, p)
+		r.present[p] = ok
 	}
 	return ok
 }
@@ -478,11 +478,11 @@ type destResolver struct {
 	// from ws.Files() instead (see wikilinkIndex).
 	wlListed bool
 	lines    *edgeLines // see edgeReader
-	// dirs is wl.Dirs, built on mayHoldDir's first call; readable
-	// holds each path mayOccupy has read, so a path is read once per
-	// plan.
-	dirs     map[string]bool
-	readable map[string]bool
+	// dirs is wl.Dirs, built on mayHoldDir's first call; present
+	// holds each path mayOccupy has stat'ed, so a path is stat'ed once
+	// per plan.
+	dirs    map[string]bool
+	present map[string]bool
 }
 
 // edgeReader returns the one edgeLines the resolver's wikilink

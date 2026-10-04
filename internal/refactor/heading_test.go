@@ -2,6 +2,7 @@ package refactor
 
 import (
 	"errors"
+	"io/fs"
 	"maps"
 	"slices"
 	"testing"
@@ -42,6 +43,11 @@ func newMemWorkspace(files map[string]string) *memWorkspace {
 
 func (w *memWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return holderIndex(slices.Collect(maps.Keys(w.files))...)
+}
+
+func (w *memWorkspace) Stat(file string) (fs.FileInfo, bool) {
+	_, ok := w.files[index.NormalizePath(file)]
+	return nil, ok
 }
 
 func (w *memWorkspace) Resolve(file string) (string, []byte, bool) {

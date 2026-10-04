@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,13 +107,30 @@ func (w cliRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return linkgraph.WikilinkIndexAtDir(w.rootDir)
 }
 
+// Stat implements refactor.MoveWorkspace: it stats the file Resolve
+// would read, without reading it, so a file over the size limit is
+// still present. A directory is not.
+func (w cliRenameWorkspace) Stat(file string) (fs.FileInfo, bool) {
+	info, err := os.Stat(w.abs(index.NormalizePath(file)))
+	if err != nil || info.IsDir() {
+		return nil, false
+	}
+	return info, true
+}
+
+// abs returns the disk path of the workspace-relative path rel: the
+// discovered file's own path when the walk found it, else rel joined
+// onto the root.
+func (w cliRenameWorkspace) abs(rel string) string {
+	if abs, ok := w.relToAbs[rel]; ok {
+		return abs
+	}
+	return filepath.Join(w.rootDir, filepath.FromSlash(rel))
+}
+
 func (w cliRenameWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
-	abs, ok := w.relToAbs[rel]
-	if !ok {
-		abs = filepath.Join(w.rootDir, filepath.FromSlash(rel))
-	}
-	src, err := bytelimit.ReadFileLimited(abs, w.maxBytes)
+	src, err := bytelimit.ReadFileLimited(w.abs(rel), w.maxBytes)
 	if err != nil {
 		return "", nil, false
 	}

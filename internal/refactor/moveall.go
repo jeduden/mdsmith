@@ -188,7 +188,7 @@ func validateBatch(ws MoveWorkspace, pairs []MovePair) ([]BatchMove, *moveBatch)
 			continue
 		}
 		_, vacated := b.members[m.Dst]
-		exists := !vacated && resolves(ws, m.Dst)
+		exists := !vacated && present(ws, m.Dst)
 		switch {
 		case landing[foldPath(m.Dst)] > 1:
 			m.Err = ErrDuplicateDestination
@@ -254,9 +254,10 @@ func (b *moveBatch) admit(ws MoveWorkspace, pr MovePair, landing map[string]int)
 	return m
 }
 
-// resolves reports whether ws can read the file p.
-func resolves(ws MoveWorkspace, p string) bool {
-	_, _, ok := ws.Resolve(p)
+// present reports whether a file sits at p, read or not (see
+// MoveWorkspace.Stat).
+func present(ws MoveWorkspace, p string) bool {
+	_, ok := ws.Stat(p)
 	return ok
 }
 

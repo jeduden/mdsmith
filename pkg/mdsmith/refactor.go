@@ -160,6 +160,42 @@ func (w *sessionRefactorWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return linkgraph.NewWikilinkIndexFromPaths(w.paths())
 }
 
+// Stat implements refactor.MoveWorkspace: it finds a file without
+// reading it where the session workspace allows. A MemWorkspace file is
+// looked up in memory and an OSWorkspace file is stat'ed through the
+// session's source view; any other workspace offers no stat, so the
+// file is read, as Resolve reads it. A file the workspace holds keeps
+// its info; the overlay URI with no file behind it is present with
+// none.
+func (w *sessionRefactorWorkspace) Stat(file string) (fs.FileInfo, bool) {
+	rel := index.NormalizePath(file)
+	if info, ok := w.s.statFile(rel); ok {
+		return info, true
+	}
+	return nil, w.overlayURI != "" && rel == index.NormalizePath(w.overlayURI)
+}
+
+// statFile reports whether a file, not a directory, sits at rel in the
+// session workspace (see sessionRefactorWorkspace.Stat), with its info
+// when the workspace has one.
+func (s *Session) statFile(rel string) (fs.FileInfo, bool) {
+	switch ws := s.ws.(type) {
+	case *MemWorkspace:
+		return nil, ws.has(rel)
+	}
+	if !ownsFS(s.ws) {
+		_, err := s.ws.ReadFile(rel)
+		return nil, err == nil
+	}
+	src := s.sourceFS()
+	defer src.release()
+	info, err := fs.Stat(src.FS, rel)
+	if err != nil || info.IsDir() {
+		return nil, false
+	}
+	return info, true
+}
+
 func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
 	if w.overlayURI != "" && rel == index.NormalizePath(w.overlayURI) {

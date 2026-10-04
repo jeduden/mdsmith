@@ -1,6 +1,7 @@
 package refactor
 
 import (
+	"io/fs"
 	"maps"
 	"path"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 )
@@ -893,10 +895,12 @@ func TestDestResolver_PostIndex(t *testing.T) {
 	assert.Empty(t, post.StemPaths("b"), "a member leaving the workspace is removed")
 }
 
-func TestResolves(t *testing.T) {
-	ws := newMemWorkspace(map[string]string{"a.md": "# A\n"})
-	assert.True(t, resolves(ws, "a.md"))
-	assert.False(t, resolves(ws, "b.md"))
+func TestPresent(t *testing.T) {
+	files := map[string]string{"a.md": "# A\n", "u.md": "# U\n"}
+	ws := unreadableWorkspace{newMemWorkspace(files), map[string]bool{"u.md": true}}
+	assert.True(t, present(ws, "a.md"))
+	assert.True(t, present(ws, "u.md"), "an unreadable file is present")
+	assert.False(t, present(ws, "b.md"))
 }
 
 func TestMoveBatch_Admit(t *testing.T) {
@@ -1156,7 +1160,7 @@ func TestRefusedLeaving(t *testing.T) {
 // list, and parses a non-Markdown member only when the workspace lists
 // it.
 func TestDestResolver_CountRefusedHolders(t *testing.T) {
-	ws := &resolveCounter{calls: map[string]int{}, stubWorkspace: stubWorkspace{
+	ws := &resolveCounter{calls: map[string]int{}, stats: map[string]int{}, stubWorkspace: stubWorkspace{
 		files: []string{"docs/n.mdx"},
 		sources: map[string][]byte{
 			"docs/c.md": []byte("# C\n"), "x/c.md": []byte("# X\n"),
@@ -1172,7 +1176,8 @@ func TestDestResolver_CountRefusedHolders(t *testing.T) {
 	r := &destResolver{ws: ws, batch: b}
 	r.countRefusedHolders(lint.NewParser())
 	assert.Equal(t, 2, b.withheld, "docs/b.md and the listed docs/n.mdx reach x/c.md")
-	assert.Equal(t, map[string]int{"x/c.md": 1}, ws.calls, "only the misread candidate is read, once")
+	assert.Empty(t, ws.calls, "no workspace file is read")
+	assert.Equal(t, map[string]int{"x/c.md": 1}, ws.stats, "only the misread candidate is stat'ed, once")
 }
 
 func TestDestResolver_MayOccupy(t *testing.T) {
@@ -1397,11 +1402,16 @@ func TestDestResolver_MayHoldDir(t *testing.T) {
 	assert.True(t, r.mayHoldDir("."), "the root holds every member landing in the workspace")
 }
 
-// lookupCountingWorkspace counts the Resolve and WikilinkIndex calls a
-// planner makes on the memWorkspace it wraps.
+// lookupCountingWorkspace counts the Resolve, Stat and WikilinkIndex
+// calls a planner makes on the memWorkspace it wraps.
 type lookupCountingWorkspace struct {
 	*memWorkspace
-	resolves, indexes int
+	resolves, stats, indexes int
+}
+
+func (w *lookupCountingWorkspace) Stat(file string) (fs.FileInfo, bool) {
+	w.stats++
+	return w.memWorkspace.Stat(file)
 }
 
 func (w *lookupCountingWorkspace) Resolve(file string) (string, []byte, bool) {
@@ -1427,8 +1437,9 @@ func TestDestResolver_MayHoldDirMemoized(t *testing.T) {
 	assert.Len(t, r.dirs, 3)
 }
 
-// TestDestResolver_MayOccupyMemoized locks that a path mayOccupy reads
-// is read once per resolver, however many links name it.
+// TestDestResolver_MayOccupyMemoized locks that a path mayOccupy looks
+// up is stat'ed once per resolver, however many links name it, and
+// never read.
 func TestDestResolver_MayOccupyMemoized(t *testing.T) {
 	ws := &lookupCountingWorkspace{memWorkspace: newMemWorkspace(map[string]string{"i.png": "y\n"})}
 	r := &destResolver{ws: ws, batch: newMoveBatch()}
@@ -1436,7 +1447,40 @@ func TestDestResolver_MayOccupyMemoized(t *testing.T) {
 		assert.True(t, r.mayOccupy("i.png"))
 		assert.False(t, r.mayOccupy("none.png"))
 	}
-	assert.Equal(t, 2, ws.resolves, "each path read once")
+	assert.Equal(t, 2, ws.stats, "each path stat'ed once")
+	assert.Zero(t, ws.resolves, "no file is read to learn that it exists")
+}
+
+// unreadableWorkspace is a memWorkspace whose Resolve fails for the
+// paths in hidden while Stat still finds them, as a file over the
+// size limit, or one the LSP does not read (an image), is there but
+// not readable.
+type unreadableWorkspace struct {
+	*memWorkspace
+	hidden map[string]bool
+}
+
+func (w unreadableWorkspace) Resolve(file string) (string, []byte, bool) {
+	if w.hidden[index.NormalizePath(file)] {
+		return "", nil, false
+	}
+	return w.memWorkspace.Resolve(file)
+}
+
+// TestMoveAll_UnreadableFileExists locks that a file the workspace
+// cannot read but Stat finds still exists for the batch: a move onto
+// it is refused rather than planned as onto a free path, and a link in
+// a refused member that names it from the new folder is counted.
+func TestMoveAll_UnreadableFileExists(t *testing.T) {
+	ws := unreadableWorkspace{newMemWorkspace(map[string]string{
+		"a.md": "# A\n", "big.md": "# Big\n",
+		"docs/b.md": "# B\n\n![i](hero.png)\n", "docs/hero.png": "p", "x/b.md": "# Old\n", "x/hero.png": "q",
+	}), map[string]bool{"big.md": true, "x/hero.png": true}}
+	bp := MoveAll(ws, []MovePair{{"a.md", "big.md"}})
+	assert.Equal(t, DestinationExistsError{Dst: "big.md"}, bp.Moves[0].Err, "an unreadable destination exists")
+	bp = MoveAll(ws, []MovePair{{"docs/b.md", "x/b.md"}})
+	require.Equal(t, DestinationExistsError{Dst: "x/b.md"}, bp.Moves[0].Err)
+	assert.Equal(t, 1, bp.Withheld, "the link reaches x/hero.png, which exists though unreadable")
 }
 
 // TestMoveAll_RefusedHolderMisreadsRoot covers a directory link in a

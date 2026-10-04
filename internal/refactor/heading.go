@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"slices"
 	"strings"
@@ -81,6 +82,13 @@ type MoveWorkspace interface {
 	// from its new folder (see destResolver.mayHoldDir), which a lone
 	// Move never has.
 	WikilinkIndex() *linkgraph.WikilinkIndex
+	// Stat reports whether a file, not a directory, sits at the
+	// workspace-relative path file (an open buffer or on disk) without
+	// reading its bytes, so a file Resolve cannot read, such as one
+	// over the size limit or an image the LSP does not load, still
+	// counts. info is the file's on-disk info, or nil when the surface
+	// holds none (an unsaved buffer, an in-memory file).
+	Stat(file string) (info fs.FileInfo, ok bool)
 }
 
 // ErrEmptyHeadingSlug is returned when the new heading text slugifies

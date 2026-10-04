@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/refactor"
@@ -360,6 +362,56 @@ func TestSessionRefactorWorkspace_Resolve(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "# A\n", string(src))
 }
+
+// TestSessionRefactorWorkspace_Stat locks that Stat finds a file in
+// each kind of session workspace without reading it where the
+// workspace allows: a MemWorkspace file is looked up, an OSWorkspace
+// file is stat'ed through the source view, and any other workspace is
+// read. The overlay URI is present though no file backs it. A
+// directory and a missing path are not present.
+func TestSessionRefactorWorkspace_Stat(t *testing.T) {
+	mem := newRefactorSession(t, map[string][]byte{"sub/i.png": []byte("png")})
+	ws := mem.buildRefactorWorkspace("new.md", []byte("# N\n"), isMovePath)
+	_, ok := ws.Stat("sub/i.png")
+	assert.True(t, ok, "a MemWorkspace file")
+	_, ok = ws.Stat("sub")
+	assert.False(t, ok, "a directory is no file")
+	_, ok = ws.Stat("missing.md")
+	assert.False(t, ok)
+	info, ok := ws.Stat("./new.md")
+	assert.True(t, ok, "the overlay URI")
+	assert.Nil(t, info)
+
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "sub"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "sub", "i.png"), []byte("png"), 0o644))
+	osSession, err := NewSession(SessionOptions{Workspace: OSWorkspace{Root: dir}, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(osSession.Dispose)
+	ows := osSession.buildRefactorWorkspace("", nil, isMovePath)
+	info, ok = ows.Stat("sub/i.png")
+	require.True(t, ok, "an OSWorkspace file")
+	assert.Equal(t, "i.png", info.Name())
+	_, ok = ows.Stat("sub")
+	assert.False(t, ok, "a directory is no file")
+	_, ok = ows.Stat("missing.md")
+	assert.False(t, ok)
+
+	other, err := NewSession(SessionOptions{
+		Workspace: readOnlyWorkspace{NewMemWorkspace(map[string][]byte{"a.md": []byte("# A\n")})},
+		Config:    ConfigYAML(""),
+	})
+	require.NoError(t, err)
+	t.Cleanup(other.Dispose)
+	_, ok = other.buildRefactorWorkspace("", nil, isMovePath).Stat("a.md")
+	assert.True(t, ok, "another workspace is read")
+	_, ok = other.buildRefactorWorkspace("", nil, isMovePath).Stat("missing.md")
+	assert.False(t, ok)
+}
+
+// readOnlyWorkspace hides the concrete type of the workspace it wraps,
+// as a host's own Workspace does.
+type readOnlyWorkspace struct{ Workspace }
 
 func TestSession_BuildRefactorWorkspace(t *testing.T) {
 	s := newRefactorSession(t, map[string][]byte{

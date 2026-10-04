@@ -1,6 +1,7 @@
 package refactor
 
 import (
+	"io/fs"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -38,6 +39,8 @@ type resolveStub struct{}
 func (resolveStub) Resolve(string) (string, []byte, bool) { return "", nil, false }
 
 func (resolveStub) WikilinkIndex() *linkgraph.WikilinkIndex { return nil }
+
+func (resolveStub) Stat(string) (fs.FileInfo, bool) { return nil, false }
 
 // emptyIndexEdges lists every IndexEdges that has no index to forward
 // to; each must answer every query with nothing.

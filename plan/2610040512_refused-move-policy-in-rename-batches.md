@@ -118,7 +118,8 @@ the link stops resolving, where MDS027 flags it.
    `countMisread` now counts it. A link to the file itself
    is not counted, and one to a path a refused move may
    overwrite is. A file the workspace does not list, such
-   as an image, is read to see whether it is there.
+   as an image, is stat'ed, not read, to see whether it is
+   there (`MoveWorkspace.Stat`).
    `countRefusedHolders` reads each such member from the
    text the batch already holds, so a refused lone move
    lists no file. A link in such a member to a planned
@@ -159,10 +160,10 @@ the link stops resolving, where MDS027 flags it.
 
 ## Follow-ups
 
-Review round 2 left two changes that are too big for this PR.
-Each one should get its own plan. `PLAN.md` is already at the
-300-line limit that MDS022 sets, so no new plan file fits yet
-(see the follow-up in plan 2610030438).
+Review round 2 recorded two follow-ups here, since `PLAN.md`
+was at the 300-line limit MDS022 sets and no new plan file fit
+(see the follow-up in plan 2610030438). Round 3 did both in
+this PR.
 
 1. [x] One set for paths a member may replace. Done in
    review round 3: `moveBatch.shadowed` and
@@ -171,12 +172,13 @@ Each one should get its own plan. `PLAN.md` is already at the
    `moveBatch.taken` set. `moveBatch.replaced` reads how the
    file's link to itself counts: a path outside the batch is
    replaced, and a member is moved away.
-2. An existence check that does not read the file.
-   `mayOccupy` in [`move.go`](../internal/refactor/move.go)
-   reads a whole file to learn that it exists. This PR reads
-   each path once per plan. An `Exists` method on
-   `MoveWorkspace` that only stats the path would drop the
-   reads. It would also let `mayHoldDir` and `mayOccupy` use
-   the same source. Without a readable root, `mayHoldDir`
-   falls back to the Markdown list and misses an unlisted
-   image.
+2. [x] An existence check that does not read the file. Done
+   in review round 3: `MoveWorkspace.Stat` stats a path
+   without reading it, and `mayOccupy` and the destination
+   check in `validateBatch` use it. A file too large to read
+   now counts as there, so a move onto it is refused. The
+   LSP now sees an image, which its `Resolve` never reads
+   (`TestMoveAll_UnreadableFileExists`,
+   `TestServerMoveWorkspace_Stat`). `mayHoldDir` still reads
+   the wikilink index. Without a readable root, `Stat` finds
+   no disk file either, so that fallback is a gap they share.
