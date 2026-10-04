@@ -80,15 +80,30 @@ done, so only the cancellation is missing.
 6. Run hooks through `runRecipe` (keeping mdsmith's
    environment), so a done context starts no hook and an
    interrupted hook reports as interrupted. Keep hooks in
-   mdsmith's own process group (`sharedGroup`) and kill
+   mdsmith's own process group (`sharedGroup`) and signal
    only the hook process on cancel: a dev server a
    before-hook backgrounds must outlive the hook (a Windows
    Job Object would kill it on close), get the terminal's
-   Ctrl-C, and a hook may prompt on `/dev/tty`.
+   Ctrl-C, and a hook may prompt on `/dev/tty`. On Unix
+   the hook gets the recipe kill aimed at its leader
+   (`killLeaderUntil`): `SIGTERM`, up to the grace period,
+   then `SIGKILL`, so a `trap cleanup TERM` still runs; a
+   second interrupt skips the grace.
 7. Print the last stdout and stderr lines in the
    `INTERRUPTED` report, as the timeout report does.
 8. Document the behavior next to the timeout paragraph in
    [build.md](../docs/guides/directives/build.md).
+9. Skip, with no output, every after-hook an interrupt
+   reached before it started (`RunAfterHooks` stops at a
+   cancelled context); a hook it cut short still reports
+   `FAIL`.
+10. Once a second interrupt closes the force channel, end
+    the leader reap, the wait after the leader-only kill,
+    and the output drain `forcedReapWait` (100 ms) later
+    instead of after `reapWait` (5 s).
+11. Stop the `--build-skip-hooks-when-fresh` scan
+    (`allFresh`) before the next target's inputs are
+    hashed once the build context is cancelled.
 
 ## Acceptance Criteria
 
@@ -100,6 +115,16 @@ done, so only the cancellation is missing.
       children it backgrounds stay in mdsmith's process
       group, so the terminal's Ctrl-C reaches them
       (Unix test).
+- [x] A cancelled hook that traps `TERM` runs its cleanup;
+      one that ignores `TERM` is killed after the grace,
+      or at once on a second interrupt (Unix tests).
+- [x] After an interrupt, no after-hook that never started
+      runs or prints a line.
+- [x] After a second interrupt, `runRecipe` returns in
+      under 1 s even when a `setsid` daemon holds the
+      recipe's stdout pipe (Unix test).
+- [x] `allFresh` returns false at once on a cancelled
+      context instead of hashing every target.
 - [x] A second Ctrl-C ends a run whose recipe ignores
       SIGTERM before the 5 s grace period runs out.
 - [x] A broken stderr after the interrupt does not end
@@ -109,3 +134,17 @@ done, so only the cancellation is missing.
       `GOOS=js GOARCH=wasm go build ./...` still pass.
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues
+
+## Deviations
+
+- Hooks first got an immediate `SIGKILL` on cancel, which
+  cut short a `TERM` or `INT` trap that ran its cleanup
+  before this plan. The final review restored the cleanup
+  with the grace kill in task 6. A Ctrl-C also delivers
+  `SIGINT` to the hook from the terminal, so a hook that
+  traps only `INT` can still be cut short by the
+  `SIGTERM` that follows; trap `TERM` too.
+- `reportInterrupt` lost its "before start" branch: with
+  the real builder a refusal before start is always
+  `outcomeNotStarted`, which `reportNotStarted` lists, so
+  only a mock builder reached it.
