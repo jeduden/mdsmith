@@ -1,7 +1,7 @@
 ---
 id: 2610032327
 title: Reuse the cached wikilink index for LSP moves and close its root
-status: "🔲"
+status: "🔳"
 summary: >-
   Each `workspace/willRenameFiles` batch that has a `[[stem]]`
   edge walks the whole workspace root on disk, on the LSP

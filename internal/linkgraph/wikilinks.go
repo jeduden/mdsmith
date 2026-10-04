@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"io/fs"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -201,6 +202,21 @@ func WikilinkIndexFor(cache *runcache.Cache, rootKey string, root fs.FS) *Wikili
 // dir builds no index (nil).
 func WikilinkIndexAtDir(dir string) *WikilinkIndex {
 	return WikilinkIndexFor(nil, "", lint.OpenRootFS(dir))
+}
+
+// CachedWikilinkIndexAtDir returns the index memoized on cache for dir,
+// walking dir on disk (as WikilinkIndexAtDir does) only on a miss. The
+// key is dir's absolute form, the key MDS027 stores its index under, so
+// a caller holding a session's run cache reads the index a lint already
+// built instead of walking the tree again.
+//
+// filepath.Abs only errors when os.Getwd fails, an OS-level failure
+// MDS027's wikilinkCacheKey swallows the same way.
+func CachedWikilinkIndexAtDir(cache *runcache.Cache, dir string) *WikilinkIndex {
+	key, _ := filepath.Abs(dir) //nolint:errcheck
+	v := cache.Wikilinks(key, func() any { return WikilinkIndexAtDir(dir) })
+	idx, _ := v.(*WikilinkIndex)
+	return idx
 }
 
 // WikilinkIndex is a pre-built directory of every file under one
