@@ -30,6 +30,12 @@ type Server struct {
 	logger         *vlog.Logger
 	docs           *documentStore
 
+	// reloadMu serializes reloadConfig: the dispatcher and the
+	// fetchClientSettings goroutine both reload, and an older load
+	// must not store its config or publish its config diagnostic
+	// after a newer one.
+	reloadMu sync.Mutex
+
 	configMu   sync.RWMutex
 	config     *config.Config
 	configPath string
@@ -40,6 +46,10 @@ type Server struct {
 	// a later clean reload can clear the squiggle.
 	configDiagMu  sync.Mutex
 	configDiagURI string
+
+	// afterResolveConfig, when set by a test, runs in reloadConfig
+	// between loading the config and publishing its outcome.
+	afterResolveConfig func()
 
 	// hintsMu guards loggedHints, the discovery hints the last reload
 	// logged (joined by newlines), so a reload that finds the same

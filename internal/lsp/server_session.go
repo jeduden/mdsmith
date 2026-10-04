@@ -122,11 +122,17 @@ func (s *Server) snapshotConfig() (*config.Config, string, string) {
 // misconfiguration instead of silently seeing stale or default
 // diagnostics.
 func (s *Server) reloadConfig() {
+	s.reloadMu.Lock()
+	defer s.reloadMu.Unlock()
+
 	s.settingsMu.RLock()
 	override := s.settings.ConfigPath
 	s.settingsMu.RUnlock()
 
 	cfg, cfgPath, loadErr, cfgDiag := s.resolveConfig(override)
+	if s.afterResolveConfig != nil {
+		s.afterResolveConfig()
+	}
 
 	s.configMu.Lock()
 	pathChanged := s.configPath != cfgPath

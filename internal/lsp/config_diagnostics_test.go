@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -423,4 +425,60 @@ func TestIsWatchedConfigChangeThroughSymlink(t *testing.T) {
 
 	s.settings.ConfigPath = filepath.Join(link, "sub", "pyproject.toml")
 	assert.True(t, s.isWatchedConfigChange(filepath.Join(real, "sub", "pyproject.toml")), "override by its real path")
+}
+
+// Two reloads can run at once (the dispatcher on a watched-file event,
+// fetchClientSettings on its own goroutine). One that loaded the
+// broken file must not publish after one that loaded the fixed file,
+// or the stale squiggle outlives the fix.
+func TestReloadConfigConcurrentReloadsPublishInOrder(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, writeFile(cfgPath, "kinds:\n  plan:\n    extends: ghost\n"))
+
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+
+	// The first reload parks after loading the broken file.
+	parked, release := make(chan struct{}), make(chan struct{})
+	// An atomic flag, not sync.Once: Once would make the second
+	// reload wait for the first and hide the race.
+	var first atomic.Bool
+	s.afterResolveConfig = func() {
+		if first.CompareAndSwap(false, true) {
+			close(parked)
+			<-release
+		}
+	}
+	staleDone := make(chan struct{})
+	go func() {
+		defer close(staleDone)
+		s.reloadConfig()
+	}()
+	<-parked
+
+	// The second reload loads the fixed file. It either finishes
+	// before the first resumes (no serialization: the bug) or waits
+	// for it; release the first once the second is done or blocked.
+	require.NoError(t, writeFile(cfgPath, "rules: {}\n"))
+	freshDone := make(chan struct{})
+	go func() {
+		defer close(freshDone)
+		s.reloadConfig()
+	}()
+	select {
+	case <-freshDone:
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	<-staleDone
+	<-freshDone
+
+	pubs := publishedFor(t, buf.String(), pathToURI(cfgPath))
+	require.NotEmpty(t, pubs)
+	assert.Empty(t, pubs[len(pubs)-1].Diagnostics, "the fixed file's reload publishes last")
 }
