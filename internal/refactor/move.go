@@ -63,13 +63,13 @@ func (e SourceNotFoundError) Error() string {
 //     a move that keeps the basename leaves wikilinks alone because
 //     the key still resolves (a documented asymmetry with path links).
 //     Only a src outside `.git` and `node_modules` whose key a link
-//     reaches today is a wikilink target, and a
-//     dst no wikilink can name — no extension, an empty stem, a `#`,
-//     `|`, `[`, `]`, backtick, CR, or newline in the name, a name that
-//     ends with a space, or a path under `.git` or `node_modules`,
-//     which the resolver skips — gets no rewrite. A name that starts
-//     with a space or reads as a drive path (`C:x.md`) is written
-//     behind `./`;
+//     reaches today is a wikilink target, and a dst no wikilink can
+//     name — no extension, an empty stem, a `#`, `|`, `[`, `]`,
+//     backtick, CR, or newline in the name, a name that ends with a
+//     space, or a path under `.git` or `node_modules`, which the
+//     resolver skips — gets no rewrite. A name that starts with a
+//     space or reads as a drive path (`C:x.md`) is written behind
+//     `./`;
 //   - outbound destinations inside src, when it has a Markdown
 //     extension or the workspace lists it (an `.mdx` file that
 //     `files:` matches) — every `[t](path)`, `![a](path)` and
@@ -335,7 +335,7 @@ type destRef struct {
 
 // destResolver reads destinations for a move of src. It also holds the
 // workspace file list, read once per move and normalized, which the
-// referrer scan, the listed checks, and the wikilink same-stem guard of
+// referrer scan, the listed checks, and the wikilink same-key guard of
 // a workspace with no wikilink index share.
 type destResolver struct {
 	ws    MoveWorkspace
@@ -972,12 +972,12 @@ type wikilinkTarget struct {
 	wikilinkKey
 }
 
-// newWikilinkTarget returns the wikilinkTarget for a move of a file keyed by
-// old to dst. ok is false when a link keyed by old still reaches dst
-// (dst has the same key: the same stem, or the same exact name), when
-// no token reaches dst (see linkgraph.WikilinkReaches), or when dst
-// sits under `.git` or `node_modules`, which the resolver never
-// indexes.
+// newWikilinkTarget returns the wikilinkTarget for a move of a file
+// keyed by old to dst. ok is false when a link keyed by old still
+// reaches dst (dst has the same key: the same stem, or the same exact
+// name), when no token reaches dst (see linkgraph.WikilinkReaches), or
+// when dst sits under `.git` or `node_modules`, which the resolver
+// never indexes.
 func newWikilinkTarget(old wikilinkKey, dst string) (wikilinkTarget, bool) {
 	k := fileWikilinkKey(dst)
 	if k == old {
@@ -1184,12 +1184,14 @@ func (r *destResolver) blocked(post *linkgraph.WikilinkIndex, t wikilinkTarget, 
 	return false
 }
 
-// knowsHolders reports whether wikilinkIndex knows every file keyed by
-// k. A stem key is always known: every Markdown file is listed. An
-// exact-name key is not when the index was built from ws.Files(): the
-// CLI and LSP list Markdown files only, so a non-Markdown file that
-// wins the name would go unseen and a rewrite could point a link at
-// the wrong file. Such a link is left as written.
+// knowsHolders reports whether wikilinkIndex is trusted to hold every
+// file keyed by k. A stem key is trusted: when the index was built
+// from ws.Files(), the listed Markdown files are the best set known
+// without a root walk, as a lone Markdown move has always read them.
+// An exact-name key is not trusted then: the CLI and LSP list Markdown
+// files only, so a non-Markdown file that wins the name would go
+// unseen and a rewrite could point a link at the wrong file. Such a
+// link is left as written.
 func (r *destResolver) knowsHolders(k wikilinkKey) bool {
 	return k.isStem || !r.wlListed
 }

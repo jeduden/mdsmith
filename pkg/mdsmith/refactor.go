@@ -152,9 +152,10 @@ type sessionRefactorWorkspace struct {
 }
 
 // WikilinkIndex implements refactor.MoveWorkspace: the index wikilink
-// resolution reads (`[[stem]]` and typed `[[name.ext]]` alike), over every file in the session workspace's tree
-// except `.git` and `node_modules`. It is built from the path list the
-// edge-index walk collects, so it walks nothing itself.
+// resolution reads (`[[stem]]` and typed `[[name.ext]]` alike), over
+// every file in the session workspace's tree except `.git` and
+// `node_modules`. It is built from the path list the edge-index walk
+// collects, so it walks nothing itself.
 func (w *sessionRefactorWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return linkgraph.NewWikilinkIndexFromPaths(w.paths())
 }

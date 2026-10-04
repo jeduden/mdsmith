@@ -6,8 +6,8 @@ import "github.com/jeduden/mdsmith/internal/index"
 // splitting each source file once while consecutive edges share it.
 // The index returns each file's edges together (the IncomingWikilink*
 // lookups sort by SourceFile; IncomingEdges groups by file without
-// sorting),
-// so a file with many links is read once rather than once per link.
+// sorting), so a file with many links is read once rather than once
+// per link.
 // With memo set, every file read is kept there too, so passes that
 // share one reader (the wikilink passes of a MoveAll batch) read a
 // file once between them.

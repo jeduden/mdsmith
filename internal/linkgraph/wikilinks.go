@@ -562,20 +562,22 @@ func ResolveWikiLink(root fs.FS, _ string, target string) (string, bool) {
 // FileNameKey that NamePaths files every file under) for a typed one.
 // ok is false for a target the resolver refuses (traversal, absolute,
 // drive or UNC paths) and for a stem-mode target with an empty stem
-// (`[[.md]]`), which neither key space files a link under.
+// (`[[.md]]`). The resolver does reach a file named `.md` by that
+// empty stem, but no rewrite can spell one (see WikilinkReaches), so
+// the move planner keys no link by it.
 func WikilinkKey(target string) (key string, stem, ok bool) {
 	target, ok = normalizeTarget(target)
 	if !ok {
 		return "", false, false
 	}
-	name, base, stemMode := wikilinkSearchKey(target)
+	wantName, wantStem, stemMode := wikilinkSearchKey(target)
 	if !stemMode {
-		return FileNameKey(name), false, true
+		return FileNameKey(wantName), false, true
 	}
-	if base == "" {
+	if wantStem == "" {
 		return "", false, false
 	}
-	return FileNameKey(base), true, true
+	return FileNameKey(wantStem), true, true
 }
 
 // WikilinkKeyAt reads the wikilink whose `[[` starts at bracketStart
