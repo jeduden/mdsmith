@@ -1,7 +1,7 @@
 ---
 id: 2610021917
 title: Replace the per-platform kill maps with a per-recipe group killer
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   `internal/build` passes each recipe's kill state from
