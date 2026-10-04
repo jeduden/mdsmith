@@ -27,9 +27,10 @@ and `[[guide.md]]`, but not `[[img.png]]`. The resolver
 reads that link by exact file name.
 [`appendWikilinkStemEdits`](../internal/refactor/move.go)
 returns early for a source with no stem key. So a lone move
-of `img.png` to `pics/img.png` leaves `[[img.png]]` as
-written. That link still resolves only while no other
-`img.png` exists.
+of `img.png` to `pics/photo.png` leaves `[[img.png]]` as
+written, and the link breaks. A move that keeps the name,
+such as to `pics/img.png`, needs no rewrite: the resolver
+reads the base name alone.
 
 Code review of PR #907 found the batch form of this gap.
 `img.png` moves onto an existing `img2.png`, which is
