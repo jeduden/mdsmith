@@ -1,7 +1,7 @@
 ---
 id: 2609032052
 title: "Resolve config from `pyproject.toml` under `[tool.mdsmith]`"
-status: "🔳"
+status: "✅"
 model: opus
 summary: >-
   Discover and load mdsmith config from a `pyproject.toml`
