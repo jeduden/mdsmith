@@ -125,6 +125,13 @@ then reports it.
     destination.
 16. [x] Remove `dropCrossMoveEdits` and `BatchPlan.Own` and
     `StemEdits`, which only fed it. No input drives it.
+17. [x] Plan one edit per `[[stem]]` link when the wikilink
+    index lacks two same-stem sources, as a walk that skips a
+    symlinked folder leaves them out. Only the source that
+    sorts first among them wins the stem.
+18. [x] Refuse two pairs whose destinations differ in letter
+    case alone, such as `docs/c.md` and `Docs/C.md`. A
+    case-insensitive file system stores both as one file.
 
 ## Acceptance Criteria
 

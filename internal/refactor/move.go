@@ -1034,19 +1034,16 @@ func (r *destResolver) siblingTarget(oldStem, sib string) (stemTarget, bool) {
 
 // countBlocked counts, in the batch, a `[[stem]]` rewrite to t that
 // is not planned because another batch member's destination wins
-// t.key in post, or spells t.dst in another letter case alone (on a
-// case-insensitive file system the two land on one file). A file
-// outside the batch that wins it is not counted: a lone move leaves
-// such a link alone too.
+// t.key in post. A file outside the batch that wins it, or that
+// spells t.dst in another letter case alone, is not counted: a lone
+// move leaves such a link alone too. No member destination spells
+// t.dst in another case: validateBatch refuses both such pairs, and t
+// is always a planned member's destination.
 func (r *destResolver) countBlocked(post *linkgraph.WikilinkIndex, t stemTarget) {
 	// t does not reach its file in post, so some other file holds
 	// t.key there: it sorts first, or it is t.dst in another case.
-	first := t.holders(post)[0]
-	for _, m := range r.batch.members {
-		if m.dst != t.dst && (m.dst == first || strings.EqualFold(m.dst, t.dst)) {
-			r.batch.withheld++
-			return
-		}
+	if first := t.holders(post)[0]; first != t.dst && r.batch.dsts[first] {
+		r.batch.withheld++
 	}
 }
 

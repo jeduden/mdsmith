@@ -3,6 +3,8 @@ package refactor
 import (
 	"errors"
 	"path"
+	"strings"
+	"unicode"
 
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
@@ -16,8 +18,10 @@ import (
 var ErrDuplicateSource = errors.New("source is moved by an earlier pair of the batch")
 
 // ErrDuplicateDestination is returned for every batch pair whose
-// destination another pair of the same batch also names: the file
-// that lands there last is unknown, so none of them is planned.
+// destination another pair of the same batch also names, in any
+// letter case (a case-insensitive file system stores both as one
+// file): the file that lands there last is unknown, so none of them
+// is planned.
 var ErrDuplicateDestination = errors.New("destination is named by another pair of the batch")
 
 // MovePair is one relocation in a MoveAll batch: the workspace file
@@ -152,7 +156,7 @@ func validateBatch(ws Workspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
 		}
 		_, vacated := b.members[m.Dst]
 		switch {
-		case landing[m.Dst] > 1:
+		case landing[foldPath(m.Dst)] > 1:
 			m.Err = ErrDuplicateDestination
 		case !vacated && resolves(ws, m.Dst):
 			m.Err = DestinationExistsError{Dst: m.Dst}
@@ -169,8 +173,8 @@ func validateBatch(ws Workspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
 }
 
 // admit normalizes pr and records its source as a batch member when it
-// is readable, counting the member's destination in landing. The
-// returned move carries the checks Move runs first, in Move's order: a
+// is readable, recording the member's destination in b.dsts and
+// counting it in landing, keyed by foldPath. The returned move carries the checks Move runs first, in Move's order: a
 // traversal path, an equal source and destination, then a missing
 // source; a source an earlier pair moves fails as well. A pair that
 // passes still awaits the destination checks in validateBatch.
@@ -196,7 +200,8 @@ func (b *moveBatch) admit(ws Workspace, pr MovePair, landing map[string]int) Bat
 		member := batchMember{}
 		if dstOK {
 			member.dst = m.Dst
-			landing[m.Dst]++
+			b.dsts[m.Dst] = true
+			landing[foldPath(m.Dst)]++
 		}
 		b.members[m.Src] = member
 	}
@@ -222,6 +227,7 @@ func resolves(ws Workspace, p string) bool {
 type moveBatch struct {
 	members  map[string]batchMember
 	sources  map[string][]byte // each member's text, as admit read it
+	dsts     map[string]bool   // every member's dst, as admit records it
 	shadowed map[string]bool   // see countShadowed
 	withheld int
 	post     *linkgraph.WikilinkIndex // postIndex, built on first use
@@ -269,7 +275,8 @@ func (b *moveBatch) keyStems() {
 // newMoveBatch returns an empty batch, ready for admit.
 func newMoveBatch() *moveBatch {
 	return &moveBatch{
-		members: map[string]batchMember{}, sources: map[string][]byte{}, shadowed: map[string]bool{},
+		members: map[string]batchMember{}, sources: map[string][]byte{}, dsts: map[string]bool{},
+		shadowed: map[string]bool{},
 	}
 }
 
@@ -310,4 +317,18 @@ func (r *destResolver) countStale(holder, refPath, target string) {
 	if holder == "" || target == "" || linkgraph.ResolveRelTarget(holder, refPath) != target {
 		r.batch.withheld++
 	}
+}
+
+// foldPath returns p with every rune replaced by the smallest rune of
+// its simple case-folding orbit, so two paths get one key exactly when
+// strings.EqualFold reads them as equal: the spellings a
+// case-insensitive file system may store as one file.
+func foldPath(p string) string {
+	return strings.Map(func(r rune) rune {
+		lo := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			lo = min(lo, f)
+		}
+		return lo
+	}, p)
 }

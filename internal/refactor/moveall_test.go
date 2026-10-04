@@ -2,6 +2,7 @@ package refactor
 
 import (
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -286,18 +287,28 @@ func TestMoveAll_SharedNewStem(t *testing.T) {
 	assert.Equal(t, 1, bp.Withheld)
 }
 
-// TestMoveAll_CaseVariantDestinationsCounted covers two moves landing
+// TestMoveAll_CaseVariantDestinationsRefused covers two moves landing
 // on destinations that differ in letter case alone: on a
-// case-insensitive file system they are one file, so neither stem
-// rewrite is planned, and both links are counted.
-func TestMoveAll_CaseVariantDestinationsCounted(t *testing.T) {
-	bp := moveAll(t, map[string]string{
+// case-insensitive file system they are one file, so neither move is
+// planned, as for two pairs naming one destination.
+func TestMoveAll_CaseVariantDestinationsRefused(t *testing.T) {
+	bp := MoveAll(newMemWorkspace(map[string]string{
 		"x/a.md": "# A\n",
 		"y/b.md": "# B\n",
-		"n.md":   "# N\n\n[[a]] [[b]]\n",
-	}, MovePair{"x/a.md", "docs/c.md"}, MovePair{"y/b.md", "Docs/C.md"})
-	assert.NotContains(t, bp.Edits, "n.md")
-	assert.Equal(t, 2, bp.Withheld)
+		"n.md":   "# N\n\n[[a]] [[b]] [a](x/a.md)\n",
+	}), []MovePair{{"x/a.md", "docs/c.md"}, {"y/b.md", "Docs/C.md"}})
+	assert.ErrorIs(t, bp.Moves[0].Err, ErrDuplicateDestination)
+	assert.ErrorIs(t, bp.Moves[1].Err, ErrDuplicateDestination)
+	assert.Empty(t, bp.Edits)
+}
+
+func TestFoldPath(t *testing.T) {
+	assert.Equal(t, foldPath("docs/c.md"), foldPath("Docs/C.MD"))
+	assert.Equal(t, foldPath("k.md"), foldPath("\u212a.md"), "the Kelvin sign folds to k")
+	assert.Equal(t, foldPath("\u03c3.md"), foldPath("\u03c2.md"), "final sigma folds to sigma")
+	assert.NotEqual(t, foldPath("a.md"), foldPath("b.md"))
+	assert.True(t, strings.EqualFold("\u03a3.md", "\u03c2.md"))
+	assert.Equal(t, foldPath("\u03a3.md"), foldPath("\u03c2.md"), "as strings.EqualFold reads them")
 }
 
 // partialIndexWorkspace is a memWorkspace whose wikilink index holds
@@ -660,10 +671,11 @@ func TestMoveBatch_Admit(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{"a.md": "# A\n"})
 	b := newMoveBatch()
 	landing := map[string]int{}
-	m := b.admit(ws, MovePair{"./a.md", "x/a.md"}, landing)
-	assert.Equal(t, BatchMove{Src: "a.md", Dst: "x/a.md", Key: "a.md"}, m)
-	assert.Equal(t, batchMember{dst: "x/a.md"}, b.members["a.md"], "planned only once validated")
-	assert.Equal(t, 1, landing["x/a.md"])
+	m := b.admit(ws, MovePair{"./a.md", "x/A.md"}, landing)
+	assert.Equal(t, BatchMove{Src: "a.md", Dst: "x/A.md", Key: "a.md"}, m)
+	assert.Equal(t, batchMember{dst: "x/A.md"}, b.members["a.md"], "planned only once validated")
+	assert.Equal(t, 1, landing[foldPath("X/a.MD")], "counted under its case-folded key")
+	assert.Equal(t, map[string]bool{"x/A.md": true}, b.dsts)
 	assert.Equal(t, []byte("# A\n"), b.sources["a.md"], "the source is read once, here")
 	assert.ErrorIs(t, b.admit(ws, MovePair{"a.md", "y.md"}, landing).Err, ErrDuplicateSource)
 }
