@@ -3,7 +3,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -21,8 +20,8 @@ var pyprojectTable = []string{"tool", "mdsmith"}
 
 // loadPyproject reads the `[tool.mdsmith]` table of a pyproject.toml
 // (or any TOML file) and loads it as config. The table has the same
-// shape as `.mdsmith.yml`: it is converted to YAML and run through the
-// shared loadFromBytes pipeline, so the custom YAML decoders, sidecar
+// shape as `.mdsmith.yml`: it is converted to a YAML node tree and run
+// through the shared loadFromNode pipeline, so the custom YAML decoders, sidecar
 // discovery (anchored next to path), and validation all apply
 // unchanged.
 func loadPyproject(path string) (*Config, error) {
@@ -38,14 +37,10 @@ func loadPyproject(path string) (*Config, error) {
 	if err != nil {
 		return nil, positionError(err, path, nil)
 	}
-	yamlData, err := tomlTableToYAML(table)
+	cfg, err := loadFromNode(tomlTableToDoc(table), path, true)
 	if err != nil {
-		return nil, positionError(fmt.Errorf("converting [tool.mdsmith] in %s: %w", path, err), path, nil)
-	}
-	cfg, err := loadFromBytes(yamlData, path, true)
-	if err != nil {
-		// Positions found while decoding refer to the generated YAML,
-		// not the TOML source, so they are dropped here.
+		// The generated nodes carry no TOML positions yet, so the
+		// error is reported unpositioned on the pyproject file.
 		return nil, &LoadError{File: path, Message: err.Error(), Severity: lint.Error, Err: err}
 	}
 	return cfg, nil
@@ -63,41 +58,31 @@ func mdsmithTable(tree *toml.Tree, path string) (*toml.Tree, error) {
 	}
 }
 
-// tomlTableToYAML renders a TOML table as a YAML document with the
-// same structure.
-func tomlTableToYAML(table *toml.Tree) ([]byte, error) {
-	node, err := tomlToNode(table)
-	if err != nil {
-		return nil, err
-	}
-	return yaml.Marshal(&yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{node}})
+// tomlTableToDoc renders a TOML table as a YAML document node with the
+// same structure. The node goes straight to loadFromNode: no YAML text
+// is generated, so nothing larger than the capped TOML read is ever
+// materialised.
+func tomlTableToDoc(table *toml.Tree) *yaml.Node {
+	return &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{tomlToNode(table)}}
 }
 
 // tomlToNode converts one go-toml value to a yaml.Node.
-func tomlToNode(v any) (*yaml.Node, error) {
+func tomlToNode(v any) *yaml.Node {
 	switch t := v.(type) {
 	case *toml.Tree:
 		return tomlTreeToNode(t)
 	case []*toml.Tree:
 		seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 		for _, sub := range t {
-			n, err := tomlTreeToNode(sub)
-			if err != nil {
-				return nil, err
-			}
-			seq.Content = append(seq.Content, n)
+			seq.Content = append(seq.Content, tomlTreeToNode(sub))
 		}
-		return seq, nil
+		return seq
 	case []any:
 		seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 		for _, el := range t {
-			n, err := tomlToNode(el)
-			if err != nil {
-				return nil, err
-			}
-			seq.Content = append(seq.Content, n)
+			seq.Content = append(seq.Content, tomlToNode(el))
 		}
-		return seq, nil
+		return seq
 	}
 	return tomlScalarNode(v)
 }
@@ -106,18 +91,14 @@ func tomlToNode(v any) (*yaml.Node, error) {
 // sorted by name. Key order carries no meaning in mdsmith config —
 // every mapping decodes into a Go map — and go-toml v1 records no
 // source position inside inline tables to recover it from anyway.
-func tomlTreeToNode(t *toml.Tree) (*yaml.Node, error) {
+func tomlTreeToNode(t *toml.Tree) *yaml.Node {
 	keys := t.Keys()
 	sort.Strings(keys)
 	m := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 	for _, k := range keys {
-		val, err := tomlToNode(t.Get(k))
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", k, err)
-		}
-		m.Content = append(m.Content, strNode(k), val)
+		m.Content = append(m.Content, strNode(k), tomlToNode(t.Get(k)))
 	}
-	return m, nil
+	return m
 }
 
 // strNode is a double-quoted YAML string, so a value such as "true" or
@@ -128,33 +109,35 @@ func strNode(s string) *yaml.Node {
 
 // tomlScalarNode converts a TOML scalar to the YAML scalar that decodes
 // to the same Go value a `.mdsmith.yml` author would get.
-func tomlScalarNode(v any) (*yaml.Node, error) {
+func tomlScalarNode(v any) *yaml.Node {
 	scalar := func(tag, val string) *yaml.Node {
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: val}
 	}
 	switch t := v.(type) {
 	case string:
-		return strNode(t), nil
+		return strNode(t)
 	case bool:
-		return scalar("!!bool", strconv.FormatBool(t)), nil
+		return scalar("!!bool", strconv.FormatBool(t))
 	case int64:
-		return scalar("!!int", strconv.FormatInt(t, 10)), nil
+		return scalar("!!int", strconv.FormatInt(t, 10))
 	case uint64:
-		return scalar("!!int", strconv.FormatUint(t, 10)), nil
+		return scalar("!!int", strconv.FormatUint(t, 10))
 	case float64:
-		return scalar("!!float", yamlFloat(t)), nil
+		return scalar("!!float", yamlFloat(t))
 	case time.Time:
-		return scalar("!!timestamp", t.Format(time.RFC3339Nano)), nil
+		return scalar("!!timestamp", t.Format(time.RFC3339Nano))
 	case toml.LocalDate:
-		return scalar("!!timestamp", t.String()), nil
+		return scalar("!!timestamp", t.String())
 	case toml.LocalDateTime:
 		// yaml.v3 accepts a zone-less timestamp only with a space
 		// between date and time; it decodes as UTC.
-		return scalar("!!timestamp", t.Date.String()+" "+t.Time.String()), nil
+		return scalar("!!timestamp", t.Date.String()+" "+t.Time.String())
 	case toml.LocalTime:
-		return strNode(t.String()), nil
+		return strNode(t.String())
 	}
-	return nil, errors.New("unsupported TOML value type " + fmt.Sprintf("%T", v))
+	// go-toml yields only the types above; anything else (reachable
+	// only through a hand-built tree) keeps its string form.
+	return strNode(fmt.Sprint(v))
 }
 
 // yamlFloat renders f in YAML float syntax.

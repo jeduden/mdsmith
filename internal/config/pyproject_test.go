@@ -176,6 +176,8 @@ b = true
 i = -3
 f = 2.0
 g = 1.5e3
+h = 2.5
+big = 1e21
 inf = inf
 ninf = -inf
 nan = nan
@@ -186,15 +188,16 @@ arr = [[1, 2], ["a"]]
 tables = [{a = 1}, {a = 2}]
 `)
 	require.NoError(t, err)
-	out, err := tomlTableToYAML(tree)
-	require.NoError(t, err)
+	doc := tomlTableToDoc(tree)
 	var got map[string]any
-	require.NoError(t, yaml.Unmarshal(out, &got))
+	require.NoError(t, doc.Decode(&got))
 	assert.Equal(t, "true", got["s"])
 	assert.Equal(t, true, got["b"])
 	assert.Equal(t, -3, got["i"])
 	assert.Equal(t, 2.0, got["f"])
 	assert.Equal(t, 1500.0, got["g"])
+	assert.Equal(t, 2.5, got["h"])
+	assert.Equal(t, 1e21, got["big"])
 	assert.True(t, math.IsInf(got["inf"].(float64), 1))
 	assert.True(t, math.IsInf(got["ninf"].(float64), -1))
 	assert.True(t, math.IsNaN(got["nan"].(float64)))
@@ -204,13 +207,11 @@ tables = [{a = 1}, {a = 2}]
 	assert.Equal(t, []any{[]any{1, 2}, []any{"a"}}, got["arr"])
 	assert.Equal(t, []any{map[string]any{"a": 1}, map[string]any{"a": 2}}, got["tables"])
 
-	n, err := tomlScalarNode(uint64(7))
-	require.NoError(t, err)
+	n := tomlScalarNode(uint64(7))
 	assert.Equal(t, "7", n.Value)
 	// go-toml v1 cannot parse a bare local date in every position, so
 	// the LocalDate branch is driven directly.
-	n, err = tomlScalarNode(toml.LocalDate{Year: 1979, Month: 5, Day: 27})
-	require.NoError(t, err)
+	n = tomlScalarNode(toml.LocalDate{Year: 1979, Month: 5, Day: 27})
 	assert.Equal(t, "!!timestamp", n.Tag)
 	assert.Equal(t, "1979-05-27", n.Value)
 }
@@ -218,24 +219,24 @@ tables = [{a = 1}, {a = 2}]
 func TestTOMLConversionSortsKeys(t *testing.T) {
 	tree, err := toml.Load("zeta = 1\nalpha = 2\nmid = { z = 1, a = 2 }\n")
 	require.NoError(t, err)
-	out, err := tomlTableToYAML(tree)
+	out, err := yaml.Marshal(tomlTableToDoc(tree))
 	require.NoError(t, err)
 	assert.Equal(t, "\"alpha\": 2\n\"mid\":\n    \"a\": 2\n    \"z\": 1\n\"zeta\": 1\n", string(out))
 }
 
-func TestTOMLConversionRejectsUnsupportedValues(t *testing.T) {
-	_, err := tomlToNode([]any{complex(1, 2)})
-	assert.ErrorContains(t, err, "unsupported TOML value type complex128")
+func TestTOMLConversionStringifiesForeignValues(t *testing.T) {
+	// go-toml never yields these; a hand-built tree keeps their text.
+	n := tomlToNode([]any{complex(1, 2)})
+	require.Len(t, n.Content, 1)
+	assert.Equal(t, "!!str", n.Content[0].Tag)
+	assert.Equal(t, "(1+2i)", n.Content[0].Value)
 
 	tree, err := toml.Load("[a]\nx = 1\n")
 	require.NoError(t, err)
-	tree.SetPath([]string{"a", "bad"}, struct{}{})
-	_, err = tomlTableToYAML(tree)
-	assert.ErrorContains(t, err, "a: bad: unsupported TOML value type")
-
-	trees := []*toml.Tree{tree}
-	_, err = tomlToNode(trees)
-	assert.Error(t, err)
+	tree.SetPath([]string{"a", "y"}, struct{}{})
+	seq := tomlToNode([]*toml.Tree{tree})
+	assert.Equal(t, yaml.SequenceNode, seq.Kind)
+	require.Len(t, seq.Content, 1)
 }
 
 func TestLoadPyproject_OffsetDatetimeConverts(t *testing.T) {

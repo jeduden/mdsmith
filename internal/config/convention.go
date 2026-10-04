@@ -227,6 +227,13 @@ func validateConventionScalar(data []byte) error {
 	if err := yaml.Unmarshal(data, &node); err != nil {
 		return nil
 	}
+	return validateConventionNode(&node)
+}
+
+// validateConventionNode is the node form of validateConventionScalar:
+// it rejects a top-level `convention:` value that is not a string
+// scalar in an already-parsed document node.
+func validateConventionNode(node *yaml.Node) error {
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
 		return nil
 	}

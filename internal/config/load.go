@@ -77,21 +77,34 @@ func ParseBytes(data []byte) (*Config, error) {
 // conventions}/`; mergeKinds gates those disk reads so the in-memory
 // path stays filesystem-free.
 func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, error) {
-	// Catch non-string `convention:` values before UnmarshalSafe
-	// silently coerces them into the string field.
-	if err := validateConventionScalar(data); err != nil {
+	doc, err := yamlutil.UnmarshalNodeSafe(data)
+	if err != nil {
+		return nil, fmt.Errorf("parsing config file: %w", yamlErrorIssue(err))
+	}
+	return loadFromNode(&doc, sourcePath, mergeKinds)
+}
+
+// loadFromNode runs the config pipeline over an alias-free YAML
+// document node: the parsed `.mdsmith.yml`, or the node tree built
+// from a pyproject `[tool.mdsmith]` table. A zero node (empty input)
+// yields a mostly-default Config.
+func loadFromNode(doc *yaml.Node, sourcePath string, mergeKinds bool) (*Config, error) {
+	// Catch non-string `convention:` values before decoding silently
+	// coerces them into the string field.
+	if err := validateConventionNode(doc); err != nil {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
 
 	var cfg Config
-	if err := yamlutil.UnmarshalSafe(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing config file: %w", yamlErrorIssue(err))
+	if doc.Kind != 0 {
+		if err := yamlutil.DecodeNodeSafe(doc, &cfg); err != nil {
+			return nil, fmt.Errorf("parsing config file: %w", yamlErrorIssue(err))
+		}
 	}
 
-	// Detect top-level key presence with a single additional parse so
-	// "files" (omitted vs empty) and deprecated keys can be probed
-	// without re-parsing per key.
-	keys := topLevelKeySet(data)
+	// Detect top-level key presence so "files" (omitted vs empty) and
+	// deprecated keys can be probed without re-parsing per key.
+	keys := topLevelKeys(doc)
 	cfg.FilesExplicit = keys["files"]
 
 	if keys["no-follow-symlinks"] {
@@ -131,7 +144,7 @@ func loadFromBytes(data []byte, sourcePath string, mergeKinds bool) (*Config, er
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
 
-	if err := checkBuildConfig(data, &cfg); err != nil {
+	if err := checkBuildConfig(doc, &cfg); err != nil {
 		return nil, err
 	}
 
@@ -198,6 +211,12 @@ func topLevelKeySet(data []byte) map[string]bool {
 	if err != nil {
 		return nil
 	}
+	return topLevelKeys(&node)
+}
+
+// topLevelKeys returns the set of top-level mapping keys of a document
+// node, or nil when its root is not a mapping.
+func topLevelKeys(node *yaml.Node) map[string]bool {
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
 		return nil
 	}
@@ -221,8 +240,8 @@ func yamlHasKey(data []byte, key string) bool {
 // after the main YAML parse but before convention application. It is
 // extracted from loadFromBytes to keep that function under the funlen
 // limit.
-func checkBuildConfig(data []byte, cfg *Config) error {
-	if err := rejectRemovedBuildKeys(data); err != nil {
+func checkBuildConfig(doc *yaml.Node, cfg *Config) error {
+	if err := rejectRemovedBuildKeys(doc); err != nil {
 		return fmt.Errorf("parsing config file: %w", err)
 	}
 	if err := ValidateBuildConfig(cfg); err != nil {
@@ -237,8 +256,7 @@ func checkBuildConfig(data []byte, cfg *Config) error {
 // otherwise drop the key silently, leaving an author to wonder why their
 // setting has no effect. The scan walks the `build:` mapping node
 // directly because base-url is nested, not top-level.
-func rejectRemovedBuildKeys(data []byte) error {
-	node, _ := yamlutil.UnmarshalNodeSafe(data) // pre-validated by UnmarshalSafe earlier; error unreachable
+func rejectRemovedBuildKeys(node *yaml.Node) error {
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
 		return nil
 	}
