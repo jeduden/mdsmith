@@ -154,7 +154,12 @@ func (s *Server) reloadConfig() {
 	}
 
 	// A positioned load failure squiggles the config file; a clean
-	// load clears a squiggle a previous reload left there.
+	// load clears a squiggle a previous reload left there, and so does
+	// mdsmith.run: off, which publishes nothing (the log summary below
+	// still reports the failure).
+	if s.runMode() == runOff {
+		cfgDiag = nil
+	}
 	s.publishConfigDiagnostic(cfgDiag)
 
 	if loadErr != "" {

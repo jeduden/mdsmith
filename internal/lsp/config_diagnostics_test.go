@@ -107,6 +107,35 @@ func TestReloadConfigDiagnosticUsesOpenBuffer(t *testing.T) {
 	assert.Equal(t, len("    extends: ghost # unsaved"), r.End.Character)
 }
 
+// mdsmith.run: off publishes nothing, so a config failure shows no
+// squiggle, and switching off clears one an earlier reload left.
+func TestReloadConfigDiagnosticRespectsRunOff(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".mdsmith.yml")
+	require.NoError(t, writeFile(cfgPath, "kinds:\n  plan:\n    extends: ghost\n"))
+
+	var buf safeBuffer
+	s := New(Options{Reader: nil, Writer: &buf})
+	s.configMu.Lock()
+	s.rootDir = dir
+	s.configMu.Unlock()
+	s.reloadConfig()
+	uri := pathToURI(cfgPath)
+	pubs := publishedFor(t, buf.String(), uri)
+	require.Len(t, pubs, 1)
+	require.Len(t, pubs[0].Diagnostics, 1)
+
+	s.settingsMu.Lock()
+	s.settings.Run = runOff
+	s.settingsMu.Unlock()
+	s.reloadConfig()
+	pubs = publishedFor(t, buf.String(), uri)
+	require.Len(t, pubs, 2)
+	assert.Empty(t, pubs[1].Diagnostics, "switching off clears the config squiggle")
+	assert.Contains(t, buf.String(), `"window/logMessage"`, "the log summary is still sent")
+}
+
 func TestReloadConfigUnpositionedErrorPublishesNothing(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
