@@ -157,9 +157,16 @@ func TestFixSourcePropagatesPrepareError(t *testing.T) {
 // fsSpyRule is a fixable rule that records whether
 // `lint.File.FS` was non-nil during Check. The test below uses it
 // to prove that SourceOptions.SourceFS is propagated all the way
-// to the lint.File rules see, not just stored on the Fixer.
+// to the lint.File rules see, not just stored on the Fixer. sawFS is a
+// pointer so the clone Source checks reports into the test's flag.
 type fsSpyRule struct {
-	sawFS bool
+	sawFS *bool
+}
+
+// newFSSpyRule returns an fsSpyRule and the flag its clones set.
+func newFSSpyRule() (*fsSpyRule, *bool) {
+	saw := new(bool)
+	return &fsSpyRule{sawFS: saw}, saw
 }
 
 func (*fsSpyRule) ID() string       { return "MDS999" }
@@ -167,7 +174,7 @@ func (*fsSpyRule) Name() string     { return "fs-spy" }
 func (*fsSpyRule) Category() string { return "test" }
 func (r *fsSpyRule) Check(f *lint.File) []lint.Diagnostic {
 	if f.FS != nil {
-		r.sawFS = true
+		*r.sawFS = true
 	}
 	return nil
 }
@@ -181,7 +188,7 @@ func (*fsSpyRule) Fix(f *lint.File) []byte { return f.Source }
 // regression that dropped SourceFS on the floor would still pass.
 func TestFixSourceWiresSourceFSIntoLintFile(t *testing.T) {
 	t.Parallel()
-	spy := &fsSpyRule{}
+	spy, sawFS := newFSSpyRule()
 	cfg := config.Merge(config.Defaults(), nil)
 	cfg.Rules[spy.Name()] = config.RuleCfg{Enabled: true}
 
@@ -195,7 +202,7 @@ func TestFixSourceWiresSourceFSIntoLintFile(t *testing.T) {
 		StripFrontMatter: true,
 	}, []string{spy.Name()})
 	require.NoError(t, err)
-	assert.True(t, spy.sawFS,
+	assert.True(t, *sawFS,
 		"lint.File.FS must be non-nil when SourceOptions.SourceFS is set; "+
 			"otherwise FS-aware rules (include, catalog) silently short-circuit")
 }
@@ -207,7 +214,7 @@ func TestFixSourceWiresSourceFSIntoLintFile(t *testing.T) {
 // fallback path rather than the supplied one.
 func TestFixSourceFallsBackToDirFSWhenSourceFSNil(t *testing.T) {
 	t.Parallel()
-	spy := &fsSpyRule{}
+	spy, sawFS := newFSSpyRule()
 	cfg := config.Merge(config.Defaults(), nil)
 	cfg.Rules[spy.Name()] = config.RuleCfg{Enabled: true}
 
@@ -220,7 +227,7 @@ func TestFixSourceFallsBackToDirFSWhenSourceFSNil(t *testing.T) {
 		// SourceFS: nil — exercise the dirFS fallback.
 	}, []string{spy.Name()})
 	require.NoError(t, err)
-	assert.True(t, spy.sawFS, "dirFS fallback must still produce a non-nil FS")
+	assert.True(t, *sawFS, "dirFS fallback must still produce a non-nil FS")
 }
 
 // TestFixSourceNilConfigUsesDefaults pins the nil-Config fallback so
@@ -238,4 +245,39 @@ func TestFixSourceNilConfigUsesDefaults(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "# Hi\n\ndirty\n", string(out))
+}
+
+// lazyStateRule is a fixable rule that, like catalog and toc, sets
+// state on its own instance the first time it checks a File.
+type lazyStateRule struct {
+	initialized bool
+}
+
+func (*lazyStateRule) ID() string       { return "MDS998" }
+func (*lazyStateRule) Name() string     { return "lazy-state" }
+func (*lazyStateRule) Category() string { return "test" }
+func (r *lazyStateRule) Check(*lint.File) []lint.Diagnostic {
+	r.initialized = true
+	return nil
+}
+func (*lazyStateRule) Fix(f *lint.File) []byte { return f.Source }
+
+// TestFixSourceLeavesRuleTemplatesUntouched locks that Source checks
+// clones of the caller's rule instances, as engine.Runner does. A
+// Session hands the same instances to concurrent lints, which clone
+// them; a Check writing lazy state on the shared instance races those
+// clones and leaks the state into every later copy.
+func TestFixSourceLeavesRuleTemplatesUntouched(t *testing.T) {
+	t.Parallel()
+	tpl := &lazyStateRule{}
+	cfg := config.Merge(config.Defaults(), nil)
+	cfg.Rules[tpl.Name()] = config.RuleCfg{Enabled: true}
+	opts := fixpkg.SourceOptions{
+		Config: cfg, Rules: []rule.Rule{tpl}, Path: "buf.md", Source: []byte("# Hi\n"),
+	}
+	_, err := fixpkg.Source(opts)
+	require.NoError(t, err)
+	_, err = fixpkg.SourceWithRules(opts, []string{tpl.Name()})
+	require.NoError(t, err)
+	assert.False(t, tpl.initialized, "the caller's rule instance is never checked")
 }

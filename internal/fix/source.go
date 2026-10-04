@@ -87,7 +87,7 @@ func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 	}
 	f := &Fixer{
 		Config:           cfg,
-		Rules:            opts.Rules,
+		Rules:            cloneRules(opts.Rules),
 		StripFrontMatter: opts.StripFrontMatter,
 		RootDir:          opts.RootDir,
 		MaxInputBytes:    maxBytes,
@@ -127,4 +127,17 @@ func fixSourceImpl(opts SourceOptions, only []string) ([]byte, error) {
 	fixed := f.applyFixPasses(opts.Path, lf.Source, fixable, lf, dirFS, &sink)
 	_ = sink
 	return lf.FullSource(fixed), nil
+}
+
+// cloneRules returns a private copy of each rule instance, as
+// engine.Runner takes per worker. A caller such as a Session hands the
+// same instances to concurrent lints that clone them, and a rule that
+// sets lazy state in Check (catalog, toc) must not write it on the
+// shared instance: that races those clones and leaks into every copy.
+func cloneRules(rules []rule.Rule) []rule.Rule {
+	out := make([]rule.Rule, len(rules))
+	for i, rl := range rules {
+		out[i] = rule.CloneInstance(rl)
+	}
+	return out
 }
