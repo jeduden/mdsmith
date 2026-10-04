@@ -51,7 +51,7 @@ then reports it.
 2. [x] Merge the per-file plans into one `Plan`. Each range gets
    one edit, and the incoming-link and outbound-link passes no
    longer both rewrite a link between two moved files.
-3. Switch `handleWillRenameFiles` to the batch entry point.
+3. [x] Switch `handleWillRenameFiles` to the batch entry point.
    Keep `dropConflictingTextEdits` and `dropCrossMoveEdits`
    only as guards, with tests proving they no longer fire for
    these cases.
@@ -92,7 +92,7 @@ then reports it.
    sibling's folder. The move of `y/guide.md` does not win the
    pre-batch stem and rewrites nothing, so `[[y/guide]]`
    dangles. No edit is withheld, so no warning names it.
-10. Warn only about a link that no longer resolves. Moving
+10. [x] Warn only about a link that no longer resolves. Moving
     `docs/a.md` and `docs/b.md` into `docs/sub/` withholds both
     rewrites of each link between them, and the kept text is
     right. The warning still says "withheld 4 link rewrite(s)"

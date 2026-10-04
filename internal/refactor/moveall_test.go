@@ -5,6 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 )
 
 // moveAll runs MoveAll over files and fails the test when any pair
@@ -328,4 +330,112 @@ func TestDestResolver_CountsNeedABatch(t *testing.T) {
 	r.countStale("a.md", "b.md", "c.md")
 	r.countBlocked(holderIndex("c.md"), stemTarget{dst: "z/c.md", key: "c", isStem: true})
 	assert.Nil(t, r.batch)
+}
+
+func TestNewStemTarget(t *testing.T) {
+	got, ok := newStemTarget("guide", "docs/Manual.md")
+	require.True(t, ok)
+	assert.Equal(t, stemTarget{dst: "docs/Manual.md", spelling: "Manual", key: "manual", isStem: true}, got)
+	got, ok = newStemTarget("guide", "img/Logo.png")
+	require.True(t, ok)
+	assert.Equal(t, "logo.png", got.key)
+	assert.False(t, got.isStem)
+	_, ok = newStemTarget("guide", "other/Guide.md")
+	assert.False(t, ok, "a kept stem needs no rewrite")
+	_, ok = newStemTarget("guide", "node_modules/x.md")
+	assert.False(t, ok, "an unindexed destination is unreachable")
+	_, ok = newStemTarget("guide", "a#b.md")
+	assert.False(t, ok, "no token reaches the name")
+}
+
+func TestStemTarget_Reaches(t *testing.T) {
+	post := holderIndex("a/manual.md", "a/logo.png")
+	assert.True(t, stemTarget{dst: "manual.md", key: "manual", isStem: true}.reaches(post))
+	assert.False(t, stemTarget{dst: "z/manual.md", key: "manual", isStem: true}.reaches(post))
+	assert.True(t, stemTarget{dst: "logo.png", key: "logo.png"}.reaches(post))
+	assert.False(t, stemTarget{dst: "z/logo.png", key: "logo.png"}.reaches(post))
+}
+
+func TestDestResolver_SiblingTarget(t *testing.T) {
+	r := &destResolver{batch: &moveBatch{members: map[string]batchMember{
+		"y/guide.md": {dst: "y/howto.md", planned: true},
+		"z/guide.md": {dst: "q/guide.md", planned: true},
+		"w/guide.md": {dst: "w/other.md"},
+	}}}
+	got, ok := r.siblingTarget("guide", "y/guide.md")
+	require.True(t, ok)
+	assert.Equal(t, "y/howto.md", got.dst)
+	_, ok = r.siblingTarget("guide", "z/guide.md")
+	assert.False(t, ok, "a sibling keeping its stem")
+	_, ok = r.siblingTarget("guide", "w/guide.md")
+	assert.False(t, ok, "an unplanned sibling")
+	_, ok = r.siblingTarget("guide", "v/guide.md")
+	assert.False(t, ok, "a sibling the batch does not move")
+}
+
+func TestDestResolver_Member(t *testing.T) {
+	_, ok := (&destResolver{}).member("a.md")
+	assert.False(t, ok, "no batch, no members")
+	r := &destResolver{batch: &moveBatch{members: map[string]batchMember{"a.md": {dst: "b.md", planned: true}}}}
+	m, ok := r.member("a.md")
+	assert.True(t, ok)
+	assert.Equal(t, batchMember{dst: "b.md", planned: true}, m)
+}
+
+// wikilinkIndexCountingWorkspace counts WikilinkIndex calls.
+type wikilinkIndexCountingWorkspace struct {
+	stubWorkspace
+	calls *int
+	idx   *linkgraph.WikilinkIndex
+}
+
+func (w wikilinkIndexCountingWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	*w.calls++
+	return w.idx
+}
+
+func TestDestResolver_WikilinkIndex(t *testing.T) {
+	calls := 0
+	idx := holderIndex("a.md")
+	r := &destResolver{ws: wikilinkIndexCountingWorkspace{calls: &calls, idx: idx}}
+	assert.Same(t, idx, r.wikilinkIndex())
+	assert.Same(t, idx, r.wikilinkIndex())
+	assert.Equal(t, 1, calls, "read once per resolver")
+
+	r = &destResolver{ws: wikilinkIndexCountingWorkspace{
+		stubWorkspace: stubWorkspace{files: []string{"./docs/b.md"}}, calls: &calls,
+	}}
+	assert.Equal(t, []string{"docs/b.md"}, r.wikilinkIndex().StemPaths("b"), "a nil index falls back to Files")
+}
+
+func TestDestResolver_PostIndex(t *testing.T) {
+	idx := holderIndex("a.md", "b.md")
+	alone := (&destResolver{}).postIndex(idx, "a.md", "x/c.md")
+	assert.Equal(t, []string{"x/c.md"}, alone.StemPaths("c"))
+	assert.Empty(t, alone.StemPaths("a"))
+
+	r := &destResolver{batch: &moveBatch{members: map[string]batchMember{
+		"a.md": {dst: "x/c.md", planned: true},
+		"b.md": {},
+	}}}
+	post := r.postIndex(idx, "a.md", "x/c.md")
+	assert.Same(t, post, r.postIndex(idx, "a.md", "x/c.md"), "built once per batch")
+	assert.Empty(t, post.StemPaths("b"), "a member leaving the workspace is removed")
+}
+
+func TestResolves(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{"a.md": "# A\n"})
+	assert.True(t, resolves(ws, "a.md"))
+	assert.False(t, resolves(ws, "b.md"))
+}
+
+func TestMoveBatch_Admit(t *testing.T) {
+	ws := newMemWorkspace(map[string]string{"a.md": "# A\n"})
+	b := &moveBatch{members: map[string]batchMember{}}
+	landing := map[string]int{}
+	m := b.admit(ws, MovePair{"./a.md", "x/a.md"}, landing)
+	assert.Equal(t, BatchMove{Src: "a.md", Dst: "x/a.md", Key: "a.md"}, m)
+	assert.Equal(t, batchMember{dst: "x/a.md"}, b.members["a.md"], "planned only once validated")
+	assert.Equal(t, 1, landing["x/a.md"])
+	assert.ErrorIs(t, b.admit(ws, MovePair{"a.md", "y.md"}, landing).Err, ErrDuplicateSource)
 }

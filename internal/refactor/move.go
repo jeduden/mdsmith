@@ -98,24 +98,12 @@ func (e SourceNotFoundError) Error() string {
 // Move is MoveAll with one pair; MoveAll plans several moves that run
 // together.
 func Move(ws Workspace, src, dst string) (Plan, error) {
-	p, _, err := MoveWithStemEdits(ws, src, dst)
-	return p, err
-}
-
-// MoveWithStemEdits is Move that also returns the `[[stem]]` subset of
-// the plan's edits, keyed as the plan keys them (nil on error). Each
-// names dst by its stem, not by a path spelled from the file that
-// holds the link, so it stays right wherever that file moves. A host
-// planning several moves at once uses it to tell these from the path
-// rewrites that depend on the holder's directory, without planning
-// the stem pass a second time.
-func MoveWithStemEdits(ws Workspace, src, dst string) (Plan, map[string][]Edit, error) {
 	bp := MoveAll(ws, []MovePair{{Src: src, Dst: dst}})
 	m := bp.Moves[0]
 	if m.Err != nil {
-		return Plan{}, nil, m.Err
+		return Plan{}, m.Err
 	}
-	return Plan{Edits: bp.Edits, FileOp: &FileOp{From: m.Src, To: m.Dst}}, bp.StemEdits, nil
+	return Plan{Edits: bp.Edits, FileOp: &FileOp{From: m.Src, To: m.Dst}}, nil
 }
 
 // workspaceRelative reports whether p is a safe workspace-relative path
