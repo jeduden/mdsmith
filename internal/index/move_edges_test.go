@@ -98,20 +98,22 @@ func TestIncomingWikilinkEdges_SortOrder(t *testing.T) {
 	assert.Equal(t, "z.md", got[2].SourceFile)
 }
 
-func TestCollectWikilinkEdges_SkipsNonMarkdownEmbed(t *testing.T) {
+func TestCollectWikilinkEdges_TypedEmbedHasNoStemEdge(t *testing.T) {
 	idx := New("/root")
 	idx.Update("notes/diagram.png.md", []byte("# D\n"))
 	// An `![[diagram.png]]` embed resolves by exact filename, not stem,
-	// so it produces no wikilink edge keyed by a Markdown stem.
+	// so it answers the name lookup only: never the stem query for
+	// `diagram.png`, the stem of notes/diagram.png.md.
 	idx.Update("guide.md", []byte("Embed: ![[diagram.png]] and [[page]]\n"))
-	assert.Empty(t, idx.IncomingWikilinkEdges("diagram"))
+	assert.Empty(t, idx.IncomingWikilinkEdges("diagram.png"))
+	assert.Len(t, idx.IncomingWikilinkNameEdges("diagram.png"), 1)
 	assert.Len(t, idx.IncomingWikilinkEdges("page"), 1)
 }
 
-// TestWikilinkEdgesStayOutOfBacklinks locks that adding the wikilink
-// edge kind does not change the reverse-edge (path) queries: wikilinks
-// are emitted Unresolved, so BacklinksFor and IncomingPathEdges skip
-// them.
+// TestWikilinkEdgesStayOutOfBacklinks locks that wikilink edges do not
+// change the reverse-edge (path) queries: they sit in
+// FileEntry.Wikilinks, not Outgoing, so BacklinksFor and
+// IncomingPathEdges never see them.
 func TestWikilinkEdgesStayOutOfBacklinks(t *testing.T) {
 	idx := New("/root")
 	idx.Update("notes/api.md", []byte("# API\n"))
@@ -146,9 +148,9 @@ func TestIncomingWikilinkNameEdges(t *testing.T) {
 }
 
 // TestCollectWikilinkEdges_SkipsRefusedTarget locks that a wikilink
-// the resolver refuses gets no edge: `[[.md]]` has an empty stem and is
-// no typed name, so linkgraph.WikilinkKey reports !ok. Only the
-// `[[api]]` beside it is indexed.
+// linkgraph.WikilinkKey gives no key gets no edge: `[[.md]]` has an
+// empty stem, which no rewrite can spell, and is no typed name, so
+// WikilinkKey reports !ok. Only the `[[api]]` beside it is indexed.
 func TestCollectWikilinkEdges_SkipsRefusedTarget(t *testing.T) {
 	idx := New("/root")
 	idx.Update("a.md", []byte("See [[.md]] and [[api]].\n"))
