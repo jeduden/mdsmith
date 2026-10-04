@@ -242,7 +242,8 @@ Phase B — the pyproject source:
     config and its hints; the LSP takes them from its
     discovery seam and logs a hint set once, not on every
     reload. A watched `pyproject.toml` reloads config only
-    in the root or an ancestor, or as the loaded file.
+    in the root or an ancestor, or as the loaded file; a
+    sidecar (kind, convention, …) reloads likewise.
 
 Phase C — guardrails and docs:
 
@@ -263,6 +264,14 @@ Phase C — guardrails and docs:
 13. [x] Run `mdsmith fix PLAN.md`, `mdsmith check .`,
     `go test ./...`, and
     `go tool -modfile=tools/go.mod golangci-lint run`.
+14. [x] Red/green: `init` skips a dir whose
+    `pyproject.toml` has `[tool.mdsmith]` (unless
+    `--force`); dotted TOML keys count toward the
+    nesting cap; one parse serves probe and load.
+15. [x] Red/green: fix the `-race` flake in
+    `TestRebuildSessionDoesNotDisposeHeldSession`: fix
+    paths run per-call rule clones, and toc, catalog,
+    and build no longer cache an engine.
 
 ## Acceptance Criteria
 
@@ -302,11 +311,3 @@ Phase C — guardrails and docs:
 - [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
 - [x] `mdsmith check .` — 0 failures.
-
-## Follow-ups
-
-A race test fails now and then, on the base commit too.
-File a plan once `PLAN.md` is under its 300-line cap.
-`TestRebuildSessionDoesNotDisposeHeldSession` runs
-`Session.Fix`, whose shared MDS038 rule sets `r.engine`.
-`rule.CloneInstance` copies that rule for `Check`.
