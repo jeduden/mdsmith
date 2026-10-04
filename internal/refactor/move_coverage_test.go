@@ -621,11 +621,11 @@ func TestWikilinkTargetReaches_DestinationInOtherCase(t *testing.T) {
 		"a holder that differs in more than case still sorts after a/")
 }
 
-func TestStemSiblings(t *testing.T) {
+func TestKeySiblings(t *testing.T) {
 	holders := []string{"a/guide.md", "docs/guide.md", "ref/guide.md"}
-	assert.Equal(t, []string{"a/guide.md", "ref/guide.md"}, stemSiblings(holders, "docs/guide.md"))
+	assert.Equal(t, []string{"a/guide.md", "ref/guide.md"}, keySiblings(holders, "docs/guide.md"))
 	assert.Equal(t, []string{"a/guide.md", "docs/guide.md", "ref/guide.md"}, holders, "the index's slice is left alone")
-	assert.Nil(t, stemSiblings([]string{"docs/guide.md"}, "docs/guide.md"))
+	assert.Nil(t, keySiblings([]string{"docs/guide.md"}, "docs/guide.md"))
 }
 
 func TestWikilinkNamedSibling(t *testing.T) {

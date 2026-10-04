@@ -344,7 +344,7 @@ func TestMoveAll_UnindexedSameStemSourcesPlanOneEdit(t *testing.T) {
 	}
 }
 
-func TestDestResolver_WinsStem(t *testing.T) {
+func TestDestResolver_WinsKey(t *testing.T) {
 	b := newMoveBatch()
 	b.members["x/guide.md"] = batchMember{dst: "x/manual.md", planned: true}
 	b.members["y/guide.md"] = batchMember{dst: "y/howto.md", planned: true}
@@ -800,7 +800,7 @@ func TestDestResolver_ReferrerEdit(t *testing.T) {
 	assert.Equal(t, "../z/t.md", e.NewText)
 }
 
-func TestMoveBatch_StemHolders(t *testing.T) {
+func TestMoveBatch_KeyHolders(t *testing.T) {
 	b := newMoveBatch()
 	b.members["x/guide.md"] = batchMember{dst: "z/guide.md", planned: true}
 	b.members["y/Guide.md"] = batchMember{dst: "y/howto.md"}
@@ -814,7 +814,7 @@ func TestMoveBatch_StemHolders(t *testing.T) {
 	assert.Equal(t, 3, b.keyHolders(stemKey("guide")), "built once, on the first call")
 }
 
-func TestMoveBatch_StemSources(t *testing.T) {
+func TestMoveBatch_KeySources(t *testing.T) {
 	b := newMoveBatch()
 	b.members["x/guide.md"] = batchMember{dst: "z/guide.md", planned: true}
 	b.members["y/Guide.md"] = batchMember{dst: "y/howto.md"}
@@ -877,7 +877,7 @@ func TestMoveAll_ShadowedWithoutStem(t *testing.T) {
 	}
 }
 
-func TestMoveBatch_KeyStems(t *testing.T) {
+func TestMoveBatch_BuildKeys(t *testing.T) {
 	b := newMoveBatch()
 	b.members["x/guide.md"] = batchMember{dst: "x/Guide.md"}
 	b.members["a.md"] = batchMember{dst: "guide.md"}

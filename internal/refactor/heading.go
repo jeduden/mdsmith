@@ -49,10 +49,9 @@ type Workspace interface {
 
 // MoveWorkspace is the seam a file move (Move, MoveAll) needs: the
 // heading seam plus which edges name a file by path, by `[[stem]]`, or
-// by a typed `[[name.ext]]`,
-// and which files a `[[stem]]` resolves against. A heading-rename
-// surface implements only Workspace, so it never builds a wikilink
-// index it does not read.
+// by a typed `[[name.ext]]`, and which files a wikilink resolves
+// against. A heading-rename surface implements only Workspace, so it
+// never builds a wikilink index it does not read.
 type MoveWorkspace interface {
 	Workspace
 	// IncomingPathEdges returns every edge that addresses file by a
@@ -68,16 +67,16 @@ type MoveWorkspace interface {
 	// case-insensitively). A move of a non-Markdown file whose name
 	// changes rewrites these.
 	IncomingWikilinkNameEdges(name string) []index.Edge
-	// WikilinkIndex returns the index `[[stem]]` resolution reads: every
+	// WikilinkIndex returns the index wikilink resolution reads: every
 	// file under the workspace root except `.git` and `node_modules`,
 	// whether or not Files lists it. A file move reads from it which
-	// file `[[oldStem]]` resolves to and whether the new stem or name
-	// is taken, so it must cover the same file set the resolver does. A
-	// nil index (no readable root) makes the move read the Files list
-	// instead. An implementation may walk the whole root on every
-	// call (the CLI one does; the LSP one memoizes, and the Session one
-	// reuses its edge-index walk), so a planner calls it at most once
-	// per plan and only once it has a `[[stem]]` edge to guard.
+	// file a link by the old stem or name resolves to and whether the
+	// new stem or name is taken, so it must cover the same file set the
+	// resolver does. A nil index (no readable root) makes the move read
+	// the Files list instead. An implementation may walk the whole root
+	// on every call (the CLI one does; the LSP one memoizes, and the
+	// Session one reuses its edge-index walk), so a planner calls it at
+	// most once per plan and only once it has a wikilink edge to guard.
 	WikilinkIndex() *linkgraph.WikilinkIndex
 }
 

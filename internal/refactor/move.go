@@ -348,7 +348,7 @@ type destResolver struct {
 	lines  *edgeLines // see edgeReader
 }
 
-// edgeReader returns the one edgeLines the resolver's `[[stem]]`
+// edgeReader returns the one edgeLines the resolver's wikilink
 // passes share, keeping every file it reads: a file holding links to
 // several moved files is read once per batch, not once per move. The
 // batch moves no file before it is planned, so a kept read stays
@@ -850,9 +850,9 @@ func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *dest
 	// since no target spells it, so the edge lookup below returns early.
 	// ` guide.md` keys as " guide": a bare `[[guide]]` never reached it,
 	// while a folder-prefixed `[[x/ guide]]` did and is rewritten.
-	// A src under `.git` or `node_modules` is never indexed, so no
-	// `[[oldStem]]` link reached it: one that resolved elsewhere or
-	// nowhere must not be retargeted at dst.
+	// A src under `.git` or `node_modules` is never indexed, so no link
+	// by its key reached it: one that resolved elsewhere or nowhere
+	// must not be retargeted at dst.
 	if !linkgraph.WikilinkIndexed(src) {
 		return
 	}
@@ -864,10 +864,10 @@ func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *dest
 	// such as docs/guide.png.md → docs/guide.png.
 	//
 	// A destination that keeps the key needs no rewrite of its
-	// own, but in a batch another member can still change what
-	// `[[oldStem]]` reaches (see keptWikilinkTarget): its links are then
-	// read against the batch too, and rewritten only to follow a named
-	// sibling.
+	// own, but in a batch another member can still change what a link
+	// by the old key reaches (see keptWikilinkTarget): its links are
+	// then read against the batch too, and rewritten only to follow a
+	// named sibling.
 	self, rewrite := newWikilinkTarget(old, dst)
 	if !rewrite {
 		var kept bool
@@ -875,9 +875,10 @@ func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *dest
 			return
 		}
 	}
-	// A wikilink resolves by basename stem alone: every `[[oldStem]]`,
-	// with or without a folder prefix such as `[[ref/Guide]]`, reaches
-	// the same-stem file that sorts first (shallowest, then by name).
+	// A wikilink resolves by its base name alone: every link by the old
+	// key, with or without a folder prefix such as `[[ref/Guide]]`,
+	// reaches the same-key file that sorts first (shallowest, then by
+	// name).
 	// When that file is a sibling that is not moving, every such link
 	// reaches the sibling and stays as written. When it is src, every
 	// such link reaches src today and would silently reach a sibling
@@ -887,7 +888,7 @@ func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *dest
 	//
 	// A link whose folder prefix names a sibling's folder was written
 	// for that sibling, so it is left as written — unless the batch
-	// moves the sibling to a new stem too, when it follows the sibling.
+	// moves the sibling to a new key too, when it follows the sibling.
 	//
 	// Each rewrite must reach its file once the batch has run (see
 	// wikilinkTarget.reaches), read from the index with every batch move
@@ -898,7 +899,7 @@ func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *dest
 	// blocked rewrite, that another member's destination then takes
 	// (see destResolver.stolen): it still resolves, so no rule flags it.
 	//
-	// Most moves have no `[[oldStem]]` link at all, so the edges are
+	// Most moves have no link by the old key at all, so the edges are
 	// fetched first and the workspace walk that builds the index is
 	// skipped.
 	edges := old.edges(ws)
@@ -910,7 +911,7 @@ func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *dest
 		return
 	}
 	post := r.postIndex(idx)
-	siblings := stemSiblings(old.holders(idx), src)
+	siblings := keySiblings(old.holders(idx), src)
 	lines := r.edgeReader()
 	for _, e := range edges {
 		key, row, ok := lines.row(e)
@@ -938,7 +939,7 @@ func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *dest
 			continue
 		}
 		if !needed {
-			// dst keeps the stem and still wins it.
+			// dst keeps the key and still wins it.
 			continue
 		}
 		text := t.spelling
@@ -958,7 +959,7 @@ func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *dest
 	}
 }
 
-// wikilinkTarget is the file a rewritten `[[stem]]` link names after a
+// wikilinkTarget is the file a rewritten wikilink names after a
 // move: dst, the token that names it (see dstWikilinkSpelling), and
 // the wikilinkKey the resolver looks it up by — a stem or a lowercased
 // exact name — whose holders and resolvesTo it reads through.
@@ -1066,10 +1067,10 @@ func (k wikilinkKey) at(row []byte, bracketStart int) (start, end int, ok bool) 
 	return start, end, true
 }
 
-// keptWikilinkTarget returns the target a `[[oldStem]]` link keeps when the
-// move of src to dst keeps that stem: dst, keyed by oldStem. ok is true
-// only in a batch where another member's source or destination also
-// holds oldStem, the one way the batch can change what such a link
+// keptWikilinkTarget returns the target a link by the key old keeps
+// when the move of src to dst keeps that key: dst, keyed by old. ok is
+// true only in a batch where another member's source or destination
+// also holds old, the one way the batch can change what such a link
 // reaches: a destination that outsorts dst takes every bare link (see
 // countBlocked), and a renamed sibling takes the links that name it
 // (see siblingTarget). A lone move, or a batch with no such member,
@@ -1088,7 +1089,7 @@ func (r *destResolver) keptWikilinkTarget(old wikilinkKey, dst string) (wikilink
 
 // siblingTarget returns the target a link naming the sibling sib by
 // folder follows: sib's new name when the batch moves it to a new
-// stem. ok is false when sib stays put, keeps its stem, or its move
+// key. ok is false when sib stays put, keeps its key, or its move
 // was not planned, and the link is then left as written.
 func (r *destResolver) siblingTarget(old wikilinkKey, sib string) (wikilinkTarget, bool) {
 	m, moved := r.member(sib)
@@ -1098,15 +1099,15 @@ func (r *destResolver) siblingTarget(old wikilinkKey, sib string) (wikilinkTarge
 	return newWikilinkTarget(old, m.dst)
 }
 
-// countBlocked counts, in the batch, a `[[oldStem]]` rewrite to t that
-// is not planned because of another batch member: its destination
-// wins t.key in post, or the link, left as written, reaches it there
-// (see stolen). dst is where the moving file lands. A file outside the
-// batch that wins t.key, or that spells t.dst in another letter case
-// alone, is not counted: a lone move leaves such a link alone too. No
-// member destination spells t.dst in another case: validateBatch
-// refuses both such pairs, and t is always a planned member's
-// destination.
+// countBlocked counts, in the batch, a rewrite of a link by the key old
+// to t that is not planned because of another batch member: its
+// destination wins t.key in post, or the link, left as written,
+// reaches it there (see stolen). dst is where the moving file lands. A
+// file outside the batch that wins t.key, or that spells t.dst in
+// another letter case alone, is not counted: a lone move leaves such a
+// link alone too. No member destination spells t.dst in another case:
+// validateBatch refuses both such pairs, and t is always a planned
+// member's destination.
 func (r *destResolver) countBlocked(post *linkgraph.WikilinkIndex, t wikilinkTarget, old wikilinkKey, dst string) {
 	// t does not reach its file in post, so some other file holds
 	// t.key there: it sorts first, or it is t.dst in another case.
@@ -1115,7 +1116,7 @@ func (r *destResolver) countBlocked(post *linkgraph.WikilinkIndex, t wikilinkTar
 	}
 }
 
-// stolen reports whether a `[[oldStem]]` link left as written reaches,
+// stolen reports whether a link by the key old left as written reaches,
 // in post, a batch member's destination that is neither dst, where the
 // file it reached before the batch lands, nor want, the file it was
 // written for. The link still resolves, so no rule flags it: a
@@ -1126,7 +1127,7 @@ func (r *destResolver) stolen(post *linkgraph.WikilinkIndex, old wikilinkKey, ds
 	return len(holders) > 0 && holders[0] != dst && holders[0] != want && r.batch.dsts[holders[0]]
 }
 
-// countStolen counts, in the batch, a `[[oldStem]]` link left as
+// countStolen counts, in the batch, a link by the key old left as
 // written for want that stolen reports another member takes.
 func (r *destResolver) countStolen(post *linkgraph.WikilinkIndex, old wikilinkKey, dst, want string) {
 	if r.stolen(post, old, dst, want) {
@@ -1144,12 +1145,12 @@ func (r *destResolver) landing(p string) string {
 	return p
 }
 
-// winsKey reports whether a `[[oldStem]]` link reaches src before the
+// winsKey reports whether a link by the key old reaches src before the
 // batch runs: src must sort before idx's holders and before every
-// other member source holding oldStem, which idx may lack (a file
-// under a symlinked or unreadable directory the walk skips). Without
-// the members, two sources idx lacks would each win the stem and plan
-// two edits for each link.
+// other member source holding old, which idx may lack (a file under a
+// symlinked or unreadable directory the walk skips). Without the
+// members, two sources idx lacks would each win the key and plan two
+// edits for each link.
 func (r *destResolver) winsKey(idx *linkgraph.WikilinkIndex, old wikilinkKey, src string) bool {
 	if !old.resolvesTo(idx, src) {
 		return false
@@ -1186,10 +1187,10 @@ func (r *destResolver) postIndex(idx *linkgraph.WikilinkIndex) *linkgraph.Wikili
 	return r.batch.post
 }
 
-// stemSiblings returns the holders of the moved file's stem other than
-// src, in a slice of its own: the files a `[[stem]]` folder prefix can
-// name in its place.
-func stemSiblings(holders []string, src string) []string {
+// keySiblings returns the holders of the moved file's wikilink key (a
+// stem or an exact name) other than src, in a slice of its own: the
+// files a wikilink folder prefix can name in its place.
+func keySiblings(holders []string, src string) []string {
 	var out []string
 	for _, h := range holders {
 		if h != src {
