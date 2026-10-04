@@ -573,12 +573,12 @@ func WikilinkStem(target string) (string, bool) {
 // WikilinkKey reads target once and returns the key it resolves by,
 // with stem reporting the key space: the lowercased basename stem
 // (stem=true, as WikilinkStem returns it) for a bare or Markdown
-// target, or the lowercased exact base name (stem=false, as
-// WikilinkName returns it) for a typed one. ok is false for a target
-// the resolver refuses and for a stem-mode target with an empty stem
-// (`[[.md]]`), which neither key space files a link under. A caller
-// that takes either key, such as the index build, reads each target
-// through it once rather than through both functions.
+// target, or the lowercased exact base name (stem=false, the
+// FileNameKey that WikilinkIndex.NamePaths files every file under) for
+// a typed one. ok is false for a target the resolver refuses and for a
+// stem-mode target with an empty stem (`[[.md]]`), which neither key
+// space files a link under. A caller that takes either key, such as
+// the index build, reads each target through it once.
 func WikilinkKey(target string) (key string, stem, ok bool) {
 	target, ok = normalizeTarget(target)
 	if !ok {
@@ -592,20 +592,6 @@ func WikilinkKey(target string) (key string, stem, ok bool) {
 		return "", false, false
 	}
 	return FileNameKey(base), true, true
-}
-
-// WikilinkName returns the exact-name key a typed `[[name.ext]]`
-// target resolves by: the lowercased basename (FileNameKey), the key
-// WikilinkIndex.NamePaths files every file under. ok is false for a
-// stem-mode target (bare or Markdown, see WikilinkStem) and for a
-// target the resolver refuses. The two functions split between them
-// every target WikilinkKey keys.
-func WikilinkName(target string) (string, bool) {
-	key, stem, ok := WikilinkKey(target)
-	if !ok || stem {
-		return "", false
-	}
-	return key, true
 }
 
 // WikilinkKeyAt reads the wikilink whose `[[` starts at bracketStart

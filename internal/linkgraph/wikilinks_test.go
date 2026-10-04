@@ -919,84 +919,36 @@ func TestWikilinkIndex_MovedSharesUntouchedKeys(t *testing.T) {
 	assert.Equal(t, []string{"img/z.png"}, again.NamePaths("z.png"))
 }
 
-// TestWikilinkName locks the exact-name key a typed `[[name.ext]]`
-// target resolves by: the lowercased basename. A stem-mode target
-// (bare or Markdown) and a refused target have none.
-func TestWikilinkName(t *testing.T) {
-	for target, want := range map[string]string{
-		"diagram.png":      "diagram.png",
-		"img/Logo.PNG":     "logo.png",
-		` a\b\Guide.mdx `:  "guide.mdx",
-		"v1.3":             "v1.3",
-		"folder/x.png/":    "x.png",
-		"folder\\x.tar.gz": "x.tar.gz",
-	} {
-		got, ok := WikilinkName(target)
-		assert.True(t, ok, target)
-		assert.Equal(t, want, got, target)
-	}
-	for _, target := range []string{"Page", "Notes.md", "x.markdown", "", "../x.png", "/x.png", `C:\x.png`} {
-		got, ok := WikilinkName(target)
-		assert.False(t, ok, target)
-		assert.Empty(t, got, target)
-	}
-}
-
 // TestWikilinkKey locks the one-pass key read: a bare or Markdown
-// target keys by stem, a typed one by exact name, each lowercased, and
-// a refused target or an empty stem has no key.
+// target keys by stem, a typed one by exact name (its lowercased
+// basename, extension and all), each lowercased, and a refused target
+// or an empty stem has no key.
 func TestWikilinkKey(t *testing.T) {
 	for target, want := range map[string]struct {
 		key  string
 		stem bool
 	}{
-		"Page":            {"page", true},
-		"docs/Notes.md":   {"notes", true},
-		"img/Logo.PNG":    {"logo.png", false},
-		`a\b\Guide.mdx `:  {"guide.mdx", false},
-		"x.png.markdown":  {"x.png", true},
-		"folder/x.tar.gz": {"x.tar.gz", false},
+		"Page":             {"page", true},
+		"docs/Notes.md":    {"notes", true},
+		"x.markdown":       {"x", true},
+		"img/Logo.PNG":     {"logo.png", false},
+		`a\b\Guide.mdx `:   {"guide.mdx", false},
+		"x.png.markdown":   {"x.png", true},
+		"folder/x.tar.gz":  {"x.tar.gz", false},
+		"folder\\x.tar.gz": {"x.tar.gz", false},
+		"folder/x.png/":    {"x.png", false},
+		"v1.3":             {"v1.3", false},
 	} {
 		key, stem, ok := WikilinkKey(target)
 		require.True(t, ok, target)
 		assert.Equal(t, want.key, key, target)
 		assert.Equal(t, want.stem, stem, target)
 	}
-	for _, target := range []string{"", "  ", ".md", "../x.png", "/x.md", `C:\x.png`} {
+	for _, target := range []string{"", "  ", ".md", "../x.png", "/x.md", "/x.png", `C:\x.png`} {
 		key, stem, ok := WikilinkKey(target)
 		assert.False(t, ok, target)
 		assert.False(t, stem, target)
 		assert.Empty(t, key, target)
-	}
-}
-
-// TestWikilinkKeyAt_Name locks the name key and base span read at a
-// `[[` column for a typed link; a stem-mode link reads in the stem
-// space, and a refused target or a column with no wikilink returns
-// ok=false.
-func TestWikilinkKeyAt_Name(t *testing.T) {
-	for row, want := range map[string][2]string{
-		"[[img/Logo.PNG#a|G]]": {"logo.png", "Logo.PNG"},
-		"![[ x.png ]]":         {"x.png", "x.png"},
-		`[[a\b.png\|alias]]`:   {"b.png", "b.png"},
-	} {
-		at := 0
-		if row[0] == '!' {
-			at = 1
-		}
-		got, stem, s, e, ok := WikilinkKeyAt([]byte(row), at)
-		require.True(t, ok, row)
-		assert.False(t, stem, row)
-		assert.Equal(t, want[0], got, row)
-		assert.Equal(t, want[1], row[s:e], row)
-	}
-	for _, row := range []string{"[[logo]]", "[[logo.md]]"} {
-		_, stem, _, _, ok := WikilinkKeyAt([]byte(row), 0)
-		assert.True(t, ok && stem, row)
-	}
-	for _, row := range []string{"[[../x.png]]", "x [[a.png]]", "[["} {
-		_, _, _, _, ok := WikilinkKeyAt([]byte(row), 0)
-		assert.False(t, ok, row)
 	}
 }
 
