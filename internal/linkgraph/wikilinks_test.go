@@ -754,33 +754,33 @@ func TestWikilinkIndex_PathsNilReceiver(t *testing.T) {
 	assert.Empty(t, idx.NamePaths("a.md"))
 }
 
-// TestWikilinkStemAt_Span locks the base span WikilinkStemAt returns:
+// TestWikilinkKeyAt_Span locks the base span WikilinkKeyAt returns:
 // the last segment of the trimmed target, with `\` read as `/`, outside
 // any folder prefix, anchor, alias, or table-cell `\|` escape.
-func TestWikilinkStemAt_Span(t *testing.T) {
+func TestWikilinkKeyAt_Span(t *testing.T) {
 	t.Run("not a wikilink returns false", func(t *testing.T) {
-		_, _, _, ok := WikilinkStemAt([]byte("[x](y)"), 0)
+		_, _, _, _, ok := WikilinkKeyAt([]byte("[x](y)"), 0)
 		assert.False(t, ok)
 	})
 	t.Run("out-of-range bracket start returns false", func(t *testing.T) {
-		_, _, _, ok := WikilinkStemAt([]byte("[["), 0)
+		_, _, _, _, ok := WikilinkKeyAt([]byte("[["), 0)
 		assert.False(t, ok)
-		_, _, _, ok = WikilinkStemAt([]byte("[[a]]"), -1)
+		_, _, _, _, ok = WikilinkKeyAt([]byte("[[a]]"), -1)
 		assert.False(t, ok)
-		_, _, _, ok = WikilinkStemAt([]byte("[[a]]"), 9)
+		_, _, _, _, ok = WikilinkKeyAt([]byte("[[a]]"), 9)
 		assert.False(t, ok)
 	})
 	t.Run("a link that starts later is not read", func(t *testing.T) {
-		_, _, _, ok := WikilinkStemAt([]byte("x [[a]]"), 0)
+		_, _, _, _, ok := WikilinkKeyAt([]byte("x [[a]]"), 0)
 		assert.False(t, ok)
 	})
 	t.Run("empty target returns false", func(t *testing.T) {
-		_, _, _, ok := WikilinkStemAt([]byte("[[#frag]]"), 0)
+		_, _, _, _, ok := WikilinkKeyAt([]byte("[[#frag]]"), 0)
 		assert.False(t, ok)
 	})
 	t.Run("offsets are relative to the row", func(t *testing.T) {
 		row := []byte("see ![[folder/Page#f|alias]] now")
-		_, s, e, ok := WikilinkStemAt(row, 5)
+		_, _, s, e, ok := WikilinkKeyAt(row, 5)
 		require.True(t, ok)
 		assert.Equal(t, "Page", string(row[s:e]))
 	})
@@ -798,14 +798,14 @@ func TestWikilinkStemAt_Span(t *testing.T) {
 		"[[api /]]":            "api ",
 	} {
 		t.Run(row, func(t *testing.T) {
-			_, s, e, ok := WikilinkStemAt([]byte(row), 0)
+			_, _, s, e, ok := WikilinkKeyAt([]byte(row), 0)
 			require.True(t, ok)
 			assert.Equal(t, want, row[s:e])
 		})
 	}
 	for _, row := range []string{`[[/\ ]]`, "[[/abs]]", "[[../up]]", "[[C:\\x]]"} {
 		t.Run("unresolvable "+row, func(t *testing.T) {
-			_, _, _, ok := WikilinkStemAt([]byte(row), 0)
+			_, _, _, _, ok := WikilinkKeyAt([]byte(row), 0)
 			assert.False(t, ok)
 		})
 	}
@@ -828,27 +828,30 @@ func TestNewWikilinkIndexFromPaths(t *testing.T) {
 	assert.Empty(t, listed.StemPaths("x"))
 }
 
-// TestWikilinkStemAt locks the stem key read at a `[[` column: folder,
-// anchor, alias, casing, and outer spaces do not change it (a space
-// before a trailing slash stays, as the index keys it), and a typed name, a
-// refused target, or a column with no wikilink returns ok=false.
-func TestWikilinkStemAt(t *testing.T) {
+// TestWikilinkKeyAt_Stem locks the stem key read at a `[[` column:
+// folder, anchor, alias, casing, and outer spaces do not change it (a
+// space before a trailing slash stays, as the index keys it). A typed
+// name reads in the name space, and a refused target or a column with
+// no wikilink returns ok=false.
+func TestWikilinkKeyAt_Stem(t *testing.T) {
 	for row, want := range map[string]string{
 		"[[docs/Guide#a|G]]": "guide",
 		"[[guide.md]]":       "guide",
 		"[[ Guide ]]":        "guide",
 		"[[Guide /]]":        "guide ",
 	} {
-		got, _, _, ok := WikilinkStemAt([]byte(row), 0)
+		got, stem, _, _, ok := WikilinkKeyAt([]byte(row), 0)
 		assert.True(t, ok, row)
+		assert.True(t, stem, row)
 		assert.Equal(t, want, got, row)
 	}
-	for _, row := range []string{"[[logo.png]]", "[[../x]]", "x [[a]]", "[["} {
-		_, _, _, ok := WikilinkStemAt([]byte(row), 0)
+	_, stem, _, _, ok := WikilinkKeyAt([]byte("[[logo.png]]"), 0)
+	assert.True(t, ok)
+	assert.False(t, stem)
+	for _, row := range []string{"[[../x]]", "x [[a]]", "[["} {
+		_, _, _, _, ok := WikilinkKeyAt([]byte(row), 0)
 		assert.False(t, ok, row)
 	}
-	_, _, _, ok := WikilinkStemAt([]byte("[[a]]"), -1)
-	assert.False(t, ok)
 }
 
 // TestWikilinkIndex_Moved locks that Moved returns the index as it
@@ -967,10 +970,11 @@ func TestWikilinkKey(t *testing.T) {
 	}
 }
 
-// TestWikilinkNameAt locks the name key and base span read at a `[[`
-// column for a typed link; a stem-mode link, a refused target, or a
-// column with no wikilink returns ok=false.
-func TestWikilinkNameAt(t *testing.T) {
+// TestWikilinkKeyAt_Name locks the name key and base span read at a
+// `[[` column for a typed link; a stem-mode link reads in the stem
+// space, and a refused target or a column with no wikilink returns
+// ok=false.
+func TestWikilinkKeyAt_Name(t *testing.T) {
 	for row, want := range map[string][2]string{
 		"[[img/Logo.PNG#a|G]]": {"logo.png", "Logo.PNG"},
 		"![[ x.png ]]":         {"x.png", "x.png"},
@@ -980,14 +984,56 @@ func TestWikilinkNameAt(t *testing.T) {
 		if row[0] == '!' {
 			at = 1
 		}
-		got, s, e, ok := WikilinkNameAt([]byte(row), at)
+		got, stem, s, e, ok := WikilinkKeyAt([]byte(row), at)
 		require.True(t, ok, row)
+		assert.False(t, stem, row)
 		assert.Equal(t, want[0], got, row)
 		assert.Equal(t, want[1], row[s:e], row)
 	}
-	for _, row := range []string{"[[logo]]", "[[logo.md]]", "[[../x.png]]", "x [[a.png]]", "[["} {
-		_, _, _, ok := WikilinkNameAt([]byte(row), 0)
+	for _, row := range []string{"[[logo]]", "[[logo.md]]"} {
+		_, stem, _, _, ok := WikilinkKeyAt([]byte(row), 0)
+		assert.True(t, ok && stem, row)
+	}
+	for _, row := range []string{"[[../x.png]]", "x [[a.png]]", "[["} {
+		_, _, _, _, ok := WikilinkKeyAt([]byte(row), 0)
 		assert.False(t, ok, row)
+	}
+}
+
+// TestWikilinkKeyAt locks the key, key space, and base span read at a
+// `[[` column: a bare or Markdown target keys by stem, a typed one by
+// exact name, and a refused target or a column with no wikilink
+// returns ok=false.
+func TestWikilinkKeyAt(t *testing.T) {
+	type want struct {
+		key  string
+		stem bool
+		span string
+	}
+	for row, w := range map[string]want{
+		"[[docs/Guide.md#a|G]]": {"guide", true, "Guide.md"},
+		"[[ logo ]]":            {"logo", true, "logo"},
+		"[[img/Logo.PNG#a|G]]":  {"logo.png", false, "Logo.PNG"},
+		"![[ x.png ]]":          {"x.png", false, "x.png"},
+		`[[a\b.png\|alias]]`:    {"b.png", false, "b.png"},
+	} {
+		at := 0
+		if row[0] == '!' {
+			at = 1
+		}
+		key, stem, s, e, ok := WikilinkKeyAt([]byte(row), at)
+		require.True(t, ok, row)
+		assert.Equal(t, w.key, key, row)
+		assert.Equal(t, w.stem, stem, row)
+		assert.Equal(t, w.span, row[s:e], row)
+	}
+	for _, row := range []string{"[[#frag]]", "[[../x.png]]", "x [[a.png]]", "[[", "[x](y)"} {
+		_, _, _, _, ok := WikilinkKeyAt([]byte(row), 0)
+		assert.False(t, ok, row)
+	}
+	for _, at := range []int{-1, 9} {
+		_, _, _, _, ok := WikilinkKeyAt([]byte("[[a]]"), at)
+		assert.False(t, ok, at)
 	}
 }
 

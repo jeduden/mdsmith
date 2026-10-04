@@ -1055,13 +1055,8 @@ func (k wikilinkKey) resolvesTo(idx *linkgraph.WikilinkIndex, p string) bool {
 // k. An edge from an index that may be stale is checked this way
 // before its span is edited.
 func (k wikilinkKey) at(row []byte, bracketStart int) (start, end int, ok bool) {
-	var got string
-	if k.isStem {
-		got, start, end, ok = linkgraph.WikilinkStemAt(row, bracketStart)
-	} else {
-		got, start, end, ok = linkgraph.WikilinkNameAt(row, bracketStart)
-	}
-	if !ok || got != k.key {
+	got, stem, start, end, ok := linkgraph.WikilinkKeyAt(row, bracketStart)
+	if !ok || stem != k.isStem || got != k.key {
 		return 0, 0, false
 	}
 	return start, end, true

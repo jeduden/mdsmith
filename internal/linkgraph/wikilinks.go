@@ -594,30 +594,6 @@ func WikilinkKey(target string) (key string, stem, ok bool) {
 	return FileNameKey(base), true, true
 }
 
-// WikilinkStemAt reads the wikilink whose `[[` starts at bracketStart
-// in row. It returns the target's stem key (as WikilinkStem returns it)
-// and the byte span, within row, of the target's base segment: the part
-// the resolver keys by (path.Base of the trimmed target with `\` read as
-// `/`). Any folder prefix, anchor, and alias lie outside the span, as
-// does the `\` that escapes a `|` in a table cell. Key and span come
-// from one match, the same one ExtractWikiLinks reads, so they cannot
-// disagree on where a target ends. ok is false when no wikilink starts
-// there or its target has no stem key: a typed non-Markdown name, or a
-// target the resolver refuses. A caller holding an edge from an index
-// that may be stale checks the key before it edits the span.
-func WikilinkStemAt(row []byte, bracketStart int) (stem string, start, end int, ok bool) {
-	raw, at, ok := wikilinkTargetAt(row, bracketStart)
-	if !ok {
-		return "", 0, 0, false
-	}
-	stem, ok = WikilinkStem(string(raw))
-	if !ok {
-		return "", 0, 0, false
-	}
-	lo, hi := wikilinkBaseSpan(raw)
-	return stem, at + lo, at + hi, true
-}
-
 // WikilinkName returns the exact-name key a typed `[[name.ext]]`
 // target resolves by: the lowercased basename (FileNameKey), the key
 // WikilinkIndex.NamePaths files every file under. ok is false for a
@@ -632,21 +608,29 @@ func WikilinkName(target string) (string, bool) {
 	return key, true
 }
 
-// WikilinkNameAt is WikilinkStemAt for a typed link: it returns the
-// target's name key (as WikilinkName returns it) and the byte span,
-// within row, of the target's base segment. ok is false when no
-// wikilink starts at bracketStart or its target has no name key.
-func WikilinkNameAt(row []byte, bracketStart int) (name string, start, end int, ok bool) {
+// WikilinkKeyAt reads the wikilink whose `[[` starts at bracketStart
+// in row. It returns the target's key and key space (as WikilinkKey
+// returns them: stem is true for a bare or Markdown target, false for
+// a typed exact name) and the byte span, within row, of the target's
+// base segment: the part the resolver keys by (path.Base of the trimmed
+// target with `\` read as `/`). Any folder prefix, anchor, and alias lie
+// outside the span, as does the `\` that escapes a `|` in a table cell.
+// Key and span come from one match, the same one ExtractWikiLinks
+// reads, so they cannot disagree on where a target ends. ok is false
+// when no wikilink starts there or the resolver refuses its target. A
+// caller holding an edge from an index that may be stale checks the key
+// and its space before it edits the span.
+func WikilinkKeyAt(row []byte, bracketStart int) (key string, stem bool, start, end int, ok bool) {
 	raw, at, ok := wikilinkTargetAt(row, bracketStart)
 	if !ok {
-		return "", 0, 0, false
+		return "", false, 0, 0, false
 	}
-	name, ok = WikilinkName(string(raw))
+	key, stem, ok = WikilinkKey(string(raw))
 	if !ok {
-		return "", 0, 0, false
+		return "", false, 0, 0, false
 	}
 	lo, hi := wikilinkBaseSpan(raw)
-	return name, at + lo, at + hi, true
+	return key, stem, at + lo, at + hi, true
 }
 
 // wikilinkBaseSpan returns the byte span, within raw, of the segment
