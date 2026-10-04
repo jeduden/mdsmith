@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/config"
+	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/lint/rootfstest"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
@@ -42,4 +43,52 @@ func TestRunClosesEachFileRoots(t *testing.T) {
 		_, err := fs.Stat(r, ".")
 		assert.Error(t, err, "root %d is closed once its file's check ends", i)
 	}
+}
+
+// snapRunner returns a runner at root whose only rule records the File
+// it checks.
+func snapRunner(root string) (*Runner, *fileSnapRule) {
+	snap := &fileSnapRule{id: "MDS999", name: "snap-rule"}
+	return &Runner{
+		Config:  &config.Config{Rules: map[string]config.RuleCfg{"snap-rule": {Enabled: true}}},
+		Rules:   []rule.Rule{snap},
+		RootDir: root,
+	}, snap
+}
+
+// TestRunSourceClosesItsOwnRoot locks that a RunSource with no lent
+// RootFS closes the project root it opened for the File once the call
+// ends: the File is not published to a ParseCache, so the call owns it.
+// Not parallel: it records lint.OpenRootFS.
+func TestRunSourceClosesItsOwnRoot(t *testing.T) {
+	root := t.TempDir()
+	opened := rootfstest.Record(t)
+	runner, snap := snapRunner(root)
+
+	require.Empty(t, runner.RunSource("a.md", []byte("# A\n")).Errors)
+	require.NotNil(t, snap.last)
+	got := opened()
+	require.Len(t, got, 1)
+	_, err := fs.Stat(got[0], ".")
+	assert.Error(t, err, "the call's own root is closed once it ends")
+}
+
+// TestRunSourceBorrowsLentRootFS locks that a runner given a RootFS by
+// its owner (a Session, whose parse cache keeps the File past the call)
+// opens no root of its own, hands the File the lent one, and leaves it
+// open for the owner.
+func TestRunSourceBorrowsLentRootFS(t *testing.T) {
+	root := t.TempDir()
+	opened := rootfstest.Record(t)
+	lent := os.DirFS(root)
+	runner, snap := snapRunner(root)
+	runner.RootFS = lent
+	runner.ParseCache = lint.NewParseCache()
+
+	require.Empty(t, runner.RunSourceWithVersion("a.md", []byte("# A\n"), 1).Errors)
+	require.Empty(t, runner.RunSource("b.md", []byte("# B\n")).Errors)
+	assert.Empty(t, opened(), "a lent root means the runner opens none")
+	require.NotNil(t, snap.last)
+	assert.Equal(t, lent, snap.last.RootFS)
+	assert.Equal(t, root, snap.last.RootDir)
 }

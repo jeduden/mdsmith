@@ -78,6 +78,14 @@ type Runner struct {
 	// ignores this field and continues to derive FS from filepath.Dir
 	// per file.
 	SourceFS fs.FS
+	// RootFS, when non-nil, is a view of RootDir the runner's caller
+	// owns and lends: RunSource sets it as lint.File.RootFS instead of
+	// opening a root of its own, and never closes it. A caller that
+	// installs a ParseCache lends one, since a cached File outlives the
+	// call and the runner could not close a root it opened for it. With
+	// none, RunSource opens a root and closes it when the call ends,
+	// unless a ParseCache keeps the File. Run() ignores this field.
+	RootFS fs.FS
 	// Concurrency controls how many files Run lints in parallel.
 	// Zero or negative means "use runtime.GOMAXPROCS"; 1 forces the
 	// sequential path; n>1 uses n workers. The worker count is
@@ -732,7 +740,8 @@ func (r *Runner) runSource(path string, source []byte, version int, useParseCach
 
 	logFile(r.log(), path)
 
-	f, err := r.parseForSource(path, source, version, useParseCache)
+	f, release, err := r.parseForSource(path, source, version, useParseCache)
+	defer release()
 	if err != nil {
 		res.Errors = append(res.Errors, fmt.Errorf("parsing %q: %w", path, err))
 		return res
@@ -765,21 +774,47 @@ func (r *Runner) runSource(path string, source []byte, version int, useParseCach
 // rejection inside ParseCache.Put keeps an older parse landing late
 // from clobbering a newer cached value or re-filling a just-cleared
 // slot.
-func (r *Runner) parseForSource(path string, source []byte, version int, useParseCache bool) (*lint.File, error) {
-	if useParseCache && r.ParseCache != nil {
+//
+// The returned release closes the project root populateFileFields
+// opened for a fresh parse that no ParseCache keeps; the caller calls it
+// once the check ends. A cached File keeps its root (a caller that
+// installs a ParseCache lends RootFS so none is opened), and a cache
+// hit opened nothing, so release is then a no-op.
+func (r *Runner) parseForSource(
+	path string, source []byte, version int, useParseCache bool,
+) (f *lint.File, release func(), err error) {
+	cached := useParseCache && r.ParseCache != nil
+	if cached {
 		if f, ok := r.ParseCache.Get(path, version); ok {
-			return f, nil
+			return f, keepRoot, nil
 		}
 	}
-	f, err := lint.NewFileFromSource(path, source, r.StripFrontMatter)
+	release = keepRoot
+	f, err = lint.NewFileFromSource(path, source, r.StripFrontMatter)
 	if err == nil {
-		r.populateFileFields(f, path)
-		if useParseCache && r.ParseCache != nil {
-			r.ParseCache.Put(path, version, f)
-		}
+		release = r.publishParse(f, path, version, cached)
 	}
-	return f, err
+	return f, release, err
 }
+
+// publishParse populates a freshly parsed f and, when cached, stores it
+// in the ParseCache. It returns the release for the root it opened: a
+// close when the File stays with this call, else keepRoot.
+func (r *Runner) publishParse(f *lint.File, path string, version int, cached bool) func() {
+	opened := r.populateFileFields(f, path)
+	if cached {
+		r.ParseCache.Put(path, version, f)
+		return keepRoot
+	}
+	if opened == nil {
+		return keepRoot
+	}
+	return func() { _ = opened.Close() }
+}
+
+// keepRoot is parseForSource's release when it opened no root the
+// caller must close.
+func keepRoot() {}
 
 // populateFileFields sets the Runner-derived state on f that
 // downstream checks rely on: MaxInputBytes, RunCache, FS, RootDir,
@@ -787,7 +822,10 @@ func (r *Runner) parseForSource(path string, source []byte, version int, usePars
 // Factored out of runSource so parseForSource can call it once
 // before the *File is published to the parse cache — see that
 // method's comment for the racing-readers argument.
-func (r *Runner) populateFileFields(f *lint.File, path string) {
+//
+// It returns the project root it opened for f.RootFS, or nil when it
+// opened none (a lent Runner.RootFS, or no RootDir).
+func (r *Runner) populateFileFields(f *lint.File, path string) (opened lint.RootFS) {
 	f.MaxInputBytes = r.MaxInputBytes
 	f.RunCache = r.runCacheForCall()
 	if r.SourceFS != nil {
@@ -803,7 +841,7 @@ func (r *Runner) populateFileFields(f *lint.File, path string) {
 	gitignoreDir := ""
 	switch {
 	case r.RootDir != "":
-		f.SetRootDir(r.RootDir)
+		opened = r.setRootFS(f)
 		gitignoreDir = r.RootDir
 	case filepath.IsAbs(path):
 		gitignoreDir = filepath.Dir(path)
@@ -828,6 +866,21 @@ func (r *Runner) populateFileFields(f *lint.File, path string) {
 	// is published to the parse cache, so the read-only diagnostic pass
 	// (runSourceCheckRules) never has to mutate the shared File.
 	foreignregion.AppendRanges(f, r.Config, path)
+	return opened
+}
+
+// setRootFS points f at RootDir: through the RootFS the caller lends
+// when set, else through a root it opens and returns for the caller to
+// close.
+func (r *Runner) setRootFS(f *lint.File) lint.RootFS {
+	f.RootDir = r.RootDir
+	if r.RootFS != nil {
+		f.RootFS = r.RootFS
+		return nil
+	}
+	root := lint.OpenRootFS(r.RootDir)
+	f.RootFS = root
+	return root
 }
 
 // runSourceCheckRules wraps the post-parse check pipeline for
