@@ -878,6 +878,20 @@ func TestWikilinkIndex_Moved(t *testing.T) {
 	assert.Nil(t, (*WikilinkIndex)(nil).Moved(map[string]string{"a.md": "b.md"}))
 }
 
+func TestAppendIf(t *testing.T) {
+	assert.Equal(t, []string{"a", "b"}, appendIf([]string{"a"}, "b", true))
+	assert.Equal(t, []string{"a"}, appendIf([]string{"a"}, "b", false))
+	assert.Nil(t, appendIf(nil, "b", false))
+}
+
+// TestMovedPaths locks that one key's holders lose every source and
+// gain each joining destination once, in resolver order.
+func TestMovedPaths(t *testing.T) {
+	moves := map[string]string{"x/a.md": "b/a.md", "y/a.md": "b/a.md"}
+	got := movedPaths([]string{"a.md", "x/a.md", "y/a.md"}, moves, []string{"b/a.md", "b/a.md", "a.md"})
+	assert.Equal(t, []string{"a.md", "b/a.md"}, got)
+}
+
 // TestWikilinkIndex_MovedSharesUntouchedKeys locks that Moved costs
 // what the moves touch, not the workspace: a key no move touches is
 // read from the receiver, Resolve reads through the overlay, and a

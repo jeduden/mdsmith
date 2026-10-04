@@ -291,47 +291,55 @@ func (idx *WikilinkIndex) Moved(moves map[string]string) *WikilinkIndex {
 	if idx == nil {
 		return nil
 	}
+	// Every touched key starts with no joining destination; each
+	// indexed destination is then filed under its own keys once, so the
+	// build stays linear in the moves.
 	out := &WikilinkIndex{stems: map[string][]string{}, names: map[string][]string{}, base: idx}
-	touch := func(p string) {
+	touch := func(p string, join bool) {
 		base := path.Base(p)
-		out.names[FileNameKey(base)] = nil
+		name := FileNameKey(base)
+		out.names[name] = appendIf(out.names[name], p, join)
 		if stem, ok := FileStemKey(base); ok {
-			out.stems[stem] = nil
+			out.stems[stem] = appendIf(out.stems[stem], p, join)
 		}
 	}
 	for src, dst := range moves {
-		touch(src)
+		touch(src, false)
 		if dst != "" {
-			touch(dst)
+			touch(dst, WikilinkIndexed(dst))
 		}
 	}
-	for key := range out.names {
-		out.names[key] = movedPaths(idx.NamePaths(key), moves, func(base string) bool {
-			return FileNameKey(base) == key
-		})
+	for key, joining := range out.names {
+		out.names[key] = movedPaths(idx.NamePaths(key), moves, joining)
 	}
-	for key := range out.stems {
-		out.stems[key] = movedPaths(idx.StemPaths(key), moves, func(base string) bool {
-			stem, ok := FileStemKey(base)
-			return ok && stem == key
-		})
+	for key, joining := range out.stems {
+		out.stems[key] = movedPaths(idx.StemPaths(key), moves, joining)
 	}
 	return out
 }
 
+// appendIf returns paths with p appended when join is set, and paths
+// unchanged otherwise.
+func appendIf(paths []string, p string, join bool) []string {
+	if join {
+		return append(paths, p)
+	}
+	return paths
+}
+
 // movedPaths returns paths, one key's holders, once moves has run:
-// without every source, and with every indexed destination whose base
-// name holds the key, each held once, in resolver order. paths is not
-// changed.
-func movedPaths(paths []string, moves map[string]string, holds func(base string) bool) []string {
-	out := make([]string, 0, len(paths)+1)
+// without every source, and with every one of joining (the indexed
+// destinations whose base name holds the key), each held once, in
+// resolver order. paths is not changed.
+func movedPaths(paths []string, moves map[string]string, joining []string) []string {
+	out := make([]string, 0, len(paths)+len(joining))
 	for _, p := range paths {
 		if _, gone := moves[p]; !gone {
 			out = append(out, p)
 		}
 	}
-	for _, dst := range moves {
-		if dst != "" && WikilinkIndexed(dst) && holds(path.Base(dst)) && !slices.Contains(out, dst) {
+	for _, dst := range joining {
+		if !slices.Contains(out, dst) {
 			out = append(out, dst)
 		}
 	}
