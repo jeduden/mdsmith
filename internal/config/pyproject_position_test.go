@@ -162,6 +162,55 @@ func TestTOMLResolverWithoutHeaderPosition(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestNthBraceSkipsStringsAndNestedTables(t *testing.T) {
+	src := `x = [{ s = "{", t = '{', u = { v = 1 } }, { w = 2 }] # {
+y = [{ a = 1 }]
+z = { inner = [{ b = 1 }], after = { c = 2 } }
+`
+	c := tomlConverter{lines: bytes.Split([]byte(src), []byte("\n"))}
+	x := toml.Position{Line: 1, Col: 1}
+	assert.Equal(t, toml.Position{Line: 1, Col: 6}, c.nthBrace(x, 0))
+	assert.Equal(t, toml.Position{Line: 1, Col: 43}, c.nthBrace(x, 1),
+		"braces in strings and in a nested table are not elements")
+	assert.Equal(t, x, c.nthBrace(x, 2),
+		"the scan stops at the array's `]`; the comment and the next line are not elements")
+	inner := toml.Position{Line: 3, Col: 7}
+	assert.Equal(t, toml.Position{Line: 3, Col: 16}, c.nthBrace(inner, 0))
+	assert.Equal(t, inner, c.nthBrace(inner, 1),
+		"a table after the array's `]` is not an element")
+	// A `}` that closes a table opened before from ends the scan.
+	after := toml.Position{Line: 3, Col: 28}
+	assert.Equal(t, after, c.nthBrace(after, 1))
+}
+
+func TestBraceScanScanLine(t *testing.T) {
+	s := braceScan{n: 1}
+	col, found, done := s.scanLine([]byte(`a = [{ x = "{" }, # {`), 0)
+	assert.False(t, found)
+	assert.False(t, done, "the array continues past the comment")
+	col, found, _ = s.scanLine([]byte(`  { y = 1 }]`), 0)
+	assert.True(t, found, "state carries across lines")
+	assert.Equal(t, 2, col)
+
+	_, found, done = (&braceScan{}).scanLine([]byte(`a = []`), 0)
+	assert.False(t, found)
+	assert.True(t, done, "the array closed with no element")
+	_, _, done = (&braceScan{}).scanLine([]byte(`x }`), 0)
+	assert.True(t, done, "an enclosing table closed")
+}
+
+// A foreign-region marker that contains a brace (a Jinja or Hugo
+// delimiter) does not shift the error onto the wrong list entry.
+func TestLoadPyproject_BraceInMarkerKeepsEntryPosition(t *testing.T) {
+	p := writeCfg(t, t.TempDir(), "pyproject.toml", `[tool.mdsmith]
+foreign-regions = [{ start = "{% raw %}", end = "{% endraw %}" }, { start = "{{<", end = "" }]
+`)
+	_, err := Load(p)
+	le := requireLoadError(t, err)
+	assert.Equal(t, 2, le.Line)
+	assert.Equal(t, 84, le.Column, "the `end` key of the second entry")
+}
+
 func TestLoadPyproject_ArrayOfInlineTablesPositions(t *testing.T) {
 	p := writeCfg(t, t.TempDir(), "pyproject.toml", `[tool.mdsmith]
 foreign-regions = [

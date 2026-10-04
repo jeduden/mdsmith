@@ -34,7 +34,7 @@ func loadPyproject(path string) (*Config, error) {
 	if err != nil {
 		return nil, positionError(fmt.Errorf("reading config file: %w", err), path, nil)
 	}
-	tree, err := toml.LoadBytes(data)
+	tree, err := loadTOML(data)
 	if err != nil {
 		return nil, positionError(fmt.Errorf("parsing %s: %w", path, tomlErrorIssue(err)), path, nil)
 	}
@@ -50,38 +50,109 @@ func loadPyproject(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// pyprojectHasMdsmithTable reports whether the TOML file at path is an
-// mdsmith config source: it parses and has a `tool.mdsmith` entry. A
-// file that does not parse counts when a line opens a `[tool.mdsmith`
-// header or sets a `tool.mdsmith.` dotted key, so loading it reports
-// the syntax error instead of the walk skipping a broken config. An
-// unreadable file is not a source.
-func pyprojectHasMdsmithTable(path string) bool {
-	data, err := readLimitedConfig(path)
-	if err != nil {
-		return false
+// maxTOMLNesting caps how deeply arrays and inline tables may nest in
+// a TOML file before go-toml parses it. go-toml v1's recursive-descent
+// parser has no depth limit: a pyproject.toml holding a few hundred
+// thousand nested `[` (well inside the maxConfigBytes read cap)
+// overflows the goroutine stack, a fatal error no recover catches.
+// Discovery parses every pyproject.toml on its walk, so without the cap
+// any Python project file could crash the CLI and the language server.
+// Real config nests a handful of levels.
+const maxTOMLNesting = 1000
+
+// loadTOML parses data with go-toml after rejecting input whose arrays
+// and inline tables nest deeper than maxTOMLNesting.
+func loadTOML(data []byte) (*toml.Tree, error) {
+	if tomlNestingExceeds(data, maxTOMLNesting) {
+		return nil, fmt.Errorf("toml: arrays and inline tables nest deeper than %d levels", maxTOMLNesting)
 	}
-	tree, err := toml.LoadBytes(data)
-	if err != nil {
-		return mdsmithHeaderRe.Match(data)
-	}
-	return tree.GetPath(pyprojectTable) != nil
+	return toml.LoadBytes(data)
 }
 
-// pyprojectPluralHint returns a one-line hint when the TOML file at
-// path has a plural `[tools.mdsmith]` table, or "" otherwise. Discovery
-// only asks about a file that is not a config source (so it has no
-// `[tool.mdsmith]`); an unreadable or unparseable file earns no hint.
-func pyprojectPluralHint(path string) string {
+// tomlNestingExceeds reports whether the `[`/`{` nesting outside
+// strings and comments in data goes deeper than limit. Table headers
+// count too, so the bound is conservative.
+func tomlNestingExceeds(data []byte, limit int) bool {
+	depth := 0
+	for i := 0; i < len(data); i++ {
+		switch data[i] {
+		case '#':
+			for i < len(data) && data[i] != '\n' {
+				i++
+			}
+		case '"', '\'':
+			i = tomlStringEnd(data, i)
+		case '[', '{':
+			depth++
+			if depth > limit {
+				return true
+			}
+		case ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		}
+	}
+	return false
+}
+
+// tomlStringEnd returns the index of the byte that closes the string
+// opening at data[i] — a basic or literal string, single- or
+// multi-line. A single-line string left open at a newline ends there
+// (go-toml rejects it), and one left open at end of input ends at
+// len(data).
+func tomlStringEnd(data []byte, i int) int {
+	q := data[i]
+	if i+2 < len(data) && data[i+1] == q && data[i+2] == q {
+		for j := i + 3; j+2 < len(data); j++ {
+			if q == '"' && data[j] == '\\' {
+				j++
+				continue
+			}
+			if data[j] == q && data[j+1] == q && data[j+2] == q {
+				return j + 2
+			}
+		}
+		return len(data)
+	}
+	for j := i + 1; j < len(data); j++ {
+		switch data[j] {
+		case '\\':
+			if q == '"' {
+				j++
+			}
+		case q, '\n':
+			return j
+		}
+	}
+	return len(data)
+}
+
+// probePyproject reads and parses the TOML file at path once and
+// reports whether it is an mdsmith config source and, when it is not,
+// a one-line hint for a plural `[tools.mdsmith]` table ("" when there
+// is none). A file that parses is a source when it has a
+// `tool.mdsmith` entry. A file that does not parse is a source when a
+// line opens a `[tool.mdsmith` header or sets a `tool.mdsmith.` dotted
+// key, so loading it reports the syntax error instead of the walk
+// skipping a broken config; it earns no hint. An unreadable file is
+// neither.
+func probePyproject(path string) (source bool, hint string) {
 	data, err := readLimitedConfig(path)
 	if err != nil {
-		return ""
+		return false, ""
 	}
-	tree, err := toml.LoadBytes(data)
-	if err != nil || tree.GetPath(pluralTable) == nil {
-		return ""
+	tree, err := loadTOML(data)
+	if err != nil {
+		return mdsmithHeaderRe.Match(data), ""
 	}
-	return path + ": [tools.mdsmith] is not read; rename the table to [tool.mdsmith]"
+	if tree.GetPath(pyprojectTable) != nil {
+		return true, ""
+	}
+	if tree.GetPath(pluralTable) != nil {
+		return false, path + ": [tools.mdsmith] is not read; rename the table to [tool.mdsmith]"
+	}
+	return false, ""
 }
 
 // mdsmithHeaderRe matches a line that opens a `[tool.mdsmith]` or

@@ -13,9 +13,6 @@ func loadPyproject(path string) (*Config, error) {
 		path, nil)
 }
 
-// pyprojectHasMdsmithTable always reports false in the WebAssembly
-// build, so discovery never selects a pyproject.toml there.
-func pyprojectHasMdsmithTable(string) bool { return false }
-
-// pyprojectPluralHint never hints in the WebAssembly build.
-func pyprojectPluralHint(string) string { return "" }
+// probePyproject never reports a config source or a hint in the
+// WebAssembly build, so discovery never selects a pyproject.toml there.
+func probePyproject(string) (source bool, hint string) { return false, "" }

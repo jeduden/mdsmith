@@ -13,10 +13,8 @@ func TestLoadPyproject_UnsupportedInWASM(t *testing.T) {
 	assert.ErrorContains(t, err, "not supported in the WebAssembly build")
 }
 
-func TestPyprojectHasMdsmithTable_FalseInWASM(t *testing.T) {
-	assert.False(t, pyprojectHasMdsmithTable("pyproject.toml"))
-}
-
-func TestPyprojectPluralHint_EmptyInWASM(t *testing.T) {
-	assert.Equal(t, "", pyprojectPluralHint("pyproject.toml"))
+func TestProbePyproject_NeitherSourceNorHintInWASM(t *testing.T) {
+	source, hint := probePyproject("pyproject.toml")
+	assert.False(t, source)
+	assert.Equal(t, "", hint)
 }

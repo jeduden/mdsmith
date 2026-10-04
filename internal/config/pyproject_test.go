@@ -326,7 +326,7 @@ func TestDiscover_Pyproject(t *testing.T) {
 	})
 }
 
-func TestPyprojectHasMdsmithTable(t *testing.T) {
+func TestProbePyproject_Source(t *testing.T) {
 	dir := t.TempDir()
 	cases := map[string]bool{
 		"[tool.mdsmith]\n":                        true,
@@ -343,9 +343,101 @@ func TestPyprojectHasMdsmithTable(t *testing.T) {
 	for body, want := range cases {
 		i++
 		p := writeCfg(t, dir, fmt.Sprintf("p%d.toml", i), body)
-		assert.Equal(t, want, pyprojectHasMdsmithTable(p), "body %q", body)
+		source, _ := probePyproject(p)
+		assert.Equal(t, want, source, "body %q", body)
 	}
-	assert.False(t, pyprojectHasMdsmithTable(filepath.Join(dir, "missing.toml")))
+	source, hint := probePyproject(filepath.Join(dir, "missing.toml"))
+	assert.False(t, source)
+	assert.Equal(t, "", hint)
+}
+
+// deeplyNested returns a TOML value nested n arrays deep.
+func deeplyNested(n int) string {
+	return strings.Repeat("[", n) + strings.Repeat("]", n)
+}
+
+func TestTOMLNestingExceeds(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{"at the limit", "a = " + deeplyNested(3), false},
+		{"past the limit", "a = " + deeplyNested(4), true},
+		{"inline tables count", "a = { b = { c = { d = { e = 1 } } } }", true},
+		{"table headers close", "[a]\n[[b]]\n[[b]]\n[c.d]\n", false},
+		{"brackets in a basic string", `a = "[[[[[[" `, false},
+		{"escaped quote stays in string", `a = "\"[[[[[" `, false},
+		{"brackets in a literal string", "a = '[[[[[['", false},
+		{"brackets in a multi-line string", "a = \"\"\"\n[[[[[\n\"\"\"\n", false},
+		{"brackets in a multi-line literal", "a = '''\n[[[[[\n'''\n", false},
+		{"brackets in a comment", "# [[[[[[\na = 1\n", false},
+		{"unterminated string ends at newline", "a = \"[[\nb = " + deeplyNested(4), true},
+		{"string closers do not hide depth", `a = [ "]", [ "]", [ "]", [ "]", 1 ] ] ] ]`, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tomlNestingExceeds([]byte(tc.src), 3))
+		})
+	}
+}
+
+func TestTOMLStringEnd(t *testing.T) {
+	assert.Equal(t, 3, tomlStringEnd([]byte(`"ab" = 1`), 0))
+	assert.Equal(t, 1, tomlStringEnd([]byte(`""`), 0))
+	assert.Equal(t, 4, tomlStringEnd([]byte(`"\"a"`), 0))
+	assert.Equal(t, 2, tomlStringEnd([]byte(`'\'`), 0), "no escapes in a literal string")
+	assert.Equal(t, 7, tomlStringEnd([]byte("\"\"\"a\n\"\"\""), 0))
+	assert.Equal(t, 7, tomlStringEnd([]byte("'''a\n'''"), 0))
+	assert.Equal(t, 7, tomlStringEnd([]byte(`"""\""""`), 0), "escaped quote in a multi-line string")
+	assert.Equal(t, 2, tomlStringEnd([]byte("\"a\nb\""), 0), "a single-line string ends at a newline")
+	assert.Equal(t, 3, tomlStringEnd([]byte(`"ab`), 0), "unterminated")
+	assert.Equal(t, 5, tomlStringEnd([]byte(`"""ab`), 0), "unterminated multi-line")
+}
+
+// A pyproject.toml nested deep enough to overflow go-toml's recursive
+// parser is rejected before parsing, both by discovery and by Load,
+// instead of crashing the process.
+func TestPyproject_DeepNestingIsRejectedNotFatal(t *testing.T) {
+	dir := t.TempDir()
+	// 500k levels stays under the maxConfigBytes read cap yet is deep
+	// enough to overflow go-toml's parser stack.
+	deep := deeplyNested(500000)
+	plain := writeCfg(t, dir, "plain.toml", "[project]\nx = "+deep+"\n")
+	source, hint := probePyproject(plain)
+	assert.False(t, source)
+	assert.Equal(t, "", hint)
+
+	cfg := writeCfg(t, dir, "pyproject.toml", "[tool.mdsmith.rules.line-length]\nx = "+deep+"\n")
+	source, _ = probePyproject(cfg)
+	assert.True(t, source, "a file naming the table is still a source, so Load reports why")
+	_, err := Load(cfg)
+	assert.ErrorContains(t, err, "nest deeper than")
+}
+
+// Quoted keys reach the config verbatim: `Get` would split `"a.b"` on
+// its dot and lose the value, and return the table itself for `""`,
+// recursing without end.
+func TestTOMLConversionKeepsQuotedKeysVerbatim(t *testing.T) {
+	src := "[x]\n\"a.b\" = 1\n\"\" = 2\nplain = { \"c.d\" = 3 }\n"
+	tree, err := toml.Load(src)
+	require.NoError(t, err)
+	doc := tomlTableToDoc(tree.GetPath([]string{"x"}).(*toml.Tree), []byte(src))
+	var got map[string]any
+	require.NoError(t, doc.Decode(&got))
+	assert.Equal(t, map[string]any{"a.b": 1, "": 2, "plain": map[string]any{"c.d": 3}}, got)
+
+	line, col, ok := pyprojectResolver(doc).Resolve(KeyPath{"a.b"})
+	require.True(t, ok)
+	assert.Equal(t, 2, line)
+	assert.Equal(t, 1, col)
+}
+
+func TestLoadPyproject_EmptyKeyLoads(t *testing.T) {
+	p := writeCfg(t, t.TempDir(), "pyproject.toml", "[tool.mdsmith]\n\"\" = 1\nfiles = [\"*.md\"]\n")
+	cfg, err := Load(p)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"*.md"}, cfg.Files)
 }
 
 func TestFileIn(t *testing.T) {
@@ -391,11 +483,30 @@ func TestDiscover_PluralToolsTableIsHintedNotUsed(t *testing.T) {
 	assert.Empty(t, DiscoverHints(start))
 }
 
-func TestPyprojectPluralHint(t *testing.T) {
+func TestProbePyproject_PluralHint(t *testing.T) {
 	dir := t.TempDir()
-	assert.Equal(t, "", pyprojectPluralHint(filepath.Join(dir, "missing.toml")))
-	assert.Equal(t, "", pyprojectPluralHint(writeCfg(t, dir, "bad.toml", "[tools.mdsmith\n")))
-	assert.Equal(t, "", pyprojectPluralHint(writeCfg(t, dir, "none.toml", "[project]\n")))
+	for name, body := range map[string]string{
+		"bad.toml":  "[tools.mdsmith\n",
+		"none.toml": "[project]\n",
+		"both.toml": "[tools.mdsmith]\n[tool.mdsmith]\n",
+	} {
+		_, hint := probePyproject(writeCfg(t, dir, name, body))
+		assert.Equal(t, "", hint, name)
+	}
+	plural := writeCfg(t, dir, "plural.toml", "[tools.mdsmith]\n")
+	source, hint := probePyproject(plural)
+	assert.False(t, source)
+	assert.Equal(t, plural+": [tools.mdsmith] is not read; rename the table to [tool.mdsmith]", hint)
+}
+
+func TestDiscoverWithHints(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0o755))
+	yml := writeCfg(t, root, ".mdsmith.yml", "rules: {}\n")
+	py := writeCfg(t, root, "sub/pyproject.toml", "[tools.mdsmith]\n")
+	found, hints := DiscoverWithHints(filepath.Join(root, "sub"))
+	assert.Equal(t, yml, found)
+	assert.Equal(t, []string{py + ": [tools.mdsmith] is not read; rename the table to [tool.mdsmith]"}, hints)
 }
 
 func TestLoadPyproject_PluralOnlyErrorCarriesHint(t *testing.T) {

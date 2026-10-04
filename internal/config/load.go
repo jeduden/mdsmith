@@ -207,17 +207,6 @@ func mergeAndResolveSchemas(cfg *Config, sourcePath string, mergeKinds bool) err
 	return nil
 }
 
-// topLevelKeySet returns the set of top-level YAML mapping keys
-// present in data, or nil on parse error. It rejects
-// anchor/alias usage for the same reason yamlHasKey does.
-func topLevelKeySet(data []byte) map[string]bool {
-	node, err := yamlutil.UnmarshalNodeSafe(data)
-	if err != nil {
-		return nil
-	}
-	return topLevelKeys(&node)
-}
-
 // topLevelKeys returns the set of top-level mapping keys of a document
 // node, or nil when its root is not a mapping.
 func topLevelKeys(node *yaml.Node) map[string]bool {
@@ -233,11 +222,6 @@ func topLevelKeys(node *yaml.Node) map[string]bool {
 		result[mapping.Content[i].Value] = true
 	}
 	return result
-}
-
-// yamlHasKey returns true if the top-level YAML mapping contains the given key.
-func yamlHasKey(data []byte, key string) bool {
-	return topLevelKeySet(data)[key]
 }
 
 // checkBuildConfig runs the two build-config validators that must run
@@ -293,14 +277,24 @@ func rejectRemovedBuildKeys(node *yaml.Node) error {
 // with callers that read one known directory's config (such as the
 // merge-driver glob set at the repository root).
 func FileIn(dir string) string {
+	found, _ := fileIn(dir)
+	return found
+}
+
+// fileIn is FileIn plus, when dir holds no config file, the hint for a
+// pyproject.toml there whose table is the plural `[tools.mdsmith]`. The
+// pyproject.toml is read and parsed once for both answers.
+func fileIn(dir string) (found, hint string) {
 	candidate := filepath.Join(dir, configFileName)
 	if _, err := os.Stat(candidate); err == nil {
-		return candidate
+		return candidate, ""
 	}
-	if py := filepath.Join(dir, pyprojectFileName); pyprojectHasMdsmithTable(py) {
-		return py
+	py := filepath.Join(dir, pyprojectFileName)
+	source, hint := probePyproject(py)
+	if !source {
+		return "", hint
 	}
-	return ""
+	return py, ""
 }
 
 // IsConfigFile reports whether path names a file that can be an mdsmith
@@ -319,7 +313,7 @@ func IsConfigFile(path string) bool {
 // or reaches the filesystem root. Returns the path to the config file,
 // or "" if none was found.
 func Discover(startDir string) (string, error) {
-	found, _ := discover(startDir)
+	found, _ := DiscoverWithHints(startDir)
 	return found, nil
 }
 
@@ -328,18 +322,20 @@ func Discover(startDir string) (string, error) {
 // pyproject.toml whose table is the plural `[tools.mdsmith]`. Callers
 // print them so the author learns why the table is not read.
 func DiscoverHints(startDir string) []string {
-	_, hints := discover(startDir)
+	_, hints := DiscoverWithHints(startDir)
 	return hints
 }
 
-// discover is the walk behind Discover and DiscoverHints.
-func discover(startDir string) (found string, hints []string) {
+// DiscoverWithHints is Discover and DiscoverHints in one walk, for a
+// caller that wants both without reading each pyproject.toml twice.
+func DiscoverWithHints(startDir string) (found string, hints []string) {
 	dir, _ := filepath.Abs(startDir) // filepath.Abs cannot fail when os.Getwd succeeds
 	for {
-		if found := FileIn(dir); found != "" {
-			return found, hints
+		f, hint := fileIn(dir)
+		if f != "" {
+			return f, hints
 		}
-		if hint := pyprojectPluralHint(filepath.Join(dir, pyprojectFileName)); hint != "" {
+		if hint != "" {
 			hints = append(hints, hint)
 		}
 

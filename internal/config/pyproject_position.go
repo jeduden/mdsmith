@@ -70,8 +70,12 @@ func (c tomlConverter) tree(t *toml.Tree, at toml.Position) *yaml.Node {
 	keys := t.Keys()
 	sort.Strings(keys)
 	for _, k := range keys {
-		v := t.Get(k)
-		p := t.GetPosition(k)
+		// The path forms take k verbatim: Get and GetPosition split on
+		// `.`, so a quoted key such as `"a.b"` would read the wrong
+		// value, and the empty key `""` would return t itself and
+		// recurse without end.
+		v := t.GetPath([]string{k})
+		p := t.GetPositionPath([]string{k})
 		if aot, ok := v.([]*toml.Tree); ok && len(aot) > 0 && !aot[0].Position().Invalid() {
 			// go-toml reports an array of tables at its last
 			// `[[header]]`; the key belongs at the first.
@@ -170,29 +174,78 @@ func keyFollowedByAssign(line []byte, i int) bool {
 	return false
 }
 
-// nthBrace returns the position of the (n+1)-th `{` at or after from,
-// or from when there are fewer.
+// nthBrace returns the position of the (n+1)-th `{` at or after from
+// that opens an element of the array whose key sits at from — a `{`
+// not nested inside another inline table and not inside a quoted
+// string or a comment — or from when there are fewer. The scan ends
+// at the `]` that closes the array, or at a `}` that closes a table
+// opened before from.
 func (c tomlConverter) nthBrace(from toml.Position, n int) toml.Position {
 	if from.Invalid() {
 		return from
 	}
+	s := braceScan{n: n}
 	for ln := from.Line; ln <= len(c.lines); ln++ {
 		line := c.lines[ln-1]
 		start := 0
 		if ln == from.Line {
 			start = min(from.Col-1, len(line))
 		}
-		for i := start; i < len(line); i++ {
-			if line[i] != '{' {
-				continue
-			}
-			if n == 0 {
-				return toml.Position{Line: ln, Col: i + 1}
-			}
-			n--
+		col, found, done := s.scanLine(line, start)
+		if found {
+			return toml.Position{Line: ln, Col: col + 1}
+		}
+		if done {
+			return from
 		}
 	}
 	return from
+}
+
+// braceScan carries nthBrace's state from one line to the next: the
+// element `{` still to skip, the inline-table depth, and the `[`
+// depth outside inline tables.
+type braceScan struct {
+	n, depth, brackets int
+}
+
+// scanLine scans line from byte offset start. found reports that the
+// wanted `{` sits at offset col; done reports that the array (or a
+// table enclosing it) closed first.
+func (s *braceScan) scanLine(line []byte, start int) (col int, found, done bool) {
+	for i := start; i < len(line); i++ {
+		switch line[i] {
+		case '"', '\'':
+			i = tomlStringEnd(line, i)
+		case '#':
+			return 0, false, false
+		case '[':
+			if s.depth == 0 {
+				s.brackets++
+			}
+		case ']':
+			if s.depth == 0 {
+				s.brackets--
+				if s.brackets <= 0 {
+					return 0, false, true
+				}
+			}
+		case '{':
+			if s.depth == 0 {
+				if s.n == 0 {
+					return i, true, false
+				}
+				s.n--
+			}
+			s.depth++
+		case '}':
+			if s.depth == 0 {
+				return 0, false, true
+			}
+			s.depth--
+		}
+	}
+	return 0, false, false
 }
 
 // pyprojectResolver resolves key paths (relative to `[tool.mdsmith]`)
