@@ -50,50 +50,77 @@ func loadPyproject(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// maxTOMLNesting caps how deeply arrays and inline tables may nest in
-// a TOML file before go-toml parses it. go-toml v1's recursive-descent
-// parser has no depth limit: a pyproject.toml holding a few hundred
-// thousand nested `[` (well inside the maxConfigBytes read cap)
-// overflows the goroutine stack, a fatal error no recover catches.
-// Discovery parses every pyproject.toml on its walk, so without the cap
-// any Python project file could crash the CLI and the language server.
-// Real config nests a handful of levels.
+// maxTOMLNesting caps how deeply arrays, inline tables and dotted keys
+// may nest in a TOML file before go-toml parses it. go-toml v1's
+// recursive-descent parser has no depth limit: a pyproject.toml holding
+// a few hundred thousand nested `[` (well inside the maxConfigBytes read
+// cap) overflows the goroutine stack, a fatal error no recover catches.
+// A dotted key or table header with as many segments nests as many
+// tables, which the TOML-to-YAML conversion and the decoder then recurse
+// through one frame per level. Discovery parses every pyproject.toml on
+// its walk, so without the cap any Python project file could crash or
+// stall the CLI and the language server. Real config nests a handful of
+// levels.
 const maxTOMLNesting = 1000
 
-// loadTOML parses data with go-toml after rejecting input whose arrays
-// and inline tables nest deeper than maxTOMLNesting.
+// loadTOML parses data with go-toml after rejecting input whose arrays,
+// inline tables and dotted keys nest deeper than maxTOMLNesting.
 func loadTOML(data []byte) (*toml.Tree, error) {
 	if tomlNestingExceeds(data, maxTOMLNesting) {
-		return nil, fmt.Errorf("toml: arrays and inline tables nest deeper than %d levels", maxTOMLNesting)
+		return nil, fmt.Errorf("toml: arrays, inline tables and dotted keys nest deeper than %d levels",
+			maxTOMLNesting)
 	}
 	return toml.LoadBytes(data)
 }
 
-// tomlNestingExceeds reports whether the `[`/`{` nesting outside
-// strings and comments in data goes deeper than limit. Table headers
-// count too, so the bound is conservative.
+// tomlNestingExceeds reports whether nesting outside strings and
+// comments in data goes deeper than limit. The depth at a point is the
+// count of open `[`/`{` plus the dots of the dotted run it is in: key
+// segments — bare, quoted, or space-padded — joined by `.`, each dot one
+// more table. Any other byte (`=`, `,`, a bracket, a newline) ends the
+// run, so the one dot of each float in an array never adds up. Table
+// headers count as brackets and a float's dot as a segment, so the bound
+// is conservative.
 func tomlNestingExceeds(data []byte, limit int) bool {
-	depth := 0
+	depth, run := 0, 0
 	for i := 0; i < len(data); i++ {
-		switch data[i] {
-		case '#':
+		switch c := data[i]; {
+		case c == '"' || c == '\'':
+			i = tomlStringEnd(data, i)
+		case c == '.':
+			run++
+			if depth+run > limit {
+				return true
+			}
+		case tomlKeyByte(c):
+		case c == '#':
+			run = 0
 			for i < len(data) && data[i] != '\n' {
 				i++
 			}
-		case '"', '\'':
-			i = tomlStringEnd(data, i)
-		case '[', '{':
+		case c == '[' || c == '{':
+			run = 0
 			depth++
 			if depth > limit {
 				return true
 			}
-		case ']', '}':
+		case c == ']' || c == '}':
+			run = 0
 			if depth > 0 {
 				depth--
 			}
+		default:
+			run = 0
 		}
 	}
 	return false
+}
+
+// tomlKeyByte reports whether c can sit inside a dotted run without
+// ending it: a bare-key byte or the blank TOML allows around a dot.
+func tomlKeyByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' ||
+		c == '_' || c == '-' || c == ' ' || c == '\t'
 }
 
 // tomlStringEnd returns the index of the byte that closes the string

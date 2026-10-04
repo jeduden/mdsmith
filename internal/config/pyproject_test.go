@@ -367,6 +367,20 @@ func TestTOMLNestingExceeds(t *testing.T) {
 		{"brackets in a comment", "# [[[[[[\na = 1\n", false},
 		{"unterminated string ends at newline", "a = \"[[\nb = " + deeplyNested(4), true},
 		{"string closers do not hide depth", `a = [ "]", [ "]", [ "]", [ "]", 1 ] ] ] ]`, true},
+		// Each dot of a dotted key or table header opens one more table.
+		{"dotted key at the limit", "a.b.c.d = 1", false},
+		{"dotted key past the limit", "a.b.c.d.e = 1", true},
+		{"dotted header past the limit", "[a.b.c.d]\n", true},
+		{"dotted array-of-tables header", "[[a.b.c.d]]\n", true},
+		{"quoted dotted segments", `"a"."b".'c'.d.e = 1`, true},
+		{"spaced dotted key", "a . b . c . d . e = 1", true},
+		{"dotted key in an inline table", "a = { b.c.d.e = 1 }", true},
+		{"dotted key in an inline table at the limit", "a = { b.c.d = 1 }", false},
+		{"floats in an array do not add up", "a = [1.5, 2.5, 3.5, 4.5, 5.5]", false},
+		{"dotted keys on separate lines", "a.b.c = 1\na.b.d = 2\nx.y.z = 3\n", false},
+		{"date-time fraction", "a = 1979-05-27T07:32:00.999999", false},
+		{"dots in a string", `a = "x.y.z.w.v.u"`, false},
+		{"dots in a comment", "a = 1 # x.y.z.w.v.u\n", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -405,6 +419,20 @@ func TestPyproject_DeepNestingIsRejectedNotFatal(t *testing.T) {
 	source, _ = probePyproject(cfg)
 	assert.True(t, source, "a file naming the table is still a source, so Load reports why")
 	_, err := Load(cfg)
+	assert.ErrorContains(t, err, "nest deeper than")
+}
+
+// A dotted key or table header with more segments than maxTOMLNesting
+// is rejected before parsing: each segment is one more nested table
+// for the TOML-to-YAML conversion and the decoder to recurse through.
+func TestPyproject_DeepDottedKeyIsRejected(t *testing.T) {
+	dir := t.TempDir()
+	segs := strings.Repeat(".a", maxTOMLNesting+1)
+	header := writeCfg(t, dir, "h/pyproject.toml", "[tool.mdsmith.rules.line-length"+segs+"]\n")
+	_, err := Load(header)
+	assert.ErrorContains(t, err, "nest deeper than")
+	key := writeCfg(t, dir, "k/pyproject.toml", "[tool.mdsmith]\nrules"+segs+" = 1\n")
+	_, err = Load(key)
 	assert.ErrorContains(t, err, "nest deeper than")
 }
 
