@@ -274,3 +274,38 @@ func TestAttachFileKeepsExisting(t *testing.T) {
 	plain := errors.New("plain")
 	assert.Same(t, plain, attachFile("x.yml", plain))
 }
+
+func TestWordlistValidationPositions(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		line int
+		col  int
+	}{
+		{"top-level unknown list", `rules:
+  forbidden-text:
+    lists:
+      - ghost
+`, 4, 9},
+		{"kind lists not strings", `kinds:
+  plan:
+    rules:
+      forbidden-text:
+        lists: nope
+`, 5, 9},
+		{"override rule without lists support", `overrides:
+  - glob: ["a.md"]
+    rules:
+      line-length:
+        lists: [a]
+`, 5, 9},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseBytes([]byte(tt.src))
+			line, col := issuePos(t, tt.src, err)
+			assert.Equal(t, tt.line, line, "err: %v", err)
+			assert.Equal(t, tt.col, col, "err: %v", err)
+		})
+	}
+}

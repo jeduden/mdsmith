@@ -208,14 +208,14 @@ func TestValidateWordlists_OverrideError(t *testing.T) {
 
 func TestCheckRuleLists_NonStringListsValue(t *testing.T) {
 	rules := map[string]RuleCfg{"forbidden-text": {Settings: map[string]any{"lists": "nope"}}}
-	err := checkRuleLists("rules", rules, nil)
+	err := checkRuleLists("rules", KeyPath{"rules"}, rules, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "list of strings")
 }
 
 func TestCheckRuleLists_UnknownRule(t *testing.T) {
 	rules := map[string]RuleCfg{"no-such-rule": {Settings: map[string]any{"lists": []any{"x"}}}}
-	err := checkRuleLists("rules", rules, nil)
+	err := checkRuleLists("rules", KeyPath{"rules"}, rules, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unknown rule")
 }

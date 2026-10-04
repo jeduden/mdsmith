@@ -250,10 +250,13 @@ func validateWordlists(cfg *Config) error {
 		return nil
 	}
 	userMap := toWordlistMap(cfg.Wordlists)
-	if err := checkRuleLists("rules", cfg.Rules, userMap); err != nil {
+	if err := checkRuleLists("rules", KeyPath{"rules"}, cfg.Rules, userMap); err != nil {
 		return err
 	}
-	if err := checkRuleLists("convention", cfg.ConventionPreset, userMap); err != nil {
+	// The preset's rules are not written in the user's file; the
+	// `convention:` key that selected them is the nearest position, and
+	// resolvers fall back to it because it is a scalar.
+	if err := checkRuleLists("convention", KeyPath{"convention"}, cfg.ConventionPreset, userMap); err != nil {
 		return err
 	}
 	kindNames := make([]string, 0, len(cfg.Kinds))
@@ -262,12 +265,13 @@ func validateWordlists(cfg *Config) error {
 	}
 	sort.Strings(kindNames)
 	for _, kn := range kindNames {
-		if err := checkRuleLists("kind "+kn, cfg.Kinds[kn].Rules, userMap); err != nil {
+		if err := checkRuleLists("kind "+kn, KeyPath{"kinds", kn, "rules"}, cfg.Kinds[kn].Rules, userMap); err != nil {
 			return err
 		}
 	}
 	for i, o := range cfg.Overrides {
-		if err := checkRuleLists(fmt.Sprintf("override %d", i), o.Rules, userMap); err != nil {
+		if err := checkRuleLists(fmt.Sprintf("override %d", i),
+			KeyPath{"overrides", i, "rules"}, o.Rules, userMap); err != nil {
 			return err
 		}
 	}
@@ -275,32 +279,35 @@ func validateWordlists(cfg *Config) error {
 }
 
 // checkRuleLists validates the `lists:` setting on every rule in rules.
-// scope labels the config layer for error messages; userMap resolves
+// scope labels the config layer for error messages and base is the key
+// path of the rules map, used to address each issue; userMap resolves
 // named lists. It rejects a non-string lists value, a `lists:` on an
 // unknown or non-WordlistConsumer rule, and any list that fails to
 // resolve (unknown name, unknown parent, or extends cycle).
 func checkRuleLists(
-	scope string, rules map[string]RuleCfg, userMap map[string]wordlist.Wordlist,
+	scope string, base KeyPath, rules map[string]RuleCfg, userMap map[string]wordlist.Wordlist,
 ) error {
 	for ruleName, rc := range rules {
 		raw, ok := rc.Settings["lists"]
 		if !ok {
 			continue
 		}
+		lists := append(append(KeyPath{}, base...), ruleName, "lists")
 		names, ok := anyToStrings(raw)
 		if !ok {
-			return fmt.Errorf("%s: rule %q: lists must be a list of strings", scope, ruleName)
+			return issueAt(lists, "%s: rule %q: lists must be a list of strings", scope, ruleName)
 		}
 		r := rule.ByName(ruleName)
 		if r == nil {
-			return fmt.Errorf("%s: rule %q: lists set on unknown rule", scope, ruleName)
+			return issueAt(lists, "%s: rule %q: lists set on unknown rule", scope, ruleName)
 		}
 		if _, ok := r.(rule.WordlistConsumer); !ok {
-			return fmt.Errorf("%s: rule %q does not accept lists", scope, ruleName)
+			return issueAt(lists, "%s: rule %q does not accept lists", scope, ruleName)
 		}
-		for _, ln := range names {
+		for j, ln := range names {
 			if _, err := wordlist.Resolve(ln, userMap); err != nil {
-				return fmt.Errorf("%s: rule %q: %w", scope, ruleName, err)
+				return issueWrap(append(lists, j),
+					fmt.Errorf("%s: rule %q: %w", scope, ruleName, err))
 			}
 		}
 	}
