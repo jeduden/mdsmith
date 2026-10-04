@@ -345,7 +345,10 @@ type destResolver struct {
 
 	wl     *linkgraph.WikilinkIndex // ws.WikilinkIndex, once wlRead
 	wlRead bool
-	lines  *edgeLines // see edgeReader
+	// wlListed is set when ws has no wikilink index and wl was built
+	// from ws.Files() instead (see wikilinkIndex).
+	wlListed bool
+	lines    *edgeLines // see edgeReader
 }
 
 // edgeReader returns the one edgeLines the resolver's wikilink
@@ -907,7 +910,7 @@ func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *dest
 		return
 	}
 	idx := r.wikilinkIndex()
-	if !r.winsKey(idx, old, src) {
+	if !r.knowsHolders(old) || !r.winsKey(idx, old, src) {
 		return
 	}
 	post := r.postIndex(idx)
@@ -933,6 +936,9 @@ func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *dest
 					continue
 				}
 			}
+		}
+		if !r.knowsHolders(t.wikilinkKey) {
+			continue
 		}
 		if !t.reaches(post) {
 			r.countBlocked(post, t, old, dst)
@@ -1162,10 +1168,20 @@ func (r *destResolver) wikilinkIndex() *linkgraph.WikilinkIndex {
 	if !r.wlRead {
 		r.wl, r.wlRead = r.ws.WikilinkIndex(), true
 		if r.wl == nil {
-			r.wl = linkgraph.NewWikilinkIndexFromPaths(r.paths())
+			r.wl, r.wlListed = linkgraph.NewWikilinkIndexFromPaths(r.paths()), true
 		}
 	}
 	return r.wl
+}
+
+// knowsHolders reports whether wikilinkIndex knows every file keyed by
+// k. A stem key is always known: every Markdown file is listed. An
+// exact-name key is not when the index was built from ws.Files(): the
+// CLI and LSP list Markdown files only, so a non-Markdown file that
+// wins the name would go unseen and a rewrite could point a link at
+// the wrong file. Such a link is left as written.
+func (r *destResolver) knowsHolders(k wikilinkKey) bool {
+	return k.isStem || !r.wlListed
 }
 
 // postIndex returns idx as it reads once the batch has run: every
