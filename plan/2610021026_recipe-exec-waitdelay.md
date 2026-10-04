@@ -96,6 +96,15 @@ Two other differences came with the move:
   check and `Start` now reports `NotStartedError`, not
   a start and an immediate kill.
 
+The PR #909 review added two guards:
+
+- A Unix group already empty when its leader exits on
+  its own is never signalled at the deadline
+  (`pgKiller.leaderExited`), as its pgid may be reused.
+- Plan [2610040911](2610040911_recipe-leader-reap-bounds.md)
+  tracks a bound on the leader wait and a group that
+  empties later.
+
 ## Tasks
 
 1. [x] Write a failing test: a recipe like `sleep 30 &
