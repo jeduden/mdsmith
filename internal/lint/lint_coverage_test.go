@@ -149,12 +149,12 @@ func TestIsGitignored_MatchAndNoMatch(t *testing.T) {
 	// A file matching the pattern should be ignored.
 	logFile := filepath.Join(dir, "test.log")
 	require.NoError(t, os.WriteFile(logFile, []byte("log"), 0o644))
-	assert.True(t, isGitignored(matcher, logFile, false))
+	assert.True(t, isGitignored(matcher, "", logFile, false))
 
 	// A file not matching should not be ignored.
 	mdFile := filepath.Join(dir, "test.md")
 	require.NoError(t, os.WriteFile(mdFile, []byte("# Test"), 0o644))
-	assert.False(t, isGitignored(matcher, mdFile, false))
+	assert.False(t, isGitignored(matcher, "", mdFile, false))
 }
 
 // PI node and parser unit tests live with the canonical
@@ -493,8 +493,8 @@ func TestIsGitignored_DirectorySentinel(t *testing.T) {
 	m := gitignore.NewMatcher(dir)
 	logsDir := filepath.Join(dir, "logs")
 	// isGitignored for a directory entry.
-	assert.True(t, isGitignored(m, logsDir, true),
+	assert.True(t, isGitignored(m, "", logsDir, true),
 		"directory matching dir-only pattern must be ignored")
-	assert.False(t, isGitignored(m, logsDir, false),
+	assert.False(t, isGitignored(m, "", logsDir, false),
 		"file with same name must not be ignored by dir-only pattern")
 }

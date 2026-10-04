@@ -531,8 +531,15 @@ func addDirFiles(dir string, opts ResolveOpts, addFile func(string)) error {
 // was one syscall per workspace file on the check hot path.
 func walkDir(dir string, useGitignore, followSymlinks bool) ([]string, error) {
 	var matcher *gitignore.Matcher
+	var cwd string
 	if useGitignore {
 		matcher = gitignore.NewMatcher(dir)
+		// Resolve the working directory once: filepath.Abs on a relative
+		// path calls os.Getwd (a Getenv plus stat syscalls) per entry.
+		var err error
+		if cwd, err = os.Getwd(); err != nil {
+			matcher = nil
+		}
 	}
 
 	var files []string
@@ -559,7 +566,7 @@ func walkDir(dir string, useGitignore, followSymlinks bool) ([]string, error) {
 			}
 		}
 
-		if matcher != nil && isGitignored(matcher, path, d.IsDir()) {
+		if matcher != nil && isGitignored(matcher, cwd, path, d.IsDir()) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -587,11 +594,18 @@ func walkDir(dir string, useGitignore, followSymlinks bool) ([]string, error) {
 	return files, nil
 }
 
-// isGitignored checks if a path is ignored by gitignore rules.
-func isGitignored(matcher *gitignore.Matcher, path string, isDir bool) bool {
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return false
+// isGitignored checks if a path is ignored by gitignore rules. cwd is
+// the working directory a relative path resolves against.
+func isGitignored(matcher *gitignore.Matcher, cwd, path string, isDir bool) bool {
+	return matcher.IsIgnored(absWithin(cwd, path), isDir)
+}
+
+// absWithin is filepath.Abs against a known working directory: it
+// returns path cleaned and, when relative, joined onto cwd, without
+// the per-call os.Getwd.
+func absWithin(cwd, path string) string {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
 	}
-	return matcher.IsIgnored(absPath, isDir)
+	return filepath.Join(cwd, path)
 }
