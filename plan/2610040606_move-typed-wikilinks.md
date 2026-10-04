@@ -71,3 +71,26 @@ the batch case needs a client that sends other files.
       `[[img.png]]` link in `Withheld`.
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues
+
+## Follow-ups
+
+The round-1 code review found one design debt. The stem and
+exact-name split is now spelled as paired APIs:
+
+- `WikilinkStem` and `WikilinkName`, `StemPaths` and
+  `NamePaths` in
+  [`wikilinks.go`](../internal/linkgraph/wikilinks.go).
+- `EdgeWikilink` and `EdgeWikilinkName` in
+  [`index.go`](../internal/index/index.go).
+- The two `IncomingWikilink*Edges` lookups in `index.go`
+  and [`indexedges.go`](../internal/refactor/indexedges.go).
+
+The private `wikilinkKey` in
+[`move.go`](../internal/refactor/move.go) picks one of each
+pair by its `isStem` flag. One exported key type in
+linkgraph would let a new wikilink feature be written once.
+That changes three packages' APIs, so it is out of scope
+here. File it as its own plan once `PLAN.md` has room. It
+is still at the 300-line cap noted in plan 2610030438.
+Joining its catalog lines to save room breaks the 80-column
+limit.
