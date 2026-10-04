@@ -141,6 +141,16 @@ func (w *OverlayWorkspace) ensureDiskFS() fs.FS {
 	return w.diskFS
 }
 
+// Close closes the disk root the workspace caches for its fall-through
+// reads (ensureDiskFS). A disk read through it fails afterwards, while
+// overlaid buffers stay readable, so the owner calls Close only once no
+// operation uses the workspace, as the LSP does when it retires a
+// superseded session. It is safe to call more than once; with no root
+// open yet, it opens one only to close it, so none opens later.
+func (w *OverlayWorkspace) Close() {
+	lint.CloseFS(w.ensureDiskFS())
+}
+
 // Set stores data (cloned) as the overlay for p, shadowing disk on the
 // next read.
 func (w *OverlayWorkspace) Set(p string, data []byte) {

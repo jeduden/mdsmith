@@ -118,3 +118,26 @@ func TestSessionCheckAfterDisposeReadsDisk(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, diags)
 }
+
+// TestOverlayWorkspaceCloseClosesDiskRoot locks that Close releases the
+// disk root an OverlayWorkspace caches for its fall-through reads, that
+// a second Close is harmless, and that Close on an overlay that never
+// read disk leaves no handle open. Not parallel: it records
+// lint.OpenRootFS.
+func TestOverlayWorkspaceCloseClosesDiskRoot(t *testing.T) {
+	dir := writeRootsTree(t)
+	opened := rootfstest.Record(t)
+	ws := NewOverlayWorkspace(dir)
+	_, err := ws.ReadFile("b.md")
+	require.NoError(t, err, "a read opens the cached disk root")
+	ws.Close()
+	ws.Close()
+	_, err = ws.ReadFile("b.md")
+	assert.Error(t, err, "a read after Close does not reach disk")
+
+	NewOverlayWorkspace(dir).Close()
+	for i, r := range opened() {
+		_, err := fs.Stat(r, ".")
+		assert.Error(t, err, "root %d is closed", i)
+	}
+}
