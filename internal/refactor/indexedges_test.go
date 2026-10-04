@@ -10,12 +10,13 @@ import (
 )
 
 // sampleIndex indexes a.md (heading "Setup") and b.md, whose one line
-// holds an anchor link and a wikilink to a.md.
+// holds an anchor link and a wikilink to a.md, and a typed embed of
+// a.png.
 func sampleIndex(t *testing.T) *index.Index {
 	t.Helper()
 	files := map[string][]byte{
 		"a.md": []byte("# Setup\n"),
-		"b.md": []byte("See [go](a.md#setup) and [[a]].\n"),
+		"b.md": []byte("See [go](a.md#setup) and [[a]] ![[A.png]].\n"),
 	}
 	idx := index.New(".")
 	idx.BuildSerial([]string{"a.md", "b.md"}, func(rel string) ([]byte, error) {
@@ -84,6 +85,19 @@ func TestIndexEdges_IncomingWikilinkEdges(t *testing.T) {
 	for name, e := range emptyIndexEdges() {
 		t.Run(name, func(t *testing.T) {
 			assert.Empty(t, e.IncomingWikilinkEdges("a"))
+		})
+	}
+}
+
+func TestIndexEdges_IncomingWikilinkNameEdges(t *testing.T) {
+	var ws MoveWorkspace = indexHost{IndexEdges: NewIndexEdges(sampleIndex(t))}
+	edges := ws.IncomingWikilinkNameEdges("a.png")
+	require.Len(t, edges, 1)
+	assert.Equal(t, "b.md", edges[0].SourceFile)
+	assert.Empty(t, ws.IncomingWikilinkNameEdges("a"))
+	for name, e := range emptyIndexEdges() {
+		t.Run(name, func(t *testing.T) {
+			assert.Empty(t, e.IncomingWikilinkNameEdges("a.png"))
 		})
 	}
 }

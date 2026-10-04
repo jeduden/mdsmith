@@ -48,13 +48,11 @@ type BatchMove struct {
 // order. Withheld counts the links that get no edit yet may not
 // reach their file once the batch has run: one from a planned member
 // to a member whose move could not be planned, one inside such a
-// member to a planned member that stops resolving, a `[[stem]]` whose
-// new key another member's destination wins, a `[[stem]]` left as
-// written that another member's destination takes (see stolen), and
-// every path link and `[[stem]]` link to a shadowed path (see
-// countShadowed). A typed `[[name.ext]]` link to a shadowed
-// non-Markdown file is not counted: the index has no edge lookup for
-// it (plan 2610040606).
+// member to a planned member that stops resolving, a wikilink (a
+// `[[stem]]` or a typed `[[name.ext]]`) whose new key another member's
+// destination wins, a wikilink left as written that another member's
+// destination takes (see stolen), and every path link and wikilink to
+// a shadowed path (see countShadowed).
 type BatchPlan struct {
 	Plan
 	Moves    []BatchMove
@@ -84,8 +82,8 @@ type BatchPlan struct {
 // stops resolving after the batch. A link inside it to a file the
 // batch leaves in place is not counted: MDS027 flags it if it stops
 // resolving. When a planned member lands on its path, every path link
-// and `[[stem]]` link to it counts too (see countShadowed): it then
-// reaches the newcomer.
+// and wikilink to it counts too (see countShadowed): it then reaches
+// the newcomer.
 //
 // Move is MoveAll with one pair.
 func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
@@ -98,7 +96,7 @@ func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
 		if m.Err != nil {
 			continue
 		}
-		appendWikilinkStemEdits(bp.Edits, ws, r, m.Src, m.Dst)
+		appendWikilinkKeyEdits(bp.Edits, ws, r, m.Src, m.Dst)
 		if mdpath.HasMarkdownExt(path.Ext(m.Src)) || r.listed(m.Src) {
 			appendOutboundEdits(bp.Edits, p, r, m.Key, m.Src, m.Dst, b.sources[m.Src])
 		}
@@ -113,28 +111,29 @@ func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
 	return bp
 }
 
-// countShadowed counts, in the batch, every `[[stem]]` link to
-// vacated: a member whose move was refused, whose path a planned
-// member takes (moveBatch.shadowed). The host still moves vacated, so
-// each link to it then reaches the newcomer; it still resolves, so no
-// rule flags it, and the batch plans no edit for it. A `[[stem]]` link
-// is counted when its stem reaches vacated today. A path link to it is
-// counted in the referrer scan (see appendReferrerEdits), or, in a
-// planned member, by its outbound pass (see outboundEdit), so the
-// workspace is still read once.
+// countShadowed counts, in the batch, every wikilink to vacated: a
+// member whose move was refused, whose path a planned member takes
+// (moveBatch.shadowed). The host still moves vacated, so each link to
+// it then reaches the newcomer; it still resolves, so no rule flags
+// it, and the batch plans no edit for it. A wikilink is counted when
+// its key reaches vacated today: a `[[stem]]` link for a Markdown
+// file, a typed `[[name.ext]]` link for any other (see wikilinkKey). A
+// path link to it is counted in the referrer scan (see
+// appendReferrerEdits), or, in a planned member, by its outbound pass
+// (see outboundEdit), so the workspace is still read once.
 func countShadowed(ws MoveWorkspace, r *destResolver, vacated string) {
-	stem, ok := linkgraph.FileStemKey(path.Base(vacated))
-	if !ok || !linkgraph.WikilinkIndexed(vacated) {
+	if !linkgraph.WikilinkIndexed(vacated) {
 		return
 	}
-	edges := ws.IncomingWikilinkEdges(stem)
-	if len(edges) == 0 || !r.wikilinkIndex().StemResolvesTo(stem, vacated) {
+	k := fileWikilinkKey(vacated)
+	edges := k.edges(ws)
+	if len(edges) == 0 || !k.resolvesTo(r.wikilinkIndex(), vacated) {
 		return
 	}
 	lines := r.edgeReader()
 	for _, e := range edges {
 		if _, row, ok := lines.row(e); ok {
-			if got, _, _, ok := linkgraph.WikilinkStemAt(row, e.SourceCol-1); ok && got == stem {
+			if _, _, ok := k.at(row, e.SourceCol-1); ok {
 				r.batch.withheld++
 			}
 		}
@@ -237,43 +236,42 @@ type moveBatch struct {
 	shadowed map[string]bool   // see countShadowed
 	withheld int
 	post     *linkgraph.WikilinkIndex // postIndex, built on first use
-	stems    map[string]int           // stemHolders, built by keyStems
-	srcStems map[string][]string      // stemSources, built by keyStems
+	keys     map[wikilinkKey]int      // keyHolders, built by buildKeys
+	srcKeys  map[wikilinkKey][]string // keySources, built by buildKeys
 }
 
-// stemHolders returns how many members hold the stem key stem with
-// their source or their destination, each member counted once.
-func (b *moveBatch) stemHolders(stem string) int {
-	b.keyStems()
-	return b.stems[stem]
+// keyHolders returns how many members hold the wikilink key k (a stem
+// or an exact name, see wikilinkKey) with their source or their
+// destination, each member counted once.
+func (b *moveBatch) keyHolders(k wikilinkKey) int {
+	b.buildKeys()
+	return b.keys[k]
 }
 
-// stemSources returns every member source whose stem key is stem, in
+// keySources returns every member source whose wikilink key is k, in
 // no set order.
-func (b *moveBatch) stemSources(stem string) []string {
-	b.keyStems()
-	return b.srcStems[stem]
+func (b *moveBatch) keySources(k wikilinkKey) []string {
+	b.buildKeys()
+	return b.srcKeys[k]
 }
 
-// keyStems builds the stem keys stemHolders and stemSources read. It
-// runs on the first call, once every verdict is in, so a batch reads
-// its members once, not once per move.
-func (b *moveBatch) keyStems() {
-	if b.stems != nil {
+// buildKeys builds the wikilink keys keyHolders and keySources read.
+// It runs on the first call, once every verdict is in, so a batch
+// reads its members once, not once per move.
+func (b *moveBatch) buildKeys() {
+	if b.keys != nil {
 		return
 	}
-	b.stems, b.srcStems = map[string]int{}, map[string][]string{}
+	b.keys, b.srcKeys = map[wikilinkKey]int{}, map[wikilinkKey][]string{}
 	for src, m := range b.members {
-		s, ok := linkgraph.FileStemKey(path.Base(src))
-		if ok {
-			b.stems[s]++
-			b.srcStems[s] = append(b.srcStems[s], src)
-		}
+		s := fileWikilinkKey(src)
+		b.keys[s]++
+		b.srcKeys[s] = append(b.srcKeys[s], src)
 		if m.dst == "" {
 			continue
 		}
-		if d, dok := linkgraph.FileStemKey(path.Base(m.dst)); dok && (!ok || d != s) {
-			b.stems[d]++
+		if d := fileWikilinkKey(m.dst); d != s {
+			b.keys[d]++
 		}
 	}
 }

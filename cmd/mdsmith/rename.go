@@ -95,12 +95,13 @@ type cliRenameWorkspace struct {
 	maxBytes int64
 }
 
-// WikilinkIndex implements refactor.MoveWorkspace: the index `[[stem]]`
-// resolution reads, over the whole workspace root on disk rather than
-// the discovered file list, so a gitignored file still counts. It walks
-// the same view the MDS027 resolver walks. An empty or unreadable root
-// builds no index (nil). Each call walks the root again; the move
-// planner calls it once per plan.
+// WikilinkIndex implements refactor.MoveWorkspace: the index wikilink
+// resolution reads (`[[stem]]` and typed `[[name.ext]]` alike), over
+// the whole workspace root on disk rather than the discovered file
+// list, so a gitignored file still counts. It walks the same view the
+// MDS027 resolver walks. An empty or unreadable root builds no index
+// (nil). Each call walks the root again; the move planner calls it
+// once per plan.
 func (w cliRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return linkgraph.WikilinkIndexAtDir(w.rootDir)
 }

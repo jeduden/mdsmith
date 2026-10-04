@@ -57,17 +57,19 @@ func (e SourceNotFoundError) Error() string {
 //     reference definition in another file whose destination names
 //     src, its path token rewritten to name dst, any `?query` and
 //     `#fragment` kept;
-//   - wikilink stems — `[[old-stem]]` → `[[new-stem]]`, but only when
-//     the basename stem changes; a move that keeps the basename leaves
-//     wikilinks alone because a stem still resolves (a documented
-//     asymmetry with path links). Only a Markdown src with a non-empty
-//     stem, outside `.git` and `node_modules`, is a stem target, and a
-//     dst no wikilink can name — no extension, an empty stem, a `#`,
-//     `|`, `[`, `]`, backtick, CR, or newline in the name, a name that
-//     ends with a space, or a path under `.git` or `node_modules`,
-//     which the resolver skips — gets no rewrite. A name that starts
-//     with a space or reads as a drive path (`C:x.md`) is written
-//     behind `./`;
+//   - wikilink stems — `[[old-stem]]` → `[[new-stem]]` for a Markdown
+//     src, and typed names — `[[old.png]]` → `[[new.png]]` for any
+//     other src — but only when the key (stem or exact name) changes;
+//     a move that keeps the basename leaves wikilinks alone because
+//     the key still resolves (a documented asymmetry with path links).
+//     Only a src outside `.git` and `node_modules` whose key a link
+//     reaches today is a wikilink target, and a dst no wikilink can
+//     name — no extension, an empty stem, a `#`, `|`, `[`, `]`,
+//     backtick, CR, or newline in the name, a name that ends with a
+//     space, or a path under `.git` or `node_modules`, which the
+//     resolver skips — gets no rewrite. A name that starts with a
+//     space or reads as a drive path (`C:x.md`) is written behind
+//     `./`;
 //   - outbound destinations inside src, when it has a Markdown
 //     extension or the workspace lists it (an `.mdx` file that
 //     `files:` matches) — every `[t](path)`, `![a](path)` and
@@ -333,7 +335,7 @@ type destRef struct {
 
 // destResolver reads destinations for a move of src. It also holds the
 // workspace file list, read once per move and normalized, which the
-// referrer scan, the listed checks, and the wikilink same-stem guard of
+// referrer scan, the listed checks, and the wikilink same-key guard of
 // a workspace with no wikilink index share.
 type destResolver struct {
 	ws    MoveWorkspace
@@ -343,10 +345,13 @@ type destResolver struct {
 
 	wl     *linkgraph.WikilinkIndex // ws.WikilinkIndex, once wlRead
 	wlRead bool
-	lines  *edgeLines // see edgeReader
+	// wlListed is set when ws has no wikilink index and wl was built
+	// from ws.Files() instead (see wikilinkIndex).
+	wlListed bool
+	lines    *edgeLines // see edgeReader
 }
 
-// edgeReader returns the one edgeLines the resolver's `[[stem]]`
+// edgeReader returns the one edgeLines the resolver's wikilink
 // passes share, keeping every file it reads: a file holding links to
 // several moved files is read once per batch, not once per move. The
 // batch moves no file before it is planned, so a kept read stays
@@ -828,51 +833,55 @@ func skipGap(src []byte, i int) int {
 	return i
 }
 
-// appendWikilinkStemEdits rewrites the basename segment of each
-// `[[old-stem]]` link to the token dstWikilinkSpelling picks for dst:
-// the new stem, the whole basename, or either behind `./`. It runs only
-// when `[[old-stem]]` would stop reaching dst: a Markdown dst with
-// another stem, or a dst with a non-Markdown name. A move that keeps the
-// stem leaves wikilinks alone, since no other spelling would serve
-// better. With a same-stem sibling, though, the new path can sort on
-// the other side of it, and every `[[stem]]` then reaches the other
-// file of the two. In a batch, a kept stem another member also holds
-// is read against the batch (see keptStemTarget).
-func appendWikilinkStemEdits(changes map[string][]Edit, ws MoveWorkspace, r *destResolver, src, dst string) {
-	// Both ends are keyed the way NewWikilinkIndex keys files. Only a
-	// Markdown src has a stem key, so moving any other file retargets
-	// no `[[stem]]` link. An empty src key (`docs/.md`) matches no edge,
+// appendWikilinkKeyEdits rewrites the basename segment of each
+// wikilink that reaches src by its key — `[[old-stem]]` for a Markdown
+// src, a typed `[[old-name.ext]]` for any other — to the token
+// dstWikilinkSpelling picks for dst: the new stem, the whole basename,
+// or either behind `./`. It runs only when the old key would stop
+// reaching dst: a dst with another stem or name, or one in the other
+// key space (a Markdown file is reached by stem, any other by exact
+// name). A move that keeps the key leaves wikilinks alone, since no
+// other spelling would serve better: the resolver reads the base name
+// alone. With a same-key sibling, though, the new path can sort on the
+// other side of it, and every link by that key then reaches the other
+// file of the two. In a batch, a kept key another member also holds is
+// read against the batch (see keptWikilinkTarget).
+func appendWikilinkKeyEdits(changes map[string][]Edit, ws MoveWorkspace, r *destResolver, src, dst string) {
+	// Both ends are keyed the way NewWikilinkIndex keys files: a
+	// Markdown src by stem, any other by its exact name, which only a
+	// typed link spells. An empty src key (`docs/.md`) matches no edge,
 	// since no target spells it, so the edge lookup below returns early.
 	// ` guide.md` keys as " guide": a bare `[[guide]]` never reached it,
 	// while a folder-prefixed `[[x/ guide]]` did and is rewritten.
-	// A src under `.git` or `node_modules` is never indexed, so no
-	// `[[oldStem]]` link reached it: one that resolved elsewhere or
-	// nowhere must not be retargeted at dst.
-	oldStem, ok := linkgraph.FileStemKey(path.Base(src))
-	if !ok || !linkgraph.WikilinkIndexed(src) {
+	// A src under `.git` or `node_modules` is never indexed, so no link
+	// by its key reached it: one that resolved elsewhere or nowhere
+	// must not be retargeted at dst.
+	if !linkgraph.WikilinkIndexed(src) {
 		return
 	}
-	// A Markdown destination is addressed by stem, so keeping the stem
-	// keeps every link resolving. A typed destination (`guide.png`) is
-	// addressed by exact name, a different key space, so it always needs
-	// the rewrite: comparing its name to oldStem would wrongly skip a
-	// move such as docs/guide.png.md → docs/guide.png.
+	old := fileWikilinkKey(src)
+	// A Markdown destination is addressed by stem and any other by
+	// exact name, so keeping the key (same space, same key) keeps every
+	// link resolving. A move across the two spaces always needs the
+	// rewrite: comparing a name to a stem would wrongly skip a move
+	// such as docs/guide.png.md → docs/guide.png.
 	//
-	// A Markdown destination that keeps the stem needs no rewrite of its
-	// own, but in a batch another member can still change what
-	// `[[oldStem]]` reaches (see keptStemTarget): its links are then
-	// read against the batch too, and rewritten only to follow a named
-	// sibling.
-	self, rewrite := newStemTarget(oldStem, dst)
+	// A destination that keeps the key needs no rewrite of its
+	// own, but in a batch another member can still change what a link
+	// by the old key reaches (see keptWikilinkTarget): its links are
+	// then read against the batch too, and rewritten only to follow a
+	// named sibling.
+	self, rewrite := newWikilinkTarget(old, dst)
 	if !rewrite {
 		var kept bool
-		if self, kept = r.keptStemTarget(oldStem, dst); !kept {
+		if self, kept = r.keptWikilinkTarget(old, dst); !kept {
 			return
 		}
 	}
-	// A wikilink resolves by basename stem alone: every `[[oldStem]]`,
-	// with or without a folder prefix such as `[[ref/Guide]]`, reaches
-	// the same-stem file that sorts first (shallowest, then by name).
+	// A wikilink resolves by its base name alone: every link by the old
+	// key, with or without a folder prefix such as `[[ref/Guide]]`,
+	// reaches the same-key file that sorts first (shallowest, then by
+	// name).
 	// When that file is a sibling that is not moving, every such link
 	// reaches the sibling and stays as written. When it is src, every
 	// such link reaches src today and would silently reach a sibling
@@ -882,10 +891,10 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws MoveWorkspace, r *des
 	//
 	// A link whose folder prefix names a sibling's folder was written
 	// for that sibling, so it is left as written — unless the batch
-	// moves the sibling to a new stem too, when it follows the sibling.
+	// moves the sibling to a new key too, when it follows the sibling.
 	//
 	// Each rewrite must reach its file once the batch has run (see
-	// stemTarget.reaches), read from the index with every batch move
+	// wikilinkTarget.reaches), read from the index with every batch move
 	// applied. When a file outside the batch takes the new key, the
 	// link is left alone, as a lone move always has; when another
 	// batch member's destination takes it, the link is counted as
@@ -893,19 +902,19 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws MoveWorkspace, r *des
 	// blocked rewrite, that another member's destination then takes
 	// (see destResolver.stolen): it still resolves, so no rule flags it.
 	//
-	// Most moves have no `[[oldStem]]` link at all, so the edges are
+	// Most moves have no link by the old key at all, so the edges are
 	// fetched first and the workspace walk that builds the index is
 	// skipped.
-	edges := ws.IncomingWikilinkEdges(oldStem)
+	edges := old.edges(ws)
 	if len(edges) == 0 {
 		return
 	}
 	idx := r.wikilinkIndex()
-	if !r.winsStem(idx, oldStem, src) {
+	if !r.knowsHolders(old) || !r.winsKey(idx, old, src) {
 		return
 	}
 	post := r.postIndex(idx)
-	siblings := stemSiblings(idx.StemPaths(oldStem), src)
+	siblings := keySiblings(old.holders(idx), src)
 	lines := r.edgeReader()
 	for _, e := range edges {
 		key, row, ok := lines.row(e)
@@ -914,26 +923,25 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws MoveWorkspace, r *des
 		}
 		// An edge from a stale index can point at a column that now
 		// holds a link to another file; only a link still keyed by
-		// oldStem is rewritten.
-		stem, start, end, ok := linkgraph.WikilinkStemAt(row, e.SourceCol-1)
-		if !ok || stem != oldStem {
+		// the old key is rewritten.
+		start, end, ok := old.at(row, e.SourceCol-1)
+		if !ok {
 			continue
 		}
 		t, needed := self, rewrite
 		if len(siblings) > 0 {
 			if sib, named := wikilinkNamedSibling(row[e.SourceCol-1:start], src, siblings); named {
-				if t, needed = r.siblingTarget(oldStem, sib); !needed {
-					r.countStolen(post, oldStem, dst, r.landing(sib))
+				if t, needed = r.siblingTarget(old, sib); !needed {
+					r.countStolen(post, old, dst, r.landing(sib))
 					continue
 				}
 			}
 		}
-		if !t.reaches(post) {
-			r.countBlocked(post, t, oldStem, dst)
+		if r.blocked(post, t, old, dst) {
 			continue
 		}
 		if !needed {
-			// dst keeps the stem and still wins it.
+			// dst keeps the key and still wins it.
 			continue
 		}
 		text := t.spelling
@@ -953,37 +961,33 @@ func appendWikilinkStemEdits(changes map[string][]Edit, ws MoveWorkspace, r *des
 	}
 }
 
-// stemTarget is the file a rewritten `[[stem]]` link names after a
+// wikilinkTarget is the file a rewritten wikilink names after a
 // move: dst, the token that names it (see dstWikilinkSpelling), and
-// key, the stem (isStem) or lowercased exact name the resolver looks
-// it up by.
-type stemTarget struct {
+// the wikilinkKey the resolver looks it up by — a stem or a lowercased
+// exact name — whose holders and resolvesTo it reads through.
+type wikilinkTarget struct {
 	dst         string
 	spelling    string
 	needsPrefix bool
-	key         string
-	isStem      bool
+	wikilinkKey
 }
 
-// newStemTarget returns the stemTarget for a move of a file keyed by
-// oldStem to dst. ok is false when `[[oldStem]]` still reaches dst
-// (a Markdown dst with the same stem), when no token reaches dst (see
-// linkgraph.WikilinkReaches), or when dst sits under `.git` or
-// `node_modules`, which the resolver never indexes.
-func newStemTarget(oldStem, dst string) (stemTarget, bool) {
-	newStem, isStem := linkgraph.FileStemKey(path.Base(dst))
-	if isStem && oldStem == newStem {
-		return stemTarget{}, false
+// newWikilinkTarget returns the wikilinkTarget for a move of a file
+// keyed by old to dst. ok is false when a link keyed by old still
+// reaches dst (dst has the same key: the same stem, or the same exact
+// name), when no token reaches dst (see linkgraph.WikilinkReaches), or
+// when dst sits under `.git` or `node_modules`, which the resolver
+// never indexes.
+func newWikilinkTarget(old wikilinkKey, dst string) (wikilinkTarget, bool) {
+	k := fileWikilinkKey(dst)
+	if k == old {
+		return wikilinkTarget{}, false
 	}
-	spelling, needsPrefix, ok := dstWikilinkSpelling(dst, isStem)
+	spelling, needsPrefix, ok := dstWikilinkSpelling(dst, k.isStem)
 	if !ok || !linkgraph.WikilinkIndexed(dst) {
-		return stemTarget{}, false
+		return wikilinkTarget{}, false
 	}
-	key := newStem
-	if !isStem {
-		key = linkgraph.FileNameKey(path.Base(dst))
-	}
-	return stemTarget{dst: dst, spelling: spelling, needsPrefix: needsPrefix, key: key, isStem: isStem}, true
+	return wikilinkTarget{dst: dst, spelling: spelling, needsPrefix: needsPrefix, wikilinkKey: k}, true
 }
 
 // reaches reports whether a link keyed by t.key resolves to t.dst in
@@ -993,93 +997,137 @@ func newStemTarget(oldStem, dst string) (stemTarget, bool) {
 // post lacks it. post holds dst itself, so a holder spelling dst in
 // another letter case alone is checked here: on a case-insensitive
 // file system it may be dst, and then dst is not known to win.
-func (t stemTarget) reaches(post *linkgraph.WikilinkIndex) bool {
+func (t wikilinkTarget) reaches(post *linkgraph.WikilinkIndex) bool {
 	if slices.ContainsFunc(t.holders(post), func(q string) bool { return q != t.dst && strings.EqualFold(q, t.dst) }) {
 		return false
 	}
-	if t.isStem {
-		return post.StemResolvesTo(t.key, t.dst)
-	}
-	return post.NameResolvesTo(t.key, t.dst)
+	return t.resolvesTo(post, t.dst)
 }
 
-// holders returns the files in post that a link keyed by t.key
-// reaches, in resolver order: the stem holders for a Markdown
-// destination, the exact-name holders for a typed one.
-func (t stemTarget) holders(post *linkgraph.WikilinkIndex) []string {
-	if t.isStem {
-		return post.StemPaths(t.key)
-	}
-	return post.NamePaths(t.key)
+// wikilinkKey is the key the wikilink resolver files a file under and
+// a link reaches it by: the lowercased basename stem (isStem) for a
+// Markdown file, read from a `[[stem]]` link, or the lowercased exact
+// base name for any other file, read from a typed `[[name.ext]]` link.
+// The two are separate key spaces: `[[img.png]]` names img.png by
+// name, while `[[img.png.md]]` names img.png.md by the stem `img.png`.
+type wikilinkKey struct {
+	key    string
+	isStem bool
 }
 
-// keptStemTarget returns the target a `[[oldStem]]` link keeps when the
-// move of src to dst keeps that stem: dst, keyed by oldStem. ok is true
-// only in a batch where another member's source or destination also
-// holds oldStem, the one way the batch can change what such a link
+// fileWikilinkKey returns the key the resolver files the file p under:
+// its stem key when it is Markdown, its exact-name key otherwise.
+func fileWikilinkKey(p string) wikilinkKey {
+	base := path.Base(p)
+	if stem, ok := linkgraph.FileStemKey(base); ok {
+		return wikilinkKey{key: stem, isStem: true}
+	}
+	return wikilinkKey{key: linkgraph.FileNameKey(base)}
+}
+
+// edges returns every workspace wikilink edge keyed by k: the
+// `[[stem]]` edges for a stem key, the typed `[[name.ext]]` edges for
+// a name key.
+func (k wikilinkKey) edges(ws MoveWorkspace) []index.Edge {
+	if k.isStem {
+		return ws.IncomingWikilinkEdges(k.key)
+	}
+	return ws.IncomingWikilinkNameEdges(k.key)
+}
+
+// holders returns the files in idx that a link keyed by k reaches, in
+// resolver order. The slice is idx's own.
+func (k wikilinkKey) holders(idx *linkgraph.WikilinkIndex) []string {
+	if k.isStem {
+		return idx.StemPaths(k.key)
+	}
+	return idx.NamePaths(k.key)
+}
+
+// resolvesTo reports whether a link keyed by k resolves to p in idx.
+func (k wikilinkKey) resolvesTo(idx *linkgraph.WikilinkIndex, p string) bool {
+	if k.isStem {
+		return idx.StemResolvesTo(k.key, p)
+	}
+	return idx.NameResolvesTo(k.key, p)
+}
+
+// at reads the wikilink whose `[[` starts at bracketStart in row and
+// returns the byte span of its base segment when the link is keyed by
+// k. An edge from an index that may be stale is checked this way
+// before its span is edited.
+func (k wikilinkKey) at(row []byte, bracketStart int) (start, end int, ok bool) {
+	got, stem, start, end, ok := linkgraph.WikilinkKeyAt(row, bracketStart)
+	if !ok || stem != k.isStem || got != k.key {
+		return 0, 0, false
+	}
+	return start, end, true
+}
+
+// keptWikilinkTarget returns the target a link by the key old keeps
+// when the move of src to dst keeps that key: dst, keyed by old. ok is
+// true only in a batch where another member's source or destination
+// also holds old, the one way the batch can change what such a link
 // reaches: a destination that outsorts dst takes every bare link (see
 // countBlocked), and a renamed sibling takes the links that name it
 // (see siblingTarget). A lone move, or a batch with no such member,
 // leaves the links alone.
-func (r *destResolver) keptStemTarget(oldStem, dst string) (stemTarget, bool) {
-	if !linkgraph.WikilinkIndexed(dst) {
-		return stemTarget{}, false
+func (r *destResolver) keptWikilinkTarget(old wikilinkKey, dst string) (wikilinkTarget, bool) {
+	if !linkgraph.WikilinkIndexed(dst) || fileWikilinkKey(dst) != old {
+		return wikilinkTarget{}, false
 	}
-	if stem, isStem := linkgraph.FileStemKey(path.Base(dst)); !isStem || stem != oldStem {
-		return stemTarget{}, false
-	}
-	// The moving file is a member holding oldStem itself, so another
+	// The moving file is a member holding old itself, so another
 	// member holds it too when the count passes one.
-	if r.batch.stemHolders(oldStem) < 2 {
-		return stemTarget{}, false
+	if r.batch.keyHolders(old) < 2 {
+		return wikilinkTarget{}, false
 	}
-	return stemTarget{dst: dst, key: oldStem, isStem: true}, true
+	return wikilinkTarget{dst: dst, wikilinkKey: old}, true
 }
 
 // siblingTarget returns the target a link naming the sibling sib by
 // folder follows: sib's new name when the batch moves it to a new
-// stem. ok is false when sib stays put, keeps its stem, or its move
+// key. ok is false when sib stays put, keeps its key, or its move
 // was not planned, and the link is then left as written.
-func (r *destResolver) siblingTarget(oldStem, sib string) (stemTarget, bool) {
+func (r *destResolver) siblingTarget(old wikilinkKey, sib string) (wikilinkTarget, bool) {
 	m, moved := r.member(sib)
 	if !moved || !m.planned {
-		return stemTarget{}, false
+		return wikilinkTarget{}, false
 	}
-	return newStemTarget(oldStem, m.dst)
+	return newWikilinkTarget(old, m.dst)
 }
 
-// countBlocked counts, in the batch, a `[[oldStem]]` rewrite to t that
-// is not planned because of another batch member: its destination
-// wins t.key in post, or the link, left as written, reaches it there
-// (see stolen). dst is where the moving file lands. A file outside the
-// batch that wins t.key, or that spells t.dst in another letter case
-// alone, is not counted: a lone move leaves such a link alone too. No
-// member destination spells t.dst in another case: validateBatch
-// refuses both such pairs, and t is always a planned member's
-// destination.
-func (r *destResolver) countBlocked(post *linkgraph.WikilinkIndex, t stemTarget, oldStem, dst string) {
+// countBlocked counts, in the batch, a rewrite of a link by the key old
+// to t that is not planned because of another batch member: its
+// destination wins t.key in post, or the link, left as written,
+// reaches it there (see stolen). dst is where the moving file lands. A
+// file outside the batch that wins t.key, or that spells t.dst in
+// another letter case alone, is not counted: a lone move leaves such a
+// link alone too. No member destination spells t.dst in another case:
+// validateBatch refuses both such pairs, and t is always a planned
+// member's destination.
+func (r *destResolver) countBlocked(post *linkgraph.WikilinkIndex, t wikilinkTarget, old wikilinkKey, dst string) {
 	// t does not reach its file in post, so some other file holds
 	// t.key there: it sorts first, or it is t.dst in another case.
-	if first := t.holders(post)[0]; first != t.dst && r.batch.dsts[first] || r.stolen(post, oldStem, dst, t.dst) {
+	if first := t.holders(post)[0]; first != t.dst && r.batch.dsts[first] || r.stolen(post, old, dst, t.dst) {
 		r.batch.withheld++
 	}
 }
 
-// stolen reports whether a `[[oldStem]]` link left as written reaches,
+// stolen reports whether a link by the key old left as written reaches,
 // in post, a batch member's destination that is neither dst, where the
 // file it reached before the batch lands, nor want, the file it was
 // written for. The link still resolves, so no rule flags it: a
 // newcomer on a vacated path, or a member landing ahead of a named
 // sibling, takes it. A lone move cannot cause that.
-func (r *destResolver) stolen(post *linkgraph.WikilinkIndex, oldStem, dst, want string) bool {
-	holders := post.StemPaths(oldStem)
+func (r *destResolver) stolen(post *linkgraph.WikilinkIndex, old wikilinkKey, dst, want string) bool {
+	holders := old.holders(post)
 	return len(holders) > 0 && holders[0] != dst && holders[0] != want && r.batch.dsts[holders[0]]
 }
 
-// countStolen counts, in the batch, a `[[oldStem]]` link left as
+// countStolen counts, in the batch, a link by the key old left as
 // written for want that stolen reports another member takes.
-func (r *destResolver) countStolen(post *linkgraph.WikilinkIndex, oldStem, dst, want string) {
-	if r.stolen(post, oldStem, dst, want) {
+func (r *destResolver) countStolen(post *linkgraph.WikilinkIndex, old wikilinkKey, dst, want string) {
+	if r.stolen(post, old, dst, want) {
 		r.batch.withheld++
 	}
 }
@@ -1094,18 +1142,18 @@ func (r *destResolver) landing(p string) string {
 	return p
 }
 
-// winsStem reports whether a `[[oldStem]]` link reaches src before the
+// winsKey reports whether a link by the key old reaches src before the
 // batch runs: src must sort before idx's holders and before every
-// other member source holding oldStem, which idx may lack (a file
-// under a symlinked or unreadable directory the walk skips). Without
-// the members, two sources idx lacks would each win the stem and plan
-// two edits for each link.
-func (r *destResolver) winsStem(idx *linkgraph.WikilinkIndex, oldStem, src string) bool {
-	if !idx.StemResolvesTo(oldStem, src) {
+// other member source holding old, which idx may lack (a file under a
+// symlinked or unreadable directory the walk skips). Without the
+// members, two sources idx lacks would each win the key and plan two
+// edits for each link.
+func (r *destResolver) winsKey(idx *linkgraph.WikilinkIndex, old wikilinkKey, src string) bool {
+	if !old.resolvesTo(idx, src) {
 		return false
 	}
-	members := r.batch.stemSources(oldStem)
-	return len(members) < 2 || linkgraph.NewWikilinkIndexFromPaths(members).StemResolvesTo(oldStem, src)
+	members := r.batch.keySources(old)
+	return len(members) < 2 || old.resolvesTo(linkgraph.NewWikilinkIndexFromPaths(members), src)
 }
 
 // wikilinkIndex returns ws.WikilinkIndex, read once per resolver. A
@@ -1116,10 +1164,36 @@ func (r *destResolver) wikilinkIndex() *linkgraph.WikilinkIndex {
 	if !r.wlRead {
 		r.wl, r.wlRead = r.ws.WikilinkIndex(), true
 		if r.wl == nil {
-			r.wl = linkgraph.NewWikilinkIndexFromPaths(r.paths())
+			r.wl, r.wlListed = linkgraph.NewWikilinkIndexFromPaths(r.paths()), true
 		}
 	}
 	return r.wl
+}
+
+// blocked reports whether a link by the key old must stay as written
+// rather than name t: t's holders are unknown (see knowsHolders), or t
+// does not reach its file in post, which countBlocked then counts.
+func (r *destResolver) blocked(post *linkgraph.WikilinkIndex, t wikilinkTarget, old wikilinkKey, dst string) bool {
+	if !r.knowsHolders(t.wikilinkKey) {
+		return true
+	}
+	if !t.reaches(post) {
+		r.countBlocked(post, t, old, dst)
+		return true
+	}
+	return false
+}
+
+// knowsHolders reports whether wikilinkIndex is trusted to hold every
+// file keyed by k. A stem key is trusted: when the index was built
+// from ws.Files(), the listed Markdown files are the best set known
+// without a root walk, as a lone Markdown move has always read them.
+// An exact-name key is not trusted then: the CLI and LSP list Markdown
+// files only, so a non-Markdown file that wins the name would go
+// unseen and a rewrite could point a link at the wrong file. Such a
+// link is left as written.
+func (r *destResolver) knowsHolders(k wikilinkKey) bool {
+	return k.isStem || !r.wlListed
 }
 
 // postIndex returns idx as it reads once the batch has run: every
@@ -1136,10 +1210,10 @@ func (r *destResolver) postIndex(idx *linkgraph.WikilinkIndex) *linkgraph.Wikili
 	return r.batch.post
 }
 
-// stemSiblings returns the holders of the moved file's stem other than
-// src, in a slice of its own: the files a `[[stem]]` folder prefix can
-// name in its place.
-func stemSiblings(holders []string, src string) []string {
+// keySiblings returns the holders of the moved file's wikilink key (a
+// stem or an exact name) other than src, in a slice of its own: the
+// files a wikilink folder prefix can name in its place.
+func keySiblings(holders []string, src string) []string {
 	var out []string
 	for _, h := range holders {
 		if h != src {

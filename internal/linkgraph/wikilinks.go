@@ -554,49 +554,64 @@ func ResolveWikiLink(root fs.FS, _ string, target string) (string, bool) {
 	return NewWikilinkIndex(root).Resolve(target)
 }
 
-// WikilinkStem returns the lowercased basename stem that a bare-page
-// or Markdown-extension wikilink target resolves by, with ok=true. It
-// mirrors WikilinkIndex.Resolve's stem-mode matching (lowercased stem
-// lookup), so a caller keying edges by stem matches the same files the
-// resolver would. A typed non-Markdown target (e.g. `diagram.png`)
-// returns ok=false: those resolve by exact filename, never by stem, and
-// never point at the Markdown files a move relocates. A traversal or
-// absolute target also returns ok=false.
-func WikilinkStem(target string) (string, bool) {
-	target, ok := normalizeTarget(target)
+// WikilinkKey reads target once and returns the key it resolves by,
+// mirroring WikilinkIndex.Resolve, with stem reporting the key space:
+// the lowercased basename stem (stem=true, the FileStemKey that
+// StemPaths files Markdown files under) for a bare or Markdown
+// target, or the lowercased exact base name (stem=false, the
+// FileNameKey that NamePaths files every file under) for a typed one.
+// ok is false for a target the resolver refuses (traversal, absolute,
+// drive or UNC paths) and for a stem-mode target with an empty stem
+// (`[[.md]]`). The resolver does reach a file named `.md` by that
+// empty stem, but no rewrite can spell one (see WikilinkReaches), so
+// the move planner keys no link by it.
+func WikilinkKey(target string) (key string, stem, ok bool) {
+	target, ok = normalizeTarget(target)
 	if !ok {
-		return "", false
+		return "", false, false
 	}
-	_, stem, stemMode := wikilinkSearchKey(target)
-	if !stemMode || stem == "" {
-		return "", false
+	wantName, wantStem, stemMode := wikilinkSearchKey(target)
+	if !stemMode {
+		return FileNameKey(wantName), false, true
 	}
-	return FileNameKey(stem), true
+	if wantStem == "" {
+		return "", false, false
+	}
+	return FileNameKey(wantStem), true, true
 }
 
-// WikilinkStemAt reads the wikilink whose `[[` starts at bracketStart
-// in row. It returns the target's stem key (as WikilinkStem returns it)
-// and the byte span, within row, of the target's base segment: the part
-// the resolver keys by (path.Base of the trimmed target with `\` read as
-// `/`). Any folder prefix, anchor, and alias lie outside the span, as
-// does the `\` that escapes a `|` in a table cell. Key and span come
-// from one match, the same one ExtractWikiLinks reads, so they cannot
-// disagree on where a target ends. ok is false when no wikilink starts
-// there or its target has no stem key: a typed non-Markdown name, or a
-// target the resolver refuses. A caller holding an edge from an index
-// that may be stale checks the key before it edits the span.
-func WikilinkStemAt(row []byte, bracketStart int) (stem string, start, end int, ok bool) {
+// WikilinkKeyAt reads the wikilink whose `[[` starts at bracketStart
+// in row. It returns the target's key and key space (as WikilinkKey
+// returns them: stem is true for a bare or Markdown target, false for
+// a typed exact name) and the byte span, within row, of the target's
+// base segment: the part the resolver keys by (path.Base of the trimmed
+// target with `\` read as `/`). Any folder prefix, anchor, and alias lie
+// outside the span, as does the `\` that escapes a `|` in a table cell.
+// Key and span come from one match, the same one ExtractWikiLinks
+// reads, so they cannot disagree on where a target ends. ok is false
+// when no wikilink starts there or the resolver refuses its target. A
+// caller holding an edge from an index that may be stale checks the key
+// and its space before it edits the span.
+func WikilinkKeyAt(row []byte, bracketStart int) (key string, stem bool, start, end int, ok bool) {
 	raw, at, ok := wikilinkTargetAt(row, bracketStart)
 	if !ok {
-		return "", 0, 0, false
+		return "", false, 0, 0, false
 	}
-	stem, ok = WikilinkStem(string(raw))
+	key, stem, ok = WikilinkKey(string(raw))
 	if !ok {
-		return "", 0, 0, false
+		return "", false, 0, 0, false
 	}
+	lo, hi := wikilinkBaseSpan(raw)
+	return key, stem, at + lo, at + hi, true
+}
+
+// wikilinkBaseSpan returns the byte span, within raw, of the segment
+// the resolver keys a target by: path.Base of the trimmed target with
+// `\` read as `/`.
+func wikilinkBaseSpan(raw []byte) (lo, hi int) {
 	left := bytes.TrimLeftFunc(raw, unicode.IsSpace)
-	lo := len(raw) - len(left)
-	hi := lo + len(bytes.TrimRightFunc(left, unicode.IsSpace))
+	lo = len(raw) - len(left)
+	hi = lo + len(bytes.TrimRightFunc(left, unicode.IsSpace))
 	for hi > lo && (raw[hi-1] == '/' || raw[hi-1] == '\\') {
 		hi--
 	}
@@ -605,7 +620,7 @@ func WikilinkStemAt(row []byte, bracketStart int) (stem string, start, end int, 
 			lo = j + 1
 		}
 	}
-	return stem, at + lo, at + hi, true
+	return lo, hi
 }
 
 // wikilinkTargetAt returns the raw target of the wikilink whose `[[`
@@ -646,7 +661,7 @@ func wikilinkSearchKey(target string) (wantName, wantStem string, stemMode bool)
 // normalizeTarget trims target, turns backslashes into slashes, and
 // reports ok=false for a target the resolver never looks up: an empty,
 // absolute, drive-letter, or UNC one, or one that cleans to `.` or
-// climbs out with `..`. Resolve, WikilinkStem, and WikilinkReaches all
+// climbs out with `..`. Resolve, WikilinkKey, and WikilinkReaches all
 // read targets through it, so they agree on which ones resolve.
 func normalizeTarget(target string) (string, bool) {
 	target = strings.TrimSpace(target)

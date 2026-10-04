@@ -463,9 +463,11 @@ func TestMove_WikilinkLeftUntouchedWhenTypedDestNameCollides(t *testing.T) {
 
 // TestMove_NonMarkdownSourceLeavesWikilinksAlone locks that moving a
 // non-Markdown file never rewrites `[[stem]]` links: no stem resolves to
-// it, so `[[license]]` still points at docs/license.md. The Markdown
-// destination pins the source guard on its own: an extensionless
-// destination such as COPYING is skipped by the destination guard too.
+// it, so `[[license]]` still points at docs/license.md. Its key is the
+// exact name `license`, which no typed link spells (a bare `[[LICENSE]]`
+// reads as a stem). The Markdown destination pins the key-space split
+// on its own: an extensionless destination such as COPYING is skipped
+// by the destination guard too.
 func TestMove_NonMarkdownSourceLeavesWikilinksAlone(t *testing.T) {
 	for _, dst := range []string{"COPYING", "docs/terms.md"} {
 		for name, listed := range map[string]bool{"listed": true, "unlisted": false} {

@@ -6,11 +6,12 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 )
 
-// IndexEdges implements the four index-backed Workspace and
+// IndexEdges implements the five index-backed Workspace and
 // MoveWorkspace methods (IncomingAnchorEdges, IncomingPathEdges,
-// IncomingWikilinkEdges, Files) by forwarding to an index. A host
-// embeds it and adds its own Resolve (and, for a move, WikilinkIndex),
-// so a new index-backed method is written once.
+// IncomingWikilinkEdges, IncomingWikilinkNameEdges, Files) by
+// forwarding to an index. A host embeds it and adds its own Resolve
+// (and, for a move, WikilinkIndex), so a new index-backed method is
+// written once.
 //
 // The getter is called on every query; IndexEdges itself caches
 // nothing. It is unexported, so a host builds an IndexEdges only
@@ -62,6 +63,11 @@ func (e IndexEdges) IncomingPathEdges(file string) []index.Edge {
 // IncomingWikilinkEdges implements MoveWorkspace.
 func (e IndexEdges) IncomingWikilinkEdges(stem string) []index.Edge {
 	return e.index().IncomingWikilinkEdges(stem)
+}
+
+// IncomingWikilinkNameEdges implements MoveWorkspace.
+func (e IndexEdges) IncomingWikilinkNameEdges(name string) []index.Edge {
+	return e.index().IncomingWikilinkNameEdges(name)
 }
 
 // Files implements Workspace.

@@ -22,35 +22,6 @@ func TestExtractWikiLinks_NilFileReturnsNil(t *testing.T) {
 	assert.Nil(t, ExtractWikiLinks(nil))
 }
 
-func TestWikilinkStem(t *testing.T) {
-	cases := []struct {
-		name     string
-		target   string
-		wantStem string
-		wantOK   bool
-	}{
-		{"bare page", "Page", "page", true},
-		{"markdown extension", "Notes.md", "notes", true},
-		{"foldered stem uses basename", "folder/API", "api", true},
-		{"mixed case lowercased", "MyDoc", "mydoc", true},
-		{"typed non-markdown returns false", "diagram.png", "", false},
-		{"empty returns false", "", "", false},
-		{"traversal returns false", "../secret", "", false},
-		{"absolute returns false", "/etc/passwd", "", false},
-		{"padded absolute returns false", " /etc/passwd", "", false},
-		{"backslash root-relative returns false", `\notes`, "", false},
-		{"backslash UNC returns false", `\\host\share\notes`, "", false},
-		{"drive letter returns false", `C:\notes`, "", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			stem, ok := WikilinkStem(tc.target)
-			assert.Equal(t, tc.wantOK, ok)
-			assert.Equal(t, tc.wantStem, stem)
-		})
-	}
-}
-
 func TestExtractWikiLinks_EmptySource(t *testing.T) {
 	f := newFile(t, "")
 	assert.Nil(t, ExtractWikiLinks(f))
@@ -754,33 +725,33 @@ func TestWikilinkIndex_PathsNilReceiver(t *testing.T) {
 	assert.Empty(t, idx.NamePaths("a.md"))
 }
 
-// TestWikilinkStemAt_Span locks the base span WikilinkStemAt returns:
+// TestWikilinkKeyAt_Span locks the base span WikilinkKeyAt returns:
 // the last segment of the trimmed target, with `\` read as `/`, outside
 // any folder prefix, anchor, alias, or table-cell `\|` escape.
-func TestWikilinkStemAt_Span(t *testing.T) {
+func TestWikilinkKeyAt_Span(t *testing.T) {
 	t.Run("not a wikilink returns false", func(t *testing.T) {
-		_, _, _, ok := WikilinkStemAt([]byte("[x](y)"), 0)
+		_, _, _, _, ok := WikilinkKeyAt([]byte("[x](y)"), 0)
 		assert.False(t, ok)
 	})
 	t.Run("out-of-range bracket start returns false", func(t *testing.T) {
-		_, _, _, ok := WikilinkStemAt([]byte("[["), 0)
+		_, _, _, _, ok := WikilinkKeyAt([]byte("[["), 0)
 		assert.False(t, ok)
-		_, _, _, ok = WikilinkStemAt([]byte("[[a]]"), -1)
+		_, _, _, _, ok = WikilinkKeyAt([]byte("[[a]]"), -1)
 		assert.False(t, ok)
-		_, _, _, ok = WikilinkStemAt([]byte("[[a]]"), 9)
+		_, _, _, _, ok = WikilinkKeyAt([]byte("[[a]]"), 9)
 		assert.False(t, ok)
 	})
 	t.Run("a link that starts later is not read", func(t *testing.T) {
-		_, _, _, ok := WikilinkStemAt([]byte("x [[a]]"), 0)
+		_, _, _, _, ok := WikilinkKeyAt([]byte("x [[a]]"), 0)
 		assert.False(t, ok)
 	})
 	t.Run("empty target returns false", func(t *testing.T) {
-		_, _, _, ok := WikilinkStemAt([]byte("[[#frag]]"), 0)
+		_, _, _, _, ok := WikilinkKeyAt([]byte("[[#frag]]"), 0)
 		assert.False(t, ok)
 	})
 	t.Run("offsets are relative to the row", func(t *testing.T) {
 		row := []byte("see ![[folder/Page#f|alias]] now")
-		_, s, e, ok := WikilinkStemAt(row, 5)
+		_, _, s, e, ok := WikilinkKeyAt(row, 5)
 		require.True(t, ok)
 		assert.Equal(t, "Page", string(row[s:e]))
 	})
@@ -798,14 +769,14 @@ func TestWikilinkStemAt_Span(t *testing.T) {
 		"[[api /]]":            "api ",
 	} {
 		t.Run(row, func(t *testing.T) {
-			_, s, e, ok := WikilinkStemAt([]byte(row), 0)
+			_, _, s, e, ok := WikilinkKeyAt([]byte(row), 0)
 			require.True(t, ok)
 			assert.Equal(t, want, row[s:e])
 		})
 	}
 	for _, row := range []string{`[[/\ ]]`, "[[/abs]]", "[[../up]]", "[[C:\\x]]"} {
 		t.Run("unresolvable "+row, func(t *testing.T) {
-			_, _, _, ok := WikilinkStemAt([]byte(row), 0)
+			_, _, _, _, ok := WikilinkKeyAt([]byte(row), 0)
 			assert.False(t, ok)
 		})
 	}
@@ -828,27 +799,30 @@ func TestNewWikilinkIndexFromPaths(t *testing.T) {
 	assert.Empty(t, listed.StemPaths("x"))
 }
 
-// TestWikilinkStemAt locks the stem key read at a `[[` column: folder,
-// anchor, alias, casing, and outer spaces do not change it (a space
-// before a trailing slash stays, as the index keys it), and a typed name, a
-// refused target, or a column with no wikilink returns ok=false.
-func TestWikilinkStemAt(t *testing.T) {
+// TestWikilinkKeyAt_Stem locks the stem key read at a `[[` column:
+// folder, anchor, alias, casing, and outer spaces do not change it (a
+// space before a trailing slash stays, as the index keys it). A typed
+// name reads in the name space, and a refused target or a column with
+// no wikilink returns ok=false.
+func TestWikilinkKeyAt_Stem(t *testing.T) {
 	for row, want := range map[string]string{
 		"[[docs/Guide#a|G]]": "guide",
 		"[[guide.md]]":       "guide",
 		"[[ Guide ]]":        "guide",
 		"[[Guide /]]":        "guide ",
 	} {
-		got, _, _, ok := WikilinkStemAt([]byte(row), 0)
+		got, stem, _, _, ok := WikilinkKeyAt([]byte(row), 0)
 		assert.True(t, ok, row)
+		assert.True(t, stem, row)
 		assert.Equal(t, want, got, row)
 	}
-	for _, row := range []string{"[[logo.png]]", "[[../x]]", "x [[a]]", "[["} {
-		_, _, _, ok := WikilinkStemAt([]byte(row), 0)
+	_, stem, _, _, ok := WikilinkKeyAt([]byte("[[logo.png]]"), 0)
+	assert.True(t, ok)
+	assert.False(t, stem)
+	for _, row := range []string{"[[../x]]", "x [[a]]", "[["} {
+		_, _, _, _, ok := WikilinkKeyAt([]byte(row), 0)
 		assert.False(t, ok, row)
 	}
-	_, _, _, ok := WikilinkStemAt([]byte("[[a]]"), -1)
-	assert.False(t, ok)
 }
 
 // TestWikilinkIndex_Moved locks that Moved returns the index as it
@@ -914,4 +888,93 @@ func TestWikilinkIndex_MovedSharesUntouchedKeys(t *testing.T) {
 	assert.Empty(t, again.StemPaths("b"))
 	assert.Equal(t, []string{"q/z.md"}, again.StemPaths("z"))
 	assert.Equal(t, []string{"img/z.png"}, again.NamePaths("z.png"))
+}
+
+// TestWikilinkKey locks the one-pass key read: a bare or Markdown
+// target keys by stem, a typed one by exact name (its lowercased
+// basename, extension and all), each lowercased, and a refused target
+// or an empty stem has no key.
+func TestWikilinkKey(t *testing.T) {
+	for target, want := range map[string]struct {
+		key  string
+		stem bool
+	}{
+		"Page":             {"page", true},
+		"docs/Notes.md":    {"notes", true},
+		"x.markdown":       {"x", true},
+		"img/Logo.PNG":     {"logo.png", false},
+		`a\b\Guide.mdx `:   {"guide.mdx", false},
+		"x.png.markdown":   {"x.png", true},
+		"folder/x.tar.gz":  {"x.tar.gz", false},
+		"folder\\x.tar.gz": {"x.tar.gz", false},
+		"folder/x.png/":    {"x.png", false},
+		"v1.3":             {"v1.3", false},
+		"folder/API":       {"api", true},
+		"MyDoc":            {"mydoc", true},
+	} {
+		key, stem, ok := WikilinkKey(target)
+		require.True(t, ok, target)
+		assert.Equal(t, want.key, key, target)
+		assert.Equal(t, want.stem, stem, target)
+	}
+	for _, target := range []string{
+		"", "  ", ".md", "../x.png", "../secret", "/x.md", "/x.png", " /etc/passwd",
+		`\notes`, `\\host\share\notes`, `C:\x.png`, `C:\notes`,
+	} {
+		key, stem, ok := WikilinkKey(target)
+		assert.False(t, ok, target)
+		assert.False(t, stem, target)
+		assert.Empty(t, key, target)
+	}
+}
+
+// TestWikilinkKeyAt locks the key, key space, and base span read at a
+// `[[` column: a bare or Markdown target keys by stem, a typed one by
+// exact name, and a refused target or a column with no wikilink
+// returns ok=false.
+func TestWikilinkKeyAt(t *testing.T) {
+	type want struct {
+		key  string
+		stem bool
+		span string
+	}
+	for row, w := range map[string]want{
+		"[[docs/Guide.md#a|G]]": {"guide", true, "Guide.md"},
+		"[[ logo ]]":            {"logo", true, "logo"},
+		"[[img/Logo.PNG#a|G]]":  {"logo.png", false, "Logo.PNG"},
+		"![[ x.png ]]":          {"x.png", false, "x.png"},
+		`[[a\b.png\|alias]]`:    {"b.png", false, "b.png"},
+	} {
+		at := 0
+		if row[0] == '!' {
+			at = 1
+		}
+		key, stem, s, e, ok := WikilinkKeyAt([]byte(row), at)
+		require.True(t, ok, row)
+		assert.Equal(t, w.key, key, row)
+		assert.Equal(t, w.stem, stem, row)
+		assert.Equal(t, w.span, row[s:e], row)
+	}
+	for _, row := range []string{"[[#frag]]", "[[../x.png]]", "x [[a.png]]", "[[", "[x](y)"} {
+		_, _, _, _, ok := WikilinkKeyAt([]byte(row), 0)
+		assert.False(t, ok, row)
+	}
+	for _, at := range []int{-1, 9} {
+		_, _, _, _, ok := WikilinkKeyAt([]byte("[[a]]"), at)
+		assert.False(t, ok, at)
+	}
+}
+
+// TestWikilinkBaseSpan locks the span of the last trimmed segment of a
+// raw target, with `\` read as `/` and trailing separators dropped.
+func TestWikilinkBaseSpan(t *testing.T) {
+	for raw, want := range map[string]string{
+		"a/b.png":    "b.png",
+		` a\b.png `:  "b.png",
+		"x/ y.png//": " y.png",
+		"plain":      "plain",
+	} {
+		lo, hi := wikilinkBaseSpan([]byte(raw))
+		assert.Equal(t, want, raw[lo:hi], raw)
+	}
 }

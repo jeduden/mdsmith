@@ -3,6 +3,7 @@ package refactor
 import (
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
@@ -155,4 +156,47 @@ func TestMove_NilWikilinkIndexCountsListedFiles(t *testing.T) {
 	plan, err = Move(ws, "docs/guide.md", "docs/manual.md")
 	require.NoError(t, err)
 	assert.Equal(t, "See [[manual]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// markdownOnlyNilIndexWorkspace is a nilIndexWorkspace whose Files
+// lists Markdown files only, as the CLI and LSP workspaces do: the
+// fallback set then knows no non-Markdown file.
+type markdownOnlyNilIndexWorkspace struct{ nilIndexWorkspace }
+
+func (w markdownOnlyNilIndexWorkspace) Files() []string {
+	var out []string
+	for _, f := range w.memWorkspace.Files() {
+		if strings.HasSuffix(f, ".md") {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// TestMove_NilWikilinkIndexKeepsTypedLinks locks that, with no wikilink
+// index, a typed `[[name.ext]]` link is left as written whether its
+// key is the source's or the destination's: the listed files need not
+// include the non-Markdown files that hold the name, so a shallower
+// img.png may win `[[img.png]]` or `[[photo.png]]` unseen.
+func TestMove_NilWikilinkIndexKeepsTypedLinks(t *testing.T) {
+	tests := []struct {
+		name     string
+		files    map[string]string
+		src, dst string
+	}{
+		{"source name", map[string]string{
+			"img.png": "png", "x/img.png": "png", "n.md": "[[img.png]]\n",
+		}, "x/img.png", "x/photo.png"},
+		{"destination name", map[string]string{
+			"photo.png": "png", "x/guide.md": "# G\n", "n.md": "[[guide]]\n",
+		}, "x/guide.md", "x/photo.png"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ws := markdownOnlyNilIndexWorkspace{nilIndexWorkspace{newMemWorkspace(tt.files)}}
+			plan, err := Move(ws, tt.src, tt.dst)
+			require.NoError(t, err)
+			assert.Empty(t, plan.Edits["n.md"])
+		})
+	}
 }

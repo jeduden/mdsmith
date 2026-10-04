@@ -78,7 +78,8 @@ func edgeTargetString(e index.Edge, selfFile string) string {
 // collectDeps returns the dependency records for target. When incoming
 // is false it lists edges originating in target (what target depends
 // on); when true it lists edges pointing at target (what depends on
-// target).
+// target). Wikilink edges never appear: the index keeps them in
+// FileEntry.Wikilinks, outside both passes.
 func collectDeps(idx *index.Index, target string, incoming bool) []depRecord {
 	var recs []depRecord
 	if incoming {

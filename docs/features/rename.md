@@ -52,9 +52,11 @@ and rewrites every reference in one step, repointing every
 incoming `[text](path)` link and `[label]: path` ref-def. It
 also recomputes the moved file's own outbound relative links,
 so `docs/a.md` → `guide/a.md` keeps its `[x](./b.md)` working.
-`[[stem]]` wikilinks follow when the basename changes. A tracked
-file is staged with `git mv`; otherwise it is a plain move. Any
-LSP-aware editor fires the same engine on an explorer rename.
+`[[stem]]` wikilinks follow when the basename changes, as does
+a typed `![[diagram.png]]` when `mdsmith move` renames an image.
+A tracked file is staged with `git mv` (any other gets a plain
+move), and any LSP-aware editor fires the same engine on an
+explorer rename of a Markdown file.
 
 ```bash
 mdsmith move docs/api.md reference/api.md

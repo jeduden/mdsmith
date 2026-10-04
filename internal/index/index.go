@@ -103,9 +103,19 @@ const (
 	// holds the lowercased basename stem it resolves by; TargetFile is
 	// empty and Unresolved is set, because a stem match needs the whole
 	// workspace and cannot be resolved during the per-file build. The
-	// move planner keys these by stem via IncomingWikilinkEdges; every
-	// path-based reverse-edge query skips them like any unresolved edge.
+	// move planner keys these by stem via IncomingWikilinkEdges. They
+	// are kept in FileEntry.Wikilinks, not Outgoing, so no path-based
+	// query or OutgoingEdges view ever sees one.
 	EdgeWikilink
+	// EdgeWikilinkName is a typed Obsidian-style `[[name.ext]]` link (or
+	// `![[name.ext]]` embed), which resolves by exact file name rather
+	// than by stem. Its TargetLabel holds the lowercased base name
+	// (linkgraph.WikilinkKey); like EdgeWikilink it is Unresolved with
+	// an empty TargetFile. It is a kind of its own because a name key
+	// can equal a stem key (`[[img.png]]` names img.png, while
+	// `[[img.png.md]]` names img.png.md by the stem `img.png`). The move
+	// planner keys these via IncomingWikilinkNameEdges.
+	EdgeWikilinkName
 )
 
 // Edge records one reference from a source position to a target.
@@ -144,8 +154,14 @@ type FileEntry struct {
 	Path string
 	// Symbols are this file's symbols, in document order.
 	Symbols []Symbol
-	// Outgoing are the references this file emits.
+	// Outgoing are the references this file emits, except wikilinks.
 	Outgoing []Edge
+	// Wikilinks are this file's EdgeWikilink and EdgeWikilinkName
+	// edges, in document order. They are kept out of Outgoing because
+	// a wikilink names its file by key, not by path, so it has no
+	// TargetFile for a view over OutgoingEdges to show; only the move
+	// planner reads them, through the IncomingWikilink*Edges lookups.
+	Wikilinks []Edge
 	// Title is the front-matter `title:` value if set, "" otherwise.
 	Title string
 	// Kinds are the front-matter `kinds:` values if set.
@@ -495,10 +511,11 @@ func (i *Index) OutgoingEdges(file string) []Edge {
 //
 // Same-file anchor links (`[x](#sec)`) and label-based reference links
 // (`[x][label]`) carry no path token and are excluded (their
-// TargetFile is empty). Unresolved edges — catalog globs, glob build
-// inputs, and wikilinks — are skipped too: their target is not yet a
-// concrete file. The result is freshly allocated and sorted by
-// (SourceFile, SourceLine, SourceCol) for deterministic edits.
+// TargetFile is empty). Unresolved edges — catalog globs and glob
+// build inputs — are skipped too: their target is not yet a concrete
+// file. Wikilinks are never seen: they sit in FileEntry.Wikilinks.
+// The result is freshly allocated and sorted by (SourceFile,
+// SourceLine, SourceCol) for deterministic edits.
 func (i *Index) IncomingPathEdges(file string) []Edge {
 	if i == nil {
 		return nil
@@ -529,16 +546,31 @@ func (i *Index) IncomingPathEdges(file string) []Edge {
 // wikilink names a file by stem rather than by path. The result is
 // freshly allocated and sorted by (SourceFile, SourceLine, SourceCol).
 func (i *Index) IncomingWikilinkEdges(stem string) []Edge {
+	return i.wikilinkEdges(EdgeWikilink, linkgraph.FileNameKey(stem))
+}
+
+// IncomingWikilinkNameEdges returns every typed `[[name.ext]]` edge
+// whose target base name matches name, compared case-insensitively (the
+// key the wikilink resolver files exact names under,
+// linkgraph.FileNameKey). A move of a non-Markdown file keys these by
+// its base name. The result is freshly allocated and sorted by
+// (SourceFile, SourceLine, SourceCol).
+func (i *Index) IncomingWikilinkNameEdges(name string) []Edge {
+	return i.wikilinkEdges(EdgeWikilinkName, linkgraph.FileNameKey(name))
+}
+
+// wikilinkEdges returns every edge of kind whose TargetLabel is key,
+// sorted by source. A nil index has none.
+func (i *Index) wikilinkEdges(kind EdgeKind, key string) []Edge {
 	if i == nil {
 		return nil
 	}
-	stem = linkgraph.FileNameKey(stem)
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	var out []Edge
 	for _, fe := range i.files {
-		for _, e := range fe.Outgoing {
-			if e.Kind == EdgeWikilink && e.TargetLabel == stem {
+		for _, e := range fe.Wikilinks {
+			if e.Kind == kind && e.TargetLabel == key {
 				out = append(out, e)
 			}
 		}

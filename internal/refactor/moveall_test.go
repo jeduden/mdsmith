@@ -344,16 +344,17 @@ func TestMoveAll_UnindexedSameStemSourcesPlanOneEdit(t *testing.T) {
 	}
 }
 
-func TestDestResolver_WinsStem(t *testing.T) {
+func TestDestResolver_WinsKey(t *testing.T) {
 	b := newMoveBatch()
 	b.members["x/guide.md"] = batchMember{dst: "x/manual.md", planned: true}
 	b.members["y/guide.md"] = batchMember{dst: "y/howto.md", planned: true}
 	r := &destResolver{batch: b}
 	none := holderIndex()
-	assert.True(t, r.winsStem(none, "guide", "x/guide.md"))
-	assert.False(t, r.winsStem(none, "guide", "y/guide.md"), "a member source outsorts it")
-	assert.False(t, r.winsStem(holderIndex("guide.md"), "guide", "x/guide.md"), "an indexed holder outsorts it")
-	assert.True(t, r.winsStem(none, "other", "z/other.md"), "no other member holds the stem")
+	assert.True(t, r.winsKey(none, stemKey("guide"), "x/guide.md"))
+	assert.False(t, r.winsKey(none, stemKey("guide"), "y/guide.md"), "a member source outsorts it")
+	assert.False(t, r.winsKey(holderIndex("guide.md"), stemKey("guide"), "x/guide.md"),
+		"an indexed holder outsorts it")
+	assert.True(t, r.winsKey(none, stemKey("other"), "z/other.md"), "no other member holds the stem")
 }
 
 // TestMoveAll_StemAndSiblingShareNewStem covers the file `[[Guide]]`
@@ -422,6 +423,25 @@ func TestMoveAll_TypedNameSharedByTwoMoves(t *testing.T) {
 	}, MovePair{"x/a.md", "x/logo.png"}, MovePair{"y/z/b.md", "y/z/logo.png"})
 	assert.Equal(t, []string{"logo.png"}, texts(bp.Edits, "n.md"))
 	assert.Equal(t, 1, bp.Withheld)
+}
+
+// TestMoveAll_TypedSourceNameSharedByTwoMoves covers two moved
+// sources that hold one exact name in different letter cases: every
+// `[[img.png]]` link reaches the one that sorts first (x/IMG.png), so
+// only that member's links follow it, once each, and the other member
+// plans no wikilink edit, whichever order the pairs come in.
+func TestMoveAll_TypedSourceNameSharedByTwoMoves(t *testing.T) {
+	files := map[string]string{
+		"x/IMG.png": "png",
+		"y/img.png": "png",
+		"n.md":      "# N\n\n![[img.png]] [[Img.PNG|i]]\n",
+	}
+	pairs := []MovePair{{"x/IMG.png", "x/a.png"}, {"y/img.png", "y/b.png"}}
+	for _, order := range [][]MovePair{pairs, {pairs[1], pairs[0]}} {
+		bp := moveAll(t, files, order...)
+		assert.Equal(t, []string{"a.png", "a.png"}, texts(bp.Edits, "n.md"))
+		assert.Zero(t, bp.Withheld)
+	}
 }
 
 // TestMoveAll_UnplannedTargetCounted covers a rewrite that would
@@ -580,29 +600,29 @@ func TestMoveAll_NamedSiblingOutsortedByMember(t *testing.T) {
 	assert.Zero(t, bp.Withheld)
 }
 
-func TestDestResolver_KeptStemTarget(t *testing.T) {
+func TestDestResolver_KeptWikilinkTarget(t *testing.T) {
 	batch := func(members map[string]batchMember) *destResolver {
 		return &destResolver{batch: &moveBatch{members: members}}
 	}
 	self := batchMember{dst: "z/guide.md", planned: true}
-	want := stemTarget{dst: "z/guide.md", key: "guide", isStem: true}
+	want := wikilinkTarget{dst: "z/guide.md", wikilinkKey: stemKey("guide")}
 
-	_, ok := soloResolver(nil, "x/guide.md", "z/guide.md").keptStemTarget("guide", "z/guide.md")
+	_, ok := soloResolver(nil, "x/guide.md", "z/guide.md").keptWikilinkTarget(stemKey("guide"), "z/guide.md")
 	assert.False(t, ok, "a lone move")
 	_, ok = batch(map[string]batchMember{"x/guide.md": self, "a.md": {dst: "b.md"}}).
-		keptStemTarget("guide", "z/guide.md")
+		keptWikilinkTarget(stemKey("guide"), "z/guide.md")
 	assert.False(t, ok, "no other member holds the stem")
 	r := batch(map[string]batchMember{"x/guide.md": self, "a.md": {dst: "guide.md"}})
-	got, ok := r.keptStemTarget("guide", "z/guide.md")
+	got, ok := r.keptWikilinkTarget(stemKey("guide"), "z/guide.md")
 	require.True(t, ok, "another member lands on the stem")
 	assert.Equal(t, want, got)
 	got, ok = batch(map[string]batchMember{"x/guide.md": self, "y/Guide.md": {dst: "y/howto.md"}}).
-		keptStemTarget("guide", "z/guide.md")
+		keptWikilinkTarget(stemKey("guide"), "z/guide.md")
 	require.True(t, ok, "another member leaves the stem")
 	assert.Equal(t, want, got)
-	_, ok = r.keptStemTarget("guide", "z/manual.md")
+	_, ok = r.keptWikilinkTarget(stemKey("guide"), "z/manual.md")
 	assert.False(t, ok, "a new stem")
-	_, ok = r.keptStemTarget("guide", "node_modules/guide.md")
+	_, ok = r.keptWikilinkTarget(stemKey("guide"), "node_modules/guide.md")
 	assert.False(t, ok, "an unindexed destination")
 }
 
@@ -618,28 +638,28 @@ func TestMoveAll_TargetLeavesWorkspace(t *testing.T) {
 	assert.Equal(t, 1, bp.Withheld)
 }
 
-func TestNewStemTarget(t *testing.T) {
-	got, ok := newStemTarget("guide", "docs/Manual.md")
+func TestNewWikilinkTarget(t *testing.T) {
+	got, ok := newWikilinkTarget(stemKey("guide"), "docs/Manual.md")
 	require.True(t, ok)
-	assert.Equal(t, stemTarget{dst: "docs/Manual.md", spelling: "Manual", key: "manual", isStem: true}, got)
-	got, ok = newStemTarget("guide", "img/Logo.png")
+	assert.Equal(t, wikilinkTarget{dst: "docs/Manual.md", spelling: "Manual", wikilinkKey: stemKey("manual")}, got)
+	got, ok = newWikilinkTarget(stemKey("guide"), "img/Logo.png")
 	require.True(t, ok)
 	assert.Equal(t, "logo.png", got.key)
 	assert.False(t, got.isStem)
-	_, ok = newStemTarget("guide", "other/Guide.md")
+	_, ok = newWikilinkTarget(stemKey("guide"), "other/Guide.md")
 	assert.False(t, ok, "a kept stem needs no rewrite")
-	_, ok = newStemTarget("guide", "node_modules/x.md")
+	_, ok = newWikilinkTarget(stemKey("guide"), "node_modules/x.md")
 	assert.False(t, ok, "an unindexed destination is unreachable")
-	_, ok = newStemTarget("guide", "a#b.md")
+	_, ok = newWikilinkTarget(stemKey("guide"), "a#b.md")
 	assert.False(t, ok, "no token reaches the name")
 }
 
-func TestStemTarget_Reaches(t *testing.T) {
+func TestWikilinkTarget_Reaches(t *testing.T) {
 	post := holderIndex("a/manual.md", "a/logo.png")
-	assert.True(t, stemTarget{dst: "manual.md", key: "manual", isStem: true}.reaches(post))
-	assert.False(t, stemTarget{dst: "z/manual.md", key: "manual", isStem: true}.reaches(post))
-	assert.True(t, stemTarget{dst: "logo.png", key: "logo.png"}.reaches(post))
-	assert.False(t, stemTarget{dst: "z/logo.png", key: "logo.png"}.reaches(post))
+	assert.True(t, wikilinkTarget{dst: "manual.md", wikilinkKey: stemKey("manual")}.reaches(post))
+	assert.False(t, wikilinkTarget{dst: "z/manual.md", wikilinkKey: stemKey("manual")}.reaches(post))
+	assert.True(t, wikilinkTarget{dst: "logo.png", wikilinkKey: nameKey("logo.png")}.reaches(post))
+	assert.False(t, wikilinkTarget{dst: "z/logo.png", wikilinkKey: nameKey("logo.png")}.reaches(post))
 }
 
 func TestDestResolver_SiblingTarget(t *testing.T) {
@@ -648,34 +668,34 @@ func TestDestResolver_SiblingTarget(t *testing.T) {
 		"z/guide.md": {dst: "q/guide.md", planned: true},
 		"w/guide.md": {dst: "w/other.md"},
 	}}}
-	got, ok := r.siblingTarget("guide", "y/guide.md")
+	got, ok := r.siblingTarget(stemKey("guide"), "y/guide.md")
 	require.True(t, ok)
 	assert.Equal(t, "y/howto.md", got.dst)
-	_, ok = r.siblingTarget("guide", "z/guide.md")
+	_, ok = r.siblingTarget(stemKey("guide"), "z/guide.md")
 	assert.False(t, ok, "a sibling keeping its stem")
-	_, ok = r.siblingTarget("guide", "w/guide.md")
+	_, ok = r.siblingTarget(stemKey("guide"), "w/guide.md")
 	assert.False(t, ok, "an unplanned sibling")
-	_, ok = r.siblingTarget("guide", "v/guide.md")
+	_, ok = r.siblingTarget(stemKey("guide"), "v/guide.md")
 	assert.False(t, ok, "a sibling the batch does not move")
 }
 
 func TestDestResolver_Stolen(t *testing.T) {
 	r := &destResolver{batch: &moveBatch{dsts: map[string]bool{"b.md": true, "a/b.md": true}}}
 	post := linkgraph.NewWikilinkIndexFromPaths([]string{"b.md", "y/b.md"})
-	assert.True(t, r.stolen(post, "b", "x/c.md", "y/b.md"), "a member's destination wins")
-	assert.False(t, r.stolen(post, "b", "b.md", "y/b.md"), "the moving file's own landing wins")
-	assert.False(t, r.stolen(post, "b", "x/c.md", "b.md"), "the file the link names wins")
-	assert.False(t, r.stolen(post, "q", "x/c.md", "y/b.md"), "no file holds the stem")
+	assert.True(t, r.stolen(post, stemKey("b"), "x/c.md", "y/b.md"), "a member's destination wins")
+	assert.False(t, r.stolen(post, stemKey("b"), "b.md", "y/b.md"), "the moving file's own landing wins")
+	assert.False(t, r.stolen(post, stemKey("b"), "x/c.md", "b.md"), "the file the link names wins")
+	assert.False(t, r.stolen(post, stemKey("q"), "x/c.md", "y/b.md"), "no file holds the stem")
 	unmoved := linkgraph.NewWikilinkIndexFromPaths([]string{"c/b.md", "y/b.md"})
-	assert.False(t, r.stolen(unmoved, "b", "x/c.md", "y/b.md"), "a file outside the batch wins")
+	assert.False(t, r.stolen(unmoved, stemKey("b"), "x/c.md", "y/b.md"), "a file outside the batch wins")
 }
 
 func TestDestResolver_CountStolen(t *testing.T) {
 	r := &destResolver{batch: &moveBatch{dsts: map[string]bool{"b.md": true}}}
 	post := linkgraph.NewWikilinkIndexFromPaths([]string{"b.md", "y/b.md"})
-	r.countStolen(post, "b", "x/c.md", "y/b.md")
+	r.countStolen(post, stemKey("b"), "x/c.md", "y/b.md")
 	assert.Equal(t, 1, r.batch.withheld, "a member's destination takes the link")
-	r.countStolen(post, "b", "x/c.md", "b.md")
+	r.countStolen(post, stemKey("b"), "x/c.md", "b.md")
 	assert.Equal(t, 1, r.batch.withheld, "the link reaches the file it names")
 }
 
@@ -799,28 +819,28 @@ func TestDestResolver_ReferrerEdit(t *testing.T) {
 	assert.Equal(t, "../z/t.md", e.NewText)
 }
 
-func TestMoveBatch_StemHolders(t *testing.T) {
+func TestMoveBatch_KeyHolders(t *testing.T) {
 	b := newMoveBatch()
 	b.members["x/guide.md"] = batchMember{dst: "z/guide.md", planned: true}
 	b.members["y/Guide.md"] = batchMember{dst: "y/howto.md"}
 	b.members["q/other.md"] = batchMember{dst: "guide.md", planned: true}
 	b.members["img/a.png"] = batchMember{}
-	assert.Equal(t, 3, b.stemHolders("guide"), "a member holding the stem at both ends counts once")
-	assert.Equal(t, 1, b.stemHolders("howto"))
-	assert.Equal(t, 1, b.stemHolders("other"))
-	assert.Zero(t, b.stemHolders("a"), "a non-Markdown member holds no stem")
+	assert.Equal(t, 3, b.keyHolders(stemKey("guide")), "a member holding the stem at both ends counts once")
+	assert.Equal(t, 1, b.keyHolders(stemKey("howto")))
+	assert.Equal(t, 1, b.keyHolders(stemKey("other")))
+	assert.Zero(t, b.keyHolders(stemKey("a")), "a non-Markdown member holds no stem")
 	b.members["n.md"] = batchMember{dst: "guide.md"}
-	assert.Equal(t, 3, b.stemHolders("guide"), "built once, on the first call")
+	assert.Equal(t, 3, b.keyHolders(stemKey("guide")), "built once, on the first call")
 }
 
-func TestMoveBatch_StemSources(t *testing.T) {
+func TestMoveBatch_KeySources(t *testing.T) {
 	b := newMoveBatch()
 	b.members["x/guide.md"] = batchMember{dst: "z/guide.md", planned: true}
 	b.members["y/Guide.md"] = batchMember{dst: "y/howto.md"}
 	b.members["q/other.md"] = batchMember{dst: "guide.md", planned: true}
-	assert.ElementsMatch(t, []string{"x/guide.md", "y/Guide.md"}, b.stemSources("guide"),
+	assert.ElementsMatch(t, []string{"x/guide.md", "y/Guide.md"}, b.keySources(stemKey("guide")),
 		"sources only; a destination holding the stem is not one")
-	assert.Nil(t, b.stemSources("howto"))
+	assert.Nil(t, b.keySources(stemKey("howto")))
 }
 
 func TestMoveBatch_ScanBases(t *testing.T) {
@@ -851,12 +871,16 @@ func TestValidateBatch_Shadowed(t *testing.T) {
 // TestMoveAll_ShadowedWithoutStem covers a shadowed file that no
 // `[[stem]]` link can name: a non-Markdown file, and a Markdown file
 // under a directory the wikilink index skips. Its path links are
-// still counted, by the referrer scan. A typed `[[img.png]]` link is
-// not counted yet, though it reaches the newcomer (plan 2610040606).
+// still counted, by the referrer scan. A typed `[[img.png]]` link
+// reaches the newcomer too and is counted beside it; the skipped
+// Markdown file's `[[b.md]]` never reached it and is not.
 func TestMoveAll_ShadowedWithoutStem(t *testing.T) {
-	for _, tc := range []struct{ old, taken, newcomer string }{
-		{"img.png", "img2.png", "a.png"},
-		{"node_modules/b.md", "node_modules/c.md", "node_modules/a.md"},
+	for _, tc := range []struct {
+		old, taken, newcomer string
+		withheld             int
+	}{
+		{"img.png", "img2.png", "a.png", 2},
+		{"node_modules/b.md", "node_modules/c.md", "node_modules/a.md", 1},
 	} {
 		t.Run(tc.old, func(t *testing.T) {
 			bp := MoveAll(newMemWorkspace(map[string]string{
@@ -867,23 +891,25 @@ func TestMoveAll_ShadowedWithoutStem(t *testing.T) {
 			}), []MovePair{{tc.old, tc.taken}, {tc.newcomer, tc.old}})
 			assert.Equal(t, DestinationExistsError{Dst: tc.taken}, bp.Moves[0].Err)
 			require.NoError(t, bp.Moves[1].Err)
-			assert.Equal(t, 1, bp.Withheld)
+			assert.Equal(t, tc.withheld, bp.Withheld)
 		})
 	}
 }
 
-func TestMoveBatch_KeyStems(t *testing.T) {
+func TestMoveBatch_BuildKeys(t *testing.T) {
 	b := newMoveBatch()
 	b.members["x/guide.md"] = batchMember{dst: "x/Guide.md"}
 	b.members["a.md"] = batchMember{dst: "guide.md"}
 	b.members["gone.md"] = batchMember{}
-	b.keyStems()
-	assert.Equal(t, map[string]int{"guide": 2, "a": 1, "gone": 1}, b.stems,
+	b.buildKeys()
+	assert.Equal(t, map[wikilinkKey]int{stemKey("guide"): 2, stemKey("a"): 1, stemKey("gone"): 1}, b.keys,
 		"a member holding one stem at both ends counts once")
-	assert.Equal(t, map[string][]string{"guide": {"x/guide.md"}, "a": {"a.md"}, "gone": {"gone.md"}}, b.srcStems)
+	assert.Equal(t, map[wikilinkKey][]string{
+		stemKey("guide"): {"x/guide.md"}, stemKey("a"): {"a.md"}, stemKey("gone"): {"gone.md"},
+	}, b.srcKeys)
 	b.members["n.md"] = batchMember{}
-	b.keyStems()
-	assert.NotContains(t, b.stems, "n", "built once")
+	b.buildKeys()
+	assert.NotContains(t, b.keys, stemKey("n"), "built once")
 }
 
 func TestDestResolver_CountStale(t *testing.T) {
@@ -910,12 +936,14 @@ func TestCountShadowed(t *testing.T) {
 		"x/c.md":  "# C\n",
 		"c.md":    "# C\n",
 		"img.png": "png",
-		"n.md":    "# N\n\n[[b]] [[x/b]] [[c]]\n",
+		"x/a.png": "png",
+		"n.md":    "# N\n\n[[b]] [[x/b]] [[c]] ![[img.png]] [[a.png]]\n",
 	})
 	for vacated, want := range map[string]int{
 		"b.md":    2, // wins `b`: both `[[b]]` links are counted
 		"x/c.md":  0, // c.md wins `c`
-		"img.png": 0, // no stem key
+		"img.png": 1, // wins the name `img.png`
+		"x/a.png": 1, // the only `a.png`
 		"q.md":    0, // no `[[q]]` link
 	} {
 		r := &destResolver{ws: ws, batch: newMoveBatch()}
@@ -931,21 +959,46 @@ func TestDestResolver_EdgeReader(t *testing.T) {
 	assert.Same(t, lines, r.edgeReader())
 }
 
-func TestStemTarget_Holders(t *testing.T) {
+func TestWikilinkTarget_Holders(t *testing.T) {
 	post := holderIndex("a/guide.md", "guide.md", "img/guide.png")
-	assert.Equal(t, []string{"guide.md", "a/guide.md"}, stemTarget{key: "guide", isStem: true}.holders(post))
-	assert.Equal(t, []string{"img/guide.png"}, stemTarget{key: "guide.png"}.holders(post))
+	assert.Equal(t, []string{"guide.md", "a/guide.md"}, wikilinkTarget{wikilinkKey: stemKey("guide")}.holders(post))
+	assert.Equal(t, []string{"img/guide.png"}, wikilinkTarget{wikilinkKey: nameKey("guide.png")}.holders(post))
 }
 
 func TestDestResolver_CountBlocked(t *testing.T) {
 	b := newMoveBatch()
 	b.dsts["c.md"], b.dsts["x/c.md"], b.dsts["b.md"] = true, true, true
 	r := &destResolver{batch: b}
-	t1 := stemTarget{dst: "x/c.md", key: "c", isStem: true}
-	r.countBlocked(holderIndex("c.md", "x/c.md"), t1, "a", "x/c.md")
+	t1 := wikilinkTarget{dst: "x/c.md", wikilinkKey: stemKey("c")}
+	r.countBlocked(holderIndex("c.md", "x/c.md"), t1, stemKey("a"), "x/c.md")
 	assert.Equal(t, 1, b.withheld, "a member's destination wins the new key")
-	r.countBlocked(holderIndex("y/c.md", "x/c.md"), t1, "a", "x/c.md")
+	r.countBlocked(holderIndex("y/c.md", "x/c.md"), t1, stemKey("a"), "x/c.md")
 	assert.Equal(t, 1, b.withheld, "a file outside the batch wins it")
-	r.countBlocked(holderIndex("y/c.md", "x/c.md", "b.md"), t1, "b", "x/c.md")
+	r.countBlocked(holderIndex("y/c.md", "x/c.md", "b.md"), t1, stemKey("b"), "x/c.md")
 	assert.Equal(t, 2, b.withheld, "the link left as written reaches a member's destination")
+}
+
+func TestDestResolver_KnowsHolders(t *testing.T) {
+	walked := &destResolver{}
+	assert.True(t, walked.knowsHolders(stemKey("guide")))
+	assert.True(t, walked.knowsHolders(nameKey("img.png")), "a walked index holds every name")
+	listed := &destResolver{wlListed: true}
+	assert.True(t, listed.knowsHolders(stemKey("guide")), "the listed files are the stem's best known set")
+	assert.False(t, listed.knowsHolders(nameKey("img.png")), "the listed files may lack a non-Markdown holder")
+}
+
+func TestDestResolver_Blocked(t *testing.T) {
+	b := newMoveBatch()
+	b.dsts["c.md"] = true
+	r := &destResolver{batch: b}
+	reached := wikilinkTarget{dst: "c.md", wikilinkKey: stemKey("c")}
+	assert.False(t, r.blocked(holderIndex("c.md"), reached, stemKey("a"), "c.md"), "the target reaches its file")
+	taken := wikilinkTarget{dst: "x/c.md", wikilinkKey: stemKey("c")}
+	assert.True(t, r.blocked(holderIndex("c.md", "x/c.md"), taken, stemKey("a"), "x/c.md"))
+	assert.Equal(t, 1, b.withheld, "a member's destination wins the new key, so the link is counted")
+
+	r.wlListed = true
+	name := wikilinkTarget{dst: "photo.png", wikilinkKey: nameKey("photo.png")}
+	assert.True(t, r.blocked(holderIndex(), name, stemKey("a"), "photo.png"), "a name key's holders are unknown")
+	assert.Equal(t, 1, b.withheld, "an unknown holder is left as written, not counted")
 }
