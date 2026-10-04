@@ -239,14 +239,14 @@ Phase C — guardrails and docs:
     [size_test.go](../cmd/mdsmith-wasm/size_test.go)
     passes within both budgets with `go-toml` absent from
     the artifact.
-12. [ ] Docs: add a reference page for config discovery
+12. [x] Docs: add a reference page for config discovery
     order and the `[tool.mdsmith]` source under
     [docs/reference](../docs/reference/index.md), note that
     config errors are positioned diagnostics, link it from
     the `check` and `init` CLI pages and the
     [linter comparison](../docs/background/markdown-linters.md),
     then run `mdsmith fix` to regenerate catalogs.
-13. [ ] Run `mdsmith fix PLAN.md`, `mdsmith check .`,
+13. [x] Run `mdsmith fix PLAN.md`, `mdsmith check .`,
     `go test ./...`, and
     `go tool -modfile=tools/go.mod golangci-lint run`.
 
@@ -277,14 +277,14 @@ Phase C — guardrails and docs:
       load from the `[tool.mdsmith]` table.
 - [x] The LSP, build-directive, and gitattributes paths
       honor a pyproject-only project.
-- [ ] The standard-Go and TinyGo WASM builds compile and
+- [x] The standard-Go and TinyGo WASM builds compile and
       stay within the size budgets; `go-toml` is not
       linked into the WASM artifact.
 - [x] A plural `[tools.mdsmith]` table produces a hint
       and is not used as config.
-- [ ] Reference docs describe the discovery order, the
+- [x] Reference docs describe the discovery order, the
       pyproject source, and positioned config diagnostics.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool -modfile=tools/go.mod golangci-lint run`
+- [x] All tests pass: `go test ./...`
+- [x] `go tool -modfile=tools/go.mod golangci-lint run`
       reports no issues.
-- [ ] `mdsmith check .` — 0 failures.
+- [x] `mdsmith check .` — 0 failures.

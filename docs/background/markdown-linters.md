@@ -636,20 +636,20 @@ set. panache does not map to that matrix — its checks
 target Quarto and
 R Markdown constructs the others flatten away.
 
-| Aspect                  | mdsmith      | rumdl                | mado                 | panache      |
-| ----------------------- | ------------ | -------------------- | -------------------- | ------------ |
-| Language                | Go           | Rust                 | Rust                 | Rust         |
-| Rule IDs                | own `MDSxxx` | markdownlint `MDxxx` | markdownlint `MDxxx` | own          |
-| Rule count              | 69           | 71                   | ~41                  | unenumerated |
-| Autofix / format        | `fix`        | `--fix`, `fmt`       | no                   | `format`     |
-| LSP / editor            | yes (LSP)    | yes (LSP)            | no                   | yes (LSP)    |
-| Config format           | YAML         | TOML                 | TOML                 | TOML         |
-| Reuse markdownlint cfg  | no           | yes                  | no                   | no           |
-| Cross-file integrity    | yes          | no                   | no                   | no           |
-| Generated sections      | yes          | no                   | no                   | no           |
-| Readability/token rules | yes          | no                   | no                   | no           |
-| Front-matter schema     | yes          | no                   | no                   | no           |
-| Quarto / R Markdown     | no           | Quarto flavor        | no                   | yes (CST)    |
+| Aspect                  | mdsmith                                   | rumdl                | mado                 | panache      |
+| ----------------------- | ----------------------------------------- | -------------------- | -------------------- | ------------ |
+| Language                | Go                                        | Rust                 | Rust                 | Rust         |
+| Rule IDs                | own `MDSxxx`                              | markdownlint `MDxxx` | markdownlint `MDxxx` | own          |
+| Rule count              | 69                                        | 71                   | ~41                  | unenumerated |
+| Autofix / format        | `fix`                                     | `--fix`, `fmt`       | no                   | `format`     |
+| LSP / editor            | yes (LSP)                                 | yes (LSP)            | no                   | yes (LSP)    |
+| Config format           | YAML or [`pyproject.toml`][cfg-discovery] | TOML                 | TOML                 | TOML         |
+| Reuse markdownlint cfg  | no                                        | yes                  | no                   | no           |
+| Cross-file integrity    | yes                                       | no                   | no                   | no           |
+| Generated sections      | yes                                       | no                   | no                   | no           |
+| Readability/token rules | yes                                       | no                   | no                   | no           |
+| Front-matter schema     | yes                                       | no                   | no                   | no           |
+| Quarto / R Markdown     | no                                        | Quarto flavor        | no                   | yes (CST)    |
 
 ### Prose and Readability
 
@@ -1107,3 +1107,5 @@ if you need a stable rule set across upgrades.
 [bench]: ../research/benchmarks/README.md
 [mdcov]: ../research/markdownlint-coverage/README.md
 [gml-evidence]: ../research/gomarklint-equivalence/README.md
+
+[cfg-discovery]: ../reference/config-discovery.md
