@@ -42,9 +42,11 @@ func parseMoveFlags(args []string) (moveOptions, []string, error) {
 
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, "Usage: mdsmith move [flags] <src> <dst>\n\n"+
-			"Move a Markdown file and rewrite every reference in one step: incoming\n"+
-			"links and ref-def destinations across the workspace, and the moved file's\n"+
-			"own outbound relative links. A tracked file is staged with git mv.\n\n"+
+			"Move a workspace file and rewrite every reference in one step: incoming\n"+
+			"links and ref-def destinations across the workspace, a moved Markdown\n"+
+			"file's own outbound relative links, and wikilinks when the basename\n"+
+			"changes ([[stem]] for Markdown, typed [[name.ext]] for other files).\n"+
+			"A tracked file is staged with git mv.\n\n"+
 			"  mdsmith move docs/old.md docs/new.md\n"+
 			"  mdsmith move guide.md reference/guide.md --dry-run\n\n"+
 			"Exit codes: 0 moved, 1 source not found, 2 error or conflict\n\nFlags:\n")

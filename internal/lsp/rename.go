@@ -400,8 +400,8 @@ func (s *Server) watchesRoot(root string) bool {
 	return root != "" && insideWorkspace(folder, root)
 }
 
-// WikilinkIndex implements refactor.MoveWorkspace: the index `[[stem]]`
-// resolution reads, over the whole workspace root on disk, or nil when
+// WikilinkIndex implements refactor.MoveWorkspace: the index wikilink
+// resolution reads (`[[stem]]` and typed `[[name.ext]]` alike), over the whole workspace root on disk, or nil when
 // that root is unreadable.
 func (w lspMoveWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return w.wikilinks()
