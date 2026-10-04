@@ -28,7 +28,7 @@ type concurrentResult struct {
 func runConcurrent(
 	builder buildexec.Builder, targets []buildTarget, cfg *config.Config,
 	opts buildPassOpts, cache *buildexec.Cache, timeout time.Duration,
-	w io.Writer, fold func(targetOutcome),
+	w io.Writer, fold func(buildTarget, targetOutcome),
 ) {
 	sw := &syncWriter{w: w}
 
@@ -62,8 +62,8 @@ func runConcurrent(
 		go func(i int, bt buildTarget) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if refuseIfInterrupted(bt, opts, sw) {
-				results[i] = concurrentResult{outcome: outcomeFailed}
+			if interrupted(opts) {
+				results[i] = concurrentResult{outcome: outcomeNotStarted}
 				return
 			}
 			outcome, entry := decideAndRun(
@@ -73,8 +73,8 @@ func runConcurrent(
 	}
 	wg.Wait()
 
-	for _, r := range results {
-		fold(r.outcome)
+	for i, r := range results {
+		fold(targets[i], r.outcome)
 		if r.entry != nil {
 			cache.Put(*r.entry)
 		}

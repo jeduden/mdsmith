@@ -67,16 +67,40 @@ func (o buildPassOpts) runsProcesses() bool {
 	return !o.dryRun && !o.checkStale && o.explain == ""
 }
 
-// refuseIfInterrupted reports bt as interrupted and returns true when
-// the build context is already done, so a target reached after an
-// interrupt neither hashes its inputs nor starts its recipe.
-func refuseIfInterrupted(bt buildTarget, opts buildPassOpts, w io.Writer) bool {
-	err := opts.context().Err()
-	if err == nil {
-		return false
+// interrupted reports whether the build context is already done, so a
+// target reached after an interrupt neither hashes its inputs nor
+// starts its recipe. The caller returns outcomeNotStarted, and
+// dispatchTargets reports every such target in one reportNotStarted
+// line.
+func interrupted(opts buildPassOpts) bool {
+	return opts.context().Err() != nil
+}
+
+// notStartedShown caps how many target names reportNotStarted lists.
+const notStartedShown = 3
+
+// reportNotStarted prints one line for the targets an interrupt
+// stopped before their recipe started (names, in declared order), so a
+// large pass does not bury the killed recipe's report under one line
+// per target. It prints nothing for no target.
+func reportNotStarted(names []string, w io.Writer) {
+	switch {
+	case len(names) == 0:
+		return
+	case len(names) == 1:
+		_, _ = fmt.Fprintf(w, "INTERRUPTED %s before start\n", names[0])
+		return
 	}
-	reportBuildFailure(bt, targetRunResult{Result: buildexec.Result{Err: err}}, w)
-	return true
+	shown := names
+	if len(shown) > notStartedShown {
+		shown = shown[:notStartedShown]
+	}
+	more := ""
+	if n := len(names) - len(shown); n > 0 {
+		more = fmt.Sprintf(", and %d more", n)
+	}
+	_, _ = fmt.Fprintf(w, "INTERRUPTED %d targets before start: %s%s\n",
+		len(names), strings.Join(shown, ", "), more)
 }
 
 // buildTarget pairs a resolved build.Target with the file and line it
@@ -454,6 +478,7 @@ const (
 	outcomeFailed                       // a failure was reported
 	outcomeStale                        // --build-check-stale found this target stale
 	outcomeRebuilt                      // recipe ran and the cache entry was refreshed
+	outcomeNotStarted                   // an interrupt stopped it before its recipe started
 )
 
 // dispatchTargets runs the staleness check, dispatch, and cache refresh
@@ -466,8 +491,12 @@ func dispatchTargets(
 	timeout time.Duration, w io.Writer,
 ) int {
 	var failed, anyStale, rebuilt bool
-	var fold = func(o targetOutcome) {
+	var notStarted []string
+	var fold = func(bt buildTarget, o targetOutcome) {
 		switch o {
+		case outcomeNotStarted:
+			failed = true
+			notStarted = append(notStarted, targetName(bt))
 		case outcomeFailed:
 			failed = true
 		case outcomeStale:
@@ -488,9 +517,10 @@ func dispatchTargets(
 		runConcurrent(builder, targets, cfg, opts, cache, timeout, w, fold)
 	} else {
 		for _, bt := range targets {
-			fold(dispatchOne(builder, bt, cfg, opts, cache, timeout, w))
+			fold(bt, dispatchOne(builder, bt, cfg, opts, cache, timeout, w))
 		}
 	}
+	reportNotStarted(notStarted, w)
 
 	if opts.checkStale {
 		if anyStale {
@@ -517,8 +547,8 @@ func dispatchOne(
 	builder buildexec.Builder, bt buildTarget, cfg *config.Config,
 	opts buildPassOpts, cache *buildexec.Cache, timeout time.Duration, w io.Writer,
 ) targetOutcome {
-	if refuseIfInterrupted(bt, opts, w) {
-		return outcomeFailed
+	if interrupted(opts) {
+		return outcomeNotStarted
 	}
 	stin := stalenessFor(bt, cfg)
 	verdict, serr := targetVerdict(stin, cache, opts)

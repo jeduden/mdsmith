@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -1565,4 +1566,46 @@ func TestRunOneTarget_CancelledContextStartsNoRecipe(t *testing.T) {
 	res := runOneTarget(refuseBuilder(t), bt, "", buildPassOpts{ctx: ctx}, time.Second, nil, &buf)
 	assert.ErrorIs(t, res.Err, context.Canceled)
 	assert.Empty(t, buf.String())
+}
+
+// TestDispatchTargets_InterruptSummarizesUnstartedTargets covers a
+// large pass interrupted early: the targets that never started share
+// one summary line, in declared order, on the serial and the
+// concurrent path, so the killed recipe's report is not buried.
+func TestDispatchTargets_InterruptSummarizesUnstartedTargets(t *testing.T) {
+	for _, jobs := range []int{1, 3} {
+		root := t.TempDir()
+		cfg := buildPassCfg("    cp:\n      command: cp {inputs} {outputs}\n")
+		var targets []buildTarget
+		for i := 1; i <= 5; i++ {
+			targets = append(targets, buildTarget{file: "doc.md", line: i, target: buildexec.Target{
+				Recipe: "cp", Root: root, Outputs: []string{fmt.Sprintf("o%d.txt", i)},
+			}})
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		var buf strings.Builder
+		code := dispatchTargets(refuseBuilder(t), targets, cfg, root,
+			buildPassOpts{ctx: ctx, jobs: jobs, noCache: true}, buildexec.NewCache(), time.Second, &buf)
+		assert.Equal(t, 2, code, "jobs=%d", jobs)
+		assert.Equal(t, "INTERRUPTED 5 targets before start: o1.txt, o2.txt, o3.txt, and 2 more\n",
+			buf.String(), "jobs=%d", jobs)
+	}
+}
+
+func TestReportNotStarted(t *testing.T) {
+	for _, tc := range []struct {
+		names []string
+		want  string
+	}{
+		{nil, ""},
+		{[]string{"a"}, "INTERRUPTED a before start\n"},
+		{[]string{"a", "b"}, "INTERRUPTED 2 targets before start: a, b\n"},
+		{[]string{"a", "b", "c"}, "INTERRUPTED 3 targets before start: a, b, c\n"},
+		{[]string{"a", "b", "c", "d"}, "INTERRUPTED 4 targets before start: a, b, c, and 1 more\n"},
+	} {
+		var buf strings.Builder
+		reportNotStarted(tc.names, &buf)
+		assert.Equal(t, tc.want, buf.String())
+	}
 }
