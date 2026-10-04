@@ -462,6 +462,12 @@ func TestIsConfigFile(t *testing.T) {
 	}
 }
 
+// discoverHints returns only the hints of a DiscoverWithHints walk.
+func discoverHints(start string) []string {
+	_, hints := DiscoverWithHints(start)
+	return hints
+}
+
 func TestDiscover_PluralToolsTableIsHintedNotUsed(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0o755))
@@ -473,14 +479,14 @@ func TestDiscover_PluralToolsTableIsHintedNotUsed(t *testing.T) {
 	assert.Equal(t, "", got, "a plural table is not a config source")
 	assert.Equal(t, []string{
 		py + ": [tools.mdsmith] is not read; rename the table to [tool.mdsmith]",
-	}, DiscoverHints(start))
+	}, discoverHints(start))
 
 	// A singular table alongside the plural one is used, with no hint.
 	writeCfg(t, root, "sub/pyproject.toml", "[tools.mdsmith]\n[tool.mdsmith]\nfiles = []\n")
 	got, err = Discover(start)
 	require.NoError(t, err)
 	assert.Equal(t, py, got)
-	assert.Empty(t, DiscoverHints(start))
+	assert.Empty(t, discoverHints(start))
 }
 
 func TestProbePyproject_PluralHint(t *testing.T) {

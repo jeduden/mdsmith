@@ -317,17 +317,11 @@ func Discover(startDir string) (string, error) {
 	return found, nil
 }
 
-// DiscoverHints returns the one-line hints Discover's walk collects for
-// files it passed over that look like a misplaced config: a
-// pyproject.toml whose table is the plural `[tools.mdsmith]`. Callers
-// print them so the author learns why the table is not read.
-func DiscoverHints(startDir string) []string {
-	_, hints := DiscoverWithHints(startDir)
-	return hints
-}
-
-// DiscoverWithHints is Discover and DiscoverHints in one walk, for a
-// caller that wants both without reading each pyproject.toml twice.
+// DiscoverWithHints is Discover plus the one-line hints its walk
+// collects for files it passed over that look like a misplaced config:
+// a pyproject.toml whose table is the plural `[tools.mdsmith]`. Callers
+// print the hints so the author learns why the table is not read. One
+// walk reads each pyproject.toml once for both answers.
 func DiscoverWithHints(startDir string) (found string, hints []string) {
 	dir, _ := filepath.Abs(startDir) // filepath.Abs cannot fail when os.Getwd succeeds
 	for {
