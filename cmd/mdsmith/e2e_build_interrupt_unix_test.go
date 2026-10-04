@@ -150,3 +150,61 @@ func TestE2E_Build_SecondSignalSkipsGrace(t *testing.T) {
 	assert.Eventually(t, func() bool { return !unixProcessAlive(childPID) },
 		6*time.Second, 100*time.Millisecond, "recipe child must not be orphaned")
 }
+
+// TestE2E_Build_BrokenStderrAfterInterruptStillReaps covers
+// `mdsmith fix --build-jobs 2 2>&1 | tee log` and a Ctrl-C that also
+// ends tee. One worker's recipe dies at once and its INTERRUPTED report
+// hits the broken pipe; the other recipe ignores SIGTERM and waits out
+// the grace. SIGPIPE must not end mdsmith before it SIGKILLs that group,
+// or the group is orphaned.
+func TestE2E_Build_BrokenStderrAfterInterruptStillReaps(t *testing.T) {
+	dir := writeBuildRepo(t, "")
+	quickPID := filepath.Join(dir, "quick.pid")
+	stuckPGID := filepath.Join(dir, "stuck.pgid")
+	quick := "#!/bin/sh\necho $$ > \"" + quickPID + "\"\nsleep 120\ntouch \"$1\"\n"
+	stuck := "#!/bin/sh\ntrap '' TERM\necho $$ > \"" + stuckPGID + "\"\nsleep 120\ntouch \"$1\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "quick.sh"), []byte(quick), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "stuck.sh"), []byte(stuck), 0o755))
+	reconfigureRecipe(t, dir, "    quick:\n      command: "+filepath.Join(dir, "quick.sh")+" {outputs}\n"+
+		"    stuck:\n      command: "+filepath.Join(dir, "stuck.sh")+" {outputs}\n")
+	writeFixture(t, dir, "a.md", buildDirective("quick", "", "a.txt"))
+	writeFixture(t, dir, "b.md", buildDirective("stuck", "", "b.txt"))
+
+	pr, pw, err := os.Pipe()
+	require.NoError(t, err)
+	cmd := exec.Command(binaryPath, "fix", "--no-color", "--build-only", "--build-jobs", "2", "a.md", "b.md")
+	cmd.Dir = dir
+	cmd.Env = envWithCoverDir(coverDir)
+	cmd.Stdout = pw
+	cmd.Stderr = pw
+	require.NoError(t, cmd.Start())
+	require.NoError(t, pw.Close())
+
+	readPID := func(path string) int {
+		var pid int
+		deadline := time.Now().Add(10 * time.Second)
+		for pid == 0 && time.Now().Before(deadline) {
+			if b, err := os.ReadFile(path); err == nil {
+				pid, _ = strconv.Atoi(strings.TrimSpace(string(b)))
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		return pid
+	}
+	pgid := readPID(stuckPGID)
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		if pgid > 0 {
+			_ = syscall.Kill(-pgid, syscall.SIGKILL)
+		}
+	})
+	require.NotZero(t, pgid, "stuck recipe pid should have been recorded")
+	require.NotZero(t, readPID(quickPID), "quick recipe pid should have been recorded")
+
+	require.NoError(t, pr.Close()) // the reader (tee) is gone
+	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))
+	err = cmd.Wait()
+	assert.False(t, unixProcessAlive(pgid), "the SIGTERM-ignoring recipe must be reaped before mdsmith exits")
+	// The broken pipe does not change how mdsmith ends: by the interrupt.
+	requireDiedOf(t, err, syscall.SIGINT, "")
+}

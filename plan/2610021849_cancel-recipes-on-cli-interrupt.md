@@ -71,7 +71,11 @@ done, so only the cancellation is missing.
    (`escalateAfter`) is a duplicated delivery of the same
    interrupt (`npm run` forwarding SIGINT, bash resending
    SIGHUP) and keeps the grace. mdsmith still waits for
-   the reap, so no recipe is orphaned.
+   the reap, so no recipe is orphaned. After the first
+   signal mdsmith catches SIGPIPE (`holdBrokenPipe`), so
+   a report written to a reader the Ctrl-C also ended
+   (`2>&1 | tee log`) cannot end it before every group
+   is reaped.
 6. Run hooks through `runRecipe` (keeping mdsmith's
    environment), so a done context starts no hook and an
    interrupted hook reports as interrupted. Keep hooks in
@@ -97,6 +101,9 @@ done, so only the cancellation is missing.
       (Unix test).
 - [x] A second Ctrl-C ends a run whose recipe ignores
       SIGTERM before the 5 s grace period runs out.
+- [x] A broken stderr after the interrupt does not end
+      mdsmith before a SIGTERM-ignoring recipe group is
+      reaped (Unix e2e test, `--build-jobs 2`).
 - [x] `GOOS=plan9 go vet ./...` and
       `GOOS=js GOARCH=wasm go build ./...` still pass.
 - [x] All tests pass: `go test ./...`

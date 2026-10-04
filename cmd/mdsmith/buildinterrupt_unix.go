@@ -13,6 +13,9 @@ import (
 // terminal or a dropped SSH session must reap the recipe groups too.
 var hangupSignals = []os.Signal{syscall.SIGHUP}
 
+// brokenPipeSignals is what holdBrokenPipe catches after an interrupt.
+var brokenPipeSignals = []os.Signal{syscall.SIGPIPE}
+
 // killSelf sends s to this process. It is a var so a test can observe
 // the raise instead of dying of it.
 var killSelf = func(s syscall.Signal) error { return syscall.Kill(syscall.Getpid(), s) }

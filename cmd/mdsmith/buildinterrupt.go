@@ -61,7 +61,7 @@ func dispatchInterruptible(opts buildPassOpts, dispatch func(buildPassOpts) int)
 	var first os.Signal
 	go func() {
 		defer close(watched)
-		first = watchInterrupts(sigs, cancel, force, done)
+		first = watchInterrupts(sigs, func() { holdBrokenPipe(); cancel() }, force, done)
 	}()
 	// Stop before the watcher ends, so a signal that lands after dispatch
 	// returned takes its default action instead of sitting unread in sigs.
@@ -78,6 +78,26 @@ func dispatchInterruptible(opts buildPassOpts, dispatch func(buildPassOpts) int)
 		return 2
 	}
 	return code
+}
+
+// notifySignal is signal.Notify, a var so a test can check
+// holdBrokenPipe without changing the test binary's signal handling.
+var notifySignal = signal.Notify
+
+// holdBrokenPipe catches brokenPipeSignals (SIGPIPE on Unix) for the
+// rest of the process once an interrupt arrives. A Ctrl-C often also
+// ends the reader of mdsmith's output (`mdsmith fix 2>&1 | tee log`),
+// and Go dies of SIGPIPE on a write to a broken stdout or stderr: one
+// worker's INTERRUPTED report would then end mdsmith while another
+// waits out its grace, orphaning that recipe group. Caught, the write
+// just fails and mdsmith reaps every group, then dies of the interrupt.
+// The hold is never released: the run is ending. With no signal to
+// catch it does nothing, since Notify with none catches them all.
+func holdBrokenPipe() {
+	if len(brokenPipeSignals) == 0 {
+		return
+	}
+	notifySignal(make(chan os.Signal, 1), brokenPipeSignals...)
 }
 
 // pendingInterrupt is the first signal an interruptible dispatch

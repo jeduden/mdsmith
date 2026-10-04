@@ -25,6 +25,14 @@ func TestInterruptSignals_IncludesHangup(t *testing.T) {
 	assert.NotContains(t, interruptSignals(), syscall.SIGHUP)
 }
 
+func TestBrokenPipeSignals_IsSIGPIPE(t *testing.T) {
+	assert.Equal(t, []os.Signal{syscall.SIGPIPE}, brokenPipeSignals)
+}
+
+func TestNotifySignal_IsSignalNotify(t *testing.T) {
+	assert.Equal(t, reflect.ValueOf(signal.Notify).Pointer(), reflect.ValueOf(notifySignal).Pointer())
+}
+
 func TestRaiseSignal_ResetsAndSignalsSelf(t *testing.T) {
 	var steps []string
 	oldKill, oldWait, oldReset := killSelf, raiseWait, resetSignal

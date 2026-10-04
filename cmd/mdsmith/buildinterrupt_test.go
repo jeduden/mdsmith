@@ -226,3 +226,30 @@ func TestDispatchInterruptible_UninterruptedKeepsCode(t *testing.T) {
 	assert.Equal(t, 7, code)
 	assert.Nil(t, pendingInterrupt)
 }
+
+// stubNotify records what holdBrokenPipe would Notify, for one test.
+func stubNotify(t *testing.T) *[][]os.Signal {
+	t.Helper()
+	var calls [][]os.Signal
+	old := notifySignal
+	notifySignal = func(_ chan<- os.Signal, sigs ...os.Signal) { calls = append(calls, sigs) }
+	t.Cleanup(func() { notifySignal = old })
+	return &calls
+}
+
+func TestHoldBrokenPipe_CatchesBrokenPipeSignals(t *testing.T) {
+	calls := stubNotify(t)
+	old := brokenPipeSignals
+	t.Cleanup(func() { brokenPipeSignals = old })
+
+	brokenPipeSignals = []os.Signal{syscall.SIGTERM}
+	holdBrokenPipe()
+	assert.Equal(t, [][]os.Signal{{syscall.SIGTERM}}, *calls)
+
+	// With nothing to catch, Notify must not run: with no signal it
+	// would catch every one.
+	*calls = nil
+	brokenPipeSignals = nil
+	holdBrokenPipe()
+	assert.Empty(t, *calls)
+}
