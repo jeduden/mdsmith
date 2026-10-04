@@ -33,6 +33,12 @@ func TestInitializeParamsSingletonScope(t *testing.T) {
 		{"case-variant scope sibling is ignored",
 			`{"initializationOptions":{"mdsmith":{"singletonScope":"x","singletonscope":7}}}`, "x"},
 		{"scope with NUL byte opts out", `{"initializationOptions":{"mdsmith":{"singletonScope":"a\u0000b"}}}`, ""},
+		// encoding/json folds case for struct fields, so the top-level
+		// key needs the same exact match as the nested ones.
+		{"options key is case-sensitive",
+			`{"InitializationOptions":{"mdsmith":{"singletonScope":"x"}}}`, ""},
+		{"case-variant options sibling is ignored",
+			`{"initializationOptions":{"mdsmith":{"singletonScope":"x"}},"INITIALIZATIONOPTIONS":7}`, "x"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -43,4 +49,30 @@ func TestInitializeParamsSingletonScope(t *testing.T) {
 			assert.Equal(t, tc.want, p.singletonScope())
 		})
 	}
+}
+
+// The exact-key re-read must leave the rest of the decode intact: the
+// other fields still fill in, and a field of the wrong type still fails
+// the whole initialize decode as it did before UnmarshalJSON existed.
+func TestInitializeParamsUnmarshalJSON(t *testing.T) {
+	t.Parallel()
+	var p initializeParams
+	require.NoError(t, json.Unmarshal([]byte(`{"processId":7,"rootUri":"file:///r",`+
+		`"workspaceFolders":[{"uri":"file:///w","name":"w"}],`+
+		`"initializationOptions":{"k":1}}`), &p))
+	require.NotNil(t, p.ProcessID)
+	assert.Equal(t, 7, *p.ProcessID)
+	require.NotNil(t, p.RootURI)
+	assert.Equal(t, "file:///r", *p.RootURI)
+	require.Len(t, p.WorkspaceFolders, 1)
+	assert.Equal(t, "file:///w", p.WorkspaceFolders[0].URI)
+	assert.JSONEq(t, `{"k":1}`, string(p.InitializationOptions))
+
+	var bad initializeParams
+	assert.Error(t, json.Unmarshal([]byte(`{"processId":"seven"}`), &bad),
+		"a wrongly typed field must still fail the decode")
+
+	var null initializeParams
+	require.NoError(t, json.Unmarshal([]byte(`null`), &null))
+	assert.Nil(t, null.InitializationOptions)
 }

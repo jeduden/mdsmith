@@ -77,15 +77,34 @@ type initializeParams struct {
 	InitializationOptions json.RawMessage    `json:"initializationOptions,omitempty"`
 }
 
+// UnmarshalJSON decodes the params as usual, then re-reads
+// initializationOptions by its exact key. encoding/json matches struct
+// fields case-insensitively, so without this "InitializationOptions"
+// would opt a client into the singleton, and a later case-variant
+// sibling would overwrite the real value. The map decode cannot fail
+// once the struct decode of the same bytes has succeeded, so its error
+// is dropped; a nil map just leaves the options absent.
+func (p *initializeParams) UnmarshalJSON(data []byte) error {
+	type plain initializeParams
+	if err := json.Unmarshal(data, (*plain)(p)); err != nil {
+		return err
+	}
+	var top map[string]json.RawMessage
+	_ = json.Unmarshal(data, &top)
+	p.InitializationOptions = top["initializationOptions"]
+	return nil
+}
+
 // singletonScope returns initializationOptions.mdsmith.singletonScope,
 // the client-supplied token that opts this server into the workspace
 // singleton (see startSingletonWatch). Any other shape — absent, null,
 // a non-object options value or namespace, a non-string scope — yields
 // "", which is the opt-out: the server then never claims the registry.
 //
-// Keys are matched exactly. encoding/json struct decoding folds case,
-// so "MDSMITH" would opt a client in and a case-variant sibling of the
-// wrong type would fail the whole decode; map lookups avoid both. A
+// Keys are matched exactly, the top-level one by UnmarshalJSON.
+// encoding/json struct decoding folds case, so "MDSMITH" would opt a
+// client in and a case-variant sibling of the wrong type would fail
+// the whole decode; map lookups avoid both. A
 // scope containing a NUL byte is also an opt-out, because workspaceKey
 // frames root and scope with NUL and must stay unambiguous.
 func (p initializeParams) singletonScope() string {
