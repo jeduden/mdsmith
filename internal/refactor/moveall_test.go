@@ -921,7 +921,7 @@ func TestDestResolver_ReferrerEdit(t *testing.T) {
 	b.members["docs/t.md"] = batchMember{dst: "z/t.md", planned: true}
 	b.members["docs/v.md"] = batchMember{dst: "docs/w.md"}
 	b.members["docs/h.md"] = batchMember{dst: "y/h.md"}
-	b.shadowed["docs/v.md"] = true
+	b.taken["docs/v.md"] = true
 	r := &destResolver{ws: stubWorkspace{}, batch: b}
 
 	e, ok := r.referrerEdit(dest("t.md"), "docs/a.md", batchMember{}, false)
@@ -989,9 +989,9 @@ func TestMoveBatch_ScanBases(t *testing.T) {
 	b.members["y/a.md"] = batchMember{dst: "q/a.md", planned: true}
 	b.members["b.md"] = batchMember{dst: "c.md"}
 	assert.Equal(t, [][]byte{[]byte("a.md")}, b.scanBases(), "each planned base once; unplanned left out")
-	b.shadowed["b.md"] = true
+	b.taken["b.md"] = true
 	assert.ElementsMatch(t, [][]byte{[]byte("a.md"), []byte("b.md")}, b.scanBases(), "a shadowed path is scanned")
-	b.overwritten["x/o.md"], b.overwritten["y/a.md"] = true, true
+	b.taken["x/o.md"], b.taken["y/a.md"] = true, true
 	assert.ElementsMatch(t, [][]byte{[]byte("a.md"), []byte("b.md"), []byte("o.md")}, b.scanBases(),
 		"an overwritten path is scanned, its base once")
 }
@@ -1012,7 +1012,7 @@ func TestValidateBatch_Overwritten(t *testing.T) {
 	require.Equal(t, ErrDuplicateDestination, moves[1].Err)
 	require.Equal(t, ErrDuplicateDestination, moves[2].Err)
 	require.NoError(t, moves[3].Err)
-	assert.Equal(t, map[string]bool{"x.md": true, "y.md": true}, b.overwritten,
+	assert.Equal(t, map[string]bool{"x.md": true, "y.md": true}, b.taken,
 		"a missing source, a free destination and a planned move record none")
 }
 
@@ -1033,7 +1033,7 @@ func TestPlanBatch(t *testing.T) {
 }
 
 // TestValidateBatch_Shadowed locks that a refused member whose path a
-// planned member takes is recorded as shadowed, and a vacated path
+// planned member takes is recorded as taken (shadowed), and a vacated path
 // whose own move is planned is not.
 func TestValidateBatch_Shadowed(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{
@@ -1044,7 +1044,10 @@ func TestValidateBatch_Shadowed(t *testing.T) {
 	for _, m := range moves[1:] {
 		require.NoError(t, m.Err)
 	}
-	assert.Equal(t, map[string]bool{"b.md": true}, b.shadowed)
+	assert.Equal(t, map[string]bool{"b.md": true, "c.md": true}, b.taken, "b.md shadowed, c.md overwritten")
+	assert.False(t, b.replaced("b.md"), "a shadowed member is moved away, not replaced")
+	assert.True(t, b.replaced("c.md"), "a file outside the batch is replaced")
+	assert.False(t, b.replaced("a.md"), "a path no newcomer takes")
 }
 
 // TestValidateBatch_ShadowedByDuplicates locks that a refused member
@@ -1062,7 +1065,8 @@ func TestValidateBatch_ShadowedByDuplicates(t *testing.T) {
 	})
 	require.Equal(t, DestinationExistsError{Dst: "x/h.md"}, moves[0].Err)
 	require.Equal(t, ErrDuplicateDestination, moves[1].Err)
-	assert.Equal(t, map[string]bool{"docs/h.md": true}, b.shadowed)
+	assert.Equal(t, map[string]bool{"docs/h.md": true, "x/h.md": true, "y.md": true}, b.taken,
+		"docs/h.md shadowed; x/h.md and y.md overwritten, g.md not shadowed")
 }
 
 // TestMoveAll_ShadowedByDuplicates covers a link from an unmoved file

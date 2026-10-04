@@ -156,8 +156,9 @@ var (
 // folder, where the link is spelled from the same directory whether or
 // not the move runs; one that leaves its folder is read by
 // countRefusedHolders instead. The same scan counts each link to a
-// shadowed path (see countShadowed) from any file but that path's own
-// and a planned member's.
+// path a newcomer may take (moveBatch.taken) from any file but a
+// planned member's; that file's link to itself follows
+// moveBatch.replaced.
 //
 // Every file is read, but only one mayNameAny admits is parsed. The
 // index is not consulted: it records no edge for an image or a
@@ -208,8 +209,8 @@ func (r *destResolver) countRefusedHolders(p parser.Parser) {
 // referrerEdit is appendReferrerEdits for one destination d in the
 // workspace file rel, whose batch entry is holder when moved. It
 // returns the edit that repoints d at a planned member's new path, and
-// counts d instead when it names a shadowed path (see countShadowed)
-// or a file a refused member may replace (moveBatch.overwritten), when
+// counts d instead when it names a path a newcomer may take
+// (moveBatch.taken), when
 // holder's refused move takes d out of the folder it is spelled
 // from, or when that move makes d name another file (see
 // countMisread). A link in such a holder to a planned member is also
@@ -220,23 +221,14 @@ func (r *destResolver) referrerEdit(d inlineDest, rel string, holder batchMember
 	if !ok {
 		return Edit{}, false
 	}
-	if r.batch.shadowed[ref.target] {
-		// The newcomer takes the path, so a link to it is counted. A
-		// shadowed file's link to itself is counted too, unless it
-		// still names the file from where the host moves it.
-		if ref.target != rel {
+	if r.batch.taken[ref.target] {
+		// A newcomer may take the path, so a link to it is counted.
+		// The file's link to itself follows moveBatch.replaced.
+		switch {
+		case ref.target != rel:
 			r.batch.withheld++
-		} else {
+		case !r.batch.replaced(rel):
 			r.countStale(holder.dst, ref.path, holder.dst)
-		}
-		return Edit{}, false
-	}
-	if r.batch.overwritten[ref.target] {
-		// A refused member may replace the file, so a link to it may
-		// then reach that member. The file's link to itself is not
-		// counted: once replaced, the file holding it is gone.
-		if ref.target != rel {
-			r.batch.withheld++
 		}
 		return Edit{}, false
 	}
@@ -413,16 +405,17 @@ func outboundEdit(r *destResolver, d inlineDest, src, dst string) (Edit, bool) {
 	// it is counted even then.
 	if m, moved := r.member(tgt); tgt == src {
 		tgt = dst
-	} else if r.batch.overwritten[tgt] {
-		// Spelled from dst it still names the file, but a refused
-		// member may replace it, so the link is counted too.
-		r.batch.withheld++
 	} else if moved {
 		if !m.planned {
 			r.batch.withheld++
 			return Edit{}, false
 		}
 		tgt = m.dst
+	} else if r.batch.taken[tgt] {
+		// A file outside the batch that a refused member may replace:
+		// spelled from dst it still names the file, but the link is
+		// counted too.
+		r.batch.withheld++
 	}
 	// The reference lives in the moved file, so its new spelling is
 	// computed as if from dst's directory.

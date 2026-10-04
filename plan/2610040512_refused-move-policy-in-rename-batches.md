@@ -164,14 +164,13 @@ Each one should get its own plan. `PLAN.md` is already at the
 300-line limit that MDS022 sets, so no new plan file fits yet
 (see the follow-up in plan 2610030438).
 
-1. One set for paths a member may replace. Today
-   `moveBatch.shadowed` and `moveBatch.overwritten` in
-   [`moveall.go`](../internal/refactor/moveall.go) each get a
-   branch in `referrerEdit`, `outboundEdit`, `scanBases`,
-   `planBatch` and `countShadowed`. The two branches differ
-   only in how they read the replaced file's link to itself.
-   Merge the sets into one map that records that rule, so a
-   new case needs one edit, not five.
+1. [x] One set for paths a member may replace. Done in
+   review round 3: `moveBatch.shadowed` and
+   `moveBatch.overwritten` in
+   [`moveall.go`](../internal/refactor/moveall.go) are now one
+   `moveBatch.taken` set. `moveBatch.replaced` reads how the
+   file's link to itself counts: a path outside the batch is
+   replaced, and a member is moved away.
 2. An existence check that does not read the file.
    `mayOccupy` in [`move.go`](../internal/refactor/move.go)
    reads a whole file to learn that it exists. This PR reads
