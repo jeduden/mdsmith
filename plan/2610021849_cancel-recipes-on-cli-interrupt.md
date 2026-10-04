@@ -1,7 +1,7 @@
 ---
 id: 2610021849
 title: Kill running build recipes when the CLI is interrupted
-status: "🔳"
+status: "✅"
 model: sonnet
 summary: >-
   `mdsmith fix` builds recipes under `context.Background()`, and
@@ -56,7 +56,7 @@ done, so only the cancellation is missing.
       process from the recipe's group running (Unix test).
 - [x] An interrupted build is reported as interrupted, not
       as timed out.
-- [ ] `GOOS=plan9 go vet ./...` and
+- [x] `GOOS=plan9 go vet ./...` and
       `GOOS=js GOARCH=wasm go build ./...` still pass.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

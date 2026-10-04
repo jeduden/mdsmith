@@ -367,22 +367,22 @@ build:
 ```
 
 `env-pass-through` *replaces* the default list — it does not append.
-Re-list the defaults you still want; the example above keeps all three
-and adds `SOURCE_DATE_EPOCH` for reproducible builds. MDS040 rejects an
-empty pass-through name or a name containing `=` (which would smuggle in
-a value rather than forward a variable).
+Re-list the defaults you still want; the example above keeps all three and
+adds `SOURCE_DATE_EPOCH` for reproducible builds. MDS040 rejects an empty
+pass-through name or one containing `=` (which would smuggle in a value).
 
-The default `build.exec.path` deliberately omits mdsmith's own install
-directory. A recipe that invokes `mdsmith` (for example to run
-`mdsmith extract`) must add the directory holding the binary to
-`build.exec.path`.
+The default `build.exec.path` omits mdsmith's own install directory. A recipe
+that invokes `mdsmith` (for example `mdsmith extract`) must add the directory
+holding the binary to `build.exec.path`.
 
 Each recipe runs in its own group (`Setpgid` on Unix, `RFNOTEG` on plan9,
 `CREATE_NEW_PROCESS_GROUP` plus a Job Object on Windows). On timeout, Unix sends
 the group `SIGTERM`, then `SIGKILL` after up to 5 s; plan9 writes `kill` to its
 `notepg`, then each member's and the leader's `ctl` (an rc `&` job escapes);
 Windows sends `CTRL_BREAK_EVENT` and ends its Job Object; without one, a daemon
-can survive. Each later wait (leader, after a direct kill, output) caps at 5 s.
+can survive. Each later wait caps at 5 s. Ctrl-C or `SIGTERM` on `mdsmith fix`
+(DEL on plan9) takes this kill path: recipes die before mdsmith exits 2,
+reported `INTERRUPTED`, not `TIMEOUT`.
 
 ### Atomic-write hardening
 
