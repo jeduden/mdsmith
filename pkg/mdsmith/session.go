@@ -23,6 +23,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/runcache"
@@ -592,6 +593,17 @@ func (s *Session) Invalidate(uri string, content ...[]byte) {
 func (s *Session) InvalidateWikilinks() {
 	s.runCache.InvalidateWikilinks()
 	s.runCache.InvalidateGlobMatches()
+}
+
+// WikilinkIndex returns the wikilink index of the workspace root on
+// disk from the session's run cache: the index MDS027 built during a
+// Check when one has, else a fresh walk of the root that the cache then
+// keeps. It is as fresh as the last InvalidateWikilinks, so a host
+// calls it only when it reports tree changes (the LSP does once it
+// watches files). Native-only: it returns the engine's own index type,
+// for the LSP's move guard.
+func (s *Session) WikilinkIndex() *linkgraph.WikilinkIndex {
+	return linkgraph.CachedWikilinkIndexAtDir(s.runCache, s.rootDir)
 }
 
 // absPath maps a workspace-relative uri to the absolute path the engine

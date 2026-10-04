@@ -27,6 +27,7 @@ var nativeOnlyMethods = map[string]bool{
 	"fixRule":             true,
 	"invalidateWikilinks": true,
 	"resolveFile":         true,
+	"wikilinkIndex":       true,
 }
 
 // TestSessionMethodSetMatchesGo asserts the JS session proxy's method

@@ -87,6 +87,16 @@ func (s *Session) ResolveFile(uri string, fmKinds []string, fmFields map[string]
 slice. That keeps the LSP's own diagnostic partitioning and error
 surfacing, consistent with the batch ops above.
 
+The LSP's file-move guard reads the session's cached wikilink index.
+`WikilinkIndex` returns the index MDS027 built, or walks the root on
+disk once. `InvalidateWikilinks` drops it when a watched file is
+created or deleted:
+
+```go
+func (s *Session) WikilinkIndex() *linkgraph.WikilinkIndex
+func (s *Session) InvalidateWikilinks()
+```
+
 Introspection and lifecycle round out the surface:
 
 ```go
