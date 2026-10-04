@@ -311,12 +311,13 @@ func IsConfigFile(path string) bool {
 var sidecarDirs = [...]string{kindFilesDir, conventionFilesDir, schemaFilesDir, wordlistFilesDir}
 
 // SidecarOwnerDir reports whether path is a kind, convention, schema or
-// word-list file — a .yml or .yaml file directly in one of the
-// .mdsmith/ sidecar directories — and returns the directory whose
-// config file Load reads it beside. Watchers use it so that editing a
-// sidecar reloads config the way editing the config file does.
+// word-list file — a .yml or .yaml file (extension in any case, as the
+// loaders match it) directly in one of the .mdsmith/ sidecar
+// directories — and returns the directory whose config file Load reads
+// it beside. Watchers use it so that editing a sidecar reloads config
+// the way editing the config file does.
 func SidecarOwnerDir(path string) (string, bool) {
-	switch filepath.Ext(path) {
+	switch strings.ToLower(filepath.Ext(path)) {
 	case ".yml", ".yaml":
 	default:
 		return "", false
