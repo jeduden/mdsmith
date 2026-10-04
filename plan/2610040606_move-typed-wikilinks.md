@@ -86,6 +86,12 @@ exact-name split is now spelled as paired APIs:
 - The two `IncomingWikilink*Edges` lookups in `index.go`
   and [`indexedges.go`](../internal/refactor/indexedges.go).
 
+Round 2 removed two parts of that debt. `WikilinkKeyAt`
+replaced the paired `WikilinkStemAt` and `WikilinkNameAt`.
+Wikilink edges now sit in `FileEntry.Wikilinks`, apart
+from `Outgoing`, so views that list a file's edges need no
+filter.
+
 The private `wikilinkKey` in
 [`move.go`](../internal/refactor/move.go) picks one of each
 pair by its `isStem` flag. One exported key type in
