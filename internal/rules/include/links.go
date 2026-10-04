@@ -9,9 +9,11 @@ import (
 )
 
 // linkRe matches Markdown links [text](target) and images ![alt](target).
-// It handles nested brackets in the text portion. Does not handle link
+// It handles brackets nested two deep in the text portion, so a label
+// that quotes a wikilink such as `[[stem]]` still matches (RE2 has no
+// recursion, so each depth is spelled out). Does not handle link
 // titles (e.g. [x](url "title")) or URLs containing literal ')'.
-var linkRe = regexp.MustCompile(`(!?\[(?:[^\[\]]|\[[^\]]*\])*\])\(([^)]*)\)`)
+var linkRe = regexp.MustCompile(`(!?\[(?:[^\[\]]|\[(?:[^\[\]]|\[[^\[\]]*\])*\])*\])\(([^)]*)\)`)
 
 // adjustLinks rewrites relative link targets in content so they remain valid
 // when the included file (includedFilePath) is rendered inside the including
