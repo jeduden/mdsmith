@@ -72,10 +72,16 @@ func holderIndex(files ...string) *linkgraph.WikilinkIndex {
 	return linkgraph.NewWikilinkIndexFromPaths(files)
 }
 
+// stemKey returns the wikilinkKey a `[[stem]]` link reaches a
+// Markdown file by.
+func stemKey(stem string) wikilinkKey {
+	return wikilinkKey{key: stem, isStem: true}
+}
+
 // srcWinsStem runs winsStem, the check appendWikilinkStemEdits makes
 // before it rewrites any `[[oldStem]]` link, for a lone move of src.
 func srcWinsStem(idx *linkgraph.WikilinkIndex, src, oldStem string) bool {
-	return soloResolver(nil, src, "z/z/z/dst.md").winsStem(idx, oldStem, src)
+	return soloResolver(nil, src, "z/z/z/dst.md").winsStem(idx, stemKey(oldStem), src)
 }
 
 // dstReaches runs stemTarget.reaches, the check each rewrite must

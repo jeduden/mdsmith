@@ -237,42 +237,41 @@ type moveBatch struct {
 	shadowed map[string]bool   // see countShadowed
 	withheld int
 	post     *linkgraph.WikilinkIndex // postIndex, built on first use
-	stems    map[string]int           // stemHolders, built by keyStems
-	srcStems map[string][]string      // stemSources, built by keyStems
+	stems    map[wikilinkKey]int      // stemHolders, built by keyStems
+	srcStems map[wikilinkKey][]string // stemSources, built by keyStems
 }
 
-// stemHolders returns how many members hold the stem key stem with
-// their source or their destination, each member counted once.
-func (b *moveBatch) stemHolders(stem string) int {
+// stemHolders returns how many members hold the wikilink key k (a stem
+// or an exact name, see wikilinkKey) with their source or their
+// destination, each member counted once.
+func (b *moveBatch) stemHolders(k wikilinkKey) int {
 	b.keyStems()
-	return b.stems[stem]
+	return b.stems[k]
 }
 
-// stemSources returns every member source whose stem key is stem, in
+// stemSources returns every member source whose wikilink key is k, in
 // no set order.
-func (b *moveBatch) stemSources(stem string) []string {
+func (b *moveBatch) stemSources(k wikilinkKey) []string {
 	b.keyStems()
-	return b.srcStems[stem]
+	return b.srcStems[k]
 }
 
-// keyStems builds the stem keys stemHolders and stemSources read. It
-// runs on the first call, once every verdict is in, so a batch reads
-// its members once, not once per move.
+// keyStems builds the wikilink keys stemHolders and stemSources read.
+// It runs on the first call, once every verdict is in, so a batch
+// reads its members once, not once per move.
 func (b *moveBatch) keyStems() {
 	if b.stems != nil {
 		return
 	}
-	b.stems, b.srcStems = map[string]int{}, map[string][]string{}
+	b.stems, b.srcStems = map[wikilinkKey]int{}, map[wikilinkKey][]string{}
 	for src, m := range b.members {
-		s, ok := linkgraph.FileStemKey(path.Base(src))
-		if ok {
-			b.stems[s]++
-			b.srcStems[s] = append(b.srcStems[s], src)
-		}
+		s := fileWikilinkKey(src)
+		b.stems[s]++
+		b.srcStems[s] = append(b.srcStems[s], src)
 		if m.dst == "" {
 			continue
 		}
-		if d, dok := linkgraph.FileStemKey(path.Base(m.dst)); dok && (!ok || d != s) {
+		if d := fileWikilinkKey(m.dst); d != s {
 			b.stems[d]++
 		}
 	}

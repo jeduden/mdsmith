@@ -61,7 +61,7 @@ the batch case needs a client that sends other files.
 
 ## Acceptance Criteria
 
-- [ ] Moving `img.png` to `pics/img.png` rewrites
+- [x] Moving `img.png` to `pics/img.png` rewrites
       `[[img.png]]` only when it reached `img.png` before
       the move.
 - [ ] A batch that shadows `img.png` counts each typed
