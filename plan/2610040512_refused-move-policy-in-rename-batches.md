@@ -1,7 +1,7 @@
 ---
 id: 2610040512
 title: Refused-move policy in willRenameFiles batches
-status: "🔲"
+status: "✅"
 summary: >-
   Decide how a workspace/willRenameFiles batch spells a link to or
   from a file whose own move refactor.MoveAll refused, given that the
@@ -51,29 +51,151 @@ reaches the old `x/b.md` if the editor declines. No spelling
 is right both ways. The current choice fails loudly. This plan
 decides whether a client signal can settle the case.
 
+## Survey
+
+No client tells the server. LSP 3.17 defines the
+`workspace/willRenameFiles` payload as `RenameFilesParams`
+`{ files: FileRename[] }`, and `FileRename` holds only
+`oldUri` and `newUri`. The `overwrite` and `ignoreIfExists`
+flags exist only on `RenameFileOptions`, which rides on a
+`RenameFile` operation the server sends inside a
+`WorkspaceEdit`. That is the opposite direction.
+[`renameFilesParams`](../internal/lsp/protocol.go) models the
+same two fields.
+
+- VS Code: an Explorer rename onto an existing name fails
+  with "A file or folder already exists". A drag, drop, or
+  paste move onto one asks "Do you want to replace it?"
+  first. The editor knows the answer, but
+  `FileWillRenameEvent.files` carries only `oldUri` and
+  `newUri`. `vscode-languageclient` forwards those two, so
+  the server cannot tell an overwrite from a decline.
+- Neovim: core `vim.lsp.util.rename` sends no
+  `willRenameFiles` at all. It skips an existing target
+  unless `overwrite` is set. Plugins such as
+  `nvim-lsp-file-operations` and `oil.nvim` send the request,
+  and they use the same two-field payload.
+- Obsidian: `Vault.rename` and `FileManager.renameFile` throw
+  "Destination file already exists" for an existing path. The
+  mdsmith plugin runs the WebAssembly engine, not `mdsmith
+  lsp`. It plans a move only on an explicit request, and it
+  plans it with `move`, which refuses an existing
+  destination outright.
+
+Policy: withhold and count (task 3). A link to or from a
+refused move gets no edit unless one spelling is right
+whether the host moves the file or not. The warning counts
+every such link that may reach a different file. Otherwise
+the link stops resolving, where MDS027 flags it.
+
 ## Tasks
 
-1. Survey how VS Code, Neovim, and Obsidian behave when a
+1. [x] Survey how VS Code, Neovim, and Obsidian behave when a
    `workspace/willRenameFiles` rename targets an existing
    file: overwrite, prompt, or fail. Record whether the
    request carries anything (such as `ignoreIfExists` or
-   `overwrite`) that tells the server.
-2. If the client tells the server, spell links to and from a
+   `overwrite`) that tells the server. See Survey.
+2. [x] If the client tells the server, spell links to and from a
    refused move as if the move runs when the client will
    overwrite. Keep the withhold-and-count policy otherwise.
-3. If no client tells it, record the withhold-and-count
+   Not applicable: no client tells the server (see Survey).
+3. [x] If no client tells it, record the withhold-and-count
    policy in [`docs/reference/cli/move.md`](../docs/reference/cli/move.md)
-   as the settled behavior and close the plan.
-4. Unit tests in
+   as the settled behavior and close the plan. Recorded in
+   that page's `mdsmith lsp` entry under See also. The page
+   is at its file-length budget, so the entry was reworded in
+   place, not given a section of its own.
+4. [x] Unit tests in
    [`moveall_test.go`](../internal/refactor/moveall_test.go)
-   for each refused-move case under the chosen policy.
+   for each refused-move case under the chosen policy. The
+   cases settled by plan 2610030438 were already covered.
+   The survey of cases found one gap: a link inside a refused
+   move that leaves its folder, to a file the batch does not
+   plan to move, got no count. If the host moves the file
+   anyway, the link reads from the new folder and can reach
+   another existing file silently.
+   `TestMoveAll_RefusedHolderMisreads` covers it, and
+   `countMisread` now counts it. A link to the file itself
+   is not counted, and one to a path a refused move may
+   overwrite is. A file the workspace does not list, such
+   as an image, is stat'ed, not read, to see whether it is
+   there (`MoveWorkspace.Stat`).
+   `countRefusedHolders` reads each such member from the
+   text the batch already holds, so a refused lone move
+   lists no file. A link in such a member to a planned
+   member whose old path another member takes is counted
+   too (`TestMoveAll_RefusedHolderLeftInPlace`): left in
+   place, the file's link reaches the newcomer.
+   A link from any file to the existing file a refused move
+   lands on is counted too, by path or by wikilink
+   (`TestMoveAll_OverwrittenDestinationReferrers`): if the
+   host overwrites it, the link reaches the moved file. An
+   earlier draft left this case uncounted, which broke the
+   second acceptance criterion. A planned member's link to
+   that file is still re-spelled. `Move` now validates its
+   one pair first, so a refused lone move reads no file.
+   A directory link such as `sub/` in a refused member that
+   leaves its folder counts when a file, listed or not, may
+   sit under the directory it names from there
+   (`TestMoveAll_RefusedHolderMisreadsDirectory`). A link
+   with no trailing `/`, such as `sub` or `..`, counts when
+   it names a directory from there, since MDS027 only stats
+   the path (`TestMoveAll_RefusedHolderMisreadsBareDirectory`).
+   A refused member whose path refused duplicate members
+   name is treated as taken too, so a link to it counts
+   (`TestMoveAll_ShadowedByDuplicates`).
+   A rename that changes only the case of a path, onto the
+   same file on a case-insensitive file system, is planned,
+   not refused. Before, its destination was taken, so every
+   link to the file was counted (`TestMoveAll_CaseOnlyRename`).
 
 ## Acceptance Criteria
 
-- [ ] A link touching a refused move either gets the spelling
+- [x] A link touching a refused move either gets the spelling
       the client's rename outcome makes right, or is left to
-      stop resolving and is counted in the warning.
-- [ ] No link touching a refused move silently resolves to a
+      stop resolving and is counted in the warning. Read as
+      "fails loudly": a link that may reach a different file
+      is counted, and one that only stops resolving is left
+      to MDS027, as plan 2610030438 settled.
+- [x] No link touching a refused move silently resolves to a
       different file than it did before the batch.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+
+## Follow-ups
+
+Review round 2 recorded two follow-ups here, since `PLAN.md`
+was at the 300-line limit MDS022 sets and no new plan file fit
+(see the follow-up in plan 2610030438). Round 3 did both in
+this PR.
+
+1. [x] One set for paths a member may replace. Done in
+   review round 3: `moveBatch.shadowed` and
+   `moveBatch.overwritten` in
+   [`moveall.go`](../internal/refactor/moveall.go) are now one
+   `moveBatch.taken` set. `moveBatch.replaced` reads how the
+   file's link to itself counts: a path outside the batch is
+   replaced, and a member is moved away.
+2. [x] An existence check that does not read the file. Done
+   in review round 3: `MoveWorkspace.Stat` stats a path
+   without reading it, and `mayOccupy` and the destination
+   check in `validateBatch` use it. A file too large to read
+   now counts as there, so a move onto it is refused. The
+   LSP now sees an image, which its `Resolve` never reads
+   (`TestMoveAll_UnreadableFileExists`,
+   `TestServerMoveWorkspace_Stat`). `mayHoldDir` still reads
+   the wikilink index. Without a readable root, `Stat` finds
+   no disk file either, so that fallback is a gap they share.
+
+One item is still open and needs its own plan once `PLAN.md`
+has room:
+
+1. `mdsmith move` of a case-only rename on a case-insensitive
+   file system. The planner now plans it, but the CLI's
+   `preflightDestination` in
+   [`move.go`](../cmd/mdsmith/move.go) and the plain-rename
+   guard in `Execute` still find the source under the new
+   spelling with `Lstat` and refuse it. Each guard should
+   skip a destination that `os.SameFile` reads as the
+   source. Only a case-insensitive file system can drive
+   that branch red/green, and Linux CI does not have one.

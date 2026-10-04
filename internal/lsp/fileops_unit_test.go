@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"io/fs"
 	"maps"
 	"math/rand/v2"
 	"os"
@@ -316,6 +317,11 @@ func (w memRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return linkgraph.NewWikilinkIndexFromPaths(slices.Collect(maps.Keys(w.files)))
 }
 
+func (w memRenameWorkspace) Stat(file string) (fs.FileInfo, bool) {
+	_, ok := w.files[index.NormalizePath(file)]
+	return nil, ok
+}
+
 func (w memRenameWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
 	src, ok := w.files[rel]
@@ -401,6 +407,45 @@ func TestServerMoveWorkspace_WikilinkIndex(t *testing.T) {
 	assert.Equal(t, []string{"guide.md"}, idx.StemPaths("guide"))
 	assert.Same(t, idx, ws.WikilinkIndex(), "the walk runs once per workspace")
 	assert.Nil(t, s.moveWorkspace(filepath.Join(root, "missing")).WikilinkIndex())
+}
+
+// TestServerMoveWorkspace_Stat locks that a move workspace finds a
+// file under the workspace root of any type without reading it, so an
+// image the LSP never loads is present, and that an open buffer with
+// no file on disk is present too. A directory, a missing path and a
+// server with no root find nothing on disk.
+func TestServerMoveWorkspace_Stat(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "x", "sub"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "x", "hero.png"), []byte("png"), 0o644))
+	s := New(Options{})
+	s.rootDir = root
+	unsaved := filepath.Join(root, "new.md")
+	s.docs.set(pathToURI(unsaved), &document{uri: pathToURI(unsaved), path: unsaved, text: []byte("# N\n")})
+	ws := s.moveWorkspace(root)
+
+	_, _, readable := ws.Resolve("x/hero.png")
+	require.False(t, readable, "the LSP reads only Markdown")
+	info, ok := ws.Stat("x/hero.png")
+	require.True(t, ok, "an image is present")
+	assert.Equal(t, "hero.png", info.Name())
+	info, ok = ws.Stat("new.md")
+	assert.True(t, ok, "an open buffer is present")
+	assert.Nil(t, info, "with no file on disk")
+	_, ok = ws.Stat("x/sub")
+	assert.False(t, ok, "a directory is no file")
+	_, ok = ws.Stat("x/none.png")
+	assert.False(t, ok)
+	outside := filepath.Join(t.TempDir(), "o.png")
+	require.NoError(t, os.WriteFile(outside, []byte("png"), 0o644))
+	if os.Symlink(outside, filepath.Join(root, "x", "out.png")) == nil {
+		_, ok = ws.Stat("x/out.png")
+		assert.False(t, ok, "a link out of the root")
+	}
+
+	_, ok = New(Options{}).moveWorkspace(root).Stat("x/hero.png")
+	assert.False(t, ok, "no root, so no disk path")
 }
 
 // TestServerRenameWorkspace_HeadingOnly locks that the workspace a

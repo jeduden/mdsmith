@@ -1,6 +1,7 @@
 package refactor
 
 import (
+	"io/fs"
 	"path"
 	"strings"
 	"testing"
@@ -36,6 +37,10 @@ func (s stubWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 		files[i] = index.NormalizePath(f)
 	}
 	return holderIndex(files...)
+}
+func (s stubWorkspace) Stat(file string) (fs.FileInfo, bool) {
+	_, _, ok := s.Resolve(file)
+	return nil, ok
 }
 func (s stubWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)

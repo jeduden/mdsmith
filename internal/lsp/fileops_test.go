@@ -431,9 +431,10 @@ func TestWillRenameFilesBatchLogsWithheldEdits(t *testing.T) {
 	for {
 		var p logMessageParams
 		require.NoError(t, json.Unmarshal(h.awaitNotification("window/logMessage", 5*time.Second), &p))
-		if strings.Contains(p.Message, "withheld") {
+		if strings.Contains(p.Message, "renamed together") {
 			assert.Equal(t, messageTypeWarning, p.Type)
-			assert.Contains(t, p.Message, "1 link rewrite")
+			assert.Contains(t, p.Message, "1 link(s) may not reach their file")
+			assert.NotContains(t, p.Message, "withheld", "a counted link may still get an edit")
 			return
 		}
 	}

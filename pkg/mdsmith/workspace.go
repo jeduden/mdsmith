@@ -151,6 +151,15 @@ func (w *MemWorkspace) ReadFile(p string) ([]byte, error) {
 	return bytes.Clone(data), nil
 }
 
+// has reports whether a file is stored at p, without copying it.
+func (w *MemWorkspace) has(p string) bool {
+	key := path.Clean(filepath.ToSlash(p))
+	w.mu.RLock()
+	_, ok := w.files[key]
+	w.mu.RUnlock()
+	return ok
+}
+
 // Glob returns the keys matching the doublestar pattern, sorted. It is
 // a linear scan over every stored path, so it must not be called per
 // file in the lint hot loop — the engine globs through the FS view

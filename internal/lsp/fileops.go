@@ -41,14 +41,17 @@ func markdownFileOperationCapabilities() *workspaceServerCapabilities {
 // target's new path, once. A file whose move cannot be planned (a
 // destination that already exists, a traversal path) contributes no
 // edit rather than failing the whole request: the editor still
-// performs the rename, and any stranded link surfaces as an MDS027
-// diagnostic. A rename pair listed twice is planned once.
+// performs the rename. A link it leaves that may reach a different
+// file is counted in the warning below, and one that stops resolving
+// surfaces as an MDS027 diagnostic. A rename pair listed twice is
+// planned once.
 //
 // dropConflictingTextEdits stays as a guard: the batch plans one edit
 // per range, so it drops nothing, but an overlap would make the client
 // reject the whole reply. A window/logMessage warning counts every
-// link the batch left stale (refactor.BatchPlan.Withheld) plus any
-// edit the guard drops.
+// link that may not reach its file once the batch has run
+// (refactor.BatchPlan.Withheld, which includes a few links the reply
+// still re-spells) plus any edit the guard drops.
 func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 	var p renameFilesParams
 	if err := json.Unmarshal(msg.Params, &p); err != nil {
@@ -62,9 +65,9 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 
 	batch := planRenameBatch(ws, root, p.Files)
 	merged, dropped := guardRenameEdits(batch.Edits)
-	if withheld := batch.Withheld + dropped; withheld > 0 {
-		warn := fmt.Sprintf("mdsmith: withheld %d link rewrite(s) for files renamed together; "+
-			"re-check those links (MDS027 flags any that no longer resolve)", withheld)
+	if suspect := batch.Withheld + dropped; suspect > 0 {
+		warn := fmt.Sprintf("mdsmith: %d link(s) may not reach their file once the files renamed together "+
+			"have moved; re-check those links (MDS027 flags any that no longer resolve)", suspect)
 		s.logger.Printf("%s", warn)
 		_ = s.t.writeNotification("window/logMessage", logMessageParams{
 			Type: messageTypeWarning, Message: warn,

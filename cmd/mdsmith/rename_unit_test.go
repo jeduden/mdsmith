@@ -633,6 +633,30 @@ func TestCliRenameWorkspace_Resolve(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// TestCliRenameWorkspace_Stat locks that Stat finds the file Resolve
+// would read without reading it: a file over the size limit is
+// present, a directory and a missing path are not.
+func TestCliRenameWorkspace_Stat(t *testing.T) {
+	dir := t.TempDir()
+	abs := filepath.Join(dir, "a.md")
+	require.NoError(t, os.WriteFile(abs, []byte("# A, too long\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "hero.png"), []byte("png"), 0o644))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "sub"), 0o755))
+	ws := cliRenameWorkspace{relToAbs: map[string]string{"a.md": abs}, rootDir: dir, maxBytes: 4}
+
+	_, _, readable := ws.Resolve("a.md")
+	require.False(t, readable, "over the size limit")
+	info, ok := ws.Stat("a.md")
+	require.True(t, ok, "present though unreadable")
+	assert.Equal(t, "a.md", info.Name())
+	_, ok = ws.Stat("./hero.png")
+	assert.True(t, ok, "a path not in relToAbs falls back to rootDir join")
+	_, ok = ws.Stat("sub")
+	assert.False(t, ok, "a directory is no file")
+	_, ok = ws.Stat("missing.md")
+	assert.False(t, ok)
+}
+
 func TestStageFile(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "f.md")

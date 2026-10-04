@@ -45,14 +45,20 @@ type BatchMove struct {
 // BatchPlan is the merged result of MoveAll. Its Plan holds every
 // edit, keyed per output target with one edit per range, and no
 // FileOp: Moves lists each pair's relocation and verdict in request
-// order. Withheld counts the links that get no edit yet may not
-// reach their file once the batch has run: one from a planned member
-// to a member whose move could not be planned, one inside such a
-// member to a planned member that stops resolving, a wikilink (a
-// `[[stem]]` or a typed `[[name.ext]]`) whose new key another member's
-// destination wins, a wikilink left as written that another member's
-// destination takes (see stolen), and every path link and wikilink to
-// a shadowed path (see countShadowed).
+// order. Withheld counts the links that may not reach their file once
+// the batch has run. Each gets no edit, except a planned member's link
+// to a file a refused member lands on, which is still re-spelled from
+// the member's new folder and counted too. They are: one from a
+// planned member to a member whose move could not be planned, one
+// inside such a member to a planned member that stops resolving or
+// whose old path another member takes, one inside such a member to
+// any other file that may name another file from the member's new
+// folder (see countMisread), a wikilink (a `[[stem]]` or a typed
+// `[[name.ext]]`) whose new key another member's destination wins, a
+// wikilink left as written that another member's destination takes
+// (see stolen), and every path link and wikilink to a shadowed path
+// or to a file a refused member lands on (both moveBatch.taken, see
+// countShadowed), from any file but that one.
 type BatchPlan struct {
 	Plan
 	Moves    []BatchMove
@@ -79,15 +85,31 @@ type BatchPlan struct {
 // link inside it when it lands in its own folder, which reads the same
 // from there. A link to it from a planned member counts in Withheld,
 // and so does a link inside it to a planned member when that link
-// stops resolving after the batch. A link inside it to a file the
-// batch leaves in place is not counted: MDS027 flags it if it stops
-// resolving. When a planned member lands on its path, every path link
-// and wikilink to it counts too (see countShadowed): it then reaches
-// the newcomer.
+// stops resolving after the batch, or when another member lands on
+// that member's old path, which the link reaches if the host leaves
+// the file in place. A link inside it to a file the
+// batch does not plan to move counts only when the member leaves its
+// folder and the link, read from there, names another file that may
+// be there after the batch (see countMisread); one that stops
+// resolving is left to MDS027. When another member may land on its
+// path, planned or refused as a duplicate destination, every path link
+// and wikilink to it counts too (see
+// countShadowed): it then reaches the newcomer. When it lands on a
+// file outside the batch, every path link and wikilink to that file
+// counts as well: no client says whether the host overwrites it, and
+// if it does, the link reaches the moved file. A planned member's link
+// to that file is still re-spelled from its new folder.
 //
-// Move is MoveAll with one pair.
+// Move is MoveAll with one pair, except that a refused pair plans
+// nothing.
 func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
 	moves, b := validateBatch(ws, pairs)
+	return planBatch(ws, moves, b)
+}
+
+// planBatch plans the edits for moves, the verdicts validateBatch gave
+// with the batch state b, and counts the links it leaves withheld.
+func planBatch(ws MoveWorkspace, moves []BatchMove, b *moveBatch) BatchPlan {
 	bp := BatchPlan{Plan: Plan{Edits: map[string][]Edit{}}, Moves: moves}
 	p := lint.NewParser()
 	r := &destResolver{ws: ws, batch: b}
@@ -101,26 +123,27 @@ func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
 			appendOutboundEdits(bp.Edits, p, r, m.Key, m.Src, m.Dst, b.sources[m.Src])
 		}
 	}
-	for _, m := range moves {
-		if m.Err == nil && b.shadowed[m.Dst] {
-			countShadowed(ws, r, m.Dst)
-		}
+	for p := range b.taken {
+		countShadowed(ws, r, p)
 	}
 	stableSortEdits(bp.Edits)
 	bp.Withheld = b.withheld
 	return bp
 }
 
-// countShadowed counts, in the batch, every wikilink to vacated: a
-// member whose move was refused, whose path a planned member takes
-// (moveBatch.shadowed). The host still moves vacated, so each link to
-// it then reaches the newcomer; it still resolves, so no rule flags
-// it, and the batch plans no edit for it. A wikilink is counted when
-// its key reaches vacated today: a `[[stem]]` link for a Markdown
-// file, a typed `[[name.ext]]` link for any other (see wikilinkKey). A
-// path link to it is counted in the referrer scan (see
-// appendReferrerEdits), or, in a planned member, by its outbound pass
-// (see outboundEdit), so the workspace is still read once.
+// countShadowed counts, in the batch, every wikilink to vacated, a path
+// a newcomer may take (moveBatch.taken): a member whose move was
+// refused, whose path another member may take, or a file outside the
+// batch a refused member lands on. The host still moves vacated, or may
+// replace it, so each link to it then reaches the newcomer; it still
+// resolves, so no rule flags it, and the batch plans no edit for it. A
+// wikilink is counted when its key reaches vacated today: a `[[stem]]`
+// link for a Markdown file, a typed `[[name.ext]]` link for any other
+// (see wikilinkKey). A replaced file's link to itself is not counted
+// (see moveBatch.replaced): once replaced, the file holding it is gone. A path link to
+// it is counted in the referrer scan (see appendReferrerEdits), or, in
+// a planned member, by its outbound pass (see outboundEdit), so the
+// workspace is still read once.
 func countShadowed(ws MoveWorkspace, r *destResolver, vacated string) {
 	if !linkgraph.WikilinkIndexed(vacated) {
 		return
@@ -132,6 +155,9 @@ func countShadowed(ws MoveWorkspace, r *destResolver, vacated string) {
 	}
 	lines := r.edgeReader()
 	for _, e := range edges {
+		if r.batch.replaced(vacated) && index.NormalizePath(e.SourceFile) == vacated {
+			continue
+		}
 		if _, row, ok := lines.row(e); ok {
 			if _, _, ok := k.at(row, e.SourceCol-1); ok {
 				r.batch.withheld++
@@ -145,7 +171,12 @@ func countShadowed(ws MoveWorkspace, r *destResolver, vacated string) {
 // when both paths stay in the workspace, they differ, no earlier pair
 // moves its source, no other member lands on its destination, and its
 // destination is free once the batch has run: absent from the
-// workspace or another member's source.
+// workspace, another member's source, or its own source spelled in
+// another case on a file system that stores both as one file (see
+// sameFile).
+// A refused member whose path another member lands on is recorded as
+// shadowed, whether that lander's move is planned or refused as a
+// duplicate destination: the host may move it there either way.
 func validateBatch(ws MoveWorkspace, pairs []MovePair) ([]BatchMove, *moveBatch) {
 	moves := make([]BatchMove, len(pairs))
 	b := newMoveBatch()
@@ -159,18 +190,24 @@ func validateBatch(ws MoveWorkspace, pairs []MovePair) ([]BatchMove, *moveBatch)
 			continue
 		}
 		_, vacated := b.members[m.Dst]
+		exists := !vacated && present(ws, m.Dst) && !sameFile(ws, m.Src, m.Dst)
 		switch {
 		case landing[foldPath(m.Dst)] > 1:
 			m.Err = ErrDuplicateDestination
-		case !vacated && resolves(ws, m.Dst):
+		case exists:
 			m.Err = DestinationExistsError{Dst: m.Dst}
 		default:
 			b.members[m.Src] = batchMember{dst: m.Dst, planned: true}
 		}
+		if exists {
+			// Every pair whose destination exists is refused above.
+			b.taken[m.Dst] = true
+		}
 	}
 	for _, m := range moves {
-		if u, ok := b.members[m.Dst]; m.Err == nil && ok && !u.planned {
-			b.shadowed[m.Dst] = true
+		lander, moved := b.members[m.Src]
+		if u, ok := b.members[m.Dst]; moved && lander.dst == m.Dst && ok && !u.planned {
+			b.taken[m.Dst] = true
 		}
 	}
 	return moves, b
@@ -219,25 +256,55 @@ func (b *moveBatch) admit(ws MoveWorkspace, pr MovePair, landing map[string]int)
 	return m
 }
 
-// resolves reports whether ws can read the file p.
-func resolves(ws MoveWorkspace, p string) bool {
-	_, _, ok := ws.Resolve(p)
+// sameFile reports whether the paths a and b, spelled alike but for
+// case, name one file, as a case-insensitive file system stores
+// `Guide.md` and `guide.md`: their on-disk infos are one file (see
+// sameDiskFile). A
+// path with no on-disk info (see MoveWorkspace.Stat) shares its file
+// with no other path.
+func sameFile(ws MoveWorkspace, a, b string) bool {
+	if foldPath(a) != foldPath(b) {
+		return false
+	}
+	ai, _ := ws.Stat(a)
+	bi, _ := ws.Stat(b)
+	return sameDiskFile(ai, bi)
+}
+
+// present reports whether a file sits at p, read or not (see
+// MoveWorkspace.Stat).
+func present(ws MoveWorkspace, p string) bool {
+	_, ok := ws.Stat(p)
 	return ok
 }
 
 // moveBatch is the shared state of one MoveAll run: every member's new
-// path and whether its move was planned, the refused members whose
-// path a planned member takes, and the count of links left stale
-// without an edit.
+// path and whether its move was planned, the paths a newcomer may
+// take, and the count of links left stale without an edit.
 type moveBatch struct {
-	members  map[string]batchMember
-	sources  map[string][]byte // each member's text, as admit read it
-	dsts     map[string]bool   // every member's dst, as admit records it
-	shadowed map[string]bool   // see countShadowed
+	members map[string]batchMember
+	sources map[string][]byte // each member's text, as admit read it
+	dsts    map[string]bool   // every member's dst, as admit records it
+	// taken holds each path a newcomer may take once the batch has
+	// run, so every link to it is counted (see countShadowed): a
+	// refused member another member lands on, which the host moves
+	// away, or a file outside the batch a refused member lands on,
+	// which the host may replace (see replaced).
+	taken    map[string]bool
 	withheld int
 	post     *linkgraph.WikilinkIndex // postIndex, built on first use
 	keys     map[wikilinkKey]int      // keyHolders, built by buildKeys
 	srcKeys  map[wikilinkKey][]string // keySources, built by buildKeys
+}
+
+// replaced reports whether the taken path p is a file outside the
+// batch, which a refused member may replace, rather than a member the
+// host moves away. A replaced file's link to itself is not counted:
+// once replaced, the file holding it is gone. A moved member's is,
+// unless it still names the file from where the host puts it.
+func (b *moveBatch) replaced(p string) bool {
+	_, member := b.members[p]
+	return b.taken[p] && !member
 }
 
 // keyHolders returns how many members hold the wikilink key k (a stem
@@ -280,7 +347,7 @@ func (b *moveBatch) buildKeys() {
 func newMoveBatch() *moveBatch {
 	return &moveBatch{
 		members: map[string]batchMember{}, sources: map[string][]byte{}, dsts: map[string]bool{},
-		shadowed: map[string]bool{},
+		taken: map[string]bool{},
 	}
 }
 
@@ -293,16 +360,24 @@ type batchMember struct {
 }
 
 // scanBases returns, each once, the base name of every planned
-// member's source and of every shadowed path: the names a link the
+// member's source and of every taken path: the names a link the
 // referrer scan reads spells out.
 func (b *moveBatch) scanBases() [][]byte {
 	seen := map[string]bool{}
 	var bases [][]byte
-	for src, m := range b.members {
-		if base := path.Base(src); (m.planned || b.shadowed[src]) && !seen[base] {
+	add := func(p string) {
+		if base := path.Base(p); !seen[base] {
 			seen[base] = true
 			bases = append(bases, []byte(base))
 		}
+	}
+	for src, m := range b.members {
+		if m.planned {
+			add(src)
+		}
+	}
+	for p := range b.taken {
+		add(p)
 	}
 	return bases
 }

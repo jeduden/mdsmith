@@ -12,6 +12,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/index"
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdpath"
 	"github.com/jeduden/mdsmith/internal/mdtext"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 	"github.com/jeduden/mdsmith/pkg/goldmark/parser"
@@ -101,11 +102,14 @@ func (e SourceNotFoundError) Error() string {
 // Move is MoveAll with one pair; MoveAll plans several moves that run
 // together.
 func Move(ws MoveWorkspace, src, dst string) (Plan, error) {
-	bp := MoveAll(ws, []MovePair{{Src: src, Dst: dst}})
-	m := bp.Moves[0]
+	moves, b := validateBatch(ws, []MovePair{{Src: src, Dst: dst}})
+	m := moves[0]
 	if m.Err != nil {
+		// A refused lone move plans nothing, so no file is listed or
+		// read for its links.
 		return Plan{}, m.Err
 	}
+	bp := planBatch(ws, moves, b)
 	return Plan{Edits: bp.Edits, FileOp: &FileOp{From: m.Src, To: m.Dst}}, nil
 }
 
@@ -150,22 +154,24 @@ var (
 // including one to itself, from its new folder. A holder whose move
 // could not be planned gets no edit unless the host keeps it in its
 // folder, where the link is spelled from the same directory whether or
-// not the move runs; otherwise the link counts as withheld when it
-// stops resolving. The same scan counts each link to a shadowed path
-// (see countShadowed) from any file but that path's own and a planned
-// member's.
+// not the move runs; one that leaves its folder is read by
+// countRefusedHolders instead. The same scan counts each link to a
+// path a newcomer may take (moveBatch.taken) from any file but a
+// planned member's; that file's link to itself follows
+// moveBatch.replaced.
 //
 // Every file is read, but only one mayNameAny admits is parsed. The
 // index is not consulted: it records no edge for an image or a
 // ref-def, and it reads a literal `what?.md` as `what`.
 func appendReferrerEdits(changes map[string][]Edit, ws MoveWorkspace, p parser.Parser, r *destResolver) {
+	r.countRefusedHolders(p)
 	bases := r.batch.scanBases()
 	if len(bases) == 0 {
 		return
 	}
 	for _, rel := range r.paths() {
 		holder, moved := r.member(rel)
-		if moved && holder.planned {
+		if moved && (holder.planned || refusedLeaving(holder, rel)) {
 			continue
 		}
 		key, source, ok := ws.Resolve(rel)
@@ -180,34 +186,65 @@ func appendReferrerEdits(changes map[string][]Edit, ws MoveWorkspace, p parser.P
 	}
 }
 
+// countRefusedHolders reads every link in each member whose move could
+// not be planned and that leaves its folder (see refusedLeaving), with
+// the text admit read for it. Such a member gets no edit, so
+// referrerEdit only counts its links. The member's text comes from the
+// batch, not the workspace list, so a member the workspace does not
+// list is still read; only the paths its links name from the new
+// folder are looked up (see countMisread). A refused lone Move never
+// gets here: Move returns before planning. As in a planned member's
+// outbound pass, only a Markdown or listed file is parsed, and only
+// when its text may hold a destination (see mayLink).
+func (r *destResolver) countRefusedHolders(p parser.Parser) {
+	for src, m := range r.batch.members {
+		if !refusedLeaving(m, src) || !mdpath.HasMarkdownExt(path.Ext(src)) && !r.listed(src) ||
+			!mayLink(r.batch.sources[src]) {
+			continue
+		}
+		for _, d := range locateDests(p, src, r.batch.sources[src]) {
+			_, _ = r.referrerEdit(d, src, m, true)
+		}
+	}
+}
+
 // referrerEdit is appendReferrerEdits for one destination d in the
 // workspace file rel, whose batch entry is holder when moved. It
 // returns the edit that repoints d at a planned member's new path, and
-// counts d instead when it names a shadowed path (see countShadowed)
-// or when holder's refused move takes d out of the folder it is
-// spelled from.
+// counts d instead when it names a path a newcomer may take
+// (moveBatch.taken), when
+// holder's refused move takes d out of the folder it is spelled
+// from, or when that move makes d name another file (see
+// countMisread). A link in such a holder to a planned member is also
+// counted when another member lands on that member's old path: left
+// where it is, the holder's link reaches the newcomer.
 func (r *destResolver) referrerEdit(d inlineDest, rel string, holder batchMember, moved bool) (Edit, bool) {
 	ref, ok := r.target(rel, d.dest)
 	if !ok {
 		return Edit{}, false
 	}
-	if r.batch.shadowed[ref.target] {
-		// The newcomer takes the path, so a link to it is counted. A
-		// shadowed file's link to itself is counted too, unless it
-		// still names the file from where the host moves it.
-		if ref.target != rel {
+	if r.batch.taken[ref.target] {
+		// A newcomer may take the path, so a link to it is counted.
+		// The file's link to itself follows moveBatch.replaced.
+		switch {
+		case ref.target != rel:
 			r.batch.withheld++
-		} else {
+		case !r.batch.replaced(rel):
 			r.countStale(holder.dst, ref.path, holder.dst)
 		}
 		return Edit{}, false
 	}
 	tgt, isMember := r.member(ref.target)
 	if !isMember || !tgt.planned {
+		r.countMisread(holder, rel, ref)
 		return Edit{}, false
 	}
 	if moved && !unplannedInPlace(holder, rel) {
-		r.countStale(holder.dst, ref.path, tgt.dst)
+		if r.batch.dsts[ref.target] {
+			r.batch.withheld++
+		} else {
+			r.countStale(holder.dst, ref.path, tgt.dst)
+		}
 		return Edit{}, false
 	}
 	return destEdit(d, ref, rel, tgt.dst)
@@ -221,7 +258,7 @@ func (r *destResolver) referrerEdit(d inlineDest, rel string, holder batchMember
 // the `%` do not depend on the base, so each is looked for once, not
 // once per base.
 func mayNameAny(source []byte, bases [][]byte) bool {
-	if len(bases) == 0 || !bytes.Contains(source, linkMark) && !bytes.Contains(source, refDefMark) {
+	if len(bases) == 0 || !mayLink(source) {
 		return false
 	}
 	if bytes.IndexByte(source, '%') >= 0 {
@@ -235,12 +272,108 @@ func mayNameAny(source []byte, bases [][]byte) bool {
 	return false
 }
 
+// mayLink reports whether source may hold a destination locateDests
+// reads: an inline link or image needs a `](`, a reference definition a
+// `]:`.
+func mayLink(source []byte) bool {
+	return bytes.Contains(source, linkMark) || bytes.Contains(source, refDefMark)
+}
+
 // unplannedInPlace reports whether m, the batch entry for the file rel,
 // is a move that could not be planned and lands in rel's own folder.
 // A link in such a file is read from the same directory before and
 // after the host moves it, so an edit spelled from rel stays right.
 func unplannedInPlace(m batchMember, rel string) bool {
 	return !m.planned && m.dst != "" && path.Dir(m.dst) == path.Dir(rel)
+}
+
+// refusedLeaving reports whether m, the batch entry for the file rel,
+// is a move that could not be planned and that the host would put in
+// another folder of the workspace. A link in such a file is read from
+// a different directory once the host moves it.
+func refusedLeaving(m batchMember, rel string) bool {
+	return !m.planned && m.dst != "" && path.Dir(m.dst) != path.Dir(rel)
+}
+
+// countMisread counts one link in the file rel, a refused move that
+// leaves its folder (see refusedLeaving), to a file the batch does not
+// plan to move. The link gets no edit. Read from where the host may
+// put the file, it may name another file that is there after the
+// batch: it then reaches that file silently, so it is counted. One
+// that names nothing there stops resolving, where MDS027 flags it. A
+// link to rel itself that names holder.dst from there reaches the file
+// either way. One that names the same path from both folders is
+// counted only when a member lands there, since that move may replace
+// the file it reaches. So is one that names rel from there: the link
+// is read from holder.dst only once the file has left rel, so only a
+// member landing on rel can be there. A directory link is counted when
+// a file may sit under the directory it names from there (see
+// mayHoldDir). So is a link with no trailing `/` that names a directory
+// from there, such as `sub` or `..`: MDS027 only stats the path, so it
+// reads such a link as resolving.
+func (r *destResolver) countMisread(holder batchMember, rel string, ref destRef) {
+	if !refusedLeaving(holder, rel) {
+		return
+	}
+	switch p := linkgraph.ResolveRelTarget(holder.dst, ref.path); {
+	case ref.target == rel && p == holder.dst:
+	case p == ref.target, p == rel:
+		if r.batch.dsts[p] {
+			r.batch.withheld++
+		}
+	case ref.dir && r.mayHoldDir(p), !ref.dir && (r.mayOccupy(p) || r.mayHoldDir(p)):
+		r.batch.withheld++
+	}
+}
+
+// mayHoldDir is mayOccupy for a directory link: it reports whether a
+// file may sit under the workspace directory p once the batch has run,
+// as a member landing there or any file the wikilink index holds there,
+// whether or not the workspace lists it. `.` is the workspace root,
+// under which every member landing in the workspace sits. A file there
+// whose move the batch plans may still leave, so the answer is "may".
+func (r *destResolver) mayHoldDir(p string) bool {
+	prefix := p + "/"
+	if p == "." {
+		prefix = ""
+	}
+	for d := range r.batch.dsts {
+		if strings.HasPrefix(d, prefix) {
+			return true
+		}
+	}
+	if r.dirs == nil {
+		r.dirs = r.wikilinkIndex().Dirs()
+	}
+	return r.dirs[p]
+}
+
+// mayOccupy reports whether a file may sit at the workspace path p
+// once the batch has run: a member lands there, or a file there stays,
+// which a planned move from p rules out and a refused one does not.
+// Such a file is stat'ed, not looked up in the workspace list: the
+// list may leave out a file a link reaches, such as an image or an
+// ignored Markdown file. Each path is stat'ed once per plan (see
+// destResolver.present) and never read.
+func (r *destResolver) mayOccupy(p string) bool {
+	if r.batch.dsts[p] {
+		return true
+	}
+	if m, moved := r.member(p); moved {
+		return !m.planned
+	}
+	if p == "" {
+		return false
+	}
+	ok, seen := r.present[p]
+	if !seen {
+		if r.present == nil {
+			r.present = map[string]bool{}
+		}
+		ok = present(r.ws, p)
+		r.present[p] = ok
+	}
+	return ok
 }
 
 // appendOutboundEdits recomputes every relative inline link, image and
@@ -287,6 +420,11 @@ func outboundEdit(r *destResolver, d inlineDest, src, dst string) (Edit, bool) {
 			return Edit{}, false
 		}
 		tgt = m.dst
+	} else if r.batch.taken[tgt] {
+		// A file outside the batch that a refused member may replace:
+		// spelled from dst it still names the file, but the link is
+		// counted too.
+		r.batch.withheld++
 	}
 	// The reference lives in the moved file, so its new spelling is
 	// computed as if from dst's directory.
@@ -349,6 +487,11 @@ type destResolver struct {
 	// from ws.Files() instead (see wikilinkIndex).
 	wlListed bool
 	lines    *edgeLines // see edgeReader
+	// dirs is wl.Dirs, built on mayHoldDir's first call; present
+	// holds each path mayOccupy has stat'ed, so a path is stat'ed once
+	// per plan.
+	dirs    map[string]bool
+	present map[string]bool
 }
 
 // edgeReader returns the one edgeLines the resolver's wikilink

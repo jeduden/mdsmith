@@ -727,3 +727,43 @@ func WikilinkReaches(spelling, base string) bool {
 	stem, ok := FileStemKey(base)
 	return ok && stem != "" && FileNameKey(wantStem) == stem
 }
+
+// Dirs returns every workspace-relative directory that holds a file
+// the index lists, of any type, at any depth, with `.` for the
+// workspace root. It reads every key once, so a caller builds it once
+// and looks each directory up in the map. A key a Moved overlay holds
+// hides the same key in the index below it. A nil or empty index holds
+// none.
+func (idx *WikilinkIndex) Dirs() map[string]bool {
+	dirs := map[string]bool{}
+	var seen map[string]bool
+	for ix := idx; ix != nil; ix = ix.base {
+		for key, paths := range ix.names {
+			if seen[key] {
+				continue
+			}
+			if ix.base != nil {
+				if seen == nil {
+					seen = map[string]bool{}
+				}
+				seen[key] = true
+			}
+			for _, p := range paths {
+				addDirs(dirs, p)
+			}
+		}
+	}
+	return dirs
+}
+
+// addDirs adds every ancestor directory of the workspace path p to
+// dirs, up to and including the root `.`, stopping at one already there
+// since its own ancestors are then there too.
+func addDirs(dirs map[string]bool, p string) {
+	for d := path.Dir(p); !dirs[d]; d = path.Dir(d) {
+		dirs[d] = true
+		if d == "." || d == "/" {
+			return
+		}
+	}
+}

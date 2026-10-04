@@ -3,6 +3,9 @@ package lsp
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 
@@ -406,6 +409,27 @@ func (s *Server) watchesRoot(root string) bool {
 // unreadable.
 func (w lspMoveWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return w.wikilinks()
+}
+
+// Stat implements refactor.MoveWorkspace: a file under the workspace
+// root of any type is stat'ed, not read, so a move sees an image it
+// never loads (Resolve reads only Markdown). Disk is tried first, so a
+// file open in a buffer still carries its on-disk info; an open buffer
+// with no file on disk is present with none. A directory, a path
+// outside the root, or any path without a root finds no file on disk.
+func (w lspMoveWorkspace) Stat(file string) (fs.FileInfo, bool) {
+	rel := index.NormalizePath(file)
+	_, _, root := w.s.snapshotConfig()
+	if root != "" {
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		if info, err := os.Stat(abs); err == nil && insideWorkspace(root, abs) {
+			return info, !info.IsDir()
+		}
+	}
+	_, _, ok := w.s.docs.findByPath(func(path string) bool {
+		return index.NormalizePath(workspaceRelative(root, path)) == rel
+	})
+	return nil, ok
 }
 
 func (w lspRenameWorkspace) Resolve(file string) (string, []byte, bool) {

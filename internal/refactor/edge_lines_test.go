@@ -1,6 +1,7 @@
 package refactor
 
 import (
+	"io/fs"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -13,6 +14,14 @@ type resolveCounter struct {
 	stubWorkspace
 	anchorEdges []index.Edge
 	calls       map[string]int
+	stats       map[string]int // nil unless a test counts Stat calls
+}
+
+func (c *resolveCounter) Stat(file string) (fs.FileInfo, bool) {
+	if c.stats != nil {
+		c.stats[file]++
+	}
+	return c.stubWorkspace.Stat(file)
 }
 
 func (c *resolveCounter) IncomingAnchorEdges(string, string) []index.Edge { return c.anchorEdges }

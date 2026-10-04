@@ -35,8 +35,9 @@ func (op FileOp) Execute(rootDir string) error {
 	}
 	// git mv refuses an existing destination, so mirror that guard on
 	// the plain-rename path: os.Rename silently clobbers `to`, which
-	// would destroy a file the planner's collision check could not read
-	// (e.g. one over the max-input-size limit) and so did not see.
+	// would destroy a file created after the planner's collision check
+	// ran. It also refuses a case-only rename the planner reads as the
+	// source itself (see sameFile) on a case-insensitive file system.
 	if _, err := os.Lstat(to); err == nil {
 		return fmt.Errorf("moving %s: destination already exists: %s", op.From, op.To)
 	}
