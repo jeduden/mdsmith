@@ -218,9 +218,10 @@ func validRefDefMatches(body []byte) []validRefDefMatch {
 // root.
 func refDefMatchesIn(body []byte, root ast.Node) []validRefDefMatch {
 	consumed := contentBlockLines(root, body)
+	idx := newBodyLineIndex(body)
 	var out []validRefDefMatch
 	for _, m := range index.RefDefRegexpMatches(body) {
-		bodyLine := lineOfBodyOffset(body, m[2])
+		bodyLine := idx.lineOfOffset(m[2])
 		if _, ok := consumed[bodyLine]; ok {
 			continue
 		}
@@ -244,6 +245,7 @@ func refDefMatchesIn(body []byte, root ast.Node) []validRefDefMatch {
 // whole buffer, the latter IS the line a real def lives on.
 func contentBlockLines(root ast.Node, body []byte) map[int]struct{} {
 	out := map[int]struct{}{}
+	idx := newBodyLineIndex(body)
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -258,7 +260,7 @@ func contentBlockLines(root ast.Node, body []byte) map[int]struct{} {
 		ls := n.Lines()
 		for i := 0; i < ls.Len(); i++ {
 			seg := ls.At(i)
-			out[lineOfBodyOffset(body, seg.Start)] = struct{}{}
+			out[idx.lineOfOffset(seg.Start)] = struct{}{}
 		}
 		return ast.WalkContinue, nil
 	})
@@ -641,23 +643,17 @@ type bodyLineIndex struct {
 }
 
 func newBodyLineIndex(body []byte) bodyLineIndex {
-	starts := make([]int, 1, 1+bodyNewlineCount(body))
-	for i, b := range body {
-		if b == '\n' {
-			starts = append(starts, i+1)
+	// bytes.Count and bytes.IndexByte are SIMD; a byte loop is not.
+	starts := make([]int, 1, 1+bytes.Count(body, []byte{'\n'}))
+	for off := 0; ; {
+		i := bytes.IndexByte(body[off:], '\n')
+		if i < 0 {
+			break
 		}
+		off += i + 1
+		starts = append(starts, off)
 	}
 	return bodyLineIndex{starts: starts}
-}
-
-func bodyNewlineCount(body []byte) int {
-	n := 0
-	for _, b := range body {
-		if b == '\n' {
-			n++
-		}
-	}
-	return n
 }
 
 func (b bodyLineIndex) lineOfOffset(off int) int {

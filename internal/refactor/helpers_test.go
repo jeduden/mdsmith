@@ -202,3 +202,19 @@ func TestLinkRef_EmptyTextReferenceUseRewritten(t *testing.T) {
 	}
 	assert.Len(t, edits, 3)
 }
+
+// TestBodyLineIndexAgreesWithLineOfBodyOffset pins the index the
+// rename scans share to the linear helper it replaces, at every offset
+// including out-of-range ones.
+func TestBodyLineIndexAgreesWithLineOfBodyOffset(t *testing.T) {
+	for _, body := range [][]byte{
+		nil, []byte("a"), []byte("a\n"), []byte("\n\n"),
+		[]byte("one\ntwo\n\nfour"), []byte("trailing\n"),
+	} {
+		idx := newBodyLineIndex(body)
+		for off := -2; off <= len(body)+2; off++ {
+			assert.Equal(t, lineOfBodyOffset(body, off), idx.lineOfOffset(off),
+				"body %q offset %d", body, off)
+		}
+	}
+}

@@ -374,13 +374,6 @@ func TestLinkTextBounds(t *testing.T) {
 	}
 }
 
-func TestBodyNewlineCount(t *testing.T) {
-	assert.Equal(t, 0, bodyNewlineCount(nil))
-	assert.Equal(t, 0, bodyNewlineCount([]byte("no newline")))
-	assert.Equal(t, 1, bodyNewlineCount([]byte("a\n")))
-	assert.Equal(t, 3, bodyNewlineCount([]byte("a\n\nb\nc")))
-}
-
 // TestLinkRef_RewritesUsesWithInlineMarkupInText covers reference
 // uses whose display text is not plain text: emphasis, a code span
 // (even one holding a `]`), a nested image, and an image reference.

@@ -281,6 +281,7 @@ type headingWalk struct {
 // ones whose slugified text is empty.
 func walkAllHeadings(root ast.Node, body []byte) []headingWalk {
 	var out []headingWalk
+	idx := newBodyLineIndex(body)
 	_ = ast.Walk(root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -290,7 +291,7 @@ func walkAllHeadings(root ast.Node, body []byte) []headingWalk {
 			return ast.WalkContinue, nil
 		}
 		out = append(out, headingWalk{
-			bodyLine: lineOfBodyOffset(body, h.Lines().At(0).Start),
+			bodyLine: idx.lineOfOffset(h.Lines().At(0).Start),
 			text:     mdtext.ExtractPlainText(h, body),
 		})
 		return ast.WalkContinue, nil
@@ -726,7 +727,7 @@ func appendRefDefDestEditsForHeading(
 		// aren't rewritten as if they were real defs.
 		for _, m := range validRefDefMatches(body) {
 			edit, ok := refDefDestEditForMatch(
-				body, fileLines, fmOffset, m.matchIdx,
+				m.bodyLine, fileLines, fmOffset,
 				rel, headingFile, oldSlug, newSlug,
 			)
 			if !ok {
@@ -741,10 +742,9 @@ func appendRefDefDestEditsForHeading(
 // line into an Edit on the URL's slug portion, or ok=false when the
 // destination doesn't point at the renamed heading.
 func refDefDestEditForMatch(
-	body []byte, fileLines [][]byte, fmOffset int, m []int,
+	bodyLine int, fileLines [][]byte, fmOffset int,
 	defFile, headingFile, oldSlug, newSlug string,
 ) (Edit, bool) {
-	bodyLine := lineOfBodyOffset(body, m[2])
 	fileLine := bodyLine + fmOffset
 	if fileLine-1 >= len(fileLines) {
 		return Edit{}, false
