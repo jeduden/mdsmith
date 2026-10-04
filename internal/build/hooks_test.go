@@ -125,6 +125,33 @@ func TestRunHooks_CancelledContext(t *testing.T) {
 	require.Error(t, result.Err)
 	assert.Contains(t, result.Err.Error(), "(interrupted)")
 	assert.NotContains(t, result.Err.Error(), "timed out")
+	// The hook never started, so no "running" line claims it did.
+	assert.NotContains(t, w.String(), "sleeper: running")
+}
+
+func TestAnnounceHook(t *testing.T) {
+	var w bytes.Buffer
+	announceHook(context.Background(), "lint", &w)
+	assert.Equal(t, "hook lint: running\n", w.String())
+
+	w.Reset()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	announceHook(ctx, "lint", &w)
+	assert.Empty(t, w.String(), "a done context starts no hook, so none is announced")
+}
+
+func TestRunAfterHooks_CancelledContextPrintsNoRunning(t *testing.T) {
+	// After an interrupt the after-hooks are refused before they start:
+	// each reports FAIL, and none claims to be running.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var w bytes.Buffer
+	hook := HookEntry{Tokens: []string{"sleep", "999"}, Name: "teardown"}
+	result := RunAfterHooks(ctx, []HookEntry{hook}, t.TempDir(), &w)
+	require.NotNil(t, result)
+	assert.Contains(t, w.String(), "teardown: FAIL")
+	assert.NotContains(t, w.String(), "teardown: running")
 }
 
 func TestRunHooks_ExpiredDeadline(t *testing.T) {

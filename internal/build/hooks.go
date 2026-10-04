@@ -45,7 +45,7 @@ func RunHooks(ctx context.Context, hooks []HookEntry, root string, w io.Writer) 
 		if name == "" {
 			name = h.Tokens[0]
 		}
-		_, _ = fmt.Fprintf(w, "hook %s: running\n", name)
+		announceHook(ctx, name, w)
 		if result := runHook(ctx, h.Tokens, root); result != nil {
 			_, _ = fmt.Fprintf(w, "hook %s: FAIL (exit %d): %v\n",
 				name, result.ExitCode, result.Err)
@@ -70,7 +70,7 @@ func RunAfterHooks(ctx context.Context, hooks []HookEntry, root string, w io.Wri
 		if name == "" {
 			name = h.Tokens[0]
 		}
-		_, _ = fmt.Fprintf(w, "hook %s: running\n", name)
+		announceHook(ctx, name, w)
 		if result := runHook(ctx, h.Tokens, root); result != nil {
 			_, _ = fmt.Fprintf(w, "hook %s: FAIL (exit %d): %v\n",
 				name, result.ExitCode, result.Err)
@@ -82,6 +82,16 @@ func RunAfterHooks(ctx context.Context, hooks []HookEntry, root string, w io.Wri
 		_, _ = fmt.Fprintf(w, "hook %s: OK\n", name)
 	}
 	return first
+}
+
+// announceHook prints the "running" line for the hook named name,
+// unless ctx is already done: runRecipe then refuses the hook before it
+// starts, and only its FAIL line is printed.
+func announceHook(ctx context.Context, name string, w io.Writer) {
+	if ctx.Err() != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "hook %s: running\n", name)
 }
 
 // runHook executes a single hook and returns a HookResult on failure, nil
