@@ -117,6 +117,15 @@ out of plan 2610022044, which fixes the extension filter.
     moved file is the one `[[stem]]` reaches, and rewrites
     every such link when it is. The PR #904 pre-merge review
     found this.
+14. The PR #904 verification review tightened that guard
+    three ways. A source path typed in other letter case
+    than an indexed holder is not taken to win the stem, as
+    a case-insensitive file system may hold it under that
+    spelling. A link whose folder prefix names a sibling's
+    folder (`[[ref/Guide]]`) is left as written. The new
+    stem or name blocks the rewrite only when a holder sorts
+    before the destination (`NameResolvesTo` for a typed
+    name).
 
 PR #885 already retired `fileStem`: the move planner keys
 files with `linkgraph.FileStemKey`, the same function
@@ -139,6 +148,10 @@ files with `linkgraph.FileStemKey`, the same function
 - [x] Moving the same-stem file that `[[stem]]` reaches
       rewrites every `[[stem]]`; moving one a sibling
       outsorts rewrites none
+- [x] A `[[stem]]` whose folder prefix names a sibling's
+      folder is left as written
+- [x] A file holding the new stem blocks the rewrite only
+      when it sorts before the destination
 - [x] A stale edge whose column holds a link to another
       stem is not rewritten
 - [x] The move planner reuses `linkgraph`'s base-segment
