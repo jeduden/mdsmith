@@ -102,6 +102,30 @@ func TestStartSingletonWatchNoopWithoutScope(t *testing.T) {
 	assert.False(t, exited.Load(), "a scope-less server must never be superseded")
 }
 
+// A root carrying a NUL byte (rootUri "file:///w%00scope" decodes to
+// one) would make its legacy key sha256("/w\x00scope") equal the scoped
+// key of root "/w" with scope "scope", so its legacy write would
+// supersede that other server. Such a root opts out, like a NUL scope.
+func TestStartSingletonWatchNoopWithNULRoot(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, workspaceKey("/w", "scope"), workspaceKey("/w\x00scope", ""),
+		"precondition: the NUL root's legacy key aliases another scoped key")
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
+	s.instanceID = "me"
+	s.singletonInterval = time.Millisecond
+	s.singletonClaim = func(key, _ string) error {
+		t.Errorf("must not claim for a root containing a NUL byte (key %s)", key)
+		return nil
+	}
+	s.singletonCurrent = func(string) string { return "me" }
+
+	s.startSingletonWatch("/w\x00scope", "x")
+	time.Sleep(20 * time.Millisecond)
+}
+
 // The first initialize decides singleton participation for the whole
 // session: a scope-less (or root-less) first call must use up the Once,
 // so a stray later initialize carrying a scope cannot start claiming

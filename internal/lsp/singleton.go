@@ -99,6 +99,12 @@ func (s *Server) startSingletonWatch(root, scope string) {
 		if scope == "" || root == "" || s.instanceID == "" || s.singletonClaim == nil {
 			return
 		}
+		// A NUL in the root (rootUri "%00" decodes to one) breaks the
+		// workspaceKey framing: its legacy key would equal another
+		// root's scoped key. No real path holds a NUL, so opt out.
+		if strings.IndexByte(root, 0) >= 0 {
+			return
+		}
 		key := workspaceKey(root, scope)
 		// Claim the workspace under this instance's id, overwriting any
 		// previous owner. Whichever server initialized most recently —
@@ -146,8 +152,9 @@ type supersededParams struct {
 //
 // A non-empty scope is framed as root + "\x00" + scope, so a split is
 // unambiguous for any root and scope free of NUL bytes; singletonScope
-// turns a NUL-bearing scope into the opt-out, so none reaches here and
-// a NUL-free root cannot be split two ways. An empty scope
+// turns a NUL-bearing scope into the opt-out and startSingletonWatch
+// does the same for a NUL-bearing root, so neither reaches here and a
+// NUL-free root cannot be split two ways. An empty scope
 // hashes the cleaned root alone — the legacy root-only key, byte for
 // byte — so there is one derivation, not two. startSingletonWatch uses
 // that legacy key only for a scoped server's one-shot write that steps
