@@ -301,7 +301,33 @@ func fileIn(dir string) (found, hint string) {
 // config source: a .mdsmith.yml or a pyproject.toml. Watchers use it to
 // decide when a file change must reload config.
 func IsConfigFile(path string) bool {
-	return strings.HasSuffix(path, configFileName) || filepath.Base(path) == pyprojectFileName
+	base := filepath.Base(path)
+	return base == configFileName || base == pyprojectFileName
+}
+
+// sidecarDirs are the directories, beside a config file, whose YAML
+// files Load merges into the config.
+var sidecarDirs = [...]string{kindFilesDir, conventionFilesDir, schemaFilesDir, wordlistFilesDir}
+
+// SidecarOwnerDir reports whether path is a kind, convention, schema or
+// word-list file — a .yml or .yaml file directly in one of the
+// .mdsmith/ sidecar directories — and returns the directory whose
+// config file Load reads it beside. Watchers use it so that editing a
+// sidecar reloads config the way editing the config file does.
+func SidecarOwnerDir(path string) (string, bool) {
+	switch filepath.Ext(path) {
+	case ".yml", ".yaml":
+	default:
+		return "", false
+	}
+	dir := filepath.Dir(path)
+	owner := filepath.Dir(filepath.Dir(dir))
+	for _, sub := range sidecarDirs {
+		if dir == filepath.Join(owner, sub) {
+			return owner, true
+		}
+	}
+	return "", false
 }
 
 // Discover walks up the directory tree from startDir looking for a

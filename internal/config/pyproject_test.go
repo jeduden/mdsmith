@@ -457,8 +457,33 @@ func TestIsConfigFile(t *testing.T) {
 		"/p/my-pyproject.toml": false,
 		"/p/foo.toml":          false,
 		"/p/doc.md":            false,
+		"/p/notes.mdsmith.yml": false,
 	} {
 		assert.Equal(t, want, IsConfigFile(path), path)
+	}
+}
+
+// TestSidecarOwnerDir pins which files Load reads beside a config —
+// the YAML files directly under .mdsmith/{kinds,conventions,schemas,
+// wordlists}/ — and the directory whose config reads them.
+func TestSidecarOwnerDir(t *testing.T) {
+	p := filepath.Join(string(filepath.Separator), "p")
+	for _, sub := range []string{"kinds", "conventions", "schemas", "wordlists"} {
+		for _, ext := range []string{".yml", ".yaml"} {
+			dir, ok := SidecarOwnerDir(filepath.Join(p, ".mdsmith", sub, "x"+ext))
+			assert.True(t, ok, sub+ext)
+			assert.Equal(t, p, dir, sub+ext)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(p, ".mdsmith", "kinds", "x.md"),
+		filepath.Join(p, ".mdsmith", "other", "x.yml"),
+		filepath.Join(p, "mdsmith", "kinds", "x.yml"),
+		filepath.Join(p, ".mdsmith", "x.yml"),
+		filepath.Join(p, ".mdsmith", "kinds", "deep", "x.yml"),
+	} {
+		_, ok := SidecarOwnerDir(path)
+		assert.False(t, ok, path)
 	}
 }
 
