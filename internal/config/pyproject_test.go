@@ -5,6 +5,7 @@ package config
 import (
 	"math"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -242,4 +243,23 @@ func TestLoadPyproject_OffsetDatetimeConverts(t *testing.T) {
 	p := writeCfg(t, dir, "pyproject.toml", "[tool.mdsmith]\nfiles = [\"a.md\"]\nstamp = 1979-05-27T00:32:00-07:00\n")
 	_, err := loadPyproject(p)
 	require.NoError(t, err)
+}
+
+func TestLoad_DispatchesTOMLToPyproject(t *testing.T) {
+	dir := t.TempDir()
+	body := "[tool.mdsmith.rules]\nline-length = false\n"
+	for _, name := range []string{"pyproject.toml", "foo.toml", "UPPER.TOML"} {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := Load(writeCfg(t, dir, name, body))
+			require.NoError(t, err)
+			assert.False(t, cfg.Rules["line-length"].Enabled)
+		})
+	}
+}
+
+func TestLoad_TOMLReadIsSizeCapped(t *testing.T) {
+	dir := t.TempDir()
+	big := "[tool.mdsmith]\n#" + strings.Repeat("x", int(maxConfigBytes)) + "\n"
+	_, err := Load(writeCfg(t, dir, "pyproject.toml", big))
+	assert.ErrorContains(t, err, "too large")
 }

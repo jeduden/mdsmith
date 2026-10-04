@@ -201,7 +201,7 @@ Phase B — the pyproject source:
    `.mdsmith.yml` produce an identical `*Config` —
    including a rule-off bool, a rule sub-table, an
    `[[overrides]]` array of tables, and a kind.
-6. [ ] Red/green: make `Load` dispatch on the `.toml`
+6. [x] Red/green: make `Load` dispatch on the `.toml`
    extension to `loadPyproject`; the YAML path is
    unchanged. Apply the `maxConfigBytes` cap to the TOML
    read. Test `--config path/to/pyproject.toml` and an
@@ -273,7 +273,7 @@ Phase C — guardrails and docs:
       same-directory `pyproject.toml`; the nearest config
       file wins across directories; a `pyproject.toml` with
       no `[tool.mdsmith]` is ignored.
-- [ ] `--config pyproject.toml` and `--config foo.toml`
+- [x] `--config pyproject.toml` and `--config foo.toml`
       load from the `[tool.mdsmith]` table.
 - [ ] The LSP, build-directive, and gitattributes paths
       honor a pyproject-only project.

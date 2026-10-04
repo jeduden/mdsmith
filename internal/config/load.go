@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/yamlutil"
@@ -25,9 +26,14 @@ func DefaultConfigPath(dir string) string {
 	return filepath.Join(dir, configFileName)
 }
 
-// Load reads and parses a config file at the given path. A failure is
-// a *LoadError positioned at the offending value when it is known.
+// Load reads and parses a config file at the given path. A path with a
+// `.toml` extension (pyproject.toml or any other TOML file) is read
+// from its `[tool.mdsmith]` table; every other path is YAML. A failure
+// is a *LoadError positioned at the offending value when it is known.
 func Load(path string) (*Config, error) {
+	if isTOMLPath(path) {
+		return loadPyproject(path)
+	}
 	data, err := readLimitedConfig(path)
 	if err != nil {
 		return nil, positionError(fmt.Errorf("reading config file: %w", err), path, nil)
@@ -37,6 +43,11 @@ func Load(path string) (*Config, error) {
 		return nil, positionError(err, path, yamlResolverFor(data))
 	}
 	return cfg, nil
+}
+
+// isTOMLPath reports whether path names a TOML config file.
+func isTOMLPath(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".toml")
 }
 
 // yamlResolverFor returns a lazy constructor for the YAML resolver over

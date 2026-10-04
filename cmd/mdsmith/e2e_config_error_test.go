@@ -37,3 +37,19 @@ func TestE2E_ConfigError_SyntaxErrorPointsAtLine(t *testing.T) {
 	assert.Equal(t, 2, exitCode)
 	assert.Contains(t, stderr, ".mdsmith.yml:3:1 config ")
 }
+
+// --config accepts any .toml file and reads its [tool.mdsmith] table.
+func TestE2E_Config_TOMLFlagReadsToolMdsmith(t *testing.T) {
+	for _, name := range []string{"pyproject.toml", "foo.toml"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			md := writeFixture(t, dir, "test.md", "# Title\n\nSome text. \n")
+			cfg := writeFixture(t, dir, name, "[project]\nname = \"x\"\n\n[tool.mdsmith.rules]\nno-trailing-spaces = false\n")
+
+			_, _, exitCode := runBinary(t, "", "check", md)
+			assert.Equal(t, 1, exitCode, "default config flags the trailing space")
+			stdout, stderr, exitCode := runBinary(t, "", "check", "--config", cfg, md)
+			assert.Equal(t, 0, exitCode, "stdout: %s stderr: %s", stdout, stderr)
+		})
+	}
+}
