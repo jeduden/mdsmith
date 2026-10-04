@@ -44,7 +44,7 @@ func Load(path string) (*Config, error) {
 	}
 	cfg, err := loadFromBytes(data, path, true)
 	if err != nil {
-		return nil, positionError(err, path, yamlResolverFor(data))
+		return nil, yamlPositionError(err, path, data)
 	}
 	return cfg, nil
 }
@@ -70,7 +70,7 @@ func yamlResolverFor(data []byte) func() PositionResolver {
 func ParseBytes(data []byte) (*Config, error) {
 	cfg, err := loadFromBytes(data, "", false)
 	if err != nil {
-		return nil, positionError(err, "", yamlResolverFor(data))
+		return nil, yamlPositionError(err, "", data)
 	}
 	return cfg, nil
 }

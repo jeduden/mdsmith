@@ -36,7 +36,7 @@ func loadPyproject(path string) (*Config, error) {
 	}
 	tree, err := loadTOML(data)
 	if err != nil {
-		return nil, positionError(fmt.Errorf("parsing %s: %w", path, tomlErrorIssue(err)), path, nil)
+		return nil, positionError(fmt.Errorf("parsing %s: %w", path, tomlErrorIssue(err, data)), path, nil)
 	}
 	table, err := mdsmithTable(tree, path)
 	if err != nil {

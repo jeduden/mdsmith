@@ -1,9 +1,11 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"regexp"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 )
@@ -27,6 +29,9 @@ type LoadError struct {
 	Err      error
 
 	// Line and Column are 1-based; Line is 0 when no position is known.
+	// Column counts bytes, like every lint.Diagnostic column, so the
+	// CLI prints and the LSP converts it as it does a Markdown
+	// diagnostic's.
 	Line   int
 	Column int
 }
@@ -94,21 +99,66 @@ func positionError(err error, file string, resolver func() PositionResolver) err
 // first two key-path elements are dropped and the rest resolved inside
 // the file. An issue addressed at the entry itself anchors on line 1.
 func sidecarPosition(iss *Issue) (line, col int) {
-	if iss.Line > 0 {
-		return iss.Line, iss.Column
-	}
-	if len(iss.Path) <= 2 {
+	if iss.Line <= 0 && len(iss.Path) <= 2 {
 		return 1, 1
 	}
 	data, err := readLimitedConfig(iss.File)
 	if err != nil {
+		if iss.Line > 0 {
+			return iss.Line, iss.Column
+		}
 		return 0, 0
+	}
+	if iss.Line > 0 {
+		return iss.Line, byteColumn(data, iss.Line, iss.Column)
 	}
 	line, col, ok := newYAMLResolver(data).Resolve(iss.Path[2:])
 	if !ok {
 		return 1, 1
 	}
-	return line, col
+	return line, byteColumn(data, line, col)
+}
+
+// yamlPositionError is positionError for a config read from YAML text
+// data. yaml.v3 counts a node's column in characters; the LoadError
+// column is converted to the byte column in data, so text with
+// multi-byte characters earlier on the line does not shift it. A
+// position in a sidecar file is converted by sidecarPosition.
+func yamlPositionError(err error, file string, data []byte) error {
+	perr := positionError(err, file, yamlResolverFor(data))
+	var le *LoadError
+	if errors.As(perr, &le) && le.Positioned() && le.File == file {
+		le.Column = byteColumn(data, le.Line, le.Column)
+	}
+	return perr
+}
+
+// byteColumn converts col, a 1-based column counted in characters on
+// 1-based line of src, to the 1-based byte column of the same
+// character. A column past the end of the line lands on the byte after
+// it. A line or column outside src is returned unchanged.
+func byteColumn(src []byte, line, col int) int {
+	if line < 1 || col < 1 {
+		return col
+	}
+	start := 0
+	for n := 1; n < line; n++ {
+		i := bytes.IndexByte(src[start:], '\n')
+		if i < 0 {
+			return col
+		}
+		start += i + 1
+	}
+	text := src[start:]
+	if i := bytes.IndexByte(text, '\n'); i >= 0 {
+		text = text[:i]
+	}
+	off := 0
+	for c := 1; c < col && off < len(text); c++ {
+		_, size := utf8.DecodeRune(text[off:])
+		off += size
+	}
+	return off + 1
 }
 
 // yamlLineRe finds the `line N` marker yaml.v3 puts in parse and type

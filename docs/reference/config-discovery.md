@@ -150,6 +150,10 @@ pyproject.toml:12:1 config convention: unknown convention "nope" (valid: ...)
 | TOML syntax error                                  | the line and column the TOML parser reports               |
 | value with no key in the file                      | the nearest enclosing key, or the `[tool.mdsmith]` header |
 
+Columns count bytes, as in every mdsmith diagnostic, so text
+with multi-byte characters earlier on the line is counted in
+bytes. The language server converts the column for the editor.
+
 An error with no known position, such as an unreadable file,
 prints as a plain `mdsmith: <error>` line. The exit code is
 `2` in both forms.

@@ -143,7 +143,11 @@ The positioned diagnostics:
   `yaml.v3` and `go-toml` report the failing line and
   column on a parse error.
 - The load boundary turns each issue into a
-  `lint.Diagnostic` anchored on the config file. The CLI
+  `lint.Diagnostic` anchored on the config file. Its
+  column counts bytes, like every lint diagnostic. Both
+  parsers count characters, so the boundary converts a
+  YAML column (main file or sidecar) and a TOML
+  parse-error column against the source line. The CLI
   prints these like any other diagnostic
   (`file:line:column`), and the LSP publishes them on the
   config file so an editor shows squiggles, keeping a
@@ -234,7 +238,11 @@ Phase B — the pyproject source:
 10. [x] Red/green: a `pyproject.toml` with a plural
     `[tools.mdsmith]` table but no `[tool.mdsmith]` emits a
     one-line hint pointing at the correct key and is not
-    used as a config source.
+    used as a config source. The CLI walks once for the
+    config and its hints; the LSP takes them from its
+    discovery seam and logs a hint set once, not on every
+    reload. A watched `pyproject.toml` reloads config only
+    in the root or an ancestor, or as the loaded file.
 
 Phase C — guardrails and docs:
 

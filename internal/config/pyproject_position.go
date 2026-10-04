@@ -33,6 +33,12 @@ func tomlTableToDoc(table *toml.Tree, src []byte) *yaml.Node {
 }
 
 // tomlConverter converts go-toml values to positioned yaml.Nodes.
+// Every column it produces is a 1-based byte column. go-toml counts
+// columns in characters, but it only reports a position for a key or
+// `[header]` that starts its line after TOML whitespace (spaces and
+// tabs, one byte each) — a key inside an inline table has no position
+// — so its columns already equal byte columns. The source scans
+// (findKey, nthBrace) work in bytes.
 type tomlConverter struct {
 	lines [][]byte
 }
@@ -276,13 +282,14 @@ func (r tomlResolver) Resolve(path KeyPath) (line, col int, ok bool) {
 var tomlPosRe = regexp.MustCompile(`^\((\d+), (\d+)\)`)
 
 // tomlErrorIssue turns a go-toml parse error into an Issue at the line
-// and column the parser reported; an error without one passes through.
-func tomlErrorIssue(err error) error {
+// and column the parser reported, the column converted from characters
+// to a byte column in src; an error without one passes through.
+func tomlErrorIssue(err error, src []byte) error {
 	m := tomlPosRe.FindStringSubmatch(err.Error())
 	if m == nil {
 		return err
 	}
 	line, _ := strconv.Atoi(m[1]) // \d+ always parses
 	col, _ := strconv.Atoi(m[2])
-	return &Issue{Message: err.Error(), Severity: lint.Error, Err: err, Line: line, Column: col}
+	return &Issue{Message: err.Error(), Severity: lint.Error, Err: err, Line: line, Column: byteColumn(src, line, col)}
 }

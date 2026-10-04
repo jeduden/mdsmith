@@ -88,13 +88,13 @@ func TestLoadPyproject_UnresolvablePathAnchorsOnTableHeader(t *testing.T) {
 }
 
 func TestTOMLErrorIssue(t *testing.T) {
-	iss := tomlErrorIssue(errorString("(7, 3): boom"))
+	iss := tomlErrorIssue(errorString("(7, 3): boom"), nil)
 	var got *Issue
 	require.ErrorAs(t, iss, &got)
 	assert.Equal(t, 7, got.Line)
 	assert.Equal(t, 3, got.Column)
 	plain := errorString("no position")
-	assert.Equal(t, plain, tomlErrorIssue(plain))
+	assert.Equal(t, plain, tomlErrorIssue(plain, nil))
 }
 
 // mustParseTOMLDoc builds the positioned document node for the
@@ -222,4 +222,15 @@ foreign-regions = [
 	le := requireLoadError(t, err)
 	assert.Equal(t, 4, le.Line)
 	assert.Equal(t, 27, le.Column)
+}
+
+// go-toml counts a parse error's column in characters; the reported
+// column must be the byte offset the CLI and LSP expect.
+func TestLoadPyproject_ParseErrorColumnIsByteOffset(t *testing.T) {
+	body := "[tool.mdsmith]\nx = \"éé\" y\n"
+	p := writeCfg(t, t.TempDir(), "pyproject.toml", body)
+	_, err := Load(p)
+	le := requireLoadError(t, err)
+	assert.Equal(t, 2, le.Line)
+	assert.Equal(t, byteColOf(t, body, 2, "y"), le.Column)
 }
