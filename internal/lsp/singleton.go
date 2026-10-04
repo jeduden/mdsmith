@@ -77,8 +77,8 @@ func watchSingleton(
 // The singleton is opt-in per client. scope is the client's
 // initializationOptions.mdsmith.singletonScope token; the owner record
 // is keyed on root plus scope, so only servers sharing a scope (the VS
-// Code orphan and its respawn, which read one persisted per-workspace
-// id) contend. An empty scope means the client did not opt in: the
+// Code orphan and its respawn, which both send the workspace's
+// storageUri) contend. An empty scope means the client did not opt in: the
 // server never claims the registry or starts the watcher, so it neither
 // supersedes nor is superseded, and many such servers coexist on one
 // workspace.
@@ -161,9 +161,9 @@ type supersededParams struct {
 // unambiguous for any root and scope free of NUL bytes; singletonScope
 // turns a NUL-bearing scope into the opt-out and startSingletonWatch
 // does the same for a NUL-bearing root, so neither reaches here and a
-// NUL-free root cannot be split two ways. An empty scope
-// hashes the cleaned root alone — the legacy root-only key, byte for
-// byte — so there is one derivation, not two. startSingletonWatch uses
+// NUL-free root cannot be split two ways. An empty scope hashes the
+// cleaned root alone — the legacy root-only key, byte for byte — so
+// there is one derivation, not two. startSingletonWatch uses
 // that legacy key only for a scoped server's one-shot write that steps
 // an older root-only binary aside; it never watches it, and a no-token
 // server neither reads nor writes it.
@@ -209,7 +209,8 @@ func defaultRegistry() fileRegistry {
 }
 
 // singletonRecordMaxAge is how long an owner record may go unwritten
-// before a claim prunes it. Each record is written only at claim time,
+// before a scoped start prunes it (claim itself never prunes; see
+// startSingletonWatch). Each record is written only at claim time,
 // so the age is time since its owner started. A pruned record of a
 // still-running server reads as "no owner", which watchSingleton treats
 // as "still ours", so pruning never reaps a live server.
@@ -247,32 +248,28 @@ func (r fileRegistry) claim(key, id string) error {
 // of instance id. Records this server just claimed carry a fresh
 // mtime, so they always stay.
 func (r fileRegistry) prune(id string) {
-	pruneStaleRecords(r.dir, id, time.Now().Add(-singletonRecordMaxAge))
+	pruneStale(r.dir, id, time.Now().Add(-singletonRecordMaxAge))
 }
 
-// pruneStaleRecords removes owner records, leftover claim temp files,
-// and leftover prune quarantine files in dir last modified before
-// cutoff. Keys are per root and scope, and a scope can change on every
-// activation, so without this the directory would grow without bound.
-// It is best effort: any error just leaves the entry in place.
-func pruneStaleRecords(dir, id string, cutoff time.Time) {
-	pruneStale(dir, id, cutoff)
-}
-
-// pruneStale is pruneStaleRecords with test hooks: hooks[0] runs after
-// an entry is judged stale, hooks[1] after it is quarantined. They let
-// a test land a concurrent claim in each window.
+// pruneStale removes owner records, leftover claim temp files, and
+// leftover prune quarantine files in dir last modified before cutoff.
+// Keys are per root and scope, and a deleted or moved workspace leaves
+// its records behind, so without this the directory would grow without
+// bound. It is best effort: any error just leaves the entry in place.
+// Production passes no hooks; tests pass hooks[0], run after an entry
+// is judged stale, and hooks[1], run after it is quarantined, to land a
+// concurrent claim in each window.
 //
 // A plain stat-then-remove would delete a fresh record that a
 // concurrent claim renamed onto the path in between. So a stale entry
 // is first renamed (atomically) to a quarantine path tagged with the
 // pruning instance's id, unique because one instance prunes one entry
-// at a time, and its age
-// re-checked there. Still stale: it is removed. Fresh: a claim landed
-// in the window, so it is hard-linked back, which fails rather than
-// overwrite a still newer claim that reached the path meanwhile. A
-// filesystem without hard links falls back to a rename, which can only
-// overwrite a claim that landed within that last instant.
+// at a time, and its age re-checked there. Still stale: it is removed.
+// Fresh: a claim landed in the window, so it is hard-linked back, which
+// fails rather than overwrite a still newer claim that reached the path
+// meanwhile. A filesystem without hard links falls back to a rename,
+// which can only overwrite a claim that landed within that last
+// instant.
 func pruneStale(dir, id string, cutoff time.Time, hooks ...func(string)) {
 	hook := func(i int, p string) {
 		if i < len(hooks) && hooks[i] != nil {

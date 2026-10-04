@@ -86,14 +86,14 @@ type Server struct {
 	// watcher that steps this server aside — notifying the editor via
 	// mdsmith/superseded, then exiting — once a newer server claims the
 	// same workspace and scope. A client that sends no scope never
-	// claims, so it coexists with every other server. This
-	// reaps an orphaned server kept alive by a leaked editor host: the
-	// case the processId watchdog can't see, because that host stays
-	// alive. instanceID is "" when the feature is off, which makes
+	// claims, so it coexists with every other server. This reaps an
+	// orphaned server kept alive by a leaked editor host: the case the
+	// processId watchdog can't see, because that host stays alive.
+	// instanceID is "" when the feature is off, which makes
 	// startSingletonWatch a no-op. singletonClaim / singletonCurrent /
-	// singletonPrune /
-	// singletonInterval / onSupersededExit are test seams — production
-	// uses a file registry, singletonPollInterval, and os.Exit(0).
+	// singletonPrune / singletonInterval / onSupersededExit are test
+	// seams — production uses a file registry, singletonPollInterval,
+	// and os.Exit(0).
 	instanceID         string
 	singletonClaim     func(key, id string) error
 	singletonCurrent   func(key string) string

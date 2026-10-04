@@ -643,10 +643,11 @@ func TestPruneStaleRecordsSkipsEntryGoneMidPrune(t *testing.T) {
 	assert.Empty(t, entries)
 }
 
-// A quarantined fresh record that vanishes before the restore (a
-// concurrent prune of a crashed quarantine cannot do this, but an
-// outside cleaner can) leaves nothing behind and does not panic: the
-// link and the rename fallback both fail and are ignored.
+// A quarantine that vanishes before its re-check leaves nothing behind
+// and does not panic: the Lstat, the link, and the rename fallback all
+// fail and are ignored. A concurrent prune does this to a live pruner's
+// quarantine of a still-stale record (it cannot tell it from one a
+// crashed prune left), and an outside cleaner can do it to any.
 func TestPruneStaleRecordsRestoreOfVanishedQuarantine(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -683,7 +684,7 @@ func TestPruneStaleRecords(t *testing.T) {
 	foreign := write("notes.txt", old)
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "d.owner"), 0o755))
 
-	pruneStaleRecords(dir, "pruner", now.Add(-time.Hour))
+	pruneStale(dir, "pruner", now.Add(-time.Hour))
 
 	assert.NoFileExists(t, staleOwner)
 	assert.NoFileExists(t, staleTmp)
@@ -691,7 +692,7 @@ func TestPruneStaleRecords(t *testing.T) {
 	assert.FileExists(t, freshOwner)
 	assert.FileExists(t, foreign, "only registry records are pruned")
 	assert.DirExists(t, filepath.Join(dir, "d.owner"), "directories are left alone")
-	pruneStaleRecords(filepath.Join(dir, "missing"), "pruner", now) // an unreadable dir is a no-op
+	pruneStale(filepath.Join(dir, "missing"), "pruner", now) // an unreadable dir is a no-op
 }
 
 func TestFileRegistryCurrentEmptyWhenNotReadable(t *testing.T) {

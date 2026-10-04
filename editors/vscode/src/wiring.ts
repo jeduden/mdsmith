@@ -19,7 +19,6 @@ import type {
   TransportKind
 } from "vscode-languageclient/node";
 
-
 import type { BinaryCandidate } from "./binary";
 import { resolveBinary as resolveBinaryImpl, findBinaryCandidates as findBinaryCandidatesImpl } from "./binary";
 import { MdsmithErrorHandler } from "./commands/error-handler";
@@ -95,7 +94,7 @@ export interface OutputChannelLike {
 export function buildClientOptions(
   configWatcher: FileSystemWatcherLike,
   outputChannel?: OutputChannelLike,
-  singletonScope?: string
+  scope?: string
 ): LanguageClientOptions {
   const opts: LanguageClientOptions = {
     documentSelector: [
@@ -107,13 +106,13 @@ export function buildClientOptions(
       fileEvents: configWatcher as never
     }
   };
-  if (singletonScope) {
+  if (scope) {
     // Opt this client into the server's newest-wins workspace
     // singleton. The server keys its owner record on the workspace root
     // plus this token, so only servers sharing the token (a leaked
     // extension host's orphan and its fresh respawn) supersede each
     // other; other clients on the workspace send no token and coexist.
-    opts.initializationOptions = { mdsmith: { singletonScope } };
+    opts.initializationOptions = { mdsmith: { singletonScope: scope } };
   }
   if (outputChannel) {
     // Sharing one OutputChannel between palette commands and the LSP
