@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	buildexec "github.com/jeduden/mdsmith/internal/build"
 	"github.com/jeduden/mdsmith/internal/config"
@@ -16,7 +17,8 @@ import (
 // dispatches recipes and hooks, so each
 // running recipe's process group is killed before mdsmith exits; recipes
 // run in their own group and would otherwise survive the terminal's
-// interrupt. A second signal escalates: the Unix kill skips the rest of
+// interrupt. A second signal, at least escalateAfter after the first,
+// escalates: the Unix kill skips the rest of
 // its SIGTERM grace and sends SIGKILL (buildexec.WithForceKill), so
 // mdsmith still reaps every recipe but does not make an impatient user
 // wait. The handler covers only the dispatch of a pass that can start a
@@ -121,10 +123,20 @@ func interruptSignals() []os.Signal {
 	return out
 }
 
+// escalateAfter is how long after the first interrupt a further one
+// must arrive to escalate to SIGKILL. One interrupt is often delivered
+// twice within milliseconds: npm run forwards the terminal's SIGINT to
+// a child that already got it, and bash resends SIGHUP to its jobs as
+// the terminal closes. A copy inside the window is that same interrupt,
+// not an impatient user, so it keeps the SIGTERM grace. A var so a test
+// can set it.
+var escalateAfter = 250 * time.Millisecond
+
 // watchInterrupts turns signals into the build's two kill stages: the
 // first one received on sigs calls cancel (recipes get SIGTERM and the
-// grace period), the second closes force (SIGKILL at once). Later
-// signals are swallowed, because exiting before every recipe group is
+// grace period), the second closes force (SIGKILL at once) unless it
+// arrives within escalateAfter of the first, which marks it a copy of
+// the first and swallows it. Later signals are swallowed, because exiting before every recipe group is
 // reaped would orphan it. It returns, when done is closed, the first
 // signal received, or nil. A signal Notify queued in sigs before
 // signal.Stop still counts when done closes alongside it: select picks
@@ -144,11 +156,17 @@ func watchInterrupts(
 		}
 		return first
 	}
-	select {
-	case <-sigs:
-		close(force)
-	case <-done:
-		return first
+	firstAt := time.Now()
+	for escalated := false; !escalated; {
+		select {
+		case <-sigs:
+			if time.Since(firstAt) >= escalateAfter {
+				close(force)
+				escalated = true
+			}
+		case <-done:
+			return first
+		}
 	}
 	for {
 		select {

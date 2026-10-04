@@ -380,9 +380,9 @@ Each recipe runs in its own group (`Setpgid` on Unix, `RFNOTEG` on plan9,
 the group `SIGTERM`, then `SIGKILL` after up to 5 s; plan9 writes `kill` to its
 `notepg`, then each member's and the leader's `ctl` (an rc `&` job escapes);
 Windows sends `CTRL_BREAK_EVENT` and ends its Job Object; without one, a daemon
-can survive. Each later wait caps at 5 s. Ctrl-C, `SIGTERM`, or `SIGHUP` (DEL
-on plan9) in `mdsmith fix` takes this path, a second Ctrl-C skips the grace,
-and mdsmith reports `INTERRUPTED`, then dies of the signal (exit 2 off Unix).
+can survive. Each later wait caps at 5 s. Ctrl-C, `SIGTERM`, `SIGHUP` (DEL on
+plan9) in `mdsmith fix` do the same; a second one 250 ms later skips the grace.
+mdsmith reports `INTERRUPTED`, then dies of the signal (exit 2 off Unix).
 
 ### Atomic-write hardening
 

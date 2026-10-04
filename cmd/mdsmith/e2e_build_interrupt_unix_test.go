@@ -137,7 +137,9 @@ func TestE2E_Build_SecondSignalSkipsGrace(t *testing.T) {
 
 	start := time.Now()
 	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))
-	time.Sleep(300 * time.Millisecond)
+	// Well past escalateAfter (250 ms): a repeat inside it counts as a
+	// copy of the first interrupt and would not skip the grace.
+	time.Sleep(750 * time.Millisecond)
 	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))
 
 	err := cmd.Wait()

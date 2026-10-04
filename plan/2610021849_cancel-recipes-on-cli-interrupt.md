@@ -67,8 +67,11 @@ done, so only the cancellation is missing.
 5. Escalate on a second signal: the first cancels the
    build (SIGTERM plus grace), the second closes a
    `build.WithForceKill` channel so the Unix kill sends
-   SIGKILL at once. mdsmith still waits for the reap, so
-   no recipe is orphaned.
+   SIGKILL at once. A repeat within 250 ms of the first
+   (`escalateAfter`) is a duplicated delivery of the same
+   interrupt (`npm run` forwarding SIGINT, bash resending
+   SIGHUP) and keeps the grace. mdsmith still waits for
+   the reap, so no recipe is orphaned.
 6. Run hooks through `runRecipe` (keeping mdsmith's
    environment), so a done context starts no hook and an
    interrupted hook reports as interrupted. Keep hooks in

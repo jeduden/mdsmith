@@ -11,7 +11,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// stubEscalateAfter sets escalateAfter for one test.
+func stubEscalateAfter(t *testing.T, d time.Duration) {
+	t.Helper()
+	old := escalateAfter
+	escalateAfter = d
+	t.Cleanup(func() { escalateAfter = old })
+}
+
 func TestWatchInterrupts_FirstCancelsSecondForces(t *testing.T) {
+	stubEscalateAfter(t, 0)
 	sigs := make(chan os.Signal)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -48,6 +57,36 @@ func TestWatchInterrupts_FirstCancelsSecondForces(t *testing.T) {
 		t.Fatal("watcher must return once done closes")
 	}
 	assert.Equal(t, syscall.SIGTERM, first, "the first signal is the one to re-raise")
+}
+
+// TestWatchInterrupts_RepeatWithinWindowDoesNotForce covers one
+// interrupt delivered twice: npm run forwards the terminal's SIGINT to
+// its child, which also got it from the terminal, and bash resends
+// SIGHUP to its jobs as the terminal closes. The copy lands within
+// escalateAfter of the first and must not skip the SIGTERM grace.
+func TestWatchInterrupts_RepeatWithinWindowDoesNotForce(t *testing.T) {
+	stubEscalateAfter(t, time.Hour)
+	sigs := make(chan os.Signal)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	force := make(chan struct{})
+	done := make(chan struct{})
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		watchInterrupts(sigs, cancel, force, done)
+	}()
+	sigs <- os.Interrupt
+	<-ctx.Done()
+	sigs <- os.Interrupt // unbuffered: the watcher has read it
+	sigs <- syscall.SIGTERM
+	close(done)
+	<-returned
+	select {
+	case <-force:
+		t.Fatal("a repeat within escalateAfter must not escalate the kill")
+	default:
+	}
 }
 
 // stubSignalIgnored makes signalIgnored report the given signals as
