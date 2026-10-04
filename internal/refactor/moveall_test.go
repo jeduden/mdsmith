@@ -771,7 +771,8 @@ func TestValidateBatch_Shadowed(t *testing.T) {
 // TestMoveAll_ShadowedWithoutStem covers a shadowed file that no
 // `[[stem]]` link can name: a non-Markdown file, and a Markdown file
 // under a directory the wikilink index skips. Its path links are
-// still counted, by the referrer scan.
+// still counted, by the referrer scan. A typed `[[img.png]]` link is
+// not counted yet, though it reaches the newcomer (plan 2610040606).
 func TestMoveAll_ShadowedWithoutStem(t *testing.T) {
 	for _, tc := range []struct{ old, taken, newcomer string }{
 		{"img.png", "img2.png", "a.png"},

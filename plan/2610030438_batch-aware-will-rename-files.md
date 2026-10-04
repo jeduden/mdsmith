@@ -135,6 +135,10 @@ then reports it.
 19. [x] Read a file once across a batch's `[[stem]]` passes.
     A file linking three moved files is read once by them all,
     not once per move.
+20. [x] Say that `Withheld` counts path and `[[stem]]` links to
+    a shadowed file, not a typed `[[name.ext]]` link. The
+    index has no edge lookup for a typed link. Plan
+    [2610040606](2610040606_move-typed-wikilinks.md) adds it.
 
 ## Acceptance Criteria
 
@@ -156,4 +160,6 @@ check. Two fixes need the maintainer: raise the cap for
 `PLAN.md` and move completed rows to an archive catalog.
 The `pick-plan` skill reads `PLAN.md`, so it must follow
 the split. File this as its own plan once `PLAN.md` has
-room.
+room. Round 3 of the review freed one line by dropping the
+blank line between the catalog marker and its table, and
+used it for plan 2610040606, so `PLAN.md` is at 300 again.

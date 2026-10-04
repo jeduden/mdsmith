@@ -49,8 +49,10 @@ type BatchMove struct {
 // reach their file once the batch has run: one from a planned member
 // to a member whose move could not be planned, one inside such a
 // member to a planned member that stops resolving, a `[[stem]]` whose
-// new key another member's destination wins, and every link to a
-// shadowed path (see countShadowed).
+// new key another member's destination wins, and every path link and
+// `[[stem]]` link to a shadowed path (see countShadowed). A typed
+// `[[name.ext]]` link to a shadowed non-Markdown file is not counted:
+// the index has no edge lookup for it (plan 2610040606).
 type BatchPlan struct {
 	Plan
 	Moves    []BatchMove
@@ -79,8 +81,9 @@ type BatchPlan struct {
 // and so does a link inside it to a planned member when that link
 // stops resolving after the batch. A link inside it to a file the
 // batch leaves in place is not counted: MDS027 flags it if it stops
-// resolving. When a planned member lands on its path, every link to it
-// counts too (see countShadowed): it then reaches the newcomer.
+// resolving. When a planned member lands on its path, every path link
+// and `[[stem]]` link to it counts too (see countShadowed): it then
+// reaches the newcomer.
 //
 // Move is MoveAll with one pair.
 func MoveAll(ws Workspace, pairs []MovePair) BatchPlan {
