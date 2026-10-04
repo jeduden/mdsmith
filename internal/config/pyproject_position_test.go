@@ -185,10 +185,10 @@ z = { inner = [{ b = 1 }], after = { c = 2 } }
 
 func TestBraceScanScanLine(t *testing.T) {
 	s := braceScan{n: 1}
-	col, found, done := s.scanLine([]byte(`a = [{ x = "{" }, # {`), 0)
+	_, found, done := s.scanLine([]byte(`a = [{ x = "{" }, # {`), 0)
 	assert.False(t, found)
 	assert.False(t, done, "the array continues past the comment")
-	col, found, _ = s.scanLine([]byte(`  { y = 1 }]`), 0)
+	col, found, _ := s.scanLine([]byte(`  { y = 1 }]`), 0)
 	assert.True(t, found, "state carries across lines")
 	assert.Equal(t, 2, col)
 

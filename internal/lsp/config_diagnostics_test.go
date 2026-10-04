@@ -144,7 +144,8 @@ func TestWatchedPyprojectChangeReloadsConfig(t *testing.T) {
 	cfg, path, _ := s.snapshotConfig()
 	assert.Equal(t, py, path)
 	assert.False(t, cfg.Rules["line-length"].Enabled)
-	assert.False(t, watchedFilesTreeChanged([]fileEvent{{URI: pathToURI(py), Type: fileChangeCreated}}, s.isWatchedConfigChange),
+	created := []fileEvent{{URI: pathToURI(py), Type: fileChangeCreated}}
+	assert.False(t, watchedFilesTreeChanged(created, s.isWatchedConfigChange),
 		"a config-only create must not flag a wikilink tree change")
 }
 
