@@ -127,8 +127,9 @@ func NotStartedError(ctxErr error) error {
 	return fmt.Errorf("%s %w: %w", what, ErrNotStarted, ctxErr)
 }
 
-// ErrForceKilled marks a cancelled run whose group a second interrupt
-// SIGKILLed before the SIGTERM grace ran out (Unix only).
+// ErrForceKilled marks a cancelled or timed-out run whose group a
+// second interrupt SIGKILLed before the SIGTERM grace ran out (Unix
+// only).
 var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
 
 // runRecipe executes argv with a hermetic environment, a fixed working
@@ -288,19 +289,21 @@ func exitResult(err error) (int, bool, error) {
 // waits at most reapWait for captured output to drain, abandons the
 // pipes if a survivor still holds them, and reports the timeout or
 // cancellation with the exit code waitErr carries. forced (a second
-// interrupt escalated the kill) wraps ErrForceKilled into a cancel.
+// interrupt escalated the kill) wraps ErrForceKilled into either one:
+// a timed-out recipe still in its grace is cut short by it too.
 func timeoutResult(ctx context.Context, ro *recipeOutput, waitErr error, forced bool) (int, bool, error) {
 	if drained, _ := waitAtMost(ro.drained, reapWait); !drained {
 		ro.abandon()
 	}
 	exitCode := exitCodeOf(waitErr)
+	what := "recipe cancelled"
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return exitCode, true, fmt.Errorf("recipe timed out: %w", ctx.Err())
+		what = "recipe timed out"
 	}
 	if forced {
-		return exitCode, true, fmt.Errorf("recipe cancelled (%w): %w", ErrForceKilled, ctx.Err())
+		return exitCode, true, fmt.Errorf("%s (%w): %w", what, ErrForceKilled, ctx.Err())
 	}
-	return exitCode, true, fmt.Errorf("recipe cancelled: %w", ctx.Err())
+	return exitCode, true, fmt.Errorf("%s: %w", what, ctx.Err())
 }
 
 // exitCodeOf returns the exit code an *exec.ExitError in err carries,

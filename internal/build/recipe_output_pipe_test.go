@@ -134,6 +134,17 @@ func TestTimeoutResult(t *testing.T) {
 	_, timedOut, err = timeoutResult(dctx, ro, nil, false)
 	assert.True(t, timedOut)
 	require.ErrorContains(t, err, "recipe timed out")
+	assert.NotErrorIs(t, err, ErrForceKilled)
+
+	// A timeout whose grace a second interrupt cut short still names
+	// the SIGKILL, as a cancel does.
+	ro = &recipeOutput{}
+	require.NoError(t, ro.attach(&exec.Cmd{}, nil, nil))
+	_, timedOut, err = timeoutResult(dctx, ro, nil, true)
+	assert.True(t, timedOut)
+	require.ErrorContains(t, err, "recipe timed out")
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.ErrorIs(t, err, ErrForceKilled)
 }
 
 // lockedBuffer is a strings.Builder safe to read while a copy

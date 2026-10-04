@@ -161,6 +161,14 @@ func reportInterrupt(name string, res targetRunResult, w io.Writer) {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "INTERRUPTED %s after %s\n", name, res.Duration.Round(time.Millisecond))
+	printKillReport(res, w)
+}
+
+// printKillReport prints, for a recipe the kill path stopped, the last
+// lines of both streams and the kill this platform sent
+// (buildexec.TimeoutKillAction), adding the SIGKILL when a second
+// interrupt cut the grace short (buildexec.ErrForceKilled).
+func printKillReport(res targetRunResult, w io.Writer) {
 	printStreamTail("stdout", res.StdoutTail, w)
 	printStreamTail("stderr", res.StderrTail, w)
 	if errors.Is(res.Err, buildexec.ErrForceKilled) {
@@ -181,9 +189,7 @@ func reportTimeout(name string, res targetRunResult, w io.Writer) {
 		return
 	}
 	_, _ = fmt.Fprintf(w, "TIMEOUT %s after %s\n", name, res.Duration.Round(time.Millisecond))
-	printStreamTail("stdout", res.StdoutTail, w)
-	printStreamTail("stderr", res.StderrTail, w)
-	_, _ = fmt.Fprintf(w, "  %s\n", buildexec.TimeoutKillAction)
+	printKillReport(res, w)
 }
 
 // lastLines returns the last n elements of lines (or all if fewer).
