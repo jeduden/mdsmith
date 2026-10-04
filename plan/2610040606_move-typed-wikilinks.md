@@ -94,3 +94,19 @@ here. File it as its own plan once `PLAN.md` has room. It
 is still at the 300-line cap noted in plan 2610030438.
 Joining its catalog lines to save room breaks the 80-column
 limit.
+
+The review also found a bug in the `<?include?>` link
+rebase in
+[`links.go`](../internal/rules/include/links.go). Its link
+regex allows one level of nested brackets, so a link whose
+label quotes a `[[stem]]` wikilink is never rebased. The
+`move.md` row in `.github/copilot-instructions.md` hits it.
+Fixing it changes what `<?include?>` generates, so the
+pinned `mdsmith-fixed-version` job would flag the
+regenerated file until a release carries the fix and the
+pin is bumped (see [adopting new syntax][adopt]).
+That puts it outside this PR. File it as its own plan once
+`PLAN.md` has room, with the adoption step gated on the pin
+bump.
+
+[adopt]: ../docs/development/adopt-new-directive-syntax.md
