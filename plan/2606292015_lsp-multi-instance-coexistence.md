@@ -38,14 +38,8 @@ another terminal each launch their own server.
 One mechanism breaks that: the newest-wins singleton in
 [singleton.go](../internal/lsp/singleton.go). It is turned on in
 production by [`cmd/mdsmith/lsp.go`](../cmd/mdsmith/lsp.go). It
-records one owner per workspace. The key is the root path alone:
-
-```go
-func workspaceKey(root string) string {
-    sum := sha256.Sum256([]byte(filepath.Clean(root)))
-    return hex.EncodeToString(sum[:])
-}
-```
+records one owner per workspace, keyed on
+`sha256(filepath.Clean(root))` alone.
 
 Every server on one workspace contends for that single owner
 record. The newest claim wins; older servers poll, see a
@@ -65,11 +59,8 @@ stdin open, so no EOF arrives, and it stays alive by PID, so the
 it. The newest-wins claim is what stops that orphan from racing
 the freshly spawned server. That hand-off must keep working.
 
-No other client has this failure mode. A Claude instance that
-dies closes its child server's stdin pipe, so EOF arrives and the
-server exits normally. The singleton is, in practice, a
-VS-Code-only safeguard that currently reaches across to every
-client on the workspace.
+No other client has this failure mode: a dying Claude closes
+its server's stdin, so EOF arrives and the server exits.
 
 ## Non-Goals
 
@@ -81,9 +72,7 @@ client on the workspace.
   writes its own buffer; concurrent on-disk writes are out of
   scope.
 - Re-keying mid-session. The root is read once at `initialize`
-  (from `workspaceFolders[0]`), exactly as today. A multi-root
-  folder add/remove does not re-claim. This matches current
-  behavior and is unchanged here.
+  (from `workspaceFolders[0]`), as today.
 - Changing the LSP wire surface beyond reading
   `initializationOptions` on `initialize`.
 
@@ -146,6 +135,13 @@ newest still wins between them. VS Code already focuses an open
 folder instead of opening a duplicate window, and today's
 root-only key behaves the same way, so this is not a regression.
 
+The converse limit: adding a second folder to a one-folder
+window, or Save Workspace As, changes the storage URI while the
+first folder stays. A host leaked across that change keeps the
+old scope and is not reaped; the root-only key reaped it. The
+leaked server cannot tell this from a second, legitimate window
+on a workspace with the same first folder. See Follow-ups.
+
 ### Why a client token, not an inferred identity
 
 | Identity               | Reaps the upgrade orphan?           | Two Claude terminals coexist?  |
@@ -163,17 +159,13 @@ stable token, with no name-specific branch in the server.
 
 ### One key function, one gate
 
-Keep a single key function. Extend `workspaceKey` to take the
-scope rather than adding a sibling. An empty scope hashes the
-root alone, so every call site agrees on one derivation and the
-legacy behavior is preserved.
+`workspaceKey` takes the scope; no sibling function is added.
+An empty scope hashes the root alone, the legacy key.
 
-Keep one switch for "is the singleton active." `EnableWorkspaceSingleton`
-stays the process capability: it wires the registry seams and
-keeps unit tests hermetic. The scope is only the key input and
-the claim gate. The claim fires only when the scope is non-empty.
-The server never treats the scope as content; any client that
-sends one has opted in by definition.
+`EnableWorkspaceSingleton` stays the process capability: it
+wires the registry seams and keeps unit tests hermetic. The
+scope is only the key input and the claim gate, which fires
+only for a non-empty scope.
 
 ### Backward compatibility
 
@@ -199,18 +191,10 @@ watcher treats as "still ours".
 
 ### Rollout
 
-The VS Code extension bundles its own `mdsmith` binary. So the
-server change and the extension change ship together for the
-common path. There is no skew there.
-
-Skew is possible only when a user points `mdsmith.path` at a
-newer external binary while running an older extension that sends
-no token. In that window the singleton is off, so the leaked-host
-orphan is not reaped — and that orphan is the one case the
-subsystem exists for. EOF and the `processId` watchdog still
-handle normal exits. The real cost is: for the override case
-only, the "Two mdsmith servers running" note can recur until the
-extension updates.
+The extension bundles its own binary, so server and extension
+ship together. Skew arises only when `mdsmith.path` points an
+older extension at a newer binary. No token is sent, so the
+orphan is not reaped until the extension updates.
 
 The first update from a pre-scope build is covered. The leaked
 host still runs the old binary. That binary watches the old
@@ -218,21 +202,12 @@ key. The new server writes that key once, so the old one exits.
 
 ### Documentation
 
-Three docs change. [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
-gains a "Multiple instances" section. It states that many servers
-per workspace are supported, and that the singleton is opt-in via
-`singletonScope`.
-
-The "Two mdsmith servers running" note now lives in the
-[VS Code extension reference](../docs/reference/vscode-extension.md).
-It is updated to say the scope is per VS Code workspace. So a
-Claude plugin or another editor on the same workspace is
-unaffected. The [VS Code guide](../docs/guides/editors/vscode.md)
-gains a short paragraph saying the same.
-
-`lsp.md` was at its 300-line budget. So the new section is kept
-short. Room comes from re-wrapping its narrow prose paragraphs to
-72 columns. No wording changes.
+[`lsp.md`](../docs/reference/cli/lsp.md) gains a short
+"Multiple instances" section; room comes from re-wrapping its
+prose to 72 columns. The "Two mdsmith servers running" note in
+the [extension reference](../docs/reference/vscode-extension.md)
+and the [VS Code guide](../docs/guides/editors/vscode.md) say
+the scope is per VS Code workspace.
 
 ## Tasks
 
@@ -309,6 +284,34 @@ short. Room comes from re-wrapping its narrow prose paragraphs to
 - [x] `go tool -modfile=tools/go.mod golangci-lint run` reports no
       issues.
 - [x] `mdsmith check .` passes.
+
+## Follow-ups
+
+`PLAN.md` sits at its 300-line MDS022 cap, so, as plan
+2610030438 did, these are recorded here. File each as its own
+opus plan once `PLAN.md` has room.
+
+1. **Workspace identity change.** Reap a server left by a host
+   leaked across the storage URI change above. Look for a
+   per-window id that survives a host restart, or a one-shot
+   claim of the previous scope. Two open windows that share a
+   first folder must still coexist. Then drop the limit note
+   in the extension reference.
+2. **Fix-path prototype race.** `go test -race ./internal/lsp/`
+   fails on origin/main (afd30920a), for example in
+   `TestCodeActionSourceFixAll`. `checker.ConfigureEnabledRules`
+   returns a rule with no settings and no `FileResetter`
+   unchanged. So `Session.Fix` runs `toc.(*Rule).Check` on the
+   registered prototype, and its lazy `engineOnce.Do` writes
+   the rule. At the same time a debounced lint's
+   `engine.cloneRules` copies that rule with
+   `rule.CloneInstance`. Catalog, build, conciseness-scoring
+   and external-link share the lazy `sync.Once` pattern. Write
+   a failing `-race` test of concurrent `Session.Fix` and
+   `Session.Check`. Then give every fix and check path private
+   rule instances, cached per config signature. Add a CI
+   `go test -race` step for `internal/lsp`, `internal/engine`,
+   `internal/fix` and `pkg/mdsmith`.
 
 ## ...
 

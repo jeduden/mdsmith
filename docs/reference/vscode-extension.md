@@ -87,6 +87,13 @@ other. Two VS Code windows on one folder share that URI, so
 the newest of those still wins. An empty window with no folder
 open sends no scope.
 
+The storage URI follows the workspace, not the folder. Adding a
+second folder to a one-folder window, or **Save Workspace As**,
+gives the window a new URI. If the old extension host leaks
+across that change, its server keeps the old scope and does not
+step aside. Kill that host once, as for a pre-singleton orphan
+below.
+
 An orphan left by an older build that keyed on the folder
 alone also steps aside when the new server starts. So does any
 other server on such a build,
