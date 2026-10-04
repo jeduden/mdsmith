@@ -21,6 +21,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 )
 
 // SymbolKind enumerates the four symbol shapes the index recognizes.
@@ -522,15 +524,15 @@ func (i *Index) IncomingPathEdges(file string) []Edge {
 
 // IncomingWikilinkEdges returns every `[[stem]]` edge whose target
 // basename stem matches stem, compared case-insensitively (the same
-// lowercased match the wikilink resolver uses). A file move keys these
-// by the moved file's basename stem, since a wikilink names a file by
-// stem rather than by path. The result is freshly allocated and sorted
-// by (SourceFile, SourceLine, SourceCol).
+// key the wikilink resolver files stems under, linkgraph.FileNameKey).
+// A file move keys these by the moved file's basename stem, since a
+// wikilink names a file by stem rather than by path. The result is
+// freshly allocated and sorted by (SourceFile, SourceLine, SourceCol).
 func (i *Index) IncomingWikilinkEdges(stem string) []Edge {
 	if i == nil {
 		return nil
 	}
-	stem = strings.ToLower(stem)
+	stem = linkgraph.FileNameKey(stem)
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	var out []Edge

@@ -5,7 +5,6 @@ glob: ["plan/*.md", "!plan/proto.md"]
 sort: numeric:id
 header: "\n| ID  | Status | Model | Title |\n|-----|--------|-------|-------|\n"
 row: "| {id} | {status} | {model} | [{title}]({filename}) |"
-footer: ""
 ?>
 
 | ID         | Status | Model  | Title                                                                                                                                                   |
@@ -288,7 +287,7 @@ footer: ""
 | 2610021849 | 🔲     | sonnet | [Kill running build recipes when the CLI is interrupted](plan/2610021849_cancel-recipes-on-cli-interrupt.md)                                            |
 | 2610021917 | 🔲     | sonnet | [Replace the per-platform kill maps with a per-recipe group killer](plan/2610021917_per-recipe-group-killer.md)                                         |
 | 2610022044 | ✅     | sonnet | [Count only Markdown files as wikilink stem siblings on move](plan/2610022044_move-stem-count-markdown-only.md)                                         |
-| 2610022104 | 🔲     | sonnet | [Count wikilink stem siblings against the resolver's index on move](plan/2610022104_move-stem-count-resolver-index.md)                                  |
+| 2610022104 | ✅     | sonnet | [Count wikilink stem siblings against the resolver's index on move](plan/2610022104_move-stem-count-resolver-index.md)                                  |
 | 2610030015 | ✅     | sonnet | [Publish release notes on mdsmith.dev](plan/2610030015_website-release-notes.md)                                                                        |
 | 2610030243 | ✅     | sonnet | [Vet the internal/build spawn tests for plan9](plan/2610030243_plan9-vet-unix-windows-build-tests.md)                                                   |
 | 2610030244 | ✅     | sonnet | [Run internal/build under js/wasm once in CI](plan/2610030244_dedupe-build-js-wasm-ci-run.md)                                                           |
@@ -297,4 +296,5 @@ footer: ""
 | 2610031253 | ✅     | sonnet | [Free the session when a then getter rejects the create](plan/2610031253_wasm-create-then-getter-leak.md)                                               |
 | 2610031420 | ✅     | sonnet | [Free the func when js.FuncOf's wrapper call throws](plan/2610031420_wasm-funcof-wrapper-throw-leak.md)                                                 |
 | 2610031831 | ✅     | sonnet | [List only a candidate's own changes in its release notes](plan/2610031831_candidate-notes-since-previous-candidate.md)                                 |
+| 2610032327 | 🔲     | opus   | [Reuse the cached wikilink index for LSP moves and close its root](plan/2610032327_lsp-move-reuse-cached-wikilink-index.md)                             |
 <?/catalog?>

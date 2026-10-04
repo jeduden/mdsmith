@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 
@@ -39,9 +40,14 @@ type WikiLink struct {
 // Group 2: target stem or filename (no anchor or alias)
 // Group 3: optional anchor (text after "#")
 // Group 4: optional alias (text after "|")
-var wikilinkRE = regexp.MustCompile(
-	`(!?)\[\[([^\[\]\n|#]+)(?:#([^\[\]\n|]+))?(?:\|([^\[\]\n]+))?\]\]`,
-)
+var wikilinkRE = regexp.MustCompile(wikilinkPattern)
+
+const wikilinkPattern = `(!?)\[\[([^\[\]\n|#]+)(?:#([^\[\]\n|]+))?(?:\|([^\[\]\n]+))?\]\]`
+
+// wikilinkAtRE is wikilinkRE anchored at the start of its input, with
+// the same groups. A caller reading the link at a known column matches
+// there alone rather than scanning the rest of the row.
+var wikilinkAtRE = regexp.MustCompile(`^` + wikilinkPattern)
 
 // ExtractWikiLinks scans f.Source for Obsidian-style wikilinks
 // (`[[Page]]`, `[[Page#anchor]]`, `[[Page|alias]]`, `![[file.png]]`).
@@ -187,6 +193,16 @@ func WikilinkIndexFor(cache *runcache.Cache, rootKey string, root fs.FS) *Wikili
 	return idx
 }
 
+// WikilinkIndexAtDir walks the directory dir on disk for the wikilink
+// index, through the lint.OpenRootFS view the MDS027 resolver walks.
+// It is the entry point for a caller holding a root path and no run
+// cache (the CLI, the LSP move guard, `mdsmith list backlinks`), so the
+// way that root is opened stays in one place. An empty or unreadable
+// dir builds no index (nil).
+func WikilinkIndexAtDir(dir string) *WikilinkIndex {
+	return WikilinkIndexFor(nil, "", lint.OpenRootFS(dir))
+}
+
 // WikilinkIndex is a pre-built directory of every file under one
 // workspace root, keyed for the two lookup shapes ResolveWikiLink
 // uses: stem (.md/.markdown filename minus extension) and exact
@@ -213,10 +229,7 @@ func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 	if root == nil {
 		return nil
 	}
-	idx := &WikilinkIndex{
-		stems: map[string][]string{},
-		names: map[string][]string{},
-	}
+	idx := newEmptyWikilinkIndex()
 	if err := fs.WalkDir(root, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			// Root-level read failures (e.g. ReadDir(".") returns an
@@ -233,25 +246,58 @@ func NewWikilinkIndex(root fs.FS) *WikilinkIndex {
 		if d.IsDir() {
 			return skipHeavyDirs(p)
 		}
-		base := path.Base(p)
-		lcName := FileNameKey(base)
-		idx.names[lcName] = append(idx.names[lcName], p)
-		if lcStem, ok := FileStemKey(base); ok {
-			idx.stems[lcStem] = append(idx.stems[lcStem], p)
-		}
+		idx.add(p)
 		return nil
 	}); err != nil {
 		return nil
 	}
-	for k, v := range idx.stems {
-		sortByDepthThenName(v)
-		idx.stems[k] = v
-	}
-	for k, v := range idx.names {
-		sortByDepthThenName(v)
-		idx.names[k] = v
-	}
+	idx.sort()
 	return idx
+}
+
+// NewWikilinkIndexFromPaths builds the index over a list of
+// workspace-relative file paths instead of a walk, keying and ordering
+// them as NewWikilinkIndex does and dropping any path under `.git` or
+// `node_modules`. A caller with no readable root but a known file list
+// uses it so a lookup still sees those files.
+func NewWikilinkIndexFromPaths(paths []string) *WikilinkIndex {
+	idx := newEmptyWikilinkIndex()
+	for _, p := range paths {
+		if WikilinkIndexed(p) {
+			idx.add(p)
+		}
+	}
+	idx.sort()
+	return idx
+}
+
+// newEmptyWikilinkIndex returns an index with no files, ready for add.
+func newEmptyWikilinkIndex() *WikilinkIndex {
+	return &WikilinkIndex{
+		stems: map[string][]string{},
+		names: map[string][]string{},
+	}
+}
+
+// add files p under its exact-name key and, for a Markdown file, its
+// stem key.
+func (idx *WikilinkIndex) add(p string) {
+	base := path.Base(p)
+	lcName := FileNameKey(base)
+	idx.names[lcName] = append(idx.names[lcName], p)
+	if lcStem, ok := FileStemKey(base); ok {
+		idx.stems[lcStem] = append(idx.stems[lcStem], p)
+	}
+}
+
+// sort orders every key's paths shallowest first, then by name.
+func (idx *WikilinkIndex) sort() {
+	for _, v := range idx.stems {
+		sortByDepthThenName(v)
+	}
+	for _, v := range idx.names {
+		sortByDepthThenName(v)
+	}
 }
 
 // Resolve answers the same question as ResolveWikiLink but serves
@@ -275,6 +321,75 @@ func (idx *WikilinkIndex) Resolve(target string) (string, bool) {
 		return matches[0], true
 	}
 	return "", false
+}
+
+// StemPaths returns the Markdown files the resolver reaches by the
+// stem key (as FileStemKey returns it), shallowest first. The slice is
+// the index's own: callers must not modify it. A nil index returns nil.
+func (idx *WikilinkIndex) StemPaths(key string) []string {
+	if idx == nil {
+		return nil
+	}
+	return idx.stems[key]
+}
+
+// StemResolvesTo reports whether a `[[stem]]` link keyed by key (as
+// FileStemKey returns it) resolves to the workspace-relative path p,
+// counting p as a holder of key even when the index lacks it: the
+// shallowest holder wins, then the first by full path in byte order
+// (so `Docs/` sorts before `archive/`). A nil index holds no other
+// file, so p wins. An indexed path that differs from p in letter case
+// alone keeps p from winning unless it is p exactly (see resolvesTo).
+func (idx *WikilinkIndex) StemResolvesTo(key, p string) bool {
+	return resolvesTo(idx.StemPaths(key), p)
+}
+
+// NameResolvesTo is StemResolvesTo for a typed `[[name.ext]]` link
+// keyed by key (as FileNameKey returns it): the files holding that
+// exact name pick the link's file in the same order.
+func (idx *WikilinkIndex) NameResolvesTo(key, p string) bool {
+	return resolvesTo(idx.NamePaths(key), p)
+}
+
+// resolvesTo reports whether p is the first of paths, sorted by
+// compareDepthThenName, once p is counted among them. A path that
+// differs from p in letter case alone may be p itself, as a
+// case-insensitive file system spells it on disk, and then p's own
+// spelling does not say where it sorts: p is not known to win.
+func resolvesTo(paths []string, p string) bool {
+	if len(paths) == 0 || paths[0] == p {
+		return true
+	}
+	if slices.ContainsFunc(paths, func(q string) bool { return strings.EqualFold(q, p) }) {
+		return false
+	}
+	return compareDepthThenName(p, paths[0]) < 0
+}
+
+// NamePaths returns the files, of any extension, the resolver reaches
+// by the exact-name key (as FileNameKey returns it), shallowest first.
+// The slice is the index's own: callers must not modify it. A nil
+// index returns nil.
+func (idx *WikilinkIndex) NamePaths(key string) []string {
+	if idx == nil {
+		return nil
+	}
+	return idx.names[key]
+}
+
+// WikilinkIndexed reports whether NewWikilinkIndex's walk prunes no
+// directory on the workspace-relative path p: none is one
+// skipHeavyDirs prunes (`.git`, `node_modules`). No wikilink reaches a
+// file under a pruned directory, whatever its name. It reads p alone,
+// so it cannot see that the walk also stays out of a symlinked or
+// unreadable directory.
+func WikilinkIndexed(p string) bool {
+	for d := path.Dir(p); d != "." && d != "/"; d = path.Dir(d) {
+		if skipHeavyDirs(d) != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // skipHeavyDirs returns fs.SkipDir for known-heavy subtrees that
@@ -308,12 +423,17 @@ func skipHeavyDirs(p string) error {
 // buckets are small: a cached-depth copy cost one allocation per
 // bucket and measured slower below about 50 paths, breaking even there.
 func sortByDepthThenName(paths []string) {
-	slices.SortFunc(paths, func(a, b string) int {
-		return cmp.Or(
-			cmp.Compare(strings.Count(a, "/"), strings.Count(b, "/")),
-			cmp.Compare(a, b),
-		)
-	})
+	slices.SortFunc(paths, compareDepthThenName)
+}
+
+// compareDepthThenName orders a before b when it is shallower, or at
+// the same depth sorts first by name: the order a `[[stem]]` picks its
+// file in.
+func compareDepthThenName(a, b string) int {
+	return cmp.Or(
+		cmp.Compare(strings.Count(a, "/"), strings.Count(b, "/")),
+		cmp.Compare(a, b),
+	)
 }
 
 // ResolveWikiLink resolves an Obsidian-style wikilink target against
@@ -347,6 +467,55 @@ func WikilinkStem(target string) (string, bool) {
 		return "", false
 	}
 	return FileNameKey(stem), true
+}
+
+// WikilinkStemAt reads the wikilink whose `[[` starts at bracketStart
+// in row. It returns the target's stem key (as WikilinkStem returns it)
+// and the byte span, within row, of the target's base segment: the part
+// the resolver keys by (path.Base of the trimmed target with `\` read as
+// `/`). Any folder prefix, anchor, and alias lie outside the span, as
+// does the `\` that escapes a `|` in a table cell. Key and span come
+// from one match, the same one ExtractWikiLinks reads, so they cannot
+// disagree on where a target ends. ok is false when no wikilink starts
+// there or its target has no stem key: a typed non-Markdown name, or a
+// target the resolver refuses. A caller holding an edge from an index
+// that may be stale checks the key before it edits the span.
+func WikilinkStemAt(row []byte, bracketStart int) (stem string, start, end int, ok bool) {
+	raw, at, ok := wikilinkTargetAt(row, bracketStart)
+	if !ok {
+		return "", 0, 0, false
+	}
+	stem, ok = WikilinkStem(string(raw))
+	if !ok {
+		return "", 0, 0, false
+	}
+	left := bytes.TrimLeftFunc(raw, unicode.IsSpace)
+	lo := len(raw) - len(left)
+	hi := lo + len(bytes.TrimRightFunc(left, unicode.IsSpace))
+	for hi > lo && (raw[hi-1] == '/' || raw[hi-1] == '\\') {
+		hi--
+	}
+	for j := lo; j < hi; j++ {
+		if raw[j] == '/' || raw[j] == '\\' {
+			lo = j + 1
+		}
+	}
+	return stem, at + lo, at + hi, true
+}
+
+// wikilinkTargetAt returns the raw target of the wikilink whose `[[`
+// starts at bracketStart, read by the same match ExtractWikiLinks uses,
+// and the target's byte offset within row.
+func wikilinkTargetAt(row []byte, bracketStart int) (raw []byte, at int, ok bool) {
+	if bracketStart < 0 || bracketStart >= len(row) {
+		return nil, 0, false
+	}
+	m := wikilinkAtRE.FindSubmatchIndex(row[bracketStart:])
+	if m == nil {
+		return nil, 0, false
+	}
+	at = bracketStart + m[4]
+	return row[at : bracketStart+m[5]], at, true
 }
 
 // wikilinkSearchKey splits target into the lookup parameters

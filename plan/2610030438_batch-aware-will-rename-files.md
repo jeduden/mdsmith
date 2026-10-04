@@ -78,13 +78,20 @@ then reports it.
    `y/c.md`. Each move checks the new stem against the
    pre-batch snapshot, finds no `c`, and rewrites its links to
    `[[c]]`. The stopgap keeps both, so after the batch every
-   such link names two files.
-9. Rewrite `[[stem]]` links when two moves leave a shared stem.
-   One request moves `x/guide.md` to `x/manual.md` and
-   `y/guide.md` to `y/howto.md`. Each move counts two `guide`
-   files in the pre-batch snapshot and skips the rewrite, so
-   every `[[guide]]` link dangles. No edit is withheld, so no
-   warning names them.
+   such link names two files. The same holds when the file
+   `[[Guide]]` reaches and a same-stem sibling both move to one
+   new stem: `docs/Guide.md` to `z/Manual.md` and `ref/Guide.md`
+   to `a/Manual.md`. The first move rewrites every `[[Guide]]`
+   to `[[Manual]]`, which after the batch reaches
+   `a/Manual.md`, the former sibling.
+9. Rewrite folder-prefixed `[[stem]]` links when two moves
+   leave a shared stem. One request moves `x/guide.md` to
+   `x/manual.md` and `y/guide.md` to `y/howto.md`. The move of
+   `x/guide.md`, which `[[guide]]` reaches, rewrites those links
+   to `[[manual]]`, but leaves `[[y/guide]]`, which names the
+   sibling's folder. The move of `y/guide.md` does not win the
+   pre-batch stem and rewrites nothing, so `[[y/guide]]`
+   dangles. No edit is withheld, so no warning names it.
 10. Warn only about a link that no longer resolves. Moving
     `docs/a.md` and `docs/b.md` into `docs/sub/` withholds both
     rewrites of each link between them, and the kept text is

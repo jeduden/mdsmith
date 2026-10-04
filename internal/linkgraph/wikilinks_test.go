@@ -3,6 +3,7 @@ package linkgraph
 import (
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 	"testing/fstest"
@@ -703,4 +704,149 @@ func TestCollectCodeSpanRanges_SortedDisjoint(t *testing.T) {
 	for i := 1; i < len(spans); i++ {
 		assert.LessOrEqual(t, spans[i-1].end, spans[i].start, "span %d overlaps or precedes span %d", i, i-1)
 	}
+}
+
+func TestWikilinkIndex_StemAndNamePaths(t *testing.T) {
+	idx := NewWikilinkIndex(fstest.MapFS{
+		"docs/Guide.md":                 {},
+		"archive/guide.md":              {},
+		"node_modules/pkg/guide.md":     {},
+		"img/logo.png":                  {},
+		"logo.png":                      {},
+		"a/guide.mdx":                   {},
+		"notes/license":                 {},
+		".git/hooks/guide.md":           {},
+		"docs/nested/deep/different.md": {},
+	})
+	require.NotNil(t, idx)
+	assert.Equal(t, []string{"archive/guide.md", "docs/Guide.md"}, idx.StemPaths("guide"))
+	assert.Equal(t, []string{"logo.png", "img/logo.png"}, idx.NamePaths("logo.png"))
+	assert.Equal(t, []string{"a/guide.mdx"}, idx.NamePaths("guide.mdx"))
+	assert.Empty(t, idx.StemPaths("license"), "an extensionless file has no stem key")
+	assert.Empty(t, idx.StemPaths("missing"))
+	assert.Empty(t, idx.NamePaths("missing"))
+}
+
+// TestWikilinkIndexed locks that WikilinkIndexed answers the walk's own
+// skip rule: a file under `.git` or `node_modules` at any depth is not
+// indexed, and a file merely named like one is.
+func TestWikilinkIndexed(t *testing.T) {
+	for p, want := range map[string]bool{
+		"guide.md":                  true,
+		"docs/guide.md":             true,
+		"node_modules":              true,
+		"docs/node_modules.md":      true,
+		"node_modules/pkg/guide.md": false,
+		"docs/node_modules/x.md":    false,
+		".git/guide.md":             false,
+		"a/b/.git/c/guide.md":       false,
+	} {
+		assert.Equal(t, want, WikilinkIndexed(p), p)
+		fsys := fstest.MapFS{p: {}}
+		assert.Equal(t, want, len(NewWikilinkIndex(fsys).NamePaths(FileNameKey(path.Base(p)))) == 1,
+			"%s: the walk agrees", p)
+	}
+}
+
+func TestWikilinkIndex_PathsNilReceiver(t *testing.T) {
+	var idx *WikilinkIndex
+	assert.Empty(t, idx.StemPaths("a"))
+	assert.Empty(t, idx.NamePaths("a.md"))
+}
+
+// TestWikilinkStemAt_Span locks the base span WikilinkStemAt returns:
+// the last segment of the trimmed target, with `\` read as `/`, outside
+// any folder prefix, anchor, alias, or table-cell `\|` escape.
+func TestWikilinkStemAt_Span(t *testing.T) {
+	t.Run("not a wikilink returns false", func(t *testing.T) {
+		_, _, _, ok := WikilinkStemAt([]byte("[x](y)"), 0)
+		assert.False(t, ok)
+	})
+	t.Run("out-of-range bracket start returns false", func(t *testing.T) {
+		_, _, _, ok := WikilinkStemAt([]byte("[["), 0)
+		assert.False(t, ok)
+		_, _, _, ok = WikilinkStemAt([]byte("[[a]]"), -1)
+		assert.False(t, ok)
+		_, _, _, ok = WikilinkStemAt([]byte("[[a]]"), 9)
+		assert.False(t, ok)
+	})
+	t.Run("a link that starts later is not read", func(t *testing.T) {
+		_, _, _, ok := WikilinkStemAt([]byte("x [[a]]"), 0)
+		assert.False(t, ok)
+	})
+	t.Run("empty target returns false", func(t *testing.T) {
+		_, _, _, ok := WikilinkStemAt([]byte("[[#frag]]"), 0)
+		assert.False(t, ok)
+	})
+	t.Run("offsets are relative to the row", func(t *testing.T) {
+		row := []byte("see ![[folder/Page#f|alias]] now")
+		_, s, e, ok := WikilinkStemAt(row, 5)
+		require.True(t, ok)
+		assert.Equal(t, "Page", string(row[s:e]))
+	})
+	// The resolver turns `\` into `/` and reads path.Base of the
+	// trimmed target, so the span is the last segment the same way.
+	for row, want := range map[string]string{
+		`[[docs\Page]]`:        "Page",
+		`[[Page\|alias]]`:      "Page",
+		"[[docs/Page/ ]]":      "Page",
+		`[[docs\Page\#f|a]]`:   "Page",
+		"[[ Page ]]":           "Page",
+		"[[x/Page.md#f]]":      "Page.md",
+		`[[a\b/c\Page.md|al]]`: "Page.md",
+		"[[x/ guide]]":         " guide",
+		"[[api /]]":            "api ",
+	} {
+		t.Run(row, func(t *testing.T) {
+			_, s, e, ok := WikilinkStemAt([]byte(row), 0)
+			require.True(t, ok)
+			assert.Equal(t, want, row[s:e])
+		})
+	}
+	for _, row := range []string{`[[/\ ]]`, "[[/abs]]", "[[../up]]", "[[C:\\x]]"} {
+		t.Run("unresolvable "+row, func(t *testing.T) {
+			_, _, _, ok := WikilinkStemAt([]byte(row), 0)
+			assert.False(t, ok)
+		})
+	}
+}
+
+// TestNewWikilinkIndexFromPaths locks that an index built from a path
+// list keys and orders files the way the walk does, skipping `.git`
+// and `node_modules`.
+func TestNewWikilinkIndexFromPaths(t *testing.T) {
+	paths := []string{"docs/guide.md", "guide.md", "img/Logo.PNG", "node_modules/p/guide.md", ".git/x.md"}
+	fsys := fstest.MapFS{}
+	for _, p := range paths {
+		fsys[p] = &fstest.MapFile{}
+	}
+	walked := NewWikilinkIndex(fsys)
+	listed := NewWikilinkIndexFromPaths(paths)
+	assert.Equal(t, []string{"guide.md", "docs/guide.md"}, listed.StemPaths("guide"))
+	assert.Equal(t, walked.StemPaths("guide"), listed.StemPaths("guide"))
+	assert.Equal(t, walked.NamePaths("logo.png"), listed.NamePaths("logo.png"))
+	assert.Empty(t, listed.StemPaths("x"))
+}
+
+// TestWikilinkStemAt locks the stem key read at a `[[` column: folder,
+// anchor, alias, casing, and outer spaces do not change it (a space
+// before a trailing slash stays, as the index keys it), and a typed name, a
+// refused target, or a column with no wikilink returns ok=false.
+func TestWikilinkStemAt(t *testing.T) {
+	for row, want := range map[string]string{
+		"[[docs/Guide#a|G]]": "guide",
+		"[[guide.md]]":       "guide",
+		"[[ Guide ]]":        "guide",
+		"[[Guide /]]":        "guide ",
+	} {
+		got, _, _, ok := WikilinkStemAt([]byte(row), 0)
+		assert.True(t, ok, row)
+		assert.Equal(t, want, got, row)
+	}
+	for _, row := range []string{"[[logo.png]]", "[[../x]]", "x [[a]]", "[["} {
+		_, _, _, ok := WikilinkStemAt([]byte(row), 0)
+		assert.False(t, ok, row)
+	}
+	_, _, _, ok := WikilinkStemAt([]byte("[[a]]"), -1)
+	assert.False(t, ok)
 }

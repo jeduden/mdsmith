@@ -1,15 +1,19 @@
 package lsp
 
 import (
+	"maps"
 	"math/rand/v2"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/refactor"
 )
 
@@ -282,6 +286,10 @@ func newMemRenameWorkspace(files map[string]string) memRenameWorkspace {
 	return memRenameWorkspace{IndexEdges: refactor.NewIndexEdges(idx), files: files}
 }
 
+func (w memRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+	return linkgraph.NewWikilinkIndexFromPaths(slices.Collect(maps.Keys(w.files)))
+}
+
 func (w memRenameWorkspace) Resolve(file string) (string, []byte, bool) {
 	rel := index.NormalizePath(file)
 	src, ok := w.files[rel]
@@ -345,4 +353,22 @@ func TestIsInsert(t *testing.T) {
 	t.Parallel()
 	assert.True(t, isInsert(edAt(1, 3, 3, "x")))
 	assert.False(t, isInsert(edAt(1, 3, 4, "")))
+}
+
+// TestServerRenameWorkspace_WikilinkIndex locks that every rename
+// workspace the server builds carries a wikilink index walked once, at
+// the root its paths were spelled against, so no move path can fall
+// back to counting listed files. An unreadable root builds no index.
+func TestServerRenameWorkspace_WikilinkIndex(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "guide.md"), []byte("# G\n"), 0o644))
+	s := New(Options{})
+	s.rootDir = t.TempDir() // a config reload moved the server's root
+	ws := s.renameWorkspace(root)
+	idx := ws.WikilinkIndex()
+	require.NotNil(t, idx)
+	assert.Equal(t, []string{"guide.md"}, idx.StemPaths("guide"))
+	assert.Same(t, idx, ws.WikilinkIndex(), "the walk runs once per workspace")
+	assert.Nil(t, s.renameWorkspace(filepath.Join(root, "missing")).WikilinkIndex())
 }
