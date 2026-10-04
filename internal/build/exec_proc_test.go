@@ -73,8 +73,11 @@ func TestRunRecipe_ClosesKillerOnTimeout(t *testing.T) {
 	skipWithoutPOSIXTools(t, "sh")
 	// The timeout return must close the killer too, after its kill: on
 	// Windows close is what fires KILL_ON_JOB_CLOSE, and on plan9 it
-	// frees the notepg file. The stub forwards to the real killer, so
-	// the recipe's group still dies.
+	// frees the notepg file. This test needs sh, so it skips on both;
+	// the ordering it checks is runRecipe's, shared by every platform,
+	// and TestClose_Windows_* and TestClose_Plan9_* cover each close.
+	// The stub forwards to the real killer, so the recipe's group still
+	// dies.
 	var killed, closedAfterKill atomic.Bool
 	old := afterStartFn
 	afterStartFn = func(cmd *exec.Cmd) groupKiller {

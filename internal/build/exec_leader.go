@@ -7,28 +7,24 @@ import (
 	"os/exec"
 )
 
-// killCmdLeader kills cmd's leader process with killLeader and ignores
-// its error (the leader may already have exited). It is the shared
-// forceLeader body on Unix and Windows, and the whole kill on targets
-// with no group (exec_other.go). It is not built on plan9 (see
-// killLeader). A nil Process (the command never started) is a no-op.
-func killCmdLeader(cmd *exec.Cmd) {
-	if cmd.Process == nil {
-		return
-	}
-	_ = killLeader(cmd.Process)
-}
-
 // leaderKill is embedded in each !plan9 groupKiller to supply its
 // forceLeader: pgKiller (Unix), jobKiller (Windows), and leaderKiller
 // (exec_other.go). plan9's noteKiller has its own, as kill already
 // ends in an uncatchable leader kill there.
 type leaderKill struct{ cmd *exec.Cmd }
 
-// forceLeader kills only the recipe's leader (killCmdLeader): SIGKILL
+// forceLeader kills only the recipe's leader with killLeader: SIGKILL
 // on Unix, TerminateProcess on Windows, neither of which the leader can
-// catch. A nil Process is a no-op.
-func (k leaderKill) forceLeader() { killCmdLeader(k.cmd) }
+// catch. It is the shared leader kill on Unix and Windows, and the
+// whole kill on targets with no group (exec_other.go). It ignores the
+// error, as the leader may already have exited. A nil Process (the
+// command never started) is a no-op.
+func (k leaderKill) forceLeader() {
+	if k.cmd.Process == nil {
+		return
+	}
+	_ = killLeader(k.cmd.Process)
+}
 
 // killLeader kills one process: SIGKILL on Unix, TerminateProcess on
 // Windows. This file builds everywhere but plan9: there

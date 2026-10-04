@@ -104,9 +104,10 @@ func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
 	}, 6*time.Second, 100*time.Millisecond, "spawned child should not be orphaned")
 }
 
-// stubGroupKiller swaps afterStartFn for one that returns a killer whose
-// kill runs fn and whose forceLeader sets the returned flag and runs
-// the real Unix forceLeader, and shortens reapWait for one test.
+// stubGroupKiller swaps afterStartFn for one that wraps the real Unix
+// killer: kill runs fn instead, forceLeader sets the returned flag and
+// runs the real forceLeader, and close is the real close. It also
+// shortens reapWait for one test.
 // The stub leaves survivors on purpose, so cleanup SIGKILLs the
 // recipe's whole process group (Setpgid made pgid == leader pid):
 // an orphan would otherwise keep the test binary's stderr open and
@@ -118,12 +119,14 @@ func stubGroupKiller(t *testing.T, fn func(*exec.Cmd)) *atomic.Bool {
 	forced := &atomic.Bool{}
 	afterStartFn = func(cmd *exec.Cmd) groupKiller {
 		pgid = cmd.Process.Pid
+		inner := afterStart(cmd)
 		return stubKiller{
 			killFn: func() { fn(cmd) },
 			forceFn: func() {
 				forced.Store(true)
-				afterStart(cmd).forceLeader()
+				inner.forceLeader()
 			},
+			closeFn: inner.close,
 		}
 	}
 	reapWait = 100 * time.Millisecond

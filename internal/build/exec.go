@@ -253,8 +253,11 @@ func exitCodeOf(err error) int {
 // kill (exec_other.go) returns a killer that kills only the leader.
 type groupKiller interface {
 	// kill ends the recipe's whole group (or only its leader where the
-	// platform has no group). A killer for a command that never started
-	// does nothing.
+	// platform has no group, or plan9 captured none). It can leave the
+	// leader running: Windows without a Job Object sends only
+	// CTRL_BREAK, which the recipe can ignore, and a Unix leader can
+	// leave its group; runRecipe then calls forceLeader. A killer for a
+	// command that never started does nothing.
 	kill()
 	// close releases what afterStart captured. runRecipe calls it once,
 	// on return.

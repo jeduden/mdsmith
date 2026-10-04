@@ -27,22 +27,15 @@ func stubKillLeader(t *testing.T) **os.Process {
 	return &got
 }
 
-func TestKillCmdLeader_NilProcessIsNoOp(t *testing.T) {
+func TestLeaderKill_ForceLeaderNilProcessIsNoOp(t *testing.T) {
 	got := stubKillLeader(t)
-	assert.NotPanics(t, func() { killCmdLeader(&exec.Cmd{}) })
+	assert.NotPanics(t, leaderKill{&exec.Cmd{}}.forceLeader)
 	assert.Nil(t, *got, "a command that never started has no leader to kill")
 }
 
-func TestKillCmdLeader_KillsLeaderAndIgnoresError(t *testing.T) {
+func TestLeaderKill_ForceLeaderKillsLeaderAndIgnoresError(t *testing.T) {
 	got := stubKillLeader(t)
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	assert.NotPanics(t, func() { killCmdLeader(cmd) })
-	assert.Same(t, cmd.Process, *got)
-}
-
-func TestLeaderKill_ForceLeaderKillsLeader(t *testing.T) {
-	got := stubKillLeader(t)
-	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	assert.NotPanics(t, func() { leaderKill{cmd}.forceLeader() })
+	assert.NotPanics(t, leaderKill{cmd}.forceLeader)
 	assert.Same(t, cmd.Process, *got)
 }
