@@ -191,7 +191,7 @@ Phase A — positioned config diagnostics (YAML first):
 
 Phase B — the pyproject source:
 
-5. [ ] Red/green: add the paired `internal/config` files
+5. [x] Red/green: add the paired `internal/config` files
    — `loadPyproject(path)` behind `//go:build !wasm`
    (parse TOML, lift `[tool.mdsmith]`, re-marshal to YAML,
    call `loadFromBytes` with the pyproject path as the
@@ -255,7 +255,7 @@ Phase C — guardrails and docs:
 - [ ] A project whose only config is a `pyproject.toml`
       with `[tool.mdsmith]` is linted with that config by
       `mdsmith check` and `mdsmith fix`.
-- [ ] The same settings written under `[tool.mdsmith]`
+- [x] The same settings written under `[tool.mdsmith]`
       and in `.mdsmith.yml` produce identical effective
       config across rules, overrides, kinds, and
       conventions.
