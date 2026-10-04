@@ -135,6 +135,14 @@ func TestKeyColumn(t *testing.T) {
 		{"b", 0, "b", 0},             // end of line
 		{"a = 1, a = 2", 2, "a", 8},  // start offset skips the first
 		{"x = \"b\"", 0, "b", 0},     // a quoted value, not a key
+		// Text inside a string value or a comment is never a key.
+		{`x = "see b.md", b = 1`, 0, "b", 17},
+		{"x = 'b = 1', b = 2", 0, "b", 14},
+		{"x = 1 # b = 2", 0, "b", 0},
+		{`"" = 1`, 0, "", 1}, // the empty key is always quoted
+		{"x = 1", 0, "", 0},
+		{`x = "b`, 0, "b", 0},    // an unterminated string is no key
+		{`x="b" = 1`, 0, "b", 0}, // a quoted key must follow a boundary
 	}
 	for _, tc := range cases {
 		assert.Equal(t, tc.want, keyColumn([]byte(tc.line), tc.start, tc.key), "%q", tc.line)

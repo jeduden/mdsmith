@@ -128,24 +128,26 @@ func (c tomlConverter) findKey(from toml.Position, k string) toml.Position {
 
 // keyColumn returns the 1-based column of key k in line at or after
 // byte offset start, or 0. A match must start the line or follow
-// whitespace, `{`, `,`, or `.` (a dotted-key segment), may be quoted, and must be followed
-// (after optional spaces) by `=` or `.`.
+// whitespace, `{`, `,`, or `.` (a dotted-key segment), may be quoted,
+// and must be followed (after optional spaces) by `=` or `.`. The scan
+// steps over quoted strings and stops at a comment, so text inside a
+// string value or a comment never matches.
 func keyColumn(line []byte, start int, k string) int {
-	for i := start; i < len(line); {
-		j := bytes.Index(line[i:], []byte(k))
-		if j < 0 {
+	for i := start; i < len(line); i++ {
+		switch c := line[i]; {
+		case c == '#':
 			return 0
+		case isQuote(c):
+			end := tomlStringEnd(line, i)
+			if end < len(line) && string(line[i+1:end]) == k &&
+				keyBoundaryBefore(line, i) && keyFollowedByAssign(line, end+1) {
+				return i + 1
+			}
+			i = end
+		case k != "" && bytes.HasPrefix(line[i:], []byte(k)) &&
+			keyBoundaryBefore(line, i) && keyFollowedByAssign(line, i+len(k)):
+			return i + 1
 		}
-		at := i + j
-		begin, end := at, at+len(k)
-		if begin > 0 && end < len(line) && isQuote(line[begin-1]) && line[end] == line[begin-1] {
-			begin--
-			end++
-		}
-		if keyBoundaryBefore(line, begin) && keyFollowedByAssign(line, end) {
-			return begin + 1
-		}
-		i = at + 1
 	}
 	return 0
 }
