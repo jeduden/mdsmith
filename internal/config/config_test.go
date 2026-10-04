@@ -1651,7 +1651,8 @@ func TestUnmarshalYAML_NonScalarNonMappingValue(t *testing.T) {
 	var cfg Config
 	err := yaml.Unmarshal([]byte(input), &cfg)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "rule config must be a bool or a mapping")
+	// The node kind is named, not printed as its yaml.Kind number.
+	assert.Contains(t, err.Error(), "rule config must be a bool or a mapping, got sequence")
 }
 
 // TestTopLevelKeys_DocumentNodeEmpty exercises the

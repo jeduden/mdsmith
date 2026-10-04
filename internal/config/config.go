@@ -298,7 +298,7 @@ func (r *RuleCfg) UnmarshalYAML(value *yaml.Node) error {
 		return nil
 	}
 
-	return issueAtNode(value, "rule config must be a bool or a mapping, got %v", value.Kind)
+	return issueAtNode(value, "rule config must be a bool or a mapping, got %s", nodeKindName(value.Kind))
 }
 
 // MarshalYAML implements custom YAML marshalling for RuleCfg.
