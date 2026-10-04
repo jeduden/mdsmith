@@ -58,7 +58,7 @@ func TestOpenRootFS_NonExistentDirClose(t *testing.T) {
 
 func TestOpenRootFS_ReadFile(t *testing.T) {
 	fsys := lint.OpenRootFS(writeRootFile(t, "a.md", "# A\n"))
-	defer fsys.Close()
+	t.Cleanup(func() { require.NoError(t, fsys.Close()) })
 	rf, ok := fsys.(fs.ReadFileFS)
 	require.True(t, ok)
 	b, err := rf.ReadFile("a.md")
@@ -68,7 +68,7 @@ func TestOpenRootFS_ReadFile(t *testing.T) {
 
 func TestOpenRootFS_ReadDir(t *testing.T) {
 	fsys := lint.OpenRootFS(writeRootFile(t, "a.md", "# A\n"))
-	defer fsys.Close()
+	t.Cleanup(func() { require.NoError(t, fsys.Close()) })
 	rd, ok := fsys.(fs.ReadDirFS)
 	require.True(t, ok)
 	ents, err := rd.ReadDir(".")
@@ -79,7 +79,7 @@ func TestOpenRootFS_ReadDir(t *testing.T) {
 
 func TestOpenRootFS_Stat(t *testing.T) {
 	fsys := lint.OpenRootFS(writeRootFile(t, "a.md", "# A\n"))
-	defer fsys.Close()
+	t.Cleanup(func() { require.NoError(t, fsys.Close()) })
 	st, ok := fsys.(fs.StatFS)
 	require.True(t, ok)
 	fi, err := st.Stat("a.md")
@@ -99,7 +99,7 @@ func symlinkRoot(t *testing.T) string {
 
 func TestOpenRootFS_ReadLink(t *testing.T) {
 	fsys := lint.OpenRootFS(symlinkRoot(t))
-	defer fsys.Close()
+	t.Cleanup(func() { require.NoError(t, fsys.Close()) })
 	rl, ok := fsys.(fs.ReadLinkFS)
 	require.True(t, ok)
 	target, err := rl.ReadLink("link.md")
@@ -109,7 +109,7 @@ func TestOpenRootFS_ReadLink(t *testing.T) {
 
 func TestOpenRootFS_Lstat(t *testing.T) {
 	fsys := lint.OpenRootFS(symlinkRoot(t))
-	defer fsys.Close()
+	t.Cleanup(func() { require.NoError(t, fsys.Close()) })
 	rl, ok := fsys.(fs.ReadLinkFS)
 	require.True(t, ok)
 	fi, err := rl.Lstat("link.md")
