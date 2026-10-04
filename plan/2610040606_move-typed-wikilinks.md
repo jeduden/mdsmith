@@ -1,7 +1,7 @@
 ---
 id: 2610040606
 title: Rewrite and count typed wikilinks on move
-status: "🔳"
+status: "✅"
 summary: >-
   Make `mdsmith move` and `workspace/willRenameFiles` rewrite a
   typed `[[name.ext]]` wikilink to a moved non-Markdown file, and
@@ -66,5 +66,5 @@ the batch case needs a client that sends other files.
       the move.
 - [x] A batch that shadows `img.png` counts each typed
       `[[img.png]]` link in `Withheld`.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

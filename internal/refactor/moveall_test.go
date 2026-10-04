@@ -352,7 +352,8 @@ func TestDestResolver_WinsStem(t *testing.T) {
 	none := holderIndex()
 	assert.True(t, r.winsStem(none, stemKey("guide"), "x/guide.md"))
 	assert.False(t, r.winsStem(none, stemKey("guide"), "y/guide.md"), "a member source outsorts it")
-	assert.False(t, r.winsStem(holderIndex("guide.md"), stemKey("guide"), "x/guide.md"), "an indexed holder outsorts it")
+	assert.False(t, r.winsStem(holderIndex("guide.md"), stemKey("guide"), "x/guide.md"),
+		"an indexed holder outsorts it")
 	assert.True(t, r.winsStem(none, stemKey("other"), "z/other.md"), "no other member holds the stem")
 }
 
