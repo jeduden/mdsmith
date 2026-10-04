@@ -474,11 +474,11 @@ func resolveDefaultInputs(entries []string, params map[string]string) []string {
 type targetOutcome int
 
 const (
-	outcomeNeutral targetOutcome = iota // reported, no state change (dry-run, skip, fresh-stale-report)
-	outcomeFailed                       // a failure was reported
-	outcomeStale                        // --build-check-stale found this target stale
-	outcomeRebuilt                      // recipe ran and the cache entry was refreshed
-	outcomeNotStarted                   // an interrupt stopped it before its recipe started
+	outcomeNeutral    targetOutcome = iota // reported, no state change (dry-run, skip, fresh-stale-report)
+	outcomeFailed                          // a failure was reported
+	outcomeStale                           // --build-check-stale found this target stale
+	outcomeRebuilt                         // recipe ran and the cache entry was refreshed
+	outcomeNotStarted                      // an interrupt stopped it before its recipe started
 )
 
 // dispatchTargets runs the staleness check, dispatch, and cache refresh
