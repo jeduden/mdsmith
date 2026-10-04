@@ -4,7 +4,9 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"regexp"
 	"strconv"
@@ -202,13 +204,22 @@ func tomlStringEnd(data []byte, i int) int {
 // `tool.mdsmith` entry. A file that does not parse is a source when a
 // line opens a `[tool.mdsmith` header or sets a `tool.mdsmith.` dotted
 // key, so loading it reports the syntax error instead of the walk
-// skipping a broken config; it earns no hint. An unreadable file is
-// neither, and so is a file that never spells "mdsmith" (it is not
-// parsed). loadTOML keeps the parse for the Load that follows.
+// skipping a broken config; it earns no hint. A file over the size cap
+// is a source when that header shows within the cap, so loading it
+// reports the size error as an oversized .mdsmith.yml does. A missing
+// file is neither; any other unreadable file is no source but earns a
+// hint, so a config in it is not dropped silently. A file that never
+// spells "mdsmith" is neither (it is not parsed). loadTOML keeps the
+// parse for the Load that follows.
 func probePyproject(path string) (source bool, hint string) {
 	data, err := readLimitedConfig(path)
-	if err != nil {
+	switch {
+	case errors.Is(err, errConfigTooLarge):
+		return mdsmithHeaderRe.Match(data), ""
+	case errors.Is(err, fs.ErrNotExist):
 		return false, ""
+	case err != nil:
+		return false, path + ": cannot read; a [tool.mdsmith] table in it is not used: " + err.Error()
 	}
 	// Both tables and the broken-header fallback spell out "mdsmith",
 	// so a file without it — most of a Python monorepo's — is neither a

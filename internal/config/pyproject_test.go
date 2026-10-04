@@ -570,6 +570,36 @@ func TestProbePyproject_PluralHint(t *testing.T) {
 	assert.Equal(t, plural+": [tools.mdsmith] is not read; rename the table to [tool.mdsmith]", hint)
 }
 
+// A pyproject.toml over the size cap that opens [tool.mdsmith] within
+// the cap is still selected, so Load fails loudly with the size error
+// as an oversized .mdsmith.yml does; one that never names the table
+// there is skipped like any pyproject.toml without it.
+func TestProbePyproject_OversizedFile(t *testing.T) {
+	dir := t.TempDir()
+	pad := "# " + strings.Repeat("x", int(maxConfigBytes)) + "\n"
+	withTable := writeCfg(t, dir, "with.toml", "[tool.mdsmith]\nfiles = []\n"+pad)
+	source, hint := probePyproject(withTable)
+	assert.True(t, source)
+	assert.Equal(t, "", hint)
+	_, err := Load(withTable)
+	assert.ErrorContains(t, err, "too large")
+
+	without := writeCfg(t, dir, "without.toml", "[project]\n"+pad+"[tool.mdsmith]\n")
+	source, hint = probePyproject(without)
+	assert.False(t, source, "the table past the cap is not seen")
+	assert.Equal(t, "", hint)
+}
+
+// A pyproject.toml that exists but cannot be read is skipped with a
+// hint, so a config it may hold is not dropped silently.
+func TestProbePyproject_UnreadableFileHints(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "pyproject.toml")
+	require.NoError(t, os.Mkdir(p, 0o755)) // opens, but reading fails
+	source, hint := probePyproject(p)
+	assert.False(t, source)
+	assert.Contains(t, hint, p+": cannot read; a [tool.mdsmith] table in it is not used: ")
+}
+
 func TestDiscoverWithHints(t *testing.T) {
 	root := t.TempDir()
 	require.NoError(t, os.Mkdir(filepath.Join(root, ".git"), 0o755))

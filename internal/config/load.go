@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -434,7 +435,14 @@ var statFileSize = func(f *os.File) int64 {
 	return info.Size()
 }
 
+// errConfigTooLarge marks a config file over maxConfigBytes.
+var errConfigTooLarge = errors.New("too large")
+
 // readLimitedConfig reads a config file with a size cap to prevent OOM.
+// A file over the cap fails with an error wrapping errConfigTooLarge;
+// the first maxConfigBytes are then returned alongside it, so discovery
+// can still look for a `[tool.mdsmith]` header there. Callers that only
+// load the file drop the data on any error.
 func readLimitedConfig(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -454,9 +462,9 @@ func readLimitedConfig(path string) ([]byte, error) {
 		if reported < 0 {
 			reported = int64(len(data))
 		}
-		return nil, fmt.Errorf(
-			"config file %q too large (%d bytes, max %d)",
-			path, reported, maxConfigBytes,
+		return data[:maxConfigBytes], fmt.Errorf(
+			"config file %q %w (%d bytes, max %d)",
+			path, errConfigTooLarge, reported, maxConfigBytes,
 		)
 	}
 	return data, nil

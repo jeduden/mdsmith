@@ -39,6 +39,11 @@ dotted key. Loading it then reports the syntax error. Arrays,
 inline tables, and dotted keys that nest more than 1000 levels
 deep count as a parse failure.
 
+A `pyproject.toml` over the 1 MiB config size cap is selected
+when such a line appears in its first 1 MiB. Loading it then
+reports the size error. A `pyproject.toml` that exists but cannot
+be read is skipped, and mdsmith prints a hint naming it.
+
 The editor integration (`mdsmith lsp`), the build pass, and the
 merge driver's glob set read the same file. The language server
 watches `.mdsmith.yml` and `pyproject.toml` and reloads config
