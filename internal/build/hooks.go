@@ -2,6 +2,7 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -93,8 +94,13 @@ func runHook(ctx context.Context, tokens []string, root string) *HookResult {
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		code := 1
-		if ctx.Err() != nil {
-			return &HookResult{ExitCode: code, Err: fmt.Errorf("%w (timed out)", ctx.Err())}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			// A deadline is the hook timeout; a cancel is a CLI interrupt.
+			reason := "timed out"
+			if errors.Is(ctxErr, context.Canceled) {
+				reason = "interrupted"
+			}
+			return &HookResult{ExitCode: code, Err: fmt.Errorf("%w (%s)", ctxErr, reason)}
 		}
 		if ee, ok := err.(*exec.ExitError); ok {
 			code = ee.ExitCode()

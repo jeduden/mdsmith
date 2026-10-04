@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -119,7 +120,21 @@ func TestRunHooks_CancelledContext(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Contains(t, w.String(), "sleeper: FAIL")
 	// Any start failure also yields a FAIL line, so check the
-	// cancellation branch tagged the error.
+	// cancellation branch tagged the error. A cancel is an interrupt,
+	// not a timeout.
+	require.Error(t, result.Err)
+	assert.Contains(t, result.Err.Error(), "(interrupted)")
+	assert.NotContains(t, result.Err.Error(), "timed out")
+}
+
+func TestRunHooks_ExpiredDeadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	<-ctx.Done()
+	var w bytes.Buffer
+	hook := HookEntry{Tokens: []string{"sleep", "999"}, Name: "sleeper"}
+	result := RunHooks(ctx, []HookEntry{hook}, t.TempDir(), &w)
+	require.NotNil(t, result)
 	require.Error(t, result.Err)
 	assert.Contains(t, result.Err.Error(), "(timed out)")
 }
