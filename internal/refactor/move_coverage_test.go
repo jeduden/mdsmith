@@ -19,6 +19,7 @@ import (
 type stubWorkspace struct {
 	pathEdges     []index.Edge
 	wikilinkEdges []index.Edge
+	nameEdges     []index.Edge
 	files         []string
 	sources       map[string][]byte
 	unresolvable  map[string]bool
@@ -27,6 +28,7 @@ type stubWorkspace struct {
 func (s stubWorkspace) IncomingAnchorEdges(string, string) []index.Edge { return nil }
 func (s stubWorkspace) IncomingPathEdges(string) []index.Edge           { return s.pathEdges }
 func (s stubWorkspace) IncomingWikilinkEdges(string) []index.Edge       { return s.wikilinkEdges }
+func (s stubWorkspace) IncomingWikilinkNameEdges(string) []index.Edge   { return s.nameEdges }
 func (s stubWorkspace) Files() []string                                 { return s.files }
 func (s stubWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	files := make([]string, len(s.files))

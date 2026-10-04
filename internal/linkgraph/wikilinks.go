@@ -594,9 +594,52 @@ func WikilinkStemAt(row []byte, bracketStart int) (stem string, start, end int, 
 	if !ok {
 		return "", 0, 0, false
 	}
+	lo, hi := wikilinkBaseSpan(raw)
+	return stem, at + lo, at + hi, true
+}
+
+// WikilinkName returns the exact-name key a typed `[[name.ext]]`
+// target resolves by: the lowercased basename (FileNameKey), the key
+// WikilinkIndex.NamePaths files every file under. ok is false for a
+// stem-mode target (bare or Markdown, see WikilinkStem) and for a
+// target the resolver refuses. The two functions split the targets the
+// resolver accepts between them.
+func WikilinkName(target string) (string, bool) {
+	target, ok := normalizeTarget(target)
+	if !ok {
+		return "", false
+	}
+	name, _, stemMode := wikilinkSearchKey(target)
+	if stemMode {
+		return "", false
+	}
+	return FileNameKey(name), true
+}
+
+// WikilinkNameAt is WikilinkStemAt for a typed link: it returns the
+// target's name key (as WikilinkName returns it) and the byte span,
+// within row, of the target's base segment. ok is false when no
+// wikilink starts at bracketStart or its target has no name key.
+func WikilinkNameAt(row []byte, bracketStart int) (name string, start, end int, ok bool) {
+	raw, at, ok := wikilinkTargetAt(row, bracketStart)
+	if !ok {
+		return "", 0, 0, false
+	}
+	name, ok = WikilinkName(string(raw))
+	if !ok {
+		return "", 0, 0, false
+	}
+	lo, hi := wikilinkBaseSpan(raw)
+	return name, at + lo, at + hi, true
+}
+
+// wikilinkBaseSpan returns the byte span, within raw, of the segment
+// the resolver keys a target by: path.Base of the trimmed target with
+// `\` read as `/`.
+func wikilinkBaseSpan(raw []byte) (lo, hi int) {
 	left := bytes.TrimLeftFunc(raw, unicode.IsSpace)
-	lo := len(raw) - len(left)
-	hi := lo + len(bytes.TrimRightFunc(left, unicode.IsSpace))
+	lo = len(raw) - len(left)
+	hi = lo + len(bytes.TrimRightFunc(left, unicode.IsSpace))
 	for hi > lo && (raw[hi-1] == '/' || raw[hi-1] == '\\') {
 		hi--
 	}
@@ -605,7 +648,7 @@ func WikilinkStemAt(row []byte, bracketStart int) (stem string, start, end int, 
 			lo = j + 1
 		}
 	}
-	return stem, at + lo, at + hi, true
+	return lo, hi
 }
 
 // wikilinkTargetAt returns the raw target of the wikilink whose `[[`

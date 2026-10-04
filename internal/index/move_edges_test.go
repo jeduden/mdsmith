@@ -120,3 +120,37 @@ func TestWikilinkEdgesStayOutOfBacklinks(t *testing.T) {
 	assert.Empty(t, idx.BacklinksFor("notes/api.md"))
 	assert.Empty(t, idx.IncomingPathEdges("notes/api.md"))
 }
+
+// TestIncomingWikilinkNameEdges locks the exact-name lookup for typed
+// `[[name.ext]]` links: keyed by the lowercased base name, kept apart
+// from the stem lookup (a `[[diagram.png]]` never answers a stem query
+// for `diagram.png`, the stem of diagram.png.md), sorted by source, and
+// skipped by the path queries like every unresolved edge.
+func TestIncomingWikilinkNameEdges(t *testing.T) {
+	idx := New("/root")
+	idx.Update("z.md", []byte("![[img/Diagram.PNG]]\n"))
+	idx.Update("a.md", []byte("x [[diagram.png|D]]\n\n![[diagram.png.md]] [[other.png]]\n"))
+	got := idx.IncomingWikilinkNameEdges("Diagram.png")
+	require.Len(t, got, 2)
+	assert.Equal(t, "a.md", got[0].SourceFile)
+	assert.Equal(t, 3, got[0].SourceCol)
+	assert.Equal(t, "z.md", got[1].SourceFile)
+	assert.Equal(t, EdgeWikilinkName, got[1].Kind)
+	assert.Equal(t, "diagram.png", got[1].TargetLabel)
+	assert.True(t, got[1].Unresolved)
+	assert.Len(t, idx.IncomingWikilinkEdges("diagram.png"), 1, "only the Markdown [[diagram.png.md]]")
+	assert.Empty(t, idx.IncomingWikilinkNameEdges("diagram"))
+	assert.Empty(t, idx.IncomingPathEdges("diagram.png"))
+	var nilIdx *Index
+	assert.Nil(t, nilIdx.IncomingWikilinkNameEdges("diagram.png"))
+}
+
+// TestWikilinkEdges locks the shared lookup: only edges of the asked
+// kind whose label equals the key, as given (callers key it first).
+func TestWikilinkEdges(t *testing.T) {
+	idx := New("/root")
+	idx.Update("a.md", []byte("[[x.png]] [[x.png.md]] [[X.png]]\n"))
+	assert.Len(t, idx.wikilinkEdges(EdgeWikilinkName, "x.png"), 2)
+	assert.Len(t, idx.wikilinkEdges(EdgeWikilink, "x.png"), 1)
+	assert.Empty(t, idx.wikilinkEdges(EdgeWikilinkName, "X.png"), "the key is not folded here")
+}

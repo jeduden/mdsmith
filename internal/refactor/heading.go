@@ -48,7 +48,8 @@ type Workspace interface {
 }
 
 // MoveWorkspace is the seam a file move (Move, MoveAll) needs: the
-// heading seam plus which edges name a file by path or by `[[stem]]`,
+// heading seam plus which edges name a file by path, by `[[stem]]`, or
+// by a typed `[[name.ext]]`,
 // and which files a `[[stem]]` resolves against. A heading-rename
 // surface implements only Workspace, so it never builds a wikilink
 // index it does not read.
@@ -62,6 +63,11 @@ type MoveWorkspace interface {
 	// basename stem matches stem (compared case-insensitively). A file
 	// move whose basename stem changes rewrites these.
 	IncomingWikilinkEdges(stem string) []index.Edge
+	// IncomingWikilinkNameEdges returns every typed `[[name.ext]]` edge
+	// whose target base name matches name (compared
+	// case-insensitively). A move of a non-Markdown file whose name
+	// changes rewrites these.
+	IncomingWikilinkNameEdges(name string) []index.Edge
 	// WikilinkIndex returns the index `[[stem]]` resolution reads: every
 	// file under the workspace root except `.git` and `node_modules`,
 	// whether or not Files lists it. A file move reads from it which

@@ -1,7 +1,7 @@
 ---
 id: 2610040606
 title: Rewrite and count typed wikilinks on move
-status: "🔲"
+status: "🔳"
 summary: >-
   Make `mdsmith move` and `workspace/willRenameFiles` rewrite a
   typed `[[name.ext]]` wikilink to a moved non-Markdown file, and

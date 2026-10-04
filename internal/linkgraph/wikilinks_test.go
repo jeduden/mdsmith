@@ -915,3 +915,64 @@ func TestWikilinkIndex_MovedSharesUntouchedKeys(t *testing.T) {
 	assert.Equal(t, []string{"q/z.md"}, again.StemPaths("z"))
 	assert.Equal(t, []string{"img/z.png"}, again.NamePaths("z.png"))
 }
+
+// TestWikilinkName locks the exact-name key a typed `[[name.ext]]`
+// target resolves by: the lowercased basename. A stem-mode target
+// (bare or Markdown) and a refused target have none.
+func TestWikilinkName(t *testing.T) {
+	for target, want := range map[string]string{
+		"diagram.png":      "diagram.png",
+		"img/Logo.PNG":     "logo.png",
+		` a\b\Guide.mdx `:  "guide.mdx",
+		"v1.3":             "v1.3",
+		"folder/x.png/":    "x.png",
+		"folder\\x.tar.gz": "x.tar.gz",
+	} {
+		got, ok := WikilinkName(target)
+		assert.True(t, ok, target)
+		assert.Equal(t, want, got, target)
+	}
+	for _, target := range []string{"Page", "Notes.md", "x.markdown", "", "../x.png", "/x.png", `C:\x.png`} {
+		got, ok := WikilinkName(target)
+		assert.False(t, ok, target)
+		assert.Empty(t, got, target)
+	}
+}
+
+// TestWikilinkNameAt locks the name key and base span read at a `[[`
+// column for a typed link; a stem-mode link, a refused target, or a
+// column with no wikilink returns ok=false.
+func TestWikilinkNameAt(t *testing.T) {
+	for row, want := range map[string][2]string{
+		"[[img/Logo.PNG#a|G]]": {"logo.png", "Logo.PNG"},
+		"![[ x.png ]]":         {"x.png", "x.png"},
+		`[[a\b.png\|alias]]`:   {"b.png", "b.png"},
+	} {
+		at := 0
+		if row[0] == '!' {
+			at = 1
+		}
+		got, s, e, ok := WikilinkNameAt([]byte(row), at)
+		require.True(t, ok, row)
+		assert.Equal(t, want[0], got, row)
+		assert.Equal(t, want[1], row[s:e], row)
+	}
+	for _, row := range []string{"[[logo]]", "[[logo.md]]", "[[../x.png]]", "x [[a.png]]", "[["} {
+		_, _, _, ok := WikilinkNameAt([]byte(row), 0)
+		assert.False(t, ok, row)
+	}
+}
+
+// TestWikilinkBaseSpan locks the span of the last trimmed segment of a
+// raw target, with `\` read as `/` and trailing separators dropped.
+func TestWikilinkBaseSpan(t *testing.T) {
+	for raw, want := range map[string]string{
+		"a/b.png":    "b.png",
+		` a\b.png `:  "b.png",
+		"x/ y.png//": " y.png",
+		"plain":      "plain",
+	} {
+		lo, hi := wikilinkBaseSpan([]byte(raw))
+		assert.Equal(t, want, raw[lo:hi], raw)
+	}
+}
