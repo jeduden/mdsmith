@@ -1,7 +1,7 @@
 ---
 id: 2610040512
 title: Refused-move policy in willRenameFiles batches
-status: "🔲"
+status: "🔳"
 summary: >-
   Decide how a workspace/willRenameFiles batch spells a link to or
   from a file whose own move refactor.MoveAll refused, given that the
@@ -51,13 +51,50 @@ reaches the old `x/b.md` if the editor declines. No spelling
 is right both ways. The current choice fails loudly. This plan
 decides whether a client signal can settle the case.
 
+## Survey
+
+No client tells the server. LSP 3.17 defines the
+`workspace/willRenameFiles` payload as `RenameFilesParams`
+`{ files: FileRename[] }`, and `FileRename` holds only
+`oldUri` and `newUri`. The `overwrite` and `ignoreIfExists`
+flags exist only on `RenameFileOptions`, which rides on a
+`RenameFile` operation the server sends inside a
+`WorkspaceEdit`. That is the opposite direction.
+[`renameFilesParams`](../internal/lsp/protocol.go) models the
+same two fields.
+
+- VS Code: an Explorer rename onto an existing name fails
+  with "A file or folder already exists". A drag, drop, or
+  paste move onto one asks "Do you want to replace it?"
+  first. The editor knows the answer, but
+  `FileWillRenameEvent.files` carries only `oldUri` and
+  `newUri`. `vscode-languageclient` forwards those two, so
+  the server cannot tell an overwrite from a decline.
+- Neovim: core `vim.lsp.util.rename` sends no
+  `willRenameFiles` at all. It skips an existing target
+  unless `overwrite` is set. Plugins such as
+  `nvim-lsp-file-operations` and `oil.nvim` send the request,
+  and they use the same two-field payload.
+- Obsidian: `Vault.rename` and `FileManager.renameFile` throw
+  "Destination file already exists" for an existing path. The
+  mdsmith plugin runs the WebAssembly engine, not `mdsmith
+  lsp`. It plans a move only on an explicit request, and it
+  plans it with `move`, which refuses an existing
+  destination outright.
+
+Policy: withhold and count (task 3). A link to or from a
+refused move gets no edit unless one spelling is right
+whether the host moves the file or not. The warning counts
+every such link that may reach a different file. Otherwise
+the link stops resolving, where MDS027 flags it.
+
 ## Tasks
 
-1. Survey how VS Code, Neovim, and Obsidian behave when a
+1. [x] Survey how VS Code, Neovim, and Obsidian behave when a
    `workspace/willRenameFiles` rename targets an existing
    file: overwrite, prompt, or fail. Record whether the
    request carries anything (such as `ignoreIfExists` or
-   `overwrite`) that tells the server.
+   `overwrite`) that tells the server. See Survey.
 2. If the client tells the server, spell links to and from a
    refused move as if the move runs when the client will
    overwrite. Keep the withhold-and-count policy otherwise.
