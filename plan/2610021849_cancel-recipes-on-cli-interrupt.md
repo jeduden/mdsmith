@@ -37,16 +37,23 @@ done, so only the cancellation is missing.
 
 1. Add a failing test that runs the fix build pass with a
    context that is cancelled mid-recipe and asserts the
-   recipe's spawned child is gone afterwards (Unix-tagged,
-   reusing the `exec_unix_test.go` helpers).
-2. Derive the build context in the `fix` and `check` entry
-   points from `signal.NotifyContext(ctx, os.Interrupt,
+   recipe's spawned child is gone afterwards (Unix-tagged;
+   the `exec_unix_test.go` helpers live in `internal/build`,
+   so `cmd/mdsmith` carries its own pid probe).
+2. Derive the build context in `fix`, the only command
+   that runs the build pass (`check` runs none), from
+   `signal.NotifyContext(ctx, os.Interrupt,
    syscall.SIGTERM)` (on plan9 `os.Interrupt` maps to the
    "interrupt" note) and pass it down to the build pass
-   instead of `context.Background()`.
+   instead of `context.Background()`. Install the handler
+   only around a build pass that can start a recipe or
+   hook, so the lint-fix pass, `--no-build`, and the
+   dry-run, check-stale, and explain modes keep the
+   default signal action.
 3. Make sure a cancelled build reports an interrupt error,
-   not a timeout, and that mdsmith exits non-zero after
-   the recipes are reaped.
+   not a timeout, and that mdsmith exits 2 after the
+   recipes are reaped. This covers a target not yet
+   started, a `--build-verify` re-run, and a hook.
 4. Document the behavior next to the timeout paragraph in
    [build.md](../docs/guides/directives/build.md).
 
