@@ -151,7 +151,10 @@ live buffer rather than the last saved file. Only content is overlaid —
 open buffers still exist on disk, so globbing and directory walks defer
 to disk, and the `fs.FS` view clones only the small open-buffer map per
 lint pass, never the corpus. That keeps a per-keystroke `CheckVersion`
-off any `O(corpus)` snapshot cost.
+off any `O(corpus)` snapshot cost. Its disk view is one cached
+`os.Root`, which `Close()` releases. The LSP calls it, with the
+session's `Dispose()`, when it replaces a session after a config
+reload and the last lint holding the old one returns.
 
 `MemWorkspace.Glob` is a linear key filter. The lint hot loop must not
 call it per file; a benchmark fixture asserts no per-file `Glob` under

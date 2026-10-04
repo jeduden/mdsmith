@@ -270,7 +270,8 @@ func (s *Server) runLint(uri string) {
 	// didChange) and every other open buffer reach cross-file rules.
 	// CheckVersion serves the cached parse when (relPath, doc.version)
 	// is already parsed, holding the latency gate.
-	sess, _ := s.currentSession()
+	sess, release := s.currentSession()
+	defer release()
 	if sess == nil {
 		// No session yet (reloadConfig has not run): nothing to lint
 		// against. handleInitialized builds the first session before any

@@ -105,6 +105,12 @@ for the edge index and once for `WikilinkIndex`.
    `RunSource` for a call no parse cache keeps, the `Session`
    (in `Dispose`) for the root it lends its runners, and the
    fix, export, and extract calls for their file.
+10. [x] Write failing tests that a config reload closes the
+    superseded LSP session's lent root and its overlay's disk
+    root once the last lint holding it returns. Hand out a
+    release from `currentSession` and `sessionAt` (a
+    `sessionLease` holder count), and add
+    `OverlayWorkspace.Close`.
 
 ## Acceptance Criteria
 
@@ -114,8 +120,9 @@ for the edge index and once for `WikilinkIndex`.
       walks fresh and counts a gitignored same-stem file
 - [x] No wikilink walk leaves its `os.Root` open after the
       walk ends, and the per-file lint, fix, export and
-      extract roots close when their file is released (the
-      LSP's roots are listed under Follow-up)
+      extract roots close when their file is released; a
+      superseded LSP session's roots close once no lint
+      holds it
 - [x] `refactor.Heading` accepts a workspace with no
       `WikilinkIndex` method, and an LSP heading rename builds
       no wikilink closure
@@ -131,16 +138,16 @@ These items need their own plan; PLAN.md sits at its
 300-line file-length limit, so filing it needs a maintainer
 decision on the limit first.
 
-- [overlay.go](../pkg/mdsmith/overlay.go) and
-  [server_session.go](../internal/lsp/server_session.go): the
-  overlay's cached disk root, and the root an LSP session lends
-  its runners, stay open until garbage collection. The LSP
-  never disposes a superseded session, because a lint may
-  still hold it, so closing either needs an in-flight count
-  on the session first.
 - [server_lifecycle.go](../internal/lsp/server_lifecycle.go):
   an accepted `**/*` registration can still miss events
   (`files.watcherExclude`, exhausted inotify watches), so a
   move may read a stale wikilink index. A bound on how long
   the cache is trusted, or a cheap freshness probe, needs a
   design decision.
+- [server_documents.go](../internal/lsp/server_documents.go):
+  every create or delete outside `.git` and `node_modules`
+  drops the wikilink index and catalog glob caches, since the
+  index keys every file. A build writing many files (`dist/`)
+  makes the lints in between walk the tree again. Narrowing
+  needs the index to skip ignored directories, which changes
+  what MDS027 resolves.

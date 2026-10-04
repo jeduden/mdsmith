@@ -378,7 +378,9 @@ func (s *Server) moveWorkspace(root string) lspMoveWorkspace {
 // walked fresh.
 func (s *Server) moveWikilinkIndex(root string) *linkgraph.WikilinkIndex {
 	if s.watchingFiles.Load() && s.watchesRoot(root) {
-		if sess := s.sessionAt(root); sess != nil {
+		sess, release := s.sessionAt(root)
+		defer release()
+		if sess != nil {
 			return sess.WikilinkIndex()
 		}
 	}

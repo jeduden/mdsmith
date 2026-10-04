@@ -126,6 +126,10 @@ type Server struct {
 	sessionMu sync.RWMutex
 	session   *mdsmith.Session
 	workspace *mdsmith.OverlayWorkspace
+	// sessionLease counts the callers holding session; currentSession
+	// and sessionAt hand out a release, and a rebuild retires the
+	// superseded lease so its handles close once the last holder is done.
+	sessionLease *sessionLease
 	// sessionRoot is the root session was built at, so a reader that
 	// spelled its paths against a root can tell whether the session's
 	// root-keyed caches (the wikilink index) answer for it.

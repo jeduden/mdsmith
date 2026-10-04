@@ -192,9 +192,8 @@ func (s *Server) awaitWatchersAck(ctx context.Context, id string, ch chan rpcRes
 // once moves start reading it. It reads the session without building
 // one: with none, nothing is cached yet.
 func (s *Server) dropPreWatchWikilinks() {
-	s.sessionMu.RLock()
-	sess := s.session
-	s.sessionMu.RUnlock()
+	sess, release := s.leaseSession("", true)
+	defer release()
 	if sess != nil {
 		sess.InvalidateWikilinks()
 	}

@@ -156,9 +156,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		// the index from scratch — otherwise MDS027 would resolve
 		// `[[NewPage]]` against the pre-create set and report it
 		// missing (or keep resolving `[[OldName]]` after a delete).
-		if sess, _ := s.currentSession(); sess != nil {
-			sess.InvalidateWikilinks()
-		}
+		s.invalidateWikilinks()
 	}
 	openPaths := s.openDocPaths()
 	for _, path := range mdChanges {
@@ -252,7 +250,8 @@ func watchedFilesTreeChanged(changes []fileEvent, root string) bool {
 // workspace-relative form and the read cache by the absolute form, all
 // derived from the relative uri passed here.
 func (s *Server) syncBuffer(absPath string, content []byte) {
-	sess, _ := s.currentSession()
+	sess, release := s.currentSession()
+	defer release()
 	if sess == nil || absPath == "" {
 		return
 	}
@@ -268,7 +267,8 @@ func (s *Server) syncBuffer(absPath string, content []byte) {
 // overlay (a watched neighbour the editor never opened) it just drops
 // the caches.
 func (s *Server) dropPath(absPath string) {
-	sess, _ := s.currentSession()
+	sess, release := s.currentSession()
+	defer release()
 	if sess == nil || absPath == "" {
 		return
 	}

@@ -336,7 +336,9 @@ func TestMoveWikilinkIndexWalksWhenRootOutsideWorkspace(t *testing.T) {
 	ackWatchers(t, s)
 	cfg, _, _ := s.resolveConfig("")
 	s.rebuildSession(cfg, filepath.Join(outside, ".mdsmith.yml"))
-	require.NotNil(t, s.sessionAt(outside))
+	sess, release := s.sessionAt(outside)
+	release()
+	require.NotNil(t, sess)
 
 	require.NotNil(t, s.moveWikilinkIndex(outside))
 	assert.Equal(t, int32(1), walks.Load())

@@ -14,8 +14,9 @@ import (
 // rebuildSession constructs a fresh per-workspace Session over an
 // OverlayWorkspace rooted at the effective project root and re-seeds the
 // new overlay with every open buffer so cross-file rules keep reading
-// unsaved bytes across the rebuild. The superseded session is NOT
-// disposed — see the note at the end of the function body. cfg is
+// unsaved bytes across the rebuild. The superseded session is retired,
+// not disposed: it is disposed once no caller holds it (see
+// sessionLease and the note at the end of the function body). cfg is
 // already merged (and carries the include-extract projector / build
 // injection the host applied), so it is handed over with ConfigCompiled
 // and used as-is.
@@ -55,62 +56,74 @@ func (s *Server) rebuildSession(cfg *config.Config, cfgPath string) {
 		}
 	}
 	s.sessionMu.Lock()
+	old := s.sessionLease
 	s.session = sess
 	s.workspace = ws
 	s.sessionRoot = root
+	s.sessionLease = &sessionLease{sess: sess, ws: ws}
 	s.sessionMu.Unlock()
-	// Do NOT Dispose the superseded session. A lint/fix goroutine may
-	// still hold it (obtained from currentSession() before this swap),
-	// and Dispose nils its checkCache under lock -- so the held session's
-	// next Check would lose its warm cache, and a concurrent reload while
-	// linting is in flight is exactly when that happens. The superseded
-	// session is unreferenced once every in-flight caller returns, so GC
-	// reclaims it. Its caches are plain maps; its OS-level handles (the
-	// os.Root it lends its runners and the overlay's disk root) are
-	// closed by os.Root's finalizer once GC reaps them, since Dispose
-	// would close them under an in-flight lint. The public Dispose()
-	// stays for external callers that own a session's whole lifetime.
-	// Letting GC reap it keeps the invariant simple: a session handed
-	// out by currentSession() is never disposed underfoot.
+	// Retire the superseded session rather than Dispose it here: a
+	// lint/fix goroutine may still hold it (from currentSession() before
+	// this swap), and closing its lent root and overlay disk root under
+	// that lint would turn its cross-file reads into false findings. The
+	// lease disposes it once the last holder releases it.
+	if old != nil {
+		old.retire()
+	}
 }
 
-// currentSession returns the active session and its overlay workspace
-// under the session lock, building one on demand if none exists yet.
+// currentSession returns the active session and a release the caller
+// calls once it is done with it, building a session on demand if none
+// exists yet. Until released, a rebuild does not close the session's
+// disk handles (see sessionLease).
 // reloadConfig (from handleInitialized) builds the session eagerly for
 // the normal path; this lazy fallback covers a client that lints after
 // only `initialize` -- there the session must still exist, with whatever
 // config snapshotConfig holds (defaults when none was discovered),
 // matching the pre-session behaviour where runLint linted against
 // default config.
-func (s *Server) currentSession() (*mdsmith.Session, *mdsmith.OverlayWorkspace) {
-	s.sessionMu.RLock()
-	sess, ws := s.session, s.workspace
-	s.sessionMu.RUnlock()
-	if sess != nil {
-		return sess, ws
+func (s *Server) currentSession() (*mdsmith.Session, func()) {
+	if sess, release := s.leaseSession("", true); sess != nil {
+		return sess, release
 	}
 	cfg, cfgPath, _ := s.snapshotConfig()
 	if cfg == nil {
 		cfg = config.Merge(config.Defaults(), nil)
 	}
 	s.rebuildSession(cfg, cfgPath)
-	s.sessionMu.RLock()
-	defer s.sessionMu.RUnlock()
-	return s.session, s.workspace
+	return s.leaseSession("", true)
 }
 
-// sessionAt returns the current session when it was built at root, or
-// nil when there is none or a reload rebuilt it at another root, so a
-// reader of the session's root-keyed caches never gets another
-// directory's answer.
-func (s *Server) sessionAt(root string) *mdsmith.Session {
-	s.currentSession() // build one on demand, as every reader does
+// leaseSession returns the current session and its release under the
+// session lock, or nil and a no-op release when there is none or,
+// unless anyRoot, when the session was built at a root other than root.
+func (s *Server) leaseSession(root string, anyRoot bool) (*mdsmith.Session, func()) {
 	s.sessionMu.RLock()
 	defer s.sessionMu.RUnlock()
-	if s.sessionRoot != root {
-		return nil
+	if s.session == nil || (!anyRoot && s.sessionRoot != root) {
+		return nil, noRelease
 	}
-	return s.session
+	return s.session, s.sessionLease.acquire()
+}
+
+// invalidateWikilinks drops the current session's cached wikilink
+// index, building a session on demand as every reader does.
+func (s *Server) invalidateWikilinks() {
+	sess, release := s.currentSession()
+	defer release()
+	if sess != nil {
+		sess.InvalidateWikilinks()
+	}
+}
+
+// sessionAt returns the current session and its release when it was
+// built at root, or nil and a no-op release when there is none or a
+// reload rebuilt it at another root, so a reader of the session's
+// root-keyed caches never gets another directory's answer.
+func (s *Server) sessionAt(root string) (*mdsmith.Session, func()) {
+	_, release := s.currentSession() // build one on demand, as every reader does
+	release()
+	return s.leaseSession(root, false)
 }
 
 // snapshotConfig returns the cached config, its source path, and the

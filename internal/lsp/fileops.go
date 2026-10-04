@@ -122,9 +122,7 @@ func (s *Server) handleDidRenameFiles(params json.RawMessage) {
 	if err := json.Unmarshal(params, &p); err != nil {
 		return
 	}
-	if sess, _ := s.currentSession(); sess != nil {
-		sess.InvalidateWikilinks()
-	}
+	s.invalidateWikilinks()
 	_, _, root := s.snapshotConfig()
 	idx := s.ensureIndex()
 	for _, f := range p.Files {
