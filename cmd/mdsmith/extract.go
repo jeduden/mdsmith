@@ -61,11 +61,10 @@ func runExtract(args []string) int {
 		return stop
 	}
 
-	res, cfg, code := resolveFileFromCLI(path)
+	res, cfg, cfgPath, code := resolveFileFromCLI(path)
 	if code != 0 {
 		return code
 	}
-	_, cfgPath, _ := loadConfig("")
 	if code := validateExtractKind(cfg, res, kindName, path); code != 0 {
 		return code
 	}

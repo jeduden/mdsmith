@@ -279,7 +279,9 @@ func readFrontMatter(cfg *config.Config, path string, maxBytes int64) ([]string,
 
 // resolveFileFromCLI loads config, parses the file's front matter for
 // kinds:, and returns a FileResolution computed through a
-// pkg/mdsmith.Session. Errors are printed to stderr.
+// pkg/mdsmith.Session, plus the config and the path it was loaded from
+// so a caller need not load (and print the discovery hints of) config a
+// second time. Errors are printed to stderr.
 //
 // The CLI keeps front-matter reading, validation, and the max-input /
 // missing-file / directory error UX here — the session is intentionally
@@ -293,10 +295,10 @@ func readFrontMatter(cfg *config.Config, path string, maxBytes int64) ([]string,
 // engine's behavior. The file is still opened and read (and checked
 // against max-input-size) to surface readability errors and to match
 // the engine's rejection of oversized or unreadable paths.
-func resolveFileFromCLI(path string) (*config.FileResolution, *config.Config, int) {
+func resolveFileFromCLI(path string) (*config.FileResolution, *config.Config, string, int) {
 	cfg, cfgPath, code := kindsConfig()
 	if code != 0 {
-		return nil, nil, code
+		return nil, nil, "", code
 	}
 
 	var fmKinds []string
@@ -305,16 +307,16 @@ func resolveFileFromCLI(path string) (*config.FileResolution, *config.Config, in
 		maxBytes, err := resolveMaxInputBytes(cfg, "")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-			return nil, nil, 2
+			return nil, nil, "", 2
 		}
 		fmKinds, fmFields, err = readFrontMatter(cfg, path, maxBytes)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "mdsmith: reading %s: %v\n", path, err)
-			return nil, nil, 2
+			return nil, nil, "", 2
 		}
 		if err := config.ValidateFrontMatterKinds(cfg, path, fmKinds); err != nil {
 			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-			return nil, nil, 2
+			return nil, nil, "", 2
 		}
 	} else {
 		// front-matter disabled: no kinds from front matter, but still
@@ -324,17 +326,17 @@ func resolveFileFromCLI(path string) (*config.FileResolution, *config.Config, in
 		maxBytes, err := resolveMaxInputBytes(cfg, "")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
-			return nil, nil, 2
+			return nil, nil, "", 2
 		}
 		if _, err := bytelimit.ReadFileLimited(path, maxBytes); err != nil {
 			fmt.Fprintf(os.Stderr, "mdsmith: reading %s: %v\n", path, err)
-			return nil, nil, 2
+			return nil, nil, "", 2
 		}
 	}
 
 	sess := sessionForCLI(cfg, cfgPath)
 	defer sess.Dispose()
-	return sess.ResolveFile(path, fmKinds, fmFields), cfg, 0
+	return sess.ResolveFile(path, fmKinds, fmFields), cfg, cfgPath, 0
 }
 
 // runKindsResolve prints the resolved kind list and merged rule config
@@ -357,7 +359,7 @@ func runKindsResolve(stdout io.Writer, args []string) int {
 	}
 	path := fs.Arg(0)
 
-	res, _, code := resolveFileFromCLI(path)
+	res, _, _, code := resolveFileFromCLI(path)
 	if code != 0 {
 		return code
 	}
@@ -390,7 +392,7 @@ func runKindsWhy(stdout io.Writer, args []string) int {
 	}
 	path, ruleName := fs.Arg(0), fs.Arg(1)
 
-	res, _, code := resolveFileFromCLI(path)
+	res, _, _, code := resolveFileFromCLI(path)
 	if code != 0 {
 		return code
 	}

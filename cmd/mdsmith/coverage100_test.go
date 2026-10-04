@@ -224,3 +224,25 @@ func TestRunMergeDriverRun_PrintsDiscoveryHintOnce(t *testing.T) {
 	})
 	assert.Equal(t, 1, strings.Count(stderr, "mdsmith: hint:"), stderr)
 }
+
+// TestRunExtract_PrintsDiscoveryHintOnce pins that extract loads config
+// once: resolveFileFromCLI hands back the config path, so the plural
+// table hint passed over on the discovery walk reaches stderr a single
+// time.
+func TestRunExtract_PrintsDiscoveryHintOnce(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(dir, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".mdsmith.yml"),
+		[]byte("kinds:\n  plan: {}\n"), 0o644))
+	sub := filepath.Join(dir, "sub")
+	require.NoError(t, os.Mkdir(sub, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(sub, "pyproject.toml"),
+		[]byte("[tools.mdsmith]\nfiles = []\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(sub, "a.md"),
+		[]byte("---\nkinds: [plan]\n---\n# T\n"), 0o644))
+	t.Chdir(sub)
+	stderr := captureStderr(func() {
+		runExtract([]string{"plan", "a.md"})
+	})
+	assert.Equal(t, 1, strings.Count(stderr, "mdsmith: hint:"), stderr)
+}
