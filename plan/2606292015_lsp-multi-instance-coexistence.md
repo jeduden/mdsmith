@@ -257,8 +257,9 @@ short. Room comes from re-wrapping its narrow prose paragraphs to
    ([extension.ts](../editors/vscode/src/extension.ts) /
    [wiring.ts](../editors/vscode/src/wiring.ts)). Widen the
    injected context type to expose `storageUri`. A `bun:test`
-   asserts the built client options carry the token and that the
-   id is stable across two activations.
+   asserts the built client options carry the token, that two
+   activations over equal storage URIs send one scope, and that a
+   different workspace sends another.
 5. [x] Unit-test the supersede logic on the existing seams
    (`watchSingleton` / the key): same scope → newest wins, older
    emits `mdsmith/superseded`; different scopes → both stay; no
@@ -293,7 +294,8 @@ short. Room comes from re-wrapping its narrow prose paragraphs to
 - [x] The VS Code extension sends
       `initializationOptions.mdsmith.singletonScope` = its
       workspace `storageUri`; a `bun:test` asserts the
-      token is sent and is stable across activations.
+      token is sent and depends only on the storage URI's
+      value. VS Code keeps that value the same across hosts.
 - [x] The VS Code upgrade hand-off still works — old server
       stops, new server starts — verified by a unit test that
       feeds one scope to two server instances.

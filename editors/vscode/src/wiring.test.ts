@@ -765,19 +765,24 @@ describe("Wiring LSP client lifecycle", () => {
     expect(lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope).toBe(STORAGE);
   });
 
-  test("keeps the singleton scope stable across activations of one workspace", async () => {
+  test("derives the singleton scope from the storage URI value alone", async () => {
     // The VS Code upgrade hand-off: the leaked host and the fresh host
-    // get the same storageUri, which VS Code derives from the workspace
-    // identity, so their servers share one owner record and the newest
-    // wins. Two Wiring activations over one storage URI model that.
-    const first = makeWiring();
-    await first.wiring.activate(makeContext());
-    const second = makeWiring();
-    await second.wiring.activate(makeContext());
-    const a = first.lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope;
-    const b = second.lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope;
-    expect(a).toBe(STORAGE);
-    expect(b).toBe(a);
+    // each hold their own vscode.Uri object for one workspace's storage
+    // location. VS Code keeps that location the same across hosts; the
+    // extension's part is to send nothing but its string form — no
+    // per-activation state, no object identity — so the two servers
+    // share one owner record, while another workspace gets another.
+    const scopeFor = async (storage: string): Promise<string | undefined> => {
+      const w = makeWiring();
+      await w.wiring.activate(makeContext(storage));
+      return w.lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope;
+    };
+    const leaked = await scopeFor(STORAGE);
+    const fresh = await scopeFor(STORAGE);
+    const other = await scopeFor(STORAGE.replace("abc123", "def456"));
+    expect(leaked).toBe(STORAGE);
+    expect(fresh).toBe(leaked);
+    expect(other).not.toBe(leaked);
   });
 
   test("sends no scope when the window has no workspace storage", async () => {
