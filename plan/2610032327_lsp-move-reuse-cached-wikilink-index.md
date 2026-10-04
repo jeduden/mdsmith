@@ -1,7 +1,7 @@
 ---
 id: 2610032327
 title: Reuse the cached wikilink index for LSP moves and close its root
-status: "🔲"
+status: "✅"
 summary: >-
   Each `workspace/willRenameFiles` batch that has a `[[stem]]`
   edge walks the whole workspace root on disk, on the LSP
@@ -62,9 +62,10 @@ for the edge index and once for `WikilinkIndex`.
 
 ## Design
 
-- Read the session's cached index when the LSP has seen a
-  file event since the last walk or has file-watch
-  registration. Otherwise walk fresh, as today.
+- Read the session's cached index once the client accepts
+  the `**/*` file-watch registration. A watched-file event
+  alone proves nothing: a client may sync a narrower glob.
+  Otherwise walk fresh, as today.
 - Make `OpenRootFS` return a closer (or an `fs.FS` that
   implements `io.Closer`). Every one-shot caller closes it
   after its walk. A run-cache owner closes it when the
@@ -72,44 +73,96 @@ for the edge index and once for `WikilinkIndex`.
 
 ## Tasks
 
-1. Write a failing LSP test: a move batch with a
+1. [x] Write a failing LSP test: a move batch with a
    `[[stem]]` edge, a warm cached index, and file-watch
    registration does not walk the root (count walks
    through a test hook).
-2. Route `renameWorkspace` to the session's cached index
-   under that condition; keep the fresh walk otherwise.
-3. Write a failing test: `lint.OpenRootFS` returns a
+2. [x] Route the move workspace (`moveWorkspace`, split from
+   `renameWorkspace` in task 6) to the session's cached index
+   under that condition, only when the session was built at
+   the move's root; keep the fresh walk otherwise.
+3. [x] Write a failing test: `lint.OpenRootFS` returns a
    handle that a caller can close, and a read after close
    fails.
-4. Close the root in `linkgraph.WikilinkIndexAtDir`,
+4. [x] Close the root in `linkgraph.WikilinkIndexAtDir`,
    backlinks, and the MDS027 run cache.
-5. Write a failing compile-level test: a heading-rename
+5. [x] Write a failing compile-level test: a heading-rename
    stub with no `WikilinkIndex` method satisfies the seam
    `refactor.Heading` takes. Split `Workspace` into that seam
    and a move seam that adds the path, wikilink-edge, and
    `WikilinkIndex` questions.
-6. Build the LSP heading workspace without the wikilink
+6. [x] Build the LSP heading workspace without the wikilink
    closure, and the move workspace only through a
    constructor that sets it.
-7. Write a failing `Session.Move` test that counts FS walks:
+7. [x] Write a failing `Session.Move` test that counts FS walks:
    a move with a `[[stem]]` edge walks once. Collect the
    walked paths in the edge-index walk and build the index
    with `linkgraph.NewWikilinkIndexFromPaths`.
-8. Run `go test ./...` and the linter.
+8. [x] Run `go test ./...` and the linter.
+9. [x] Write failing tests that record every root
+   `lint.OpenRootFS` opens (one `rootfstest.Record` hook) and
+   close each at its owner: `lintFile` for an on-disk lint,
+   `RunSource` for a call no parse cache keeps, the `Session`
+   (in `Dispose`) for the root it lends its runners, and the
+   fix, export, and extract calls for their file.
+10. [x] Write failing tests that a config reload closes the
+    superseded LSP session's lent root and its overlay's disk
+    root once the last lint holding it returns. Hand out a
+    release from `currentSession` and `sessionAt` (a
+    `sessionLease` holder count), and add
+    `OverlayWorkspace.Close`.
 
 ## Acceptance Criteria
 
-- [ ] An LSP move with a fresh cached index does not walk
+- [x] An LSP move with a fresh cached index does not walk
       the workspace root
-- [ ] An LSP move with no file-watch registration still
+- [x] An LSP move with no file-watch registration still
       walks fresh and counts a gitignored same-stem file
-- [ ] No `lint.OpenRootFS` caller leaves its `os.Root` open
-      after its walk ends
-- [ ] `refactor.Heading` accepts a workspace with no
+- [x] No wikilink walk leaves its `os.Root` open after the
+      walk ends, and the per-file lint, fix, export and
+      extract roots close when their file is released; a
+      superseded LSP session's roots close once no lint
+      holds it
+- [x] `refactor.Heading` accepts a workspace with no
       `WikilinkIndex` method, and an LSP heading rename builds
       no wikilink closure
-- [ ] No LSP move workspace can hold a nil wikilink closure
-- [ ] `Session.Move` with a `[[stem]]` edge walks the
+- [x] No LSP move workspace can hold a nil wikilink closure
+- [x] `Session.Move` with a `[[stem]]` edge walks the
       workspace FS once
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+
+## Follow-up
+
+These items need their own plan; PLAN.md sits at its
+300-line file-length limit, so filing it needs a maintainer
+decision on the limit first.
+
+- [server_lifecycle.go](../internal/lsp/server_lifecycle.go):
+  an accepted `**/*` registration can still miss events
+  (`files.watcherExclude`, exhausted inotify watches), so a
+  move may read a stale wikilink index. A bound on how long
+  the cache is trusted, or a cheap freshness probe, needs a
+  design decision.
+- [server_documents.go](../internal/lsp/server_documents.go):
+  every create or delete outside `.git` and `node_modules`
+  drops the wikilink index and catalog glob caches, since the
+  index keys every file. A build writing many files (`dist/`)
+  makes the lints in between walk the tree again. Narrowing
+  needs the index to skip ignored directories, which changes
+  what MDS027 resolves.
+- [fix.go](../internal/fix/fix.go): `Fixer.Fix`
+  (`Session.FixPaths`) still checks the caller's shared rule
+  instances, so a catalog or toc Check there can race a
+  concurrent `Session.Check` clone. `fix.Source` already clones
+  the fixable rules it checks; the `Fixer` path needs the same
+  without breaking its spy-based tests.
+- [session.go](../pkg/mdsmith/session.go): a `CheckVersion`
+  that races `Dispose` can put a File holding a closed root
+  back into the parse cache after `InvalidateAll`. Fixing it
+  needs a generation-guarded `ParseCache.Put`.
+- [runner.go](../internal/engine/runner.go): `Run` opens one
+  project root per file, and four call sites (engine, fix,
+  export, extract) each wire their own directory and project
+  roots. One shared helper and one root per run would remove
+  the duplicated ownership logic.

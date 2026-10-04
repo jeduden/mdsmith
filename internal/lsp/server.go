@@ -13,6 +13,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/index"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	vlog "github.com/jeduden/mdsmith/internal/log"
 	"github.com/jeduden/mdsmith/internal/rule"
 	mdsmith "github.com/jeduden/mdsmith/pkg/mdsmith"
@@ -21,14 +22,19 @@ import (
 // Server runs the LSP loop over a transport pair. One Server instance
 // serves one client.
 type Server struct {
-	t              *transport
-	rules          []rule.Rule
-	debounce       time.Duration
-	fetchTimeout   time.Duration
-	discoverConfig func(string) (string, error)
-	onConfigReload func(cfgPath string)
-	logger         *vlog.Logger
-	docs           *documentStore
+	t            *transport
+	rules        []rule.Rule
+	debounce     time.Duration
+	fetchTimeout time.Duration
+	// watchAckTimeout bounds the wait for the client's reply to the
+	// watcher registration (awaitWatchersAck). It is far longer than
+	// fetchTimeout: nothing blocks on the reply, and a client busy at
+	// startup that answers late should still turn on index reuse.
+	watchAckTimeout time.Duration
+	discoverConfig  func(string) (string, error)
+	onConfigReload  func(cfgPath string)
+	logger          *vlog.Logger
+	docs            *documentStore
 
 	configMu   sync.RWMutex
 	config     *config.Config
@@ -109,8 +115,8 @@ type Server struct {
 	// editor's unsaved bytes reach cross-file rules. reloadConfig
 	// rebuilds it when the compiled config changes (config is compiled
 	// once per session); sessionMu guards the rebuild against concurrent
-	// lint/fix readers. workspace is the session's overlay, held so
-	// document events can Set/Delete buffers on it.
+	// lint/fix readers. The session's overlay is held by sessionLease,
+	// which closes it once the session is retired and released.
 	//
 	// didChange/didSave/didClose/didChangeWatchedFiles push buffer edits
 	// and drop stale cache entries through session.Invalidate; a
@@ -119,7 +125,14 @@ type Server struct {
 	// starts fresh.
 	sessionMu sync.RWMutex
 	session   *mdsmith.Session
-	workspace *mdsmith.OverlayWorkspace
+	// sessionLease counts the callers holding session; currentSession
+	// and sessionAt hand out a release, and a rebuild retires the
+	// superseded lease so its handles close once the last holder is done.
+	sessionLease *sessionLease
+	// sessionRoot is the root session was built at, so a reader that
+	// spelled its paths against a root can tell whether the session's
+	// root-keyed caches (the wikilink index) answer for it.
+	sessionRoot string
 	// newSession constructs the per-workspace Session. It is a test seam
 	// — production uses mdsmith.NewSession. NewSession only fails when its
 	// ConfigSource fails to load, and rebuildSession always passes a
@@ -127,6 +140,17 @@ type Server struct {
 	// in production; the seam lets a test drive rebuildSession's failure
 	// branch (and the nil-session guards downstream of it) red/green.
 	newSession func(mdsmith.SessionOptions) (*mdsmith.Session, error)
+	// watchingFiles is set once the client accepts the `**/*` watcher
+	// registration (awaitWatchersAck): from then on a file create or
+	// delete reaches
+	// session.InvalidateWikilinks, so the session's cached wikilink
+	// index is fresh and a move reads it instead of walking the root.
+	watchingFiles atomic.Bool
+	// walkWikilinks walks root on disk for a fresh wikilink index, the
+	// move guard's fallback when the server does not watch files. It is
+	// a test seam — production uses linkgraph.WikilinkIndexAtDir — so a
+	// test can count the walks a move makes.
+	walkWikilinks func(root string) *linkgraph.WikilinkIndex
 	// afterLintCheck, when non-nil, runs in runLint immediately after the
 	// session Check returns and before the results are published. It is a
 	// test seam (nil in production) that lets a test deterministically
@@ -237,18 +261,19 @@ func New(opts Options) *Server {
 		logger = &vlog.Logger{}
 	}
 	s := &Server{
-		t:              newTransport(opts.Reader, opts.Writer),
-		rules:          opts.Rules,
-		debounce:       debounce,
-		fetchTimeout:   2 * time.Second,
-		discoverConfig: config.Discover,
-		onConfigReload: opts.OnConfigReload,
-		logger:         logger,
-		docs:           newDocumentStore(),
-		settings:       userSettings{Run: runOnType},
-		pending:        make(map[string]*pendingLint),
-		pendingResp:    make(map[string]chan rpcResponse),
-		diags:          make(map[string][]Diagnostic),
+		t:               newTransport(opts.Reader, opts.Writer),
+		rules:           opts.Rules,
+		debounce:        debounce,
+		fetchTimeout:    2 * time.Second,
+		watchAckTimeout: time.Minute,
+		discoverConfig:  config.Discover,
+		onConfigReload:  opts.OnConfigReload,
+		logger:          logger,
+		docs:            newDocumentStore(),
+		settings:        userSettings{Run: runOnType},
+		pending:         make(map[string]*pendingLint),
+		pendingResp:     make(map[string]chan rpcResponse),
+		diags:           make(map[string][]Diagnostic),
 		// Parent-process watchdog defaults; Run() overwrites runCtx
 		// with its own context. Tests override these seams.
 		runCtx:         context.Background(),
@@ -263,7 +288,8 @@ func New(opts Options) *Server {
 		onSupersededExit:  func() { osExit(0) },
 		// Production session constructor; tests override to exercise the
 		// rebuild-failure branch.
-		newSession: mdsmith.NewSession,
+		newSession:    mdsmith.NewSession,
+		walkWikilinks: linkgraph.WikilinkIndexAtDir,
 	}
 	if opts.EnableWorkspaceSingleton {
 		s.instanceID = newInstanceID()

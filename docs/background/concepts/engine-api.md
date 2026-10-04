@@ -87,6 +87,16 @@ func (s *Session) ResolveFile(uri string, fmKinds []string, fmFields map[string]
 slice. That keeps the LSP's own diagnostic partitioning and error
 surfacing, consistent with the batch ops above.
 
+The LSP's file-move guard reads the session's cached wikilink index.
+`WikilinkIndex` returns the index MDS027 built, or walks the root on
+disk once. `InvalidateWikilinks` drops it when a watched file is
+created or deleted:
+
+```go
+func (s *Session) WikilinkIndex() *linkgraph.WikilinkIndex
+func (s *Session) InvalidateWikilinks()
+```
+
 Introspection and lifecycle round out the surface:
 
 ```go
@@ -141,7 +151,10 @@ live buffer rather than the last saved file. Only content is overlaid —
 open buffers still exist on disk, so globbing and directory walks defer
 to disk, and the `fs.FS` view clones only the small open-buffer map per
 lint pass, never the corpus. That keeps a per-keystroke `CheckVersion`
-off any `O(corpus)` snapshot cost.
+off any `O(corpus)` snapshot cost. Its disk view is one cached
+`os.Root`, which `Close()` releases. The LSP calls it, with the
+session's `Dispose()`, when it replaces a session after a config
+reload and the last lint holding the old one returns.
 
 `MemWorkspace.Glob` is a linear key filter. The lint hot loop must not
 call it per file; a benchmark fixture asserts no per-file `Glob` under
@@ -184,7 +197,8 @@ that allowlist.
 
 ## Caching
 
-The session owns four caches, all session-scoped:
+The session owns four caches, all session-scoped, plus the disk
+roots it lends:
 
 - **Check results.** One entry per URI, holding the last
   `(content-hash, diagnostics)` pair. The next `Check` on the same URI
@@ -201,6 +215,11 @@ The session owns four caches, all session-scoped:
 - **Compiled config.** Built once at `NewSession`. A config change
   needs `Dispose()` plus a new `NewSession`; there is no in-place
   reconfigure.
+- **Disk roots.** On disk, a session opens one `os.Root` view of
+  its root, which also serves as an `OSWorkspace`'s file view, and
+  lends it to every operation, since a parsed file it caches keeps
+  its root past the call. `Dispose()` closes it and drops those
+  cached files.
 
 `Invalidate(uri)` signals that `uri` changed. With a `content` argument
 it rewrites that file through the workspace's mutable overlay, so the

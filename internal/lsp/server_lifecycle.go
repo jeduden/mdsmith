@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/jeduden/mdsmith/internal/mdpath"
 )
@@ -105,7 +106,7 @@ func (s *Server) handleInitialized(ctx context.Context) {
 	// instant re-lint when they edit .mdsmith.yml in another window.
 	if caps.Workspace != nil && caps.Workspace.DidChangeWatchedFiles != nil &&
 		caps.Workspace.DidChangeWatchedFiles.DynamicRegistration {
-		s.registerWatchers()
+		s.registerWatchers(ctx)
 	}
 }
 
@@ -116,25 +117,39 @@ func (s *Server) handleInitialized(ctx context.Context) {
 //     index (kind / ignore globs may shift scope).
 //   - `**/*.md` keeps the symbol index in sync when files change
 //     outside of any open buffer (sibling editor, VCS checkout).
+//   - `**/*`, creates and deletes only, drops the session's wikilink
+//     index on any file-set change: the index keys every file (images,
+//     `.MD` spellings), which the Markdown globs alone do not report.
+//     A non-Markdown file under `.git` or `node_modules`, which the
+//     index prunes, is ignored (see watchedFilesTreeChanged).
 //
 // The request is best-effort: clients that don't support dynamic
 // registration silently ignore it. There is no polling fallback;
 // when the watcher is absent, the index still updates from open
 // buffer events.
-func (s *Server) registerWatchers() {
+//
+// A move trusts the session's cached wikilink index only once the
+// client answers this request without an error (awaitWatchersAck): a
+// client that rejects the registration, or never answers, keeps every
+// move walking the root fresh.
+func (s *Server) registerWatchers(ctx context.Context) {
 	id := s.nextReqID.Add(1)
 	// json.Marshal(int64) cannot fail; ignoring the error is safe.
 	idJSON, _ := json.Marshal(id)
+	ch := s.registerPendingResponse(string(idJSON))
 	// Watch .mdsmith.yml plus every Markdown file, the extension set
 	// derived from mdpath so the watch scope tracks the single source
 	// of truth alongside discovery and the merge driver.
 	globs := mdpath.RecursiveGlobs()
-	watchers := make([]fileSystemWatcher, 0, len(globs)+1)
+	watchers := make([]fileSystemWatcher, 0, len(globs)+2)
 	watchers = append(watchers, fileSystemWatcher{GlobPattern: "**/.mdsmith.yml"})
 	for _, g := range globs {
 		watchers = append(watchers, fileSystemWatcher{GlobPattern: g})
 	}
-	_ = s.t.writeRequest(idJSON, "client/registerCapability",
+	watchers = append(watchers, fileSystemWatcher{
+		GlobPattern: "**/*", Kind: watchKindCreate | watchKindDelete,
+	})
+	err := s.t.writeRequest(idJSON, "client/registerCapability",
 		registrationParams{Registrations: []registration{{
 			ID:     "mdsmith-watch",
 			Method: "workspace/didChangeWatchedFiles",
@@ -142,4 +157,49 @@ func (s *Server) registerWatchers() {
 				Watchers: watchers,
 			},
 		}}})
+	if err != nil {
+		s.unregisterPendingResponse(string(idJSON))
+		return
+	}
+	go s.awaitWatchersAck(ctx, string(idJSON), ch)
+}
+
+// awaitWatchersAck waits for the client's reply to the watcher
+// registration with id and marks the server as watching only on a
+// success reply, first dropping any wikilink index cached before the
+// watch began (see dropPreWatchWikilinks). An error reply, a missing
+// reply within watchAckTimeout, or ctx ending leaves the flag unset. A
+// late reply is safe to trust: the drop happens when it arrives.
+//
+// It runs on its own goroutine, so like fetchClientSettings it recovers
+// a panic (here from the session's cache drop) rather than letting it
+// kill the whole server.
+func (s *Server) awaitWatchersAck(ctx context.Context, id string, ch chan rpcResponse) {
+	defer s.recoverPanic("watcher registration ack")
+	defer s.unregisterPendingResponse(id)
+	timeout := time.NewTimer(s.watchAckTimeout)
+	defer timeout.Stop()
+	select {
+	case resp := <-ch:
+		if resp.Error == nil {
+			s.dropPreWatchWikilinks()
+			s.watchingFiles.Store(true)
+		}
+	case <-timeout.C:
+	case <-ctx.Done():
+	}
+}
+
+// dropPreWatchWikilinks drops the current session's cached wikilink
+// index when the client accepts the watcher registration. A lint may
+// have built that index before the watch began, and a file created or
+// deleted in between is never reported, so the index cannot be trusted
+// once moves start reading it. It reads the session without building
+// one: with none, nothing is cached yet.
+func (s *Server) dropPreWatchWikilinks() {
+	sess, release := s.leaseSession("", true)
+	defer release()
+	if sess != nil {
+		sess.InvalidateWikilinks()
+	}
 }

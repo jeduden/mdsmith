@@ -294,7 +294,7 @@ func TestPlanRenameBatch_SameFolderMoveWithholdsNothing(t *testing.T) {
 	assert.Zero(t, dropped)
 }
 
-// memRenameWorkspace is a refactor.Workspace over an in-memory file
+// memRenameWorkspace is a refactor.MoveWorkspace over an in-memory file
 // set: the production index behind refactor.IndexEdges, with Resolve
 // keying each file by its workspace-relative path.
 type memRenameWorkspace struct {
@@ -385,22 +385,34 @@ func TestIsInsert(t *testing.T) {
 	assert.False(t, isInsert(edAt(1, 3, 4, "")))
 }
 
-// TestServerRenameWorkspace_WikilinkIndex locks that every rename
-// workspace the server builds carries a wikilink index walked once, at
-// the root its paths were spelled against, so no move path can fall
-// back to counting listed files. An unreadable root builds no index.
-func TestServerRenameWorkspace_WikilinkIndex(t *testing.T) {
+// TestServerMoveWorkspace_WikilinkIndex locks that every move workspace
+// the server builds carries a wikilink index read once, for the root
+// its paths were spelled against, so no move path can fall back to
+// counting listed files. An unreadable root builds no index.
+func TestServerMoveWorkspace_WikilinkIndex(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "guide.md"), []byte("# G\n"), 0o644))
 	s := New(Options{})
 	s.rootDir = t.TempDir() // a config reload moved the server's root
-	ws := s.renameWorkspace(root)
+	ws := s.moveWorkspace(root)
 	idx := ws.WikilinkIndex()
 	require.NotNil(t, idx)
 	assert.Equal(t, []string{"guide.md"}, idx.StemPaths("guide"))
 	assert.Same(t, idx, ws.WikilinkIndex(), "the walk runs once per workspace")
-	assert.Nil(t, s.renameWorkspace(filepath.Join(root, "missing")).WikilinkIndex())
+	assert.Nil(t, s.moveWorkspace(filepath.Join(root, "missing")).WikilinkIndex())
+}
+
+// TestServerRenameWorkspace_HeadingOnly locks that the workspace a
+// heading rename builds answers only the heading seam: it is no
+// refactor.MoveWorkspace, so it carries no wikilink closure.
+func TestServerRenameWorkspace_HeadingOnly(t *testing.T) {
+	t.Parallel()
+	var ws any = New(Options{}).renameWorkspace()
+	_, isHeading := ws.(refactor.Workspace)
+	assert.True(t, isHeading)
+	_, isMove := ws.(refactor.MoveWorkspace)
+	assert.False(t, isMove, "a heading workspace builds no wikilink index")
 }
 
 // TestGuardRenameEdits locks that the guard still drops, and counts,

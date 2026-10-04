@@ -3,8 +3,11 @@ package lsp
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 )
 
 // textDocument/* document-sync handlers — didOpen, didChange, didSave,
@@ -131,25 +134,12 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return
 	}
-	configChanged := false
-	mdChanges := make([]string, 0, len(p.Changes))
-	for _, c := range p.Changes {
-		path := uriToPath(c.URI)
-		if strings.HasSuffix(path, ".mdsmith.yml") {
-			configChanged = true
-			continue
-		}
-		// Use isMarkdownExt for case-insensitive extension match
-		// — the rest of the navigation surface (docTextOrFile,
-		// indexReloadFromDisk) treats `.MD` / `.Markdown` as
-		// Markdown, and the watcher must agree or a rename to a
-		// case-shifted extension would silently stop refreshing
-		// the index.
-		if isMarkdownExt(path) {
-			mdChanges = append(mdChanges, path)
-		}
-	}
-	treeChanged := watchedFilesTreeChanged(p.Changes)
+	configChanged, mdChanges := splitWatchedChanges(p.Changes)
+	_, _, root := s.snapshotConfig()
+	treeChanged := watchedFilesTreeChanged(p.Changes, root)
+	// No event here makes a move trust the session's wikilink index: a
+	// client may sync a narrower glob statically, so only an accepted
+	// `**/*` registration counts (see awaitWatchersAck).
 	if configChanged {
 		s.reloadConfig()
 		// kind / ignore globs may have shifted — drop the index so
@@ -166,9 +156,7 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 		// the index from scratch — otherwise MDS027 would resolve
 		// `[[NewPage]]` against the pre-create set and report it
 		// missing (or keep resolving `[[OldName]]` after a delete).
-		if sess, _ := s.currentSession(); sess != nil {
-			sess.InvalidateWikilinks()
-		}
+		s.invalidateWikilinks()
 	}
 	openPaths := s.openDocPaths()
 	for _, path := range mdChanges {
@@ -190,6 +178,34 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 	}
 }
 
+// splitWatchedChanges reports whether changes touch a `.mdsmith.yml`
+// and returns the Markdown paths they name, each once, in first-seen
+// order: the `**/*` create/delete watcher overlaps the Markdown globs,
+// so a client that does not merge events across watchers reports a
+// Markdown create twice, and each report would re-read the file.
+func splitWatchedChanges(changes []fileEvent) (configChanged bool, mdChanges []string) {
+	mdChanges = make([]string, 0, len(changes))
+	seen := make(map[string]struct{}, len(changes))
+	for _, c := range changes {
+		path := uriToPath(c.URI)
+		if strings.HasSuffix(path, ".mdsmith.yml") {
+			configChanged = true
+			continue
+		}
+		// Use isMarkdownExt for case-insensitive extension match
+		// — the rest of the navigation surface (docTextOrFile,
+		// indexReloadFromDisk) treats `.MD` / `.Markdown` as
+		// Markdown, and the watcher must agree or a rename to a
+		// case-shifted extension would silently stop refreshing
+		// the index.
+		if _, dup := seen[path]; isMarkdownExt(path) && !dup {
+			seen[path] = struct{}{}
+			mdChanges = append(mdChanges, path)
+		}
+	}
+	return configChanged, mdChanges
+}
+
 // watchedFilesTreeChanged reports whether a watched-file batch creates
 // or deletes any non-config file, which changes the candidate set the
 // wikilink index keys off — so the session's wikilink index must rebuild
@@ -197,9 +213,12 @@ func (s *Server) handleDidChangeWatchedFiles(ctx context.Context, raw json.RawMe
 // extension, so a binary asset add counts too). A pure-change batch (no
 // create/delete) leaves the candidate set intact. Per LSP spec:
 // 1=Created, 2=Changed, 3=Deleted; a rename arrives as a Deleted+Created
-// pair. Pulled out of handleDidChangeWatchedFiles so the decision is
-// unit-testable without a live session and its caches.
-func watchedFilesTreeChanged(changes []fileEvent) bool {
+// pair. A non-Markdown file under a directory the index prunes (`.git`,
+// `node_modules`, read relative to root) is skipped: the `**/*` watcher
+// reports git's lock-file churn on every git command, and none of it
+// changes what the index keys. Pulled out of handleDidChangeWatchedFiles
+// so the decision is unit-testable without a live session and its caches.
+func watchedFilesTreeChanged(changes []fileEvent, root string) bool {
 	for _, c := range changes {
 		path := uriToPath(c.URI)
 		if path == "" {
@@ -211,7 +230,11 @@ func watchedFilesTreeChanged(changes []fileEvent) bool {
 		if strings.HasSuffix(path, ".mdsmith.yml") {
 			continue
 		}
-		if c.Type == fileChangeCreated || c.Type == fileChangeDeleted {
+		if c.Type != fileChangeCreated && c.Type != fileChangeDeleted {
+			continue
+		}
+		if isMarkdownExt(path) ||
+			linkgraph.WikilinkIndexed(filepath.ToSlash(workspaceRelative(root, path))) {
 			return true
 		}
 	}
@@ -227,7 +250,8 @@ func watchedFilesTreeChanged(changes []fileEvent) bool {
 // workspace-relative form and the read cache by the absolute form, all
 // derived from the relative uri passed here.
 func (s *Server) syncBuffer(absPath string, content []byte) {
-	sess, _ := s.currentSession()
+	sess, release := s.currentSession()
+	defer release()
 	if sess == nil || absPath == "" {
 		return
 	}
@@ -243,7 +267,8 @@ func (s *Server) syncBuffer(absPath string, content []byte) {
 // overlay (a watched neighbour the editor never opened) it just drops
 // the caches.
 func (s *Server) dropPath(absPath string) {
-	sess, _ := s.currentSession()
+	sess, release := s.currentSession()
+	defer release()
 	if sess == nil || absPath == "" {
 		return
 	}

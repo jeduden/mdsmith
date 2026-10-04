@@ -338,7 +338,7 @@ func TestSessionRefactorWorkspace_Resolve(t *testing.T) {
 		"a.md":     []byte("# A\n"),
 		"sub/b.md": []byte("# B\n"),
 	})
-	ws := s.buildRefactorWorkspace("a.md", []byte("# Buffer\n"))
+	ws := s.buildRefactorWorkspace("a.md", []byte("# Buffer\n"), isMovePath)
 
 	// The overlay URI resolves to the supplied buffer, not the file.
 	rel, src, ok := ws.Resolve("./a.md")
@@ -356,7 +356,7 @@ func TestSessionRefactorWorkspace_Resolve(t *testing.T) {
 	assert.False(t, ok)
 
 	// Without an overlay the file's own bytes are returned.
-	_, src, ok = s.buildRefactorWorkspace("", nil).Resolve("a.md")
+	_, src, ok = s.buildRefactorWorkspace("", nil, isMovePath).Resolve("a.md")
 	require.True(t, ok)
 	assert.Equal(t, "# A\n", string(src))
 }
@@ -368,14 +368,14 @@ func TestSession_BuildRefactorWorkspace(t *testing.T) {
 		"sub/b.md":  []byte("# B\n"),
 		"notes.txt": []byte("not markdown"),
 	})
-	plain := s.buildRefactorWorkspace("", nil)
+	plain := s.buildRefactorWorkspace("", nil, isMovePath)
 	assert.ElementsMatch(t, []string{"a.md", "c.md", "sub/b.md"}, plain.Files())
 	// a.md has no "Other" heading on disk, but c.md already links to it.
 	assert.Len(t, plain.IncomingAnchorEdges("a.md", "other"), 1)
 
 	// With an overlay the index reads the unsaved buffer for a.md. The
 	// buffer's link to b.md#b shows up only when the overlay is used.
-	overlay := s.buildRefactorWorkspace("a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
+	overlay := s.buildRefactorWorkspace("a.md", []byte("# A\n\n[b](sub/b.md#b)\n"), isMovePath)
 	assert.Len(t, overlay.IncomingAnchorEdges("sub/b.md", "b"), 1)
 	assert.Empty(t, plain.IncomingAnchorEdges("sub/b.md", "b"))
 }
@@ -390,12 +390,13 @@ func TestSession_IndexRefactorWorkspace(t *testing.T) {
 		"notes.txt": []byte("[b](sub/b.md#b)\n"),
 	})
 	t.Run("indexes only Markdown files", func(t *testing.T) {
-		idx := s.indexRefactorWorkspace(s.ws.FS(), "", nil)
+		idx := s.indexRefactorWorkspace(walkWorkspacePaths(s.ws.FS(), isMovePath), "", nil)
 		assert.ElementsMatch(t, []string{"a.md", "sub/b.md"}, idx.Files())
 		assert.Empty(t, idx.IncomingEdges("sub/b.md", "b"))
 	})
 	t.Run("overlay replaces the saved bytes", func(t *testing.T) {
-		idx := s.indexRefactorWorkspace(s.ws.FS(), "./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
+		paths := walkWorkspacePaths(s.ws.FS(), isMovePath)
+		idx := s.indexRefactorWorkspace(paths, "./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
 		edges := idx.IncomingEdges("sub/b.md", "b")
 		require.Len(t, edges, 1)
 		assert.Equal(t, "a.md", edges[0].SourceFile)
@@ -427,7 +428,7 @@ func TestBuildRefactorWorkspace_IndexesOnFirstQuery(t *testing.T) {
 	t.Cleanup(s.Dispose)
 
 	ws.reads = 0
-	w := s.buildRefactorWorkspace("", nil)
+	w := s.buildRefactorWorkspace("", nil, isMovePath)
 	assert.Zero(t, ws.reads, "building reads no workspace file")
 
 	_, _, ok := w.Resolve("b.md")
@@ -467,4 +468,129 @@ func TestSession_Rename_IndexesWorkspaceOnlyForHeadings(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, p.Edits, "b.md")
 	assert.NotZero(t, ws.reads, "a heading rename indexes the workspace")
+}
+
+// walkCountingWorkspace hands out an FS that counts root ReadDir
+// calls: fs.WalkDir reads the root once per walk.
+type walkCountingWorkspace struct {
+	*MemWorkspace
+	walks int
+}
+
+func (w *walkCountingWorkspace) FS() fs.FS { return walkCountingFS{w.MemWorkspace.FS(), &w.walks} }
+
+type walkCountingFS struct {
+	fs.FS
+	walks *int
+}
+
+func (c walkCountingFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if name == "." {
+		*c.walks++
+	}
+	return fs.ReadDir(c.FS, name)
+}
+
+// TestSession_Move_WalksOnce locks that a move with a `[[stem]]` edge
+// walks the workspace FS once: the edge-index walk collects every path,
+// and the wikilink index is built from that list.
+func TestSession_Move_WalksOnce(t *testing.T) {
+	ws := &walkCountingWorkspace{MemWorkspace: NewMemWorkspace(map[string][]byte{
+		"api.md":   []byte("# API\n"),
+		"guide.md": []byte("See [[api]].\n"),
+	})}
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+
+	ws.walks = 0
+	plan, err := s.Move("api.md", "service.md")
+	require.NoError(t, err)
+	require.Len(t, plan.Edits["guide.md"], 1)
+	assert.Equal(t, 1, ws.walks)
+}
+
+// TestWalkWorkspacePaths locks the one walk a refactor workspace makes:
+// it lists every file its two readers use — every Markdown file at any
+// depth for the edge index, and every other file outside `.git` and
+// `node_modules` for WikilinkIndex — and an unreadable root lists none.
+// A non-Markdown file under a pruned directory is read by neither, so
+// the walk does not hold its path.
+func TestWalkWorkspacePaths(t *testing.T) {
+	ws := NewMemWorkspace(map[string][]byte{
+		"a.md":                       []byte("# A\n"),
+		"sub/logo.png":               []byte("png"),
+		".git/HEAD":                  []byte("ref\n"),
+		"node_modules/pkg/index.js":  []byte("x\n"),
+		"node_modules/pkg/README.md": []byte("# R\n"),
+	})
+	assert.ElementsMatch(t,
+		[]string{"a.md", "sub/logo.png", "node_modules/pkg/README.md"},
+		walkWorkspacePaths(ws.FS(), isMovePath))
+	assert.Empty(t, walkWorkspacePaths(failFS{}, isMovePath))
+}
+
+// TestOwnsFS locks which workspaces hand a caller of FS a view it owns:
+// only an OSWorkspace, which opens a fresh os.Root per call. Any other
+// workspace, the LSP overlay and a host's own included, may hand out an
+// FS it keeps, so a caller must not close it.
+func TestOwnsFS(t *testing.T) {
+	assert.True(t, ownsFS(OSWorkspace{}))
+	assert.True(t, ownsFS(&OSWorkspace{}))
+	assert.False(t, ownsFS(NewMemWorkspace(nil)))
+	assert.False(t, ownsFS(NewOverlayWorkspace(t.TempDir())))
+	assert.False(t, ownsFS(&closeRecordingWorkspace{MemWorkspace: NewMemWorkspace(nil)}))
+}
+
+// closeRecordingWorkspace is a host workspace that hands out a closable
+// FS (say one it keeps open for its lifetime) and records each Close.
+type closeRecordingWorkspace struct {
+	*MemWorkspace
+	closed int
+}
+
+func (w *closeRecordingWorkspace) FS() fs.FS { return closeRecordingFS{w.MemWorkspace.FS(), &w.closed} }
+
+type closeRecordingFS struct {
+	fs.FS
+	closed *int
+}
+
+func (c closeRecordingFS) Close() error {
+	*c.closed++
+	return nil
+}
+
+// TestSession_Move_LeavesHostFSOpen locks that the refactor walk does
+// not close a closable FS a host workspace hands out: the workspace owns
+// it and may hand it out again, so closing it would break the session's
+// next Check. Only an OSWorkspace's fresh view is closed (see ownsFS).
+func TestSession_Move_LeavesHostFSOpen(t *testing.T) {
+	ws := &closeRecordingWorkspace{MemWorkspace: NewMemWorkspace(map[string][]byte{
+		"api.md":   []byte("# API\n"),
+		"guide.md": []byte("See [[api]].\n"),
+	})}
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+
+	ws.closed = 0
+	_, err = s.Move("api.md", "service.md")
+	require.NoError(t, err)
+	assert.Zero(t, ws.closed)
+}
+
+// TestBuildRefactorWorkspace_KeepsAssetsOnlyForMove locks that a symbol
+// rename's walk holds only Markdown paths: a heading or label rename
+// never builds a wikilink index, so an asset-heavy vault's image paths
+// are dead weight there. A move's walk keeps them for WikilinkIndex.
+func TestBuildRefactorWorkspace_KeepsAssetsOnlyForMove(t *testing.T) {
+	s := newRefactorSession(t, map[string][]byte{
+		"a.md":         []byte("# A\n"),
+		"sub/logo.png": []byte("png"),
+	})
+	assert.Equal(t, []string{"a.md"},
+		s.buildRefactorWorkspace("", nil, isMarkdownPath).paths())
+	assert.ElementsMatch(t, []string{"a.md", "sub/logo.png"},
+		s.buildRefactorWorkspace("", nil, isMovePath).paths())
 }

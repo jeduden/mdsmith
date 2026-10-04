@@ -536,7 +536,7 @@ func TestRegisterWatchersWritesRequest(t *testing.T) {
 	t.Parallel()
 	var buf safeBuffer
 	s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
-	s.registerWatchers()
+	s.registerWatchers(context.Background())
 	out := buf.String()
 	assert.Contains(t, out, "client/registerCapability")
 	assert.Contains(t, out, "**/.mdsmith.yml")
@@ -3389,9 +3389,40 @@ func TestHandleDidChangeWatchedFiles_InvalidatesWikilinkIndex(t *testing.T) {
 			// pure decision pins which change types rebuild the wikilink
 			// candidate set without a live session and its caches (the
 			// session-level wikilink drop is covered in pkg/mdsmith).
-			got := watchedFilesTreeChanged([]fileEvent{{URI: tc.uri, Type: tc.changeType}})
+			got := watchedFilesTreeChanged([]fileEvent{{URI: tc.uri, Type: tc.changeType}}, "")
 			assert.Equal(t, tc.want, got,
 				"watchedFilesTreeChanged(%s) = %v, want %v", tc.name, got, tc.want)
+		})
+	}
+}
+
+// TestWatchedFilesTreeChangedSkipsPrunedDirs pins that a create or
+// delete of a non-Markdown file under `.git` or `node_modules` below
+// root does not flag a tree change: the wikilink index prunes those
+// directories, and the `**/*` watcher reports git's lock-file churn on
+// every git command, which would otherwise drop the index and the
+// catalog glob matches each time. A Markdown file there still counts,
+// and the directory names only prune below root, not above it.
+func TestWatchedFilesTreeChangedSkipsPrunedDirs(t *testing.T) {
+	t.Parallel()
+	parent := filepath.Join(t.TempDir(), "node_modules")
+	root := filepath.Join(parent, "proj")
+	cases := []struct {
+		rel  string
+		want bool
+	}{
+		{".git/index.lock", false},
+		{"node_modules/pkg/index.js", false},
+		{"docs/.git/x.png", false},
+		{"node_modules/pkg/README.md", true},
+		{"docs/diagram.png", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.rel, func(t *testing.T) {
+			t.Parallel()
+			uri := pathToURI(filepath.Join(root, filepath.FromSlash(tc.rel)))
+			got := watchedFilesTreeChanged([]fileEvent{{URI: uri, Type: fileChangeCreated}}, root)
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -3403,7 +3434,7 @@ func TestWatchedFilesTreeChangedSkipsConfig(t *testing.T) {
 	t.Parallel()
 	got := watchedFilesTreeChanged([]fileEvent{
 		{URI: "file:///proj/.mdsmith.yml", Type: fileChangeCreated},
-	})
+	}, "")
 	assert.False(t, got, "a config-only create must not flag a wikilink tree change")
 }
 
@@ -3415,7 +3446,7 @@ func TestWatchedFilesTreeChangedSkipsNonFileURI(t *testing.T) {
 	t.Parallel()
 	got := watchedFilesTreeChanged([]fileEvent{
 		{URI: "git://github.com/owner/repo/blob/main/page.md", Type: fileChangeCreated},
-	})
+	}, "")
 	assert.False(t, got, "non-file URI Created event must not flag a wikilink tree change")
 }
 
@@ -4176,4 +4207,20 @@ func TestWithinRoot_SymlinkEscapeRejected(t *testing.T) {
 	require.NoError(t, os.Symlink(secret, link))
 	assert.False(t, withinRoot(root, link),
 		"an in-root symlink resolving outside the root is rejected")
+}
+
+// TestSplitWatchedChangesDedupesPaths pins that a Markdown path named
+// twice in one batch is reloaded once. The `**/*` create/delete watcher
+// overlaps the Markdown globs, so a client that does not merge events
+// across watchers reports one create from each.
+func TestSplitWatchedChangesDedupesPaths(t *testing.T) {
+	t.Parallel()
+	uri := "file:///proj/notes.md"
+	cfg, md := splitWatchedChanges([]fileEvent{
+		{URI: uri, Type: fileChangeCreated},
+		{URI: "file:///proj/a.png", Type: fileChangeCreated},
+		{URI: uri, Type: fileChangeCreated},
+	})
+	assert.False(t, cfg)
+	assert.Equal(t, []string{uriToPath(uri)}, md)
 }

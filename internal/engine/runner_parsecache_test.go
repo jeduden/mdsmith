@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -154,11 +155,15 @@ func (lazyFieldsRule) Check(f *lint.File) []lint.Diagnostic {
 func TestRunSourceWithVersion_ConcurrentReadersAreRaceSafe(t *testing.T) {
 	cache := lint.NewParseCache()
 	cfg := &config.Config{Rules: map[string]config.RuleCfg{"lazy-fields-probe": {Enabled: true}}}
+	root := t.TempDir()
 	r := &Runner{
 		Config:     cfg,
 		Rules:      []rule.Rule{lazyFieldsRule{}},
 		ParseCache: cache,
-		RootDir:    t.TempDir(),
+		RootDir:    root,
+		// A cached File keeps its root past the call, so a caching
+		// runner lends one (see Runner.RootFS).
+		RootFS: os.DirFS(root),
 	}
 
 	src := []byte("# Heading\n" +

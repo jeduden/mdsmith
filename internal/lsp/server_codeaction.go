@@ -197,7 +197,8 @@ func (s *Server) appendFixAllAction(
 	// and `mdsmith fix` share one entry point. The session reads
 	// neighbours through its OverlayWorkspace, so include/catalog rules
 	// resolve against the project root and see open-buffer overlays.
-	sess, _ := s.currentSession()
+	sess, release := s.currentSession()
+	defer release()
 	if sess == nil {
 		return actions
 	}
@@ -239,7 +240,8 @@ func (s *Server) quickFixBytesFor(
 	// Per-rule quick-fix routes through Session.FixRule (today's
 	// fix.SourceWithRules): only `rule`'s violations are rewritten, and
 	// neighbours resolve through the session's OverlayWorkspace.
-	sess, _ := s.currentSession()
+	sess, release := s.currentSession()
+	defer release()
 	if sess == nil {
 		return nil
 	}

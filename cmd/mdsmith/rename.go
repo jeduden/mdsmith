@@ -95,7 +95,7 @@ type cliRenameWorkspace struct {
 	maxBytes int64
 }
 
-// WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
+// WikilinkIndex implements refactor.MoveWorkspace: the index `[[stem]]`
 // resolution reads, over the whole workspace root on disk rather than
 // the discovered file list, so a gitignored file still counts. It walks
 // the same view the MDS027 resolver walks. An empty or unreadable root

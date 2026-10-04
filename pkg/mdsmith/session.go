@@ -23,6 +23,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/config"
 	"github.com/jeduden/mdsmith/internal/engine"
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
+	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/runcache"
@@ -155,6 +156,9 @@ type Session struct {
 	// session's config never changes between edits. Created once in
 	// NewSession, mirroring runCache and parseCache.
 	sourceConfigCache *engine.SourceConfigCache
+	// roots holds the disk handles the session lends to every operation
+	// and closes in Dispose (see sessionRoots).
+	roots sessionRoots
 }
 
 // cachedCheck is one memoized Check result: the content hash it was
@@ -244,16 +248,22 @@ func rootDirOf(ws Workspace) string {
 
 // newRunner builds the engine.Runner that backs Check (and therefore
 // Fix's post-fix diagnostics, which route through Check). SourceFS is
-// snapshotted per call, so a workspace edit applied through Invalidate
-// is visible to the next operation.
-func (s *Session) newRunner() *engine.Runner {
+// taken per call, so a workspace edit applied through Invalidate is
+// visible to the next operation; an OSWorkspace's view is one os.Root
+// the session reuses, which reads live disk anyway. RootFS is the
+// session's lent root, so a File the parse cache keeps never holds a
+// root nothing closes (see sessionRoots). The caller releases the
+// returned source view once the call ends.
+func (s *Session) newRunner() (*engine.Runner, sourceView) {
+	src := s.sourceFS()
 	return &engine.Runner{
 		Config:           s.cfg,
 		Rules:            s.rules,
 		StripFrontMatter: frontMatterEnabled(s.cfg),
 		RootDir:          s.rootDir,
 		MaxInputBytes:    s.maxBytes,
-		SourceFS:         s.ws.FS(),
+		SourceFS:         src.FS,
+		RootFS:           s.lentRoot(),
 		ConfigPath:       s.cfgPath,
 		// Shared cross-file read cache: a catalog/include target read by
 		// one operation is reused by the next until Invalidate drops it.
@@ -261,7 +271,7 @@ func (s *Session) newRunner() *engine.Runner {
 		// Shared configured-rule cache: see sourceConfigCache's doc
 		// comment on the Session struct.
 		SourceConfigCache: s.sourceConfigCache,
-	}
+	}, src
 }
 
 // CheckVersion lints source for uri at the editor's textDocument
@@ -291,8 +301,14 @@ func (s *Session) CheckVersion(uri string, source []byte, version int) *engine.R
 		s.parseHits++
 		s.mu.Unlock()
 	}
-	r := s.newRunner()
-	r.ParseCache = s.parseCache
+	r, src := s.newRunner()
+	defer src.release()
+	// The parse cache keeps the File, and the source view it holds,
+	// past this call, so install it only when that view outlives the
+	// call. The runner itself skips the cache when it has no lent root.
+	if !src.perCall {
+		r.ParseCache = s.parseCache
+	}
 	return r.RunSourceWithVersion(uri, source, version)
 }
 
@@ -315,7 +331,9 @@ func (s *Session) Check(uri string, source []byte) ([]Diagnostic, error) {
 	s.parses++
 	s.mu.Unlock()
 
-	res := s.newRunner().RunSource(uri, source)
+	r, src := s.newRunner()
+	res := r.RunSource(uri, source)
+	src.release()
 	diags := toDiagnostics(res.Diagnostics)
 
 	s.mu.Lock()
@@ -341,6 +359,7 @@ func (s *Session) Check(uri string, source []byte) ([]Diagnostic, error) {
 // produced an edit (Changed is false). Fix does not write to disk; the
 // caller persists Source.
 func (s *Session) Fix(uri string, source []byte) (FixResult, error) {
+	src := s.sourceFS()
 	fixed, err := fixpkg.Source(fixpkg.SourceOptions{
 		Config:           s.cfg,
 		Rules:            s.rules,
@@ -349,8 +368,10 @@ func (s *Session) Fix(uri string, source []byte) (FixResult, error) {
 		RootDir:          s.rootDir,
 		StripFrontMatter: frontMatterEnabled(s.cfg),
 		MaxInputBytes:    s.maxBytes,
-		SourceFS:         s.ws.FS(),
+		SourceFS:         src.FS,
+		RootFS:           s.lentRoot(),
 	})
+	src.release()
 	if err != nil {
 		return FixResult{}, err
 	}
@@ -391,6 +412,7 @@ func (s *Session) Fix(uri string, source []byte) (FixResult, error) {
 // Cross-file rules read through the session workspace's FS view, so an
 // open-document overlay (Invalidate) reaches them.
 func (s *Session) FixRule(uri string, source []byte, names []string) (FixResult, error) {
+	src := s.sourceFS()
 	fixed, err := fixpkg.SourceWithRules(fixpkg.SourceOptions{
 		Config:           s.cfg,
 		Rules:            s.rules,
@@ -399,8 +421,10 @@ func (s *Session) FixRule(uri string, source []byte, names []string) (FixResult,
 		RootDir:          s.rootDir,
 		StripFrontMatter: frontMatterEnabled(s.cfg),
 		MaxInputBytes:    s.maxBytes,
-		SourceFS:         s.ws.FS(),
+		SourceFS:         src.FS,
+		RootFS:           s.lentRoot(),
 	}, names)
+	src.release()
 	if err != nil {
 		return FixResult{}, err
 	}
@@ -594,6 +618,17 @@ func (s *Session) InvalidateWikilinks() {
 	s.runCache.InvalidateGlobMatches()
 }
 
+// WikilinkIndex returns the wikilink index of the workspace root on
+// disk from the session's run cache: the index MDS027 built during a
+// Check when one has, else a fresh walk of the root that the cache then
+// keeps. It is as fresh as the last InvalidateWikilinks, so a host
+// calls it only when it reports tree changes (the LSP does once it
+// watches files). Native-only: it returns the engine's own index type,
+// for the LSP's move guard.
+func (s *Session) WikilinkIndex() *linkgraph.WikilinkIndex {
+	return linkgraph.CachedWikilinkIndexAtDir(s.runCache, s.rootDir)
+}
+
 // absPath maps a workspace-relative uri to the absolute path the engine
 // read cache keys catalog/include reads by. With no rootDir (a
 // MemWorkspace, or an unrooted OSWorkspace) the uri is returned
@@ -605,12 +640,19 @@ func (s *Session) absPath(uri string) string {
 	return filepath.Join(s.rootDir, filepath.FromSlash(uri))
 }
 
-// Dispose releases the session's caches. The session must not be used
-// afterward. It is safe to call more than once.
+// Dispose releases the session's caches and closes the disk roots it
+// lent to its operations. The session must not be used afterward; a
+// late call reads disk through roots it opens and closes itself. It is
+// safe to call more than once.
 func (s *Session) Dispose() {
 	s.mu.Lock()
 	s.checkCache = nil
 	s.mu.Unlock()
+	s.closeRoots()
+	// Every File the parse cache keeps holds the roots just closed, so
+	// drop them: a late CheckVersion then parses fresh instead of
+	// reading through a closed root.
+	s.parseCache.InvalidateAll()
 }
 
 // parseCount returns the number of cache-miss Check passes (each of

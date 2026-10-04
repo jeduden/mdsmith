@@ -10,6 +10,7 @@ import (
 
 	"github.com/jeduden/mdsmith/internal/linkgraph"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/lint/rootfstest"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/runcache"
 
@@ -1458,20 +1459,54 @@ func TestEffectiveWikilinkStyle(t *testing.T) {
 
 func TestWikilinkRoot_Fallbacks(t *testing.T) {
 	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.md"), []byte("# A\n"), 0o644))
 	f := &lint.File{}
-	assert.Nil(t, wikilinkRoot(f))
+	root, release := wikilinkRoot(f)
+	assert.Nil(t, root)
+	release()
 
+	// A root opened from RootDir is released by closing it.
 	f.RootDir = dir
-	require.NotNil(t, wikilinkRoot(f))
+	root, release = wikilinkRoot(f)
+	require.NotNil(t, root)
+	_, err := fs.Stat(root, "a.md")
+	require.NoError(t, err)
+	release()
+	_, err = fs.Stat(root, "a.md")
+	assert.Error(t, err, "release closes a root wikilinkRoot opened")
 
+	// A root the file already holds is borrowed: release leaves it open.
 	mfs := os.DirFS(dir)
 	f.RootFS = mfs
-	assert.Equal(t, fs.FS(mfs), wikilinkRoot(f))
+	root, release = wikilinkRoot(f)
+	assert.Equal(t, fs.FS(mfs), root)
+	release()
 
 	f.RootFS = nil
 	f.RootDir = ""
 	f.FS = mfs
-	assert.Equal(t, fs.FS(mfs), wikilinkRoot(f))
+	root, release = wikilinkRoot(f)
+	assert.Equal(t, fs.FS(mfs), root)
+	release()
+}
+
+// TestCheckWikilinks_ClosesOpenedRoot locks that a Check whose file
+// carries a RootDir but no RootFS closes the os.Root it opened for
+// wikilink resolution once the check ends. Not parallel: it records
+// lint.OpenRootFS.
+func TestCheckWikilinks_ClosesOpenedRoot(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.md"), []byte("# B\n"), 0o644))
+	opened := rootfstest.Record(t)
+	f, err := lint.NewFileFromSource("a.md", []byte("See [[b]].\n"), true)
+	require.NoError(t, err)
+	f.FS = os.DirFS(dir)
+	f.RootDir = dir
+
+	assert.Empty(t, (&Rule{Wikilinks: true}).Check(f), "[[b]] resolves through the opened root")
+	require.Len(t, opened(), 1)
+	_, err = fs.Stat(opened()[0], "b.md")
+	assert.Error(t, err, "the opened root is closed once the check ends")
 }
 
 func TestCheck_Wikilinks_RootMissing(t *testing.T) {

@@ -525,7 +525,16 @@ type didChangeWatchedFilesRegistrationOptions struct {
 
 type fileSystemWatcher struct {
 	GlobPattern string `json:"globPattern"`
+	// Kind is the LSP WatchKind bitmask of the events to report; zero
+	// (omitted) means the protocol default, create|change|delete.
+	Kind int `json:"kind,omitempty"`
 }
+
+// LSP WatchKind bits (§3.17 workspace/didChangeWatchedFiles).
+const (
+	watchKindCreate = 1
+	watchKindDelete = 4
+)
 
 // LSP §3.18.1 (window/logMessage). Used to surface server-side
 // errors (e.g. lint pipeline failures) to clients that route the

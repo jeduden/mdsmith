@@ -13,7 +13,7 @@ import (
 
 // soloResolver returns a resolver for a batch of one planned move,
 // src to dst, as Move builds it.
-func soloResolver(ws Workspace, src, dst string) *destResolver {
+func soloResolver(ws MoveWorkspace, src, dst string) *destResolver {
 	return &destResolver{ws: ws, batch: &moveBatch{members: map[string]batchMember{src: {dst: dst, planned: true}}}}
 }
 

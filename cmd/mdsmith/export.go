@@ -127,6 +127,7 @@ func doExport(path string, flags exportFlags) int {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
 		return 2
 	}
+	defer closeFileRoots(f)
 
 	out, diags := export.Export(f, exportMode(flags), rules)
 	if len(diags) > 0 {
@@ -159,6 +160,29 @@ func prepareExportFile(
 ) (*lint.File, []rule.Rule, error) {
 	f, _ := lint.NewFileFromSource(path, source, frontMatterEnabled(cfg)) // never errors today
 	f.MaxInputBytes = maxBytes
+	// Match engine.Runner.processFile so staleness diagnostics inside
+	// an outer include/catalog body are suppressed: the host file is
+	// not responsible for those bytes.
+	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
+
+	all := rule.All()
+	effective, err := effectiveExportConfig(cfg, path, f.FrontMatter, all)
+	if err != nil {
+		return nil, nil, err
+	}
+	rules, err := configuredEnabledRules(all, effective)
+	if err != nil {
+		return nil, nil, err
+	}
+	wireExportFS(f, path, cfgPath)
+	return f, rules, nil
+}
+
+// wireExportFS opens f's directory and project roots and sets its
+// gitignore hook. It runs after prepareExportFile's last error return,
+// so a failed prepare holds no root; the caller closes them with
+// closeFileRoots.
+func wireExportFS(f *lint.File, path, cfgPath string) {
 	dir := filepath.Dir(path)
 	f.FS = lint.OpenRootFS(dir)
 	gitignoreDir := dir
@@ -176,21 +200,14 @@ func prepareExportFile(
 	f.GitignoreFunc = func() *gitignore.Matcher {
 		return gitignore.NewMatcher(gitignoreDir)
 	}
-	// Match engine.Runner.processFile so staleness diagnostics inside
-	// an outer include/catalog body are suppressed: the host file is
-	// not responsible for those bytes.
-	f.GeneratedRanges = gensection.FindAllGeneratedRanges(f)
+}
 
-	all := rule.All()
-	effective, err := effectiveExportConfig(cfg, path, f.FrontMatter, all)
-	if err != nil {
-		return nil, nil, err
-	}
-	rules, err := configuredEnabledRules(all, effective)
-	if err != nil {
-		return nil, nil, err
-	}
-	return f, rules, nil
+// closeFileRoots closes the roots a command opened for f through
+// lint.OpenRootFS: f.FS and f.RootFS. When both name one handle (a file
+// at the project root) the second Close is a harmless no-op.
+func closeFileRoots(f *lint.File) {
+	lint.CloseFS(f.FS)
+	lint.CloseFS(f.RootFS)
 }
 
 // effectiveExportConfig parses front-matter kinds/fields (with the

@@ -172,7 +172,8 @@ func (r *Rule) checkWikilinks(
 	// f.FS is guaranteed non-nil by the caller (r.Check returns early
 	// otherwise), and wikilinkRoot's last fallback returns f.FS, so
 	// root is always populated here.
-	root := wikilinkRoot(f)
+	root, release := wikilinkRoot(f)
+	defer release()
 	resolver := newWikilinkResolver(
 		root, workspaceRelativeSource(f), r.effectiveWikilinkStyle(),
 		wikilinkIndexForRoot(f, root),
@@ -270,15 +271,24 @@ func wikilinkCacheKey(f *lint.File) string {
 	return abs
 }
 
-func wikilinkRoot(f *lint.File) fs.FS {
+// wikilinkRoot returns the FS wikilinks resolve against and a func
+// that releases it once the check ends. A root the file already holds
+// (RootFS, else FS) is borrowed, so release is a no-op; one opened here
+// from RootDir is closed by release, so no check leaves an os.Root open.
+func wikilinkRoot(f *lint.File) (fs.FS, func()) {
 	if f.RootFS != nil {
-		return f.RootFS
+		return f.RootFS, keepRoot
 	}
 	if f.RootDir != "" {
-		return lint.OpenRootFS(f.RootDir)
+		root := lint.OpenRootFS(f.RootDir)
+		return root, func() { _ = root.Close() }
 	}
-	return f.FS
+	return f.FS, keepRoot
 }
+
+// keepRoot is wikilinkRoot's release for a borrowed root: it leaves the
+// root open for its owner.
+func keepRoot() {}
 
 // wikilinkResolver caches workspace-walk results so a doc with many
 // references to the same target does a single fs walk per target.

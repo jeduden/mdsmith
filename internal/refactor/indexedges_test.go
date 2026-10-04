@@ -50,7 +50,7 @@ func emptyIndexEdges() map[string]IndexEdges {
 }
 
 func TestIndexEdges_IncomingAnchorEdges(t *testing.T) {
-	var ws Workspace = indexHost{IndexEdges: NewIndexEdges(sampleIndex(t))}
+	var ws MoveWorkspace = indexHost{IndexEdges: NewIndexEdges(sampleIndex(t))}
 	edges := ws.IncomingAnchorEdges("a.md", "setup")
 	require.Len(t, edges, 1)
 	assert.Equal(t, "b.md", edges[0].SourceFile)
@@ -63,7 +63,7 @@ func TestIndexEdges_IncomingAnchorEdges(t *testing.T) {
 }
 
 func TestIndexEdges_IncomingPathEdges(t *testing.T) {
-	var ws Workspace = indexHost{IndexEdges: NewIndexEdges(sampleIndex(t))}
+	var ws MoveWorkspace = indexHost{IndexEdges: NewIndexEdges(sampleIndex(t))}
 	edges := ws.IncomingPathEdges("a.md")
 	require.Len(t, edges, 1)
 	assert.Equal(t, "b.md", edges[0].SourceFile)
@@ -76,7 +76,7 @@ func TestIndexEdges_IncomingPathEdges(t *testing.T) {
 }
 
 func TestIndexEdges_IncomingWikilinkEdges(t *testing.T) {
-	var ws Workspace = indexHost{IndexEdges: NewIndexEdges(sampleIndex(t))}
+	var ws MoveWorkspace = indexHost{IndexEdges: NewIndexEdges(sampleIndex(t))}
 	edges := ws.IncomingWikilinkEdges("a")
 	require.Len(t, edges, 1)
 	assert.Equal(t, "b.md", edges[0].SourceFile)
@@ -89,7 +89,7 @@ func TestIndexEdges_IncomingWikilinkEdges(t *testing.T) {
 }
 
 func TestIndexEdges_Files(t *testing.T) {
-	var ws Workspace = indexHost{IndexEdges: NewIndexEdges(sampleIndex(t))}
+	var ws MoveWorkspace = indexHost{IndexEdges: NewIndexEdges(sampleIndex(t))}
 	assert.ElementsMatch(t, []string{"a.md", "b.md"}, ws.Files())
 	for name, e := range emptyIndexEdges() {
 		t.Run(name, func(t *testing.T) {

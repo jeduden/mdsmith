@@ -56,9 +56,9 @@ func (s *Server) handleWillRenameFiles(msg *requestMessage) {
 		return
 	}
 	_, _, root := s.snapshotConfig()
-	// The batch shares one wikilink index, walked at the root its move
-	// paths are spelled against.
-	ws := s.renameWorkspace(root)
+	// The batch shares one wikilink index, read for the root its move
+	// paths are spelled against (see moveWikilinkIndex).
+	ws := s.moveWorkspace(root)
 
 	batch := planRenameBatch(ws, root, p.Files)
 	merged, dropped := guardRenameEdits(batch.Edits)
@@ -92,7 +92,7 @@ func guardRenameEdits(planned map[string][]refactor.Edit) (map[string][]textEdit
 // planRenameBatch runs refactor.MoveAll over the renames in files,
 // read against root. A pair with an empty or unchanged path is
 // skipped, and a pair listed twice is planned once.
-func planRenameBatch(ws refactor.Workspace, root string, files []fileRename) refactor.BatchPlan {
+func planRenameBatch(ws refactor.MoveWorkspace, root string, files []fileRename) refactor.BatchPlan {
 	var pairs []refactor.MovePair
 	seen := map[refactor.MovePair]bool{}
 	for _, f := range files {
@@ -113,12 +113,16 @@ func planRenameBatch(ws refactor.Workspace, root string, files []fileRename) ref
 // notification: it swaps each renamed file's path in the warm index so
 // later navigation and rename requests resolve against the new
 // location. The client has already performed the rename and applied the
-// willRename edits, so this only keeps the index consistent.
+// willRename edits, so this only keeps the indexes consistent. A rename
+// changes the file set, so the session's cached wikilink index drops
+// now rather than when the watcher's delete and create events arrive:
+// a move planned in between would otherwise read the old paths.
 func (s *Server) handleDidRenameFiles(params json.RawMessage) {
 	var p renameFilesParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return
 	}
+	s.invalidateWikilinks()
 	_, _, root := s.snapshotConfig()
 	idx := s.ensureIndex()
 	for _, f := range p.Files {

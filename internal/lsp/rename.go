@@ -323,38 +323,87 @@ func (s *Server) handleRename(msg *requestMessage) {
 	}
 }
 
-// lspRenameWorkspace backs the rename engine's Workspace seam with
-// the server's warm index plus open buffers. The index supplies the
-// edge graph; resolveURIAndSource supplies the per-file bytes and
-// the URI the file's edits group under (the client URI for open
-// buffers, the canonical workspace URI otherwise).
+// lspRenameWorkspace backs the rename engine's heading seam
+// (refactor.Workspace) with the server's warm index plus open buffers.
+// The index supplies the edge graph; resolveURIAndSource supplies the
+// per-file bytes and the URI the file's edits group under (the client
+// URI for open buffers, the canonical workspace URI otherwise). A
+// heading rename reads no wikilink index, so this type carries none;
+// a move builds lspMoveWorkspace instead.
 type lspRenameWorkspace struct {
 	refactor.IndexEdges
 	s *Server
-	// wikilinks supplies the wikilink index a move reads, walked once
-	// per workspace at the root its paths were spelled against.
+}
+
+// renameWorkspace returns the heading-rename Workspace over the warm
+// index.
+func (s *Server) renameWorkspace() lspRenameWorkspace {
+	return lspRenameWorkspace{s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex())}
+}
+
+// lspMoveWorkspace backs refactor.MoveWorkspace: the heading workspace
+// plus the wikilink index a move reads. Build it only through
+// moveWorkspace, which always sets wikilinks.
+type lspMoveWorkspace struct {
+	lspRenameWorkspace
+	// wikilinks supplies the wikilink index a move reads, read once
+	// per workspace for the root its paths were spelled against.
 	wikilinks func() *linkgraph.WikilinkIndex
 }
 
-// renameWorkspace returns the rename engine's Workspace over the warm
-// index, with a wikilink index walked lazily, at most once, at root.
-// Every rename builds its workspace here, so none lacks the index a
-// move's same-stem guard reads. A caller passes the root it spelled its
-// paths against, so a config reload in between cannot key the index to
-// another directory.
-func (s *Server) renameWorkspace(root string) lspRenameWorkspace {
-	return lspRenameWorkspace{
-		s: s, IndexEdges: refactor.NewIndexEdges(s.ensureIndex()),
+// moveWorkspace returns the move Workspace over the warm index, with a
+// wikilink index read lazily, at most once, for root (see
+// moveWikilinkIndex). Every move builds its workspace here, so none
+// lacks the index a move's same-stem guard reads. A caller passes the
+// root it spelled its paths against, so a config reload in between
+// cannot key the index to another directory.
+func (s *Server) moveWorkspace(root string) lspMoveWorkspace {
+	return lspMoveWorkspace{
+		lspRenameWorkspace: s.renameWorkspace(),
 		wikilinks: sync.OnceValue(func() *linkgraph.WikilinkIndex {
-			return linkgraph.WikilinkIndexAtDir(root)
+			return s.moveWikilinkIndex(root)
 		}),
 	}
 }
 
-// WikilinkIndex implements refactor.Workspace: the index `[[stem]]`
+// moveWikilinkIndex returns the wikilink index a move at root reads.
+// Once the server watches files, every create and delete drops the
+// session's cached index, so that index is fresh and is read without
+// a walk (the session walks only when nothing is cached yet). The
+// session answers only for the root it was built at; a move spelled
+// against another root (a config reload in between) walks that root.
+// The client reports changes only under the workspace folder it
+// watches, so a root outside that folder (mdsmith.config pointing
+// elsewhere) walks too. Otherwise the cache may be stale, so root is
+// walked fresh.
+func (s *Server) moveWikilinkIndex(root string) *linkgraph.WikilinkIndex {
+	if s.watchingFiles.Load() && s.watchesRoot(root) {
+		sess, release := s.sessionAt(root)
+		defer release()
+		if sess != nil {
+			return sess.WikilinkIndex()
+		}
+	}
+	return s.walkWikilinks(root)
+}
+
+// watchesRoot reports whether root is the workspace folder the client
+// watches or lies under it, so every file-set change below root reaches
+// the server. Both paths are compared with symlinks resolved (see
+// insideWorkspace): a root reached through a link out of the folder is
+// not watched, since the client's watcher does not follow the link. A
+// server with no workspace folder watches nothing.
+func (s *Server) watchesRoot(root string) bool {
+	s.configMu.RLock()
+	folder := s.rootDir
+	s.configMu.RUnlock()
+	return root != "" && insideWorkspace(folder, root)
+}
+
+// WikilinkIndex implements refactor.MoveWorkspace: the index `[[stem]]`
 // resolution reads, over the whole workspace root on disk, or nil when
 // that root is unreadable.
-func (w lspRenameWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
+func (w lspMoveWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
 	return w.wikilinks()
 }
 
@@ -371,9 +420,7 @@ func (s *Server) renameHeading(
 	msg *requestMessage, p renameParams,
 	source []byte, rel string, line int, res index.LocateResult, newName string,
 ) {
-	_, _, root := s.snapshotConfig()
-	ws := s.renameWorkspace(root)
-	plan, err := refactor.Heading(ws, p.TextDocument.URI, rel, source, line, res.Name, newName)
+	plan, err := refactor.Heading(s.renameWorkspace(), p.TextDocument.URI, rel, source, line, res.Name, newName)
 	if err != nil {
 		s.writeRenameError(msg.ID, err)
 		return

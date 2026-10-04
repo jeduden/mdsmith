@@ -116,8 +116,9 @@ func TestIncludeSymlinkInsideRootWorks(t *testing.T) {
 }
 
 // TestBacklinksRootFSContainsSymlinkEscape verifies that the per-file RootFS
-// wired by f.SetRootDir (the path extractBacklinksFromSource takes) uses a
-// contained FS (lint.OpenRootFS) that blocks opening through absolute symlinks.
+// extractBacklinksFromSource wires for its index-less fallback (through
+// lint.OpenRootFS, as f.SetRootDir does) is a contained FS that blocks
+// opening through absolute symlinks.
 //
 // The backlinks wikilink index (built via linkgraph.WikilinkIndexFor) only
 // enumerates paths through WalkDir, so the index-build path never calls Open.
@@ -138,7 +139,7 @@ func TestBacklinksRootFSContainsSymlinkEscape(t *testing.T) {
 		"test invariant: os.DirFS must be able to read through the symlink")
 
 	// Confirm lint.OpenRootFS blocks the escape — this is the FS that
-	// f.SetRootDir (called by extractBacklinksFromSource) wires onto f.RootFS.
+	// extractBacklinksFromSource wires onto f.RootFS.
 	rootFS := lint.OpenRootFS(root)
 	_, errContained := rootFS.Open("docs/secret.md")
 	require.Error(t, errContained,
@@ -146,7 +147,7 @@ func TestBacklinksRootFSContainsSymlinkEscape(t *testing.T) {
 
 	// Also verify the containment is present on the f.RootFS seam that
 	// the backlinks wikilink fallback path uses. extractBacklinksFromSource
-	// calls f.SetRootDir(rootDir) — mirror that exactly.
+	// opens the same lint.OpenRootFS view f.SetRootDir wires.
 	f, _ := lint.NewFileFromSource(filepath.Join(root, "src.md"), []byte("# Src\n"), false)
 	f.SetRootDir(root)
 	_, errRootFS := f.RootFS.Open("docs/secret.md")

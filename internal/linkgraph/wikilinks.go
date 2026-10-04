@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"io/fs"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -198,9 +199,33 @@ func WikilinkIndexFor(cache *runcache.Cache, rootKey string, root fs.FS) *Wikili
 // It is the entry point for a caller holding a root path and no run
 // cache (the CLI, the LSP move guard, `mdsmith list backlinks`), so the
 // way that root is opened stays in one place. An empty or unreadable
-// dir builds no index (nil).
+// dir builds no index (nil). The root's handle is closed before it
+// returns.
 func WikilinkIndexAtDir(dir string) *WikilinkIndex {
-	return WikilinkIndexFor(nil, "", lint.OpenRootFS(dir))
+	root := lint.OpenRootFS(dir)
+	// The index holds paths only, so the root closes once it is built.
+	// A close error on a read-only directory handle loses nothing.
+	defer func() { _ = root.Close() }()
+	return WikilinkIndexFor(nil, "", root)
+}
+
+// CachedWikilinkIndexAtDir returns the index memoized on cache for dir,
+// walking dir on disk (as WikilinkIndexAtDir does) only on a miss. The
+// key is dir's absolute form, the key MDS027 stores its index under, so
+// a caller holding a session's run cache reads the index a lint already
+// built instead of walking the tree again. A nil cache walks dir, as
+// WikilinkIndexFor does.
+//
+// filepath.Abs only errors when os.Getwd fails, an OS-level failure
+// MDS027's wikilinkCacheKey swallows the same way.
+func CachedWikilinkIndexAtDir(cache *runcache.Cache, dir string) *WikilinkIndex {
+	if cache == nil {
+		return WikilinkIndexAtDir(dir)
+	}
+	key, _ := filepath.Abs(dir) //nolint:errcheck
+	v := cache.Wikilinks(key, func() any { return WikilinkIndexAtDir(dir) })
+	idx, _ := v.(*WikilinkIndex)
+	return idx
 }
 
 // WikilinkIndex is a pre-built directory of every file under one
