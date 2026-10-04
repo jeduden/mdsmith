@@ -68,10 +68,10 @@ type MoveWorkspace interface {
 	// file `[[oldStem]]` resolves to and whether the new stem or name
 	// is taken, so it must cover the same file set the resolver does. A
 	// nil index (no readable root) makes the move read the Files list
-	// instead. An implementation may walk the
-	// whole root on every call (the CLI one does; the LSP and Session
-	// ones memoize), so a planner calls it at most once per plan and
-	// only once it has a `[[stem]]` edge to guard.
+	// instead. An implementation may walk the whole root on every
+	// call (the CLI one does; the LSP one memoizes, and the Session one
+	// reuses its edge-index walk), so a planner calls it at most once
+	// per plan and only once it has a `[[stem]]` edge to guard.
 	WikilinkIndex() *linkgraph.WikilinkIndex
 }
 

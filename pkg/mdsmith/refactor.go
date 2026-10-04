@@ -135,25 +135,26 @@ func toRefactorPlan(p refactor.Plan) RefactorPlan {
 }
 
 // sessionRefactorWorkspace adapts a Session to the refactor engine's
-// Workspace seam: a transient index over every Markdown file in the
+// MoveWorkspace seam: a transient index over every Markdown file in the
 // workspace, read through the session's Workspace (with the edited
 // buffer overlaid when a rename supplies one).
 type sessionRefactorWorkspace struct {
 	refactor.IndexEdges
 	s *Session
-	// fsys is the workspace FS snapshot, taken once on first use and
-	// shared by the edge index walk and WikilinkIndex: a MemWorkspace
-	// copies every file's bytes on each FS call.
-	fsys          func() fs.FS
+	// paths lists every file in the workspace FS, walked once on first
+	// use and shared by the edge index (its Markdown files) and
+	// WikilinkIndex (all of them), so a move walks the FS once.
+	paths         func() []string
 	overlayURI    string
 	overlaySource []byte
 }
 
 // WikilinkIndex implements refactor.MoveWorkspace: the index `[[stem]]`
-// resolution reads, over the session workspace's whole file tree. Each
-// call walks that tree again; the move planner calls it once per plan.
+// resolution reads, over every file in the session workspace's tree
+// except `.git` and `node_modules`. It is built from the path list the
+// edge-index walk collects, so it walks nothing itself.
 func (w *sessionRefactorWorkspace) WikilinkIndex() *linkgraph.WikilinkIndex {
-	return linkgraph.NewWikilinkIndex(w.fsys())
+	return linkgraph.NewWikilinkIndexFromPaths(w.paths())
 }
 
 func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
@@ -168,46 +169,52 @@ func (w *sessionRefactorWorkspace) Resolve(file string) (string, []byte, bool) {
 	return rel, src, true
 }
 
-// buildRefactorWorkspace returns a Workspace whose edge and Files
-// queries walk the session's workspace for Markdown files and build a
-// transient index over them on the first such query, reusing it after
-// that; Resolve alone reads only the file it names, so a label rename
-// or a failed detection never walks a large WASM vault. overlayURI,
-// when set, substitutes overlaySource for that file's bytes so a
-// rename computes against the caller's current buffer rather than the
-// last-saved file.
+// buildRefactorWorkspace returns a workspace whose edge and Files
+// queries build a transient index over the session workspace's Markdown
+// files on the first such query, reusing it after that; Resolve alone
+// reads only the file it names, so a label rename or a failed detection
+// never walks a large WASM vault. One walk of one FS snapshot (a
+// MemWorkspace copies every file's bytes per FS call) lists every file
+// for both the edge index and WikilinkIndex. overlayURI, when set,
+// substitutes overlaySource for that file's bytes so a rename computes
+// against the caller's current buffer rather than the last-saved file.
 func (s *Session) buildRefactorWorkspace(overlayURI string, overlaySource []byte) *sessionRefactorWorkspace {
-	fsys := sync.OnceValue(s.ws.FS)
+	paths := sync.OnceValue(func() []string { return walkWorkspacePaths(s.ws.FS()) })
 	return &sessionRefactorWorkspace{
 		IndexEdges: refactor.NewLazyIndexEdges(func() *index.Index {
-			return s.indexRefactorWorkspace(fsys(), overlayURI, overlaySource)
+			return s.indexRefactorWorkspace(paths(), overlayURI, overlaySource)
 		}),
 		s:             s,
-		fsys:          fsys,
+		paths:         paths,
 		overlayURI:    overlayURI,
 		overlaySource: overlaySource,
 	}
 }
 
-// indexRefactorWorkspace walks fsys, the session workspace's FS, for
-// Markdown files and indexes them, reading overlaySource in place of
-// overlayURI's bytes when overlayURI is set.
-func (s *Session) indexRefactorWorkspace(fsys fs.FS, overlayURI string, overlaySource []byte) *index.Index {
-	var rels []string
-	// The walk callback swallows per-entry errors, so WalkDir's own return
-	// is always nil for a well-formed workspace FS; nothing to propagate.
+// walkWorkspacePaths walks fsys once and returns every file path in it.
+// The walk callback swallows per-entry errors, so an unreadable root or
+// subtree just contributes no paths.
+func walkWorkspacePaths(fsys fs.FS) []string {
+	var paths []string
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if mdpath.HasMarkdownExt(path.Ext(p)) {
-			rels = append(rels, index.NormalizePath(p))
+		if err == nil && !d.IsDir() {
+			paths = append(paths, p)
 		}
 		return nil
 	})
+	return paths
+}
+
+// indexRefactorWorkspace indexes the Markdown files among paths, the
+// session workspace's walked file list, reading overlaySource in place
+// of overlayURI's bytes when overlayURI is set.
+func (s *Session) indexRefactorWorkspace(paths []string, overlayURI string, overlaySource []byte) *index.Index {
+	var rels []string
+	for _, p := range paths {
+		if mdpath.HasMarkdownExt(path.Ext(p)) {
+			rels = append(rels, index.NormalizePath(p))
+		}
+	}
 	overlayKey := index.NormalizePath(overlayURI)
 	idx := index.New(s.rootDir)
 	idx.BuildSerial(rels, func(rel string) ([]byte, error) {

@@ -91,7 +91,7 @@ for the edge index and once for `WikilinkIndex`.
 6. [x] Build the LSP heading workspace without the wikilink
    closure, and the move workspace only through a
    constructor that sets it.
-7. Write a failing `Session.Move` test that counts FS walks:
+7. [x] Write a failing `Session.Move` test that counts FS walks:
    a move with a `[[stem]]` edge walks once. Collect the
    walked paths in the edge-index walk and build the index
    with `linkgraph.NewWikilinkIndexFromPaths`.
@@ -109,7 +109,7 @@ for the edge index and once for `WikilinkIndex`.
       `WikilinkIndex` method, and an LSP heading rename builds
       no wikilink closure
 - [x] No LSP move workspace can hold a nil wikilink closure
-- [ ] `Session.Move` with a `[[stem]]` edge walks the
+- [x] `Session.Move` with a `[[stem]]` edge walks the
       workspace FS once
 - [ ] All tests pass: `go test ./...`
 - [ ] `go tool golangci-lint run` reports no issues

@@ -390,12 +390,12 @@ func TestSession_IndexRefactorWorkspace(t *testing.T) {
 		"notes.txt": []byte("[b](sub/b.md#b)\n"),
 	})
 	t.Run("indexes only Markdown files", func(t *testing.T) {
-		idx := s.indexRefactorWorkspace(s.ws.FS(), "", nil)
+		idx := s.indexRefactorWorkspace(walkWorkspacePaths(s.ws.FS()), "", nil)
 		assert.ElementsMatch(t, []string{"a.md", "sub/b.md"}, idx.Files())
 		assert.Empty(t, idx.IncomingEdges("sub/b.md", "b"))
 	})
 	t.Run("overlay replaces the saved bytes", func(t *testing.T) {
-		idx := s.indexRefactorWorkspace(s.ws.FS(), "./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
+		idx := s.indexRefactorWorkspace(walkWorkspacePaths(s.ws.FS()), "./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
 		edges := idx.IncomingEdges("sub/b.md", "b")
 		require.Len(t, edges, 1)
 		assert.Equal(t, "a.md", edges[0].SourceFile)
@@ -467,4 +467,57 @@ func TestSession_Rename_IndexesWorkspaceOnlyForHeadings(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, p.Edits, "b.md")
 	assert.NotZero(t, ws.reads, "a heading rename indexes the workspace")
+}
+
+// walkCountingWorkspace hands out an FS that counts root ReadDir
+// calls: fs.WalkDir reads the root once per walk.
+type walkCountingWorkspace struct {
+	*MemWorkspace
+	walks int
+}
+
+func (w *walkCountingWorkspace) FS() fs.FS { return walkCountingFS{w.MemWorkspace.FS(), &w.walks} }
+
+type walkCountingFS struct {
+	fs.FS
+	walks *int
+}
+
+func (c walkCountingFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if name == "." {
+		*c.walks++
+	}
+	return fs.ReadDir(c.FS, name)
+}
+
+// TestSession_Move_WalksOnce locks that a move with a `[[stem]]` edge
+// walks the workspace FS once: the edge-index walk collects every path,
+// and the wikilink index is built from that list.
+func TestSession_Move_WalksOnce(t *testing.T) {
+	ws := &walkCountingWorkspace{MemWorkspace: NewMemWorkspace(map[string][]byte{
+		"api.md":   []byte("# API\n"),
+		"guide.md": []byte("See [[api]].\n"),
+	})}
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+
+	ws.walks = 0
+	plan, err := s.Move("api.md", "service.md")
+	require.NoError(t, err)
+	require.Len(t, plan.Edits["guide.md"], 1)
+	assert.Equal(t, 1, ws.walks)
+}
+
+// TestWalkWorkspacePaths locks the one walk a refactor workspace makes:
+// it lists every file, Markdown or not and at any depth, and an
+// unreadable root lists none.
+func TestWalkWorkspacePaths(t *testing.T) {
+	ws := NewMemWorkspace(map[string][]byte{
+		"a.md":         []byte("# A\n"),
+		"sub/logo.png": []byte("png"),
+		".git/HEAD":    []byte("ref\n"),
+	})
+	assert.ElementsMatch(t, []string{"a.md", "sub/logo.png", ".git/HEAD"}, walkWorkspacePaths(ws.FS()))
+	assert.Empty(t, walkWorkspacePaths(failFS{}))
 }
