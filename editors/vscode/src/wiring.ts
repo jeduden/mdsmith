@@ -19,7 +19,6 @@ import type {
   TransportKind
 } from "vscode-languageclient/node";
 
-import { randomUUID } from "node:crypto";
 
 import type { BinaryCandidate } from "./binary";
 import { resolveBinary as resolveBinaryImpl, findBinaryCandidates as findBinaryCandidatesImpl } from "./binary";
@@ -405,57 +404,27 @@ export interface WiringDeps {
   stdioTransport?: TransportKind;
 }
 
-// MementoLike is the slice of vscode.Memento (ExtensionContext.
-// workspaceState) that ensureSingletonScope reads and writes.
-export interface MementoLike {
-  get<T>(key: string): T | undefined;
-  update(key: string, value: unknown): Thenable<void>;
-}
-
 // ExtensionContextLike is the slice of vscode.ExtensionContext that
 // Wiring consumes: the disposables array, the extension install path,
-// and the per-workspace state that holds the singleton scope.
+// and the per-workspace storage URI that names the singleton scope.
 export interface ExtensionContextLike {
   subscriptions: Array<{ dispose(): void }>;
   extensionPath: string;
-  workspaceState: MementoLike;
+  storageUri?: { toString(): string };
 }
 
-// SINGLETON_SCOPE_KEY is the workspaceState key holding this
-// workspace's singleton scope id.
-export const SINGLETON_SCOPE_KEY = "mdsmith.singletonScope";
-
-// ensureSingletonScope returns this workspace's singleton scope: a UUID
-// generated once and persisted in workspaceState. VS Code writes that
-// store to disk and reads it back unchanged after a reload or update,
-// so a leaked extension host and its fresh replacement send the same
-// token and their servers contend for one owner record — newest wins.
+// singletonScope returns this workspace's singleton scope: the string
+// form of context.storageUri. VS Code derives that URI from the
+// workspace identity, so a leaked extension host and its fresh
+// replacement get the same value with nothing written to disk, and
+// their servers contend for one owner record — newest wins.
 // vscode.env.sessionId is not used: it is per extension-host process
 // and may differ between the two hosts, which would silently stop the
-// orphan from being reaped. A failed write still returns the fresh id;
-// the server then stays scoped for this activation only.
-//
-// It returns synchronously and does not await the write. VS Code's
-// Memento updates its in-memory value before the returned promise
-// settles, so a later get() already sees the id. Not awaiting keeps
-// startServer free of an await between installing the config watcher
-// and recording the client: a deactivate() or restartServer() in that
-// gap would otherwise find no client to stop, and the resumed start
-// would launch one behind its back.
-export function ensureSingletonScope(state: MementoLike): string {
-  const stored = state.get<unknown>(SINGLETON_SCOPE_KEY);
-  if (typeof stored === "string" && stored !== "") {
-    return stored;
-  }
-  const id = randomUUID();
-  try {
-    state.update(SINGLETON_SCOPE_KEY, id).then(undefined, () => {
-      // Best effort; see the doc comment.
-    });
-  } catch {
-    // A synchronous throw is dropped the same way.
-  }
-  return id;
+// orphan from being reaped. A window with no folder or workspace open
+// has no storageUri; it gets "", the opt-out, so its server never
+// claims.
+export function singletonScope(context: { storageUri?: { toString(): string } }): string {
+  return context.storageUri?.toString() ?? "";
 }
 
 // DidChangeConfigurationNotificationType is the notification id Wiring
@@ -555,8 +524,11 @@ export class Wiring {
     this.disposeConfigWatcher();
     this.configWatcher = this.api.workspace.createFileSystemWatcher("**/.mdsmith.yml");
     context.subscriptions.push(this.configWatcher);
-    const singletonScope = ensureSingletonScope(context.workspaceState);
-    const clientOptions = buildClientOptions(this.configWatcher, this.getOutputChannel(), singletonScope);
+    const clientOptions = buildClientOptions(
+      this.configWatcher,
+      this.getOutputChannel(),
+      singletonScope(context),
+    );
     // Replace the default ErrorHandler (DoNotRestart after 5 close
     // events in 3 minutes) with one that gives the user a clear recovery
     // path. We let the client keep restarting up to a higher per-window

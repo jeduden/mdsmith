@@ -17,8 +17,7 @@ const TransportKindStdio = 0;
 
 import {
   buildClientOptions,
-  ensureSingletonScope,
-  SINGLETON_SCOPE_KEY,
+  singletonScope,
   buildServerOptions,
   decideClose,
   forwardMdsmithConfigChange,
@@ -30,7 +29,6 @@ import {
   RUN_ON_TYPE,
   type ClientLike,
   type FileSystemWatcherLike,
-  type MementoLike,
   type RestartPolicyState,
   type VscodeApi
 } from "./wiring";
@@ -141,89 +139,23 @@ describe("buildClientOptions", () => {
   });
 });
 
-// FakeMemento stands in for vscode.ExtensionContext.workspaceState: a
-// key/value store VS Code persists to disk per workspace. Sharing one
-// instance across two Wiring activations models an extension reload or
-// update reading the same stored state back.
-class FakeMemento {
-  readonly values = new Map<string, unknown>();
-  updates = 0;
-  updateRejection: Error | undefined;
-  // updateSettles, when set, is awaited before update() resolves, so a
-  // test controls when the storage write settles (VS Code's Memento
-  // updates its in-memory value at once and settles the write later).
-  updateSettles: Promise<void> | undefined;
-  get<T>(key: string): T | undefined {
-    return this.values.get(key) as T | undefined;
-  }
-  async update(key: string, value: unknown): Promise<void> {
-    this.updates++;
-    if (this.updateRejection) throw this.updateRejection;
-    this.values.set(key, value);
-    await this.updateSettles;
-  }
+// fakeUri stands in for vscode.Uri: singletonScope only calls toString.
+function fakeUri(value: string): { toString(): string } {
+  return { toString: () => value };
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const STORAGE = "file:///home/u/.config/Code/User/workspaceStorage/abc123/jeduden.mdsmith";
 
-describe("ensureSingletonScope", () => {
-  test("generates a UUID once and persists it in workspaceState", () => {
-    const state = new FakeMemento();
-    const id = ensureSingletonScope(state);
-    expect(id).toMatch(UUID_RE);
-    expect(state.get<string>(SINGLETON_SCOPE_KEY)).toBe(id);
-    expect(state.updates).toBe(1);
+describe("singletonScope", () => {
+  test("is the per-workspace storage URI", () => {
+    expect(singletonScope({ storageUri: fakeUri(STORAGE) })).toBe(STORAGE);
   });
 
-  test("reuses the stored id without rewriting it", () => {
-    const state = new FakeMemento();
-    state.values.set(SINGLETON_SCOPE_KEY, "stored-id");
-    expect(ensureSingletonScope(state)).toBe("stored-id");
-    expect(ensureSingletonScope(state)).toBe("stored-id");
-    expect(state.updates).toBe(0);
-  });
-
-  test("replaces a stored value that is not a non-empty string", () => {
-    for (const bad of ["", 42, null, { id: "x" }]) {
-      const state = new FakeMemento();
-      state.values.set(SINGLETON_SCOPE_KEY, bad);
-      const id = ensureSingletonScope(state);
-      expect(id).toMatch(UUID_RE);
-      expect(state.get<string>(SINGLETON_SCOPE_KEY)).toBe(id);
-    }
-  });
-
-  test("returns the id without waiting for the write to settle", () => {
-    // startServer must not await the storage write: an await there sits
-    // between installing the config watcher and recording the client, so
-    // a deactivate() or restartServer() in that gap would leave a client
-    // started behind its back.
-    const state = new FakeMemento();
-    state.updateSettles = new Promise<void>(() => {});
-    const id = ensureSingletonScope(state);
-    expect(id).toMatch(UUID_RE);
-    expect(state.get<string>(SINGLETON_SCOPE_KEY)).toBe(id);
-  });
-
-  test("still returns a fresh id when persisting it fails", async () => {
-    // A failed write must not block the server start; the id then only
-    // lasts this activation, so the server still starts singleton-scoped.
-    const state = new FakeMemento();
-    state.updateRejection = new Error("disk full");
-    expect(ensureSingletonScope(state)).toMatch(UUID_RE);
-    // Let the rejected write settle: it must be handled, not surface as
-    // an unhandled rejection.
-    await Promise.resolve();
-  });
-
-  test("still returns a fresh id when update throws synchronously", () => {
-    const state: MementoLike = {
-      get: () => undefined,
-      update: () => {
-        throw new Error("storage closed");
-      },
-    };
-    expect(ensureSingletonScope(state)).toMatch(UUID_RE);
+  test("is empty, the opt-out, when no workspace storage exists", () => {
+    // VS Code leaves storageUri undefined for an empty window with no
+    // folder or workspace open.
+    expect(singletonScope({ storageUri: undefined })).toBe("");
+    expect(singletonScope({})).toBe("");
   });
 });
 
@@ -687,14 +619,19 @@ function makeFakeApi(overrides?: {
 }
 
 // makeContext builds a fake ExtensionContext exposing only the
-// subscriptions array, extensionPath, and workspaceState the Wiring
-// class uses. Pass a shared memento to model a reload of one workspace.
-function makeContext(workspaceState: FakeMemento = new FakeMemento()): {
+// subscriptions array, extensionPath, and storageUri the Wiring class
+// uses. Pass the same storage URI twice to model a reload of one
+// workspace; pass null for a window with no workspace storage.
+function makeContext(storage: string | null = STORAGE): {
   subscriptions: Array<{ dispose(): void }>;
   extensionPath: string;
-  workspaceState: FakeMemento;
+  storageUri?: { toString(): string };
 } {
-  return { subscriptions: [], extensionPath: "/ext", workspaceState };
+  return {
+    subscriptions: [],
+    extensionPath: "/ext",
+    storageUri: storage === null ? undefined : fakeUri(storage),
+  };
 }
 
 // makeWiring constructs a Wiring with a fake api and a createClient
@@ -822,47 +759,31 @@ describe("Wiring LSP client lifecycle", () => {
     expect(opts.middleware?.provideHover).toBeDefined();
   });
 
-  test("sends a persisted per-workspace UUID as the singleton scope", async () => {
+  test("sends the workspace storage URI as the singleton scope", async () => {
     const { wiring, lastClient } = makeWiring();
-    const ctx = makeContext();
-    await wiring.activate(ctx);
-    const scope = lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope;
-    expect(scope).toMatch(UUID_RE);
-    expect(ctx.workspaceState.get<string>(SINGLETON_SCOPE_KEY)).toBe(scope);
+    await wiring.activate(makeContext());
+    expect(lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope).toBe(STORAGE);
   });
 
   test("keeps the singleton scope stable across activations of one workspace", async () => {
     // The VS Code upgrade hand-off: the leaked host and the fresh host
-    // read the same workspaceState from disk, so their servers share one
-    // owner record and the newest wins. Two Wiring activations over one
-    // memento model that.
-    const state = new FakeMemento();
+    // get the same storageUri, which VS Code derives from the workspace
+    // identity, so their servers share one owner record and the newest
+    // wins. Two Wiring activations over one storage URI model that.
     const first = makeWiring();
-    await first.wiring.activate(makeContext(state));
+    await first.wiring.activate(makeContext());
     const second = makeWiring();
-    await second.wiring.activate(makeContext(state));
+    await second.wiring.activate(makeContext());
     const a = first.lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope;
     const b = second.lastClient().clientOptions.initializationOptions?.mdsmith?.singletonScope;
-    expect(a).toMatch(UUID_RE);
+    expect(a).toBe(STORAGE);
     expect(b).toBe(a);
   });
 
-  test("a deactivate during the first activation leaves no client running", async () => {
-    // First activation on a workspace writes a fresh scope id. If
-    // startServer awaited that write, deactivate() would land in the gap
-    // with no client recorded yet, and the activation would then start a
-    // client nobody stops.
-    let settle!: () => void;
-    const state = new FakeMemento();
-    state.updateSettles = new Promise<void>((resolve) => {
-      settle = resolve;
-    });
-    const { wiring, clients } = makeWiring();
-    const activation = wiring.activate(makeContext(state));
-    await wiring.deactivate();
-    settle();
-    await activation;
-    expect(clients.filter((c) => c.isRunning())).toHaveLength(0);
+  test("sends no scope when the window has no workspace storage", async () => {
+    const { wiring, lastClient } = makeWiring();
+    await wiring.activate(makeContext(null));
+    expect(lastClient().clientOptions.initializationOptions).toBeUndefined();
   });
 
   test("restartServer reuses the singleton scope", async () => {
@@ -872,7 +793,7 @@ describe("Wiring LSP client lifecycle", () => {
     await wiring.restartServer(ctx);
     const a = clients[0].clientOptions.initializationOptions?.mdsmith?.singletonScope;
     const b = clients[1].clientOptions.initializationOptions?.mdsmith?.singletonScope;
-    expect(a).toMatch(UUID_RE);
+    expect(a).toBe(STORAGE);
     expect(b).toBe(a);
   });
 

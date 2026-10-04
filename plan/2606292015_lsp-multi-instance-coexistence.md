@@ -7,10 +7,10 @@ summary: >-
   Make the newest-wins LSP workspace singleton opt-in.
   Key its owner record on the workspace root plus a
   client-supplied scope token, not the root alone. The
-  VS Code extension sends a per-workspace UUID it
-  persists in `workspaceState`; the id is read from
-  disk, so it is stable across an extension reload or
-  update. Other clients send no token and run without
+  VS Code extension sends its per-workspace
+  `storageUri`, which VS Code derives from the
+  workspace identity, so it is stable across an
+  extension reload or update. Other clients send no token and run without
   the singleton. That lets the VS Code server, a Claude
   Code plugin server, and a second Claude in another
   terminal all run on one workspace at once, while the
@@ -110,50 +110,53 @@ format (see Backward compatibility).
 
 ### What each client sends
 
-| Client                      | `singletonScope` value       | Effect                                         |
-| --------------------------- | ---------------------------- | ---------------------------------------------- |
-| VS Code extension           | persisted per-workspace UUID | Orphan and respawn share one slot; newest wins |
-| Claude Code plugin          | none                         | No claim; never supersedes or is superseded    |
-| Second Claude in a terminal | none                         | No claim; coexists with the first              |
-| Neovim / Helix / JetBrains  | none                         | No claim; coexists                             |
+| Client                      | `singletonScope` value | Effect                                         |
+| --------------------------- | ---------------------- | ---------------------------------------------- |
+| VS Code extension           | workspace `storageUri` | Orphan and respawn share one slot; newest wins |
+| Claude Code plugin          | none                   | No claim; never supersedes or is superseded    |
+| Second Claude in a terminal | none                   | No claim; coexists with the first              |
+| Neovim / Helix / JetBrains  | none                   | No claim; coexists                             |
 
-### The VS Code token must be disk-backed
+### The VS Code token must be stable per workspace
 
 The orphan and its respawn are two different extension-host
 processes. The token must be identical for both, or the new
 server never reaps the orphan. So the token must survive an
 extension-host restart.
 
-The extension generates a UUID once with `crypto.randomUUID()`
-and stores it in `context.workspaceState`. That store is written
-to disk and read back unchanged after any reload or update. So
-both hosts read the same id. The id is per workspace on that
-machine, which is the grain the key needs.
+The extension sends `context.storageUri` as a string. VS Code
+derives that URI from the workspace identity, so both hosts get
+the same value after any reload or update, with nothing written
+to disk. It is per workspace on that machine, which is the grain
+the key needs. An empty window has no `storageUri` and sends no
+scope. An earlier draft stored a random UUID in
+`workspaceState`; that needed a fire-and-forget write and lost
+reaping whenever the write failed.
 
 `vscode.env.sessionId` is the obvious shortcut, but it is not
 safe here. The API documents it as changing "each time the editor
 is started," and it is injected per extension-host process. So a
 leaked host and a fresh host may hold different session ids. That
 would silently break reaping — the exact case the singleton
-exists for. A disk-backed id removes that doubt.
+exists for. A workspace-derived id removes that doubt.
 
 One known limit follows from the per-workspace grain. Two VS Code
-windows on the *same* folder read the same stored id, so the
+windows on the *same* folder get the same storage URI, so the
 newest still wins between them. VS Code already focuses an open
 folder instead of opening a duplicate window, and today's
 root-only key behaves the same way, so this is not a regression.
 
 ### Why a client token, not an inferred identity
 
-| Identity                     | Reaps the upgrade orphan?           | Two Claude terminals coexist?  |
-| ---------------------------- | ----------------------------------- | ------------------------------ |
-| Workspace root only          | yes                                 | no — they supersede each other |
-| `processId`                  | no — orphan and respawn differ      | yes                            |
-| `clientInfo.name`            | yes                                 | no — both report `claude-code` |
-| `vscode.env.sessionId`       | unclear — may change on host reload | yes (VS Code only)             |
-| Persisted per-workspace UUID | yes — read from disk                | yes                            |
+| Identity               | Reaps the upgrade orphan?           | Two Claude terminals coexist?  |
+| ---------------------- | ----------------------------------- | ------------------------------ |
+| Workspace root only    | yes                                 | no — they supersede each other |
+| `processId`            | no — orphan and respawn differ      | yes                            |
+| `clientInfo.name`      | yes                                 | no — both report `claude-code` |
+| `vscode.env.sessionId` | unclear — may change on host reload | yes (VS Code only)             |
+| Workspace `storageUri` | yes — derived from the workspace    | yes                            |
 
-Only a disk-backed, client-supplied token reaps the orphan and
+Only a stable, client-supplied token reaps the orphan and
 lets independent clients coexist. The mechanism is generic: any
 future client with the leaked-host problem opts in with its own
 stable token, with no name-specific branch in the server.
@@ -181,10 +184,10 @@ never reads or writes that record. A scoped server writes its id
 to the legacy record once at claim and never watches it. An
 older root-only binary polling that record then sees a new owner
 and steps aside, exactly as before scopes. Only the VS Code (now
-UUID-keyed) path watches a new key.
+scope-keyed) path watches a new key.
 
-Keys are now per root and scope, and a scope changes whenever
-`workspaceState` is cleared or its write fails. So each scoped
+Keys are now per root and scope, and a deleted or moved
+workspace leaves its record behind. So each scoped
 start prunes, once after both claims, `.owner` records (and
 leftover claim temp and quarantine files) older than 30 days.
 A stale record is first renamed to a quarantine path and its
@@ -247,12 +250,11 @@ short. Room comes from re-wrapping its narrow prose paragraphs to
    ([server_lifecycle.go](../internal/lsp/server_lifecycle.go)).
    Drive the new empty-scope no-op red/green, distinct from the
    existing empty-root / empty-instanceID guard.
-4. [x] VS Code: generate a UUID once and persist it in
-   `context.workspaceState`; send it as
+4. [x] VS Code: send `context.storageUri` as
    `initializationOptions.mdsmith.singletonScope`
    ([extension.ts](../editors/vscode/src/extension.ts) /
    [wiring.ts](../editors/vscode/src/wiring.ts)). Widen the
-   injected context type to expose `workspaceState`. A `bun:test`
+   injected context type to expose `storageUri`. A `bun:test`
    asserts the built client options carry the token and that the
    id is stable across two activations.
 5. [x] Unit-test the supersede logic on the existing seams
@@ -287,8 +289,8 @@ short. Room comes from re-wrapping its narrow prose paragraphs to
 - [x] A scoped start prunes registry records older than 30 days,
       once, without deleting a record claimed mid-prune.
 - [x] The VS Code extension sends
-      `initializationOptions.mdsmith.singletonScope` = a UUID it
-      persists in `workspaceState`; a `bun:test` asserts the
+      `initializationOptions.mdsmith.singletonScope` = its
+      workspace `storageUri`; a `bun:test` asserts the
       token is sent and is stable across activations.
 - [x] The VS Code upgrade hand-off still works — old server
       stops, new server starts — verified by a unit test that

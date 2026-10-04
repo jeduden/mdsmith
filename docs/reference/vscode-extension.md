@@ -79,12 +79,13 @@ workspace, and the older one exits after sending an
 `mdsmith/superseded` notice so the client does not restart
 it.
 
-The claim is scoped to the VS Code workspace by a UUID
-the extension stores in its workspace state. A Claude Code
+The claim is scoped to the VS Code workspace by the
+extension's per-workspace storage URI. A Claude Code
 plugin or another editor on the same folder sends no scope,
 so its server runs alongside VS Code's and neither stops the
-other. Two VS Code windows on one folder share the stored id,
-so the newest of those still wins.
+other. Two VS Code windows on one folder share that URI, so
+the newest of those still wins. An empty window with no folder
+open sends no scope.
 
 An orphan left by an older build that keyed on the folder
 alone also steps aside when the new server starts. So does any
