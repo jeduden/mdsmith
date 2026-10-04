@@ -217,7 +217,7 @@ the same workspace is unaffected.
    `mdsmith.singletonScope` as an optional string. Unit-test the
    unmarshal, including the absent / `null` / non-object case,
    which must decode to an empty scope (the opt-out path).
-2. [ ] Extend `workspaceKey` to take the scope and fold the
+2. [x] Extend `workspaceKey` to take the scope and fold the
    empty-scope case in (empty scope hashes the root alone).
    Add `TestWorkspaceKey…` cases: same root + different scope →
    different key; same root + same scope → same key; empty scope

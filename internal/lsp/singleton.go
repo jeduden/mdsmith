@@ -87,7 +87,7 @@ func (s *Server) startSingletonWatch(root string) {
 	// means a stray second initialize cannot re-assert this (possibly
 	// already-superseded) server's ownership and invert newest-wins.
 	s.singletonWatchOnce.Do(func() {
-		key := workspaceKey(root)
+		key := workspaceKey(root, "")
 		// Claim the workspace under this instance's id, overwriting any
 		// previous owner. Whichever server initialized most recently —
 		// the window the user just opened or reloaded — wins; an older
@@ -117,13 +117,25 @@ type supersededParams struct {
 	Reason string `json:"reason"`
 }
 
-// workspaceKey maps a workspace root path to a stable, filesystem-safe
-// registry key. Cleaning first makes "/w", "/w/" and "/w/." share one
-// key, so two editor windows on the same workspace contend for the same
-// owner record.
-func workspaceKey(root string) string {
-	sum := sha256.Sum256([]byte(filepath.Clean(root)))
-	return hex.EncodeToString(sum[:])
+// workspaceKey maps a workspace root path plus a client-supplied
+// singleton scope to a stable, filesystem-safe registry key. Cleaning
+// first makes "/w", "/w/" and "/w/." share one key, so two servers on
+// the same workspace and scope contend for the same owner record, while
+// different scopes on one workspace get different records and coexist.
+//
+// A non-empty scope is framed as root + "\x00" + scope so no root/scope
+// split can collide with another. An empty scope hashes the cleaned root
+// alone — the legacy root-only key, byte for byte — so every caller
+// shares this one derivation and an older root-only binary still agrees
+// with a no-token client.
+func workspaceKey(root, scope string) string {
+	h := sha256.New()
+	_, _ = io.WriteString(h, filepath.Clean(root))
+	if scope != "" {
+		_, _ = io.WriteString(h, "\x00")
+		_, _ = io.WriteString(h, scope)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // newInstanceID returns a random per-process identifier used to tell

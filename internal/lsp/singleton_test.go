@@ -3,6 +3,8 @@ package lsp
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -129,7 +131,7 @@ func TestStartSingletonWatchSupersedesAndNotifies(t *testing.T) {
 		t.Fatal("did not step aside when a newer server claimed the workspace")
 	}
 	assert.Equal(t, "me", claimedID, "must claim the workspace under its own instance id")
-	assert.Equal(t, workspaceKey("/work/space"), claimedKey, "must claim under the workspace key")
+	assert.Equal(t, workspaceKey("/work/space", ""), claimedKey, "must claim under the workspace key")
 	assert.Contains(t, buf.String(), "mdsmith/superseded",
 		"must notify the editor before exiting so its client does not restart us")
 	assert.Contains(t, buf.String(), `"reason":"superseded"`,
@@ -228,7 +230,7 @@ func TestHandleInitializeClaimsWorkspaceSingleton(t *testing.T) {
 	s.handleInitialize(msg)
 
 	assert.Equal(t, "me", claimedID, "initialize must claim the workspace singleton")
-	assert.Equal(t, workspaceKey("/work/space"), claimedKey,
+	assert.Equal(t, workspaceKey("/work/space", ""), claimedKey,
 		"initialize must claim under the rootUri's workspace key")
 }
 
@@ -260,12 +262,43 @@ func TestFileRegistryClaimCurrentRoundTrip(t *testing.T) {
 
 func TestWorkspaceKeyStableAndDistinct(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, workspaceKey("/a/b"), workspaceKey("/a/b/"),
+	assert.Equal(t, workspaceKey("/a/b", "s"), workspaceKey("/a/b/", "s"),
 		"a trailing slash must not change the key")
-	assert.Equal(t, workspaceKey("/a/b"), workspaceKey("/a/./b"),
+	assert.Equal(t, workspaceKey("/a/b", "s"), workspaceKey("/a/./b", "s"),
 		"a redundant path element must not change the key")
-	assert.NotEqual(t, workspaceKey("/a/b"), workspaceKey("/a/c"),
+	assert.NotEqual(t, workspaceKey("/a/b", "s"), workspaceKey("/a/c", "s"),
 		"distinct workspaces get distinct keys")
+}
+
+func TestWorkspaceKeyScopeSameRootDifferentScopeDiffers(t *testing.T) {
+	t.Parallel()
+	assert.NotEqual(t, workspaceKey("/a/b", "vscode-1"), workspaceKey("/a/b", "vscode-2"),
+		"two scopes on one workspace must contend for different owner records")
+	assert.NotEqual(t, workspaceKey("/a/b", "vscode-1"), workspaceKey("/a/b", ""),
+		"a scoped key must not collide with the legacy root-only key")
+}
+
+func TestWorkspaceKeyScopeSameRootSameScopeMatches(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, workspaceKey("/a/b", "vscode-1"), workspaceKey("/a/b/", "vscode-1"),
+		"an orphan and its respawn sharing one scope must share one owner record")
+}
+
+func TestWorkspaceKeyScopeEmptyIsLegacyRootOnlyKey(t *testing.T) {
+	t.Parallel()
+	// The pre-scope derivation: sha256 over the cleaned root alone. An
+	// empty scope must reproduce it byte for byte so a no-token client
+	// and an older root-only binary still agree on one key.
+	legacy := sha256.Sum256([]byte("/a/b"))
+	assert.Equal(t, hex.EncodeToString(legacy[:]), workspaceKey("/a/b/", ""))
+}
+
+func TestWorkspaceKeyScopeSeparatorPreventsAmbiguity(t *testing.T) {
+	t.Parallel()
+	// Without the NUL separator, root "/a" + scope "b" and root "/a"
+	// + scope "" over a root spelled "/ab" could hash the same bytes.
+	assert.NotEqual(t, workspaceKey("/a", "b"), workspaceKey("/ab", ""),
+		"root and scope must be framed so their concatenation is unambiguous")
 }
 
 func TestNewInstanceIDUniqueAndNonEmpty(t *testing.T) {
