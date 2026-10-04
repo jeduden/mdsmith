@@ -206,6 +206,15 @@ func TestClose_Plan9_ClosesHeldNotePg(t *testing.T) {
 	assert.NotPanics(t, k.close)
 }
 
+func TestClose_Plan9_NoGroupIsNoOp(t *testing.T) {
+	// runRecipe closes every killer, including one for a leader that
+	// exited before afterStart ran, which captured no group at all.
+	stubProcRoot(t) // empty, so afterStart reads no noteid
+	k := afterStart(&exec.Cmd{Process: &os.Process{Pid: 42}})
+	require.Nil(t, groupOf(k))
+	assert.NotPanics(t, k.close)
+}
+
 func TestKill_Plan9_ForceKillsLeaderThatLeftGroup(t *testing.T) {
 	// The notepg write succeeds, but the leader moved to another note
 	// group, so neither the note nor the sweep reaches it. kill
@@ -246,13 +255,21 @@ func TestKill_Plan9_FailedWriteStillKillsLeader(t *testing.T) {
 }
 
 func TestForceLeader_Plan9_DoesNotKillLeaderAgain(t *testing.T) {
-	// kill already ends in the uncatchable leader kill, so forceLeader
-	// must not repeat it by writing to ctl or posting a note.
+	// kill already ends in the uncatchable leader kill, so the reap
+	// fallback's forceLeader, which runRecipe calls after kill, must not
+	// repeat it by writing to ctl or posting a note. The fake ctl is
+	// written at offset 0, so it is emptied between the two calls to
+	// tell a second write from the first.
 	root := stubProcRoot(t)
 	ctl := fakeProc(t, root, "42", "9")
 	noted := stubNoteKill(t)
 
-	afterStart(&exec.Cmd{Process: &os.Process{Pid: 42}}).forceLeader()
+	k := afterStart(&exec.Cmd{Process: &os.Process{Pid: 42}})
+	defer k.close()
+	k.kill()
+	require.Equal(t, "kill", readFile(t, ctl), "kill must end in the leader's ctl kill")
+	require.NoError(t, os.Truncate(ctl, 0))
+	k.forceLeader()
 	assert.Empty(t, readFile(t, ctl))
 	assert.Empty(t, *noted)
 }

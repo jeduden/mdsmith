@@ -104,14 +104,14 @@ func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
 	}, 6*time.Second, 100*time.Millisecond, "spawned child should not be orphaned")
 }
 
-// stubKillGroup swaps afterStartFn for one that returns a killer whose
+// stubGroupKiller swaps afterStartFn for one that returns a killer whose
 // kill runs fn and whose forceLeader sets the returned flag and runs
 // the real Unix forceLeader, and shortens reapWait for one test.
 // The stub leaves survivors on purpose, so cleanup SIGKILLs the
 // recipe's whole process group (Setpgid made pgid == leader pid):
 // an orphan would otherwise keep the test binary's stderr open and
 // stall `go test` until it exits.
-func stubKillGroup(t *testing.T, fn func(*exec.Cmd)) *atomic.Bool {
+func stubGroupKiller(t *testing.T, fn func(*exec.Cmd)) *atomic.Bool {
 	t.Helper()
 	oldStart, oldReap := afterStartFn, reapWait
 	pgid := 0
@@ -143,7 +143,7 @@ func TestRunRecipe_GroupKillThatMissesLeaderStillReturns(t *testing.T) {
 	// That direct kill must go through the killer's forceLeader, so each
 	// platform picks its own uncatchable leader kill (none on plan9,
 	// where kill already ended in one).
-	forced := stubKillGroup(t, func(*exec.Cmd) {})
+	forced := stubGroupKiller(t, func(*exec.Cmd) {})
 	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 5`)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -197,7 +197,7 @@ func TestRunRecipe_SurvivorHoldingPipeDoesNotBlock(t *testing.T) {
 	// a background child keeps the captured stdout pipe open, so
 	// cmd.Wait would block until that child exits. runRecipe must stop
 	// waiting after reapWait.
-	stubKillGroup(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
+	stubGroupKiller(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
 	script := writeScript(t, t.TempDir(), "daemon.sh", `sleep 5 & sleep 5`)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -219,7 +219,7 @@ func TestRunRecipe_AbandonedSurvivorCannotWriteAfterReturn(t *testing.T) {
 	// reach the caller's writer: Build has already closed its log and
 	// moved on by then. SIGPIPE is ignored so the survivor outlives its
 	// write to the closed pipe and can touch the marker.
-	stubKillGroup(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
+	stubGroupKiller(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
 	marker := filepath.Join(t.TempDir(), "printed")
 	script := writeScript(t, t.TempDir(), "late.sh",
 		`(trap '' PIPE; sleep 1; echo late; : > "`+marker+`") & sleep 5`)
@@ -250,7 +250,7 @@ func TestRunRecipe_AbandonedSurvivorPipeIsClosed(t *testing.T) {
 	// of the captured pipe rather than leave a copy goroutine and the
 	// fd alive for as long as the survivor runs: the survivor's next
 	// write then fails with EPIPE (SIGPIPE is ignored so it can tell).
-	stubKillGroup(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
+	stubGroupKiller(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
 	dir := t.TempDir()
 	okMark, failMark := filepath.Join(dir, "ok"), filepath.Join(dir, "failed")
 	script := writeScript(t, t.TempDir(), "epipe.sh",
@@ -281,7 +281,7 @@ func TestRunRecipe_SurvivorCostsOneReapWait(t *testing.T) {
 	// the pipe. Waiting for the leader and draining output share one
 	// reapWait: a second wait after a pointless leader kill would add
 	// a full reapWait to every such timeout.
-	stubKillGroup(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
+	stubGroupKiller(t, func(cmd *exec.Cmd) { _ = cmd.Process.Kill() })
 	reapWait = time.Second
 	script := writeScript(t, t.TempDir(), "daemon.sh", `sleep 5 & sleep 5`)
 

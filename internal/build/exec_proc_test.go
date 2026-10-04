@@ -42,11 +42,15 @@ func (k stubKiller) close() {
 func TestRunRecipe_ClosesKillerOnReturn(t *testing.T) {
 	skipWithoutPOSIXTools(t, "sh")
 	// runRecipe owns the killer afterStart returns and must close it
-	// on return.
-	var ran atomic.Bool
+	// on return. A recipe that exits on its own is never killed.
+	var ran, killed atomic.Bool
 	old := afterStartFn
 	afterStartFn = func(*exec.Cmd) groupKiller {
-		return stubKiller{closeFn: func() { ran.Store(true) }}
+		return stubKiller{
+			closeFn: func() { ran.Store(true) },
+			killFn:  func() { killed.Store(true) },
+			forceFn: func() { killed.Store(true) },
+		}
 	}
 	t.Cleanup(func() { afterStartFn = old })
 
@@ -62,6 +66,38 @@ func TestRunRecipe_ClosesKillerOnReturn(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.True(t, ran.Load(), "the killer must be closed on return")
+	assert.False(t, killed.Load(), "a recipe that exited on its own must not be killed")
+}
+
+func TestRunRecipe_ClosesKillerOnTimeout(t *testing.T) {
+	skipWithoutPOSIXTools(t, "sh")
+	// The timeout return must close the killer too, after its kill: on
+	// Windows close is what fires KILL_ON_JOB_CLOSE, and on plan9 it
+	// frees the notepg file. The stub forwards to the real killer, so
+	// the recipe's group still dies.
+	var killed, closedAfterKill atomic.Bool
+	old := afterStartFn
+	afterStartFn = func(cmd *exec.Cmd) groupKiller {
+		inner := afterStart(cmd)
+		return stubKiller{
+			killFn:  func() { killed.Store(true); inner.kill() },
+			forceFn: inner.forceLeader,
+			closeFn: func() { closedAfterKill.Store(killed.Load()); inner.close() },
+		}
+	}
+	t.Cleanup(func() { afterStartFn = old })
+
+	script := writeScript(t, t.TempDir(), "slow.sh", `sleep 120`)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	require.True(t, timedOut)
+	assert.True(t, closedAfterKill.Load(), "the killer must be closed after the timeout kill")
 }
 
 func TestRunRecipe_HermeticEnvVisibleToProcess(t *testing.T) {
