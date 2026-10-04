@@ -303,10 +303,10 @@ func (s *Session) CheckVersion(uri string, source []byte, version int) *engine.R
 	}
 	r, src := s.newRunner()
 	defer src.release()
-	// The parse cache keeps the File, and every view it holds, past
-	// this call, so install it only when those views outlive the call:
-	// the ones the session lends until Dispose, or no disk root at all.
-	if !src.perCall && (r.RootFS != nil || s.rootDir == "") {
+	// The parse cache keeps the File, and the source view it holds,
+	// past this call, so install it only when that view outlives the
+	// call. The runner itself skips the cache when it has no lent root.
+	if !src.perCall {
 		r.ParseCache = s.parseCache
 	}
 	return r.RunSourceWithVersion(uri, source, version)

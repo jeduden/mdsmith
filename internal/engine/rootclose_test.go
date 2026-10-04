@@ -92,3 +92,24 @@ func TestRunSourceBorrowsLentRootFS(t *testing.T) {
 	assert.Equal(t, lent, snap.last.RootFS)
 	assert.Equal(t, root, snap.last.RootDir)
 }
+
+// TestRunSourceWithVersionKeepsNoOwnRootInParseCache locks that a
+// runner given a ParseCache but no lent RootFS does not publish a File
+// holding a root it opened: nothing could close that root while the
+// cache keeps the File, so the call parses uncached and closes its own
+// root once it ends. Not parallel: it records lint.OpenRootFS.
+func TestRunSourceWithVersionKeepsNoOwnRootInParseCache(t *testing.T) {
+	root := t.TempDir()
+	opened := rootfstest.Record(t)
+	runner, _ := snapRunner(root)
+	cache := lint.NewParseCache()
+	runner.ParseCache = cache
+
+	require.Empty(t, runner.RunSourceWithVersion("a.md", []byte("# A\n"), 1).Errors)
+	_, ok := cache.Get("a.md", 1)
+	assert.False(t, ok, "a File holding the call's own root is not cached")
+	got := opened()
+	require.Len(t, got, 1)
+	_, err := fs.Stat(got[0], ".")
+	assert.Error(t, err, "the call's own root is closed once it ends")
+}

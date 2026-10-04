@@ -83,8 +83,9 @@ type Runner struct {
 	// opening a root of its own, and never closes it. A caller that
 	// installs a ParseCache lends one, since a cached File outlives the
 	// call and the runner could not close a root it opened for it. With
-	// none, RunSource opens a root and closes it when the call ends,
-	// unless a ParseCache keeps the File. Run() ignores this field.
+	// none, RunSource opens a root and closes it when the call ends, and
+	// a RootDir runner then bypasses its ParseCache. Run() ignores this
+	// field.
 	RootFS fs.FS
 	// Concurrency controls how many files Run lints in parallel.
 	// Zero or negative means "use runtime.GOMAXPROCS"; 1 forces the
@@ -777,13 +778,14 @@ func (r *Runner) runSource(path string, source []byte, version int, useParseCach
 //
 // The returned release closes the project root populateFileFields
 // opened for a fresh parse that no ParseCache keeps; the caller calls it
-// once the check ends. A cached File keeps its root (a caller that
-// installs a ParseCache lends RootFS so none is opened), and a cache
-// hit opened nothing, so release is then a no-op.
+// once the check ends. Only a File holding no root of the call's own is
+// cached: with a RootDir but no lent RootFS the parse opens one that
+// nothing could close while the cache keeps the File, so that runner
+// parses uncached. A cache hit opened nothing, so release is a no-op.
 func (r *Runner) parseForSource(
 	path string, source []byte, version int, useParseCache bool,
 ) (f *lint.File, release func(), err error) {
-	cached := useParseCache && r.ParseCache != nil
+	cached := useParseCache && r.ParseCache != nil && (r.RootFS != nil || r.RootDir == "")
 	if cached {
 		if f, ok := r.ParseCache.Get(path, version); ok {
 			return f, keepRoot, nil
