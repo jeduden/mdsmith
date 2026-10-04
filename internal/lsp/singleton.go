@@ -126,12 +126,7 @@ func (s *Server) startSingletonWatch(root, scope string) {
 		if err := s.singletonClaim(workspaceKey(root, ""), s.instanceID); err != nil {
 			s.logger.Printf("lsp: legacy workspace singleton claim failed: %v", err)
 		}
-		// Prune once, after both claims, so a start scans the registry
-		// directory a single time.
-		if s.singletonPrune != nil {
-			s.singletonPrune(s.instanceID)
-		}
-		go watchSingleton(s.runCtx, key, s.instanceID, s.singletonInterval, s.singletonCurrent, func() {
+		onSuperseded := func() {
 			s.logger.Printf("lsp: superseded by a newer server for this workspace; exiting")
 			s.shutdown.Store(true)
 			s.stopPendingLints()
@@ -140,7 +135,17 @@ func (s *Server) startSingletonWatch(root, scope string) {
 			// us — that respawn loop is what kept the orphan alive.
 			_ = s.t.writeNotification("mdsmith/superseded", supersededParams{Reason: "superseded"})
 			s.onSupersededExit()
-		})
+		}
+		// Prune once, after both claims, so a start scans the registry
+		// directory a single time. The scan runs on the watcher
+		// goroutine, before its first poll, so the initialize response
+		// never waits on a directory read.
+		go func() {
+			if s.singletonPrune != nil {
+				s.singletonPrune(s.instanceID)
+			}
+			watchSingleton(s.runCtx, key, s.instanceID, s.singletonInterval, s.singletonCurrent, onSuperseded)
+		}()
 	})
 }
 

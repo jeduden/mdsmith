@@ -557,7 +557,42 @@ func TestStartSingletonWatchPrunesOncePerStart(t *testing.T) {
 
 	s.startSingletonWatch("/w", "scope")
 	assert.Equal(t, int32(2), claims.Load(), "scoped and legacy claims")
-	assert.Equal(t, int32(1), prunes.Load(), "one prune per start")
+	assert.Eventually(t, func() bool { return prunes.Load() == 1 },
+		time.Second, time.Millisecond, "one prune per start")
+	assert.Never(t, func() bool { return prunes.Load() > 1 },
+		20*time.Millisecond, time.Millisecond, "only one prune per start")
+}
+
+// The prune scans the registry directory, so it runs off the
+// initialize path: startSingletonWatch returns while it is still in
+// flight, and the editor's initialize response does not wait on it.
+func TestStartSingletonWatchPrunesOffInitializePath(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
+	s.instanceID = "me"
+	s.singletonInterval = time.Hour
+	s.singletonClaim = func(string, string) error { return nil }
+	s.singletonCurrent = func(string) string { return "me" }
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	started := make(chan struct{})
+	s.singletonPrune = func(string) { close(started); <-release }
+
+	returned := make(chan struct{})
+	go func() { s.startSingletonWatch("/w", "scope"); close(returned) }()
+	select {
+	case <-returned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("startSingletonWatch blocked on the registry prune")
+	}
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the prune never ran")
+	}
 }
 
 func TestStartSingletonWatchSkipsPruneOnFailedClaim(t *testing.T) {

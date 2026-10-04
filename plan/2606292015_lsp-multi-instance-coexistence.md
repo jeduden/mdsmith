@@ -190,10 +190,12 @@ Keys are now per root and scope, and a deleted or moved
 workspace leaves its record behind. So each scoped
 start prunes, once after both claims, `.owner` records (and
 leftover claim temp and quarantine files) older than 30 days.
-A stale record is first renamed to a quarantine path and its
-age checked again. A claim that landed meanwhile is linked
-back, never over a newer one. A pruned record of a live server
-reads as "no owner", which the watcher treats as "still ours".
+The scan runs on the watcher goroutine, so the initialize
+response never waits on it. A stale record is first renamed
+to a quarantine path and its age checked again. A claim that
+landed meanwhile is linked back, never over a newer one. A
+pruned record of a live server reads as "no owner", which the
+watcher treats as "still ours".
 
 ### Rollout
 
