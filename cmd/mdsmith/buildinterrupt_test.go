@@ -18,12 +18,13 @@ func TestWatchInterrupts_FirstCancelsSecondForces(t *testing.T) {
 	force := make(chan struct{})
 	done := make(chan struct{})
 	returned := make(chan struct{})
+	var first os.Signal
 	go func() {
 		defer close(returned)
-		watchInterrupts(sigs, cancel, force, done)
+		first = watchInterrupts(sigs, cancel, force, done)
 	}()
 
-	sigs <- os.Interrupt
+	sigs <- syscall.SIGTERM
 	<-ctx.Done()
 	select {
 	case <-force:
@@ -46,6 +47,7 @@ func TestWatchInterrupts_FirstCancelsSecondForces(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("watcher must return once done closes")
 	}
+	assert.Equal(t, syscall.SIGTERM, first, "the first signal is the one to re-raise")
 }
 
 // stubSignalIgnored makes signalIgnored report the given signals as
@@ -66,7 +68,7 @@ func stubSignalIgnored(t *testing.T, ignored ...os.Signal) {
 
 func TestInterruptSignals_SkipsIgnored(t *testing.T) {
 	stubSignalIgnored(t)
-	assert.Equal(t, []os.Signal{os.Interrupt, syscall.SIGTERM}, interruptSignals())
+	assert.Equal(t, append([]os.Signal{os.Interrupt, syscall.SIGTERM}, hangupSignals...), interruptSignals())
 
 	// A background job of a non-interactive shell starts with SIGINT
 	// ignored: Notify must not un-ignore it.
@@ -77,7 +79,7 @@ func TestInterruptSignals_SkipsIgnored(t *testing.T) {
 func TestDispatchInterruptible_AllSignalsIgnoredRunsPlain(t *testing.T) {
 	// With nothing to catch, no handler is installed (Notify with no
 	// signal would catch every signal), and the pass's own code stands.
-	stubSignalIgnored(t, os.Interrupt, syscall.SIGTERM)
+	stubSignalIgnored(t, append([]os.Signal{os.Interrupt, syscall.SIGTERM}, hangupSignals...)...)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	calls := 0
@@ -106,7 +108,7 @@ func TestWatchInterrupts_DoneBeforeAnySignal(t *testing.T) {
 	force := make(chan struct{})
 	done := make(chan struct{})
 	close(done)
-	watchInterrupts(make(chan os.Signal), cancel, force, done)
+	assert.Nil(t, watchInterrupts(make(chan os.Signal), cancel, force, done))
 	require.NoError(t, ctx.Err(), "no signal, no cancel")
 }
 
@@ -131,4 +133,39 @@ func TestWatchInterrupts_DoneAfterOneSignal(t *testing.T) {
 	default:
 	}
 	assert.ErrorIs(t, ctx.Err(), context.Canceled)
+}
+
+// stubRaise records what reraiseInterrupt would raise, for one test.
+func stubRaise(t *testing.T) *[]os.Signal {
+	t.Helper()
+	var raised []os.Signal
+	oldRaise, oldPending := raiseSignalFn, pendingInterrupt
+	raiseSignalFn = func(s os.Signal) { raised = append(raised, s) }
+	t.Cleanup(func() { raiseSignalFn, pendingInterrupt = oldRaise, oldPending })
+	return &raised
+}
+
+func TestReraiseInterrupt(t *testing.T) {
+	raised := stubRaise(t)
+	pendingInterrupt = nil
+	reraiseInterrupt()
+	assert.Empty(t, *raised, "no interrupt, nothing to raise")
+
+	pendingInterrupt = syscall.SIGTERM
+	reraiseInterrupt()
+	assert.Equal(t, []os.Signal{syscall.SIGTERM}, *raised)
+}
+
+func TestDispatchInterruptible_UninterruptedKeepsCode(t *testing.T) {
+	// With the handler installed and no signal, the pass's own code
+	// stands and nothing is left to re-raise.
+	stubSignalIgnored(t)
+	stubRaise(t)
+	pendingInterrupt = nil
+	code := dispatchInterruptible(buildPassOpts{interruptible: true}, func(o buildPassOpts) int {
+		assert.NoError(t, o.context().Err())
+		return 7
+	})
+	assert.Equal(t, 7, code)
+	assert.Nil(t, pendingInterrupt)
 }

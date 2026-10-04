@@ -51,10 +51,15 @@ done, so only the cancellation is missing.
    `--no-build`, and the dry-run, check-stale, and explain
    modes keep the default signal action. Skip a signal
    the process started with ignored (a background job's
-   SIGINT), since `Notify` would un-ignore it.
+   SIGINT), since `Notify` would un-ignore it. On Unix
+   also catch `SIGHUP`, so a closed terminal or dropped
+   SSH session reaps the recipe groups.
 3. Make sure a cancelled build reports an interrupt error,
-   not a timeout, and that mdsmith exits 2 after the
-   recipes are reaped. This covers a target not yet
+   not a timeout, and that after the recipes are reaped
+   and the output is written mdsmith re-raises the first
+   signal with its default action, so a calling shell
+   script stops too (exit 2 where it cannot: Windows,
+   plan9). This covers a target not yet
    started, a `--build-verify` re-run, and a hook.
 4. Make `runRecipe` start no recipe when its context is
    already done at entry, so every `BuildWithResult`

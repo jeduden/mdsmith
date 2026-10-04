@@ -55,16 +55,21 @@ func dispatchInterruptible(opts buildPassOpts, dispatch func(buildPassOpts) int)
 	defer cancel()
 	done := make(chan struct{})
 	watched := make(chan struct{})
+	var first os.Signal
 	go func() {
 		defer close(watched)
-		watchInterrupts(sigs, cancel, force, done)
+		first = watchInterrupts(sigs, cancel, force, done)
 	}()
 	// Stop before the watcher ends, so a signal that lands after dispatch
 	// returned takes its default action instead of sitting unread in sigs.
-	defer func() { signal.Stop(sigs); close(done); <-watched }()
+	stop := func() { signal.Stop(sigs); close(done); <-watched }
 
 	opts.ctx = ctx
 	code := dispatch(opts)
+	stop()
+	if first != nil && pendingInterrupt == nil {
+		pendingInterrupt = first
+	}
 	// Read ctx before the deferred cancel, which ends it.
 	if ctx.Err() != nil {
 		return 2
@@ -72,18 +77,42 @@ func dispatchInterruptible(opts buildPassOpts, dispatch func(buildPassOpts) int)
 	return code
 }
 
+// pendingInterrupt is the first signal an interruptible dispatch
+// caught, or nil. main re-raises it (reraiseInterrupt) once the run's
+// output is written, so mdsmith ends by that signal like any
+// interrupted process: a calling shell script then stops too (bash's
+// wait-and-cooperative-exit rule) instead of reading exit 2 as a plain
+// failure it may ignore.
+var pendingInterrupt os.Signal
+
+// raiseSignalFn indirects raiseSignal so a test can observe the raise
+// without ending the test binary.
+var raiseSignalFn = raiseSignal
+
+// reraiseInterrupt re-raises pendingInterrupt with its default action.
+// Where the platform cannot (raiseSignal is a no-op, or the signal does
+// not end the process), it returns and main exits with the run's code,
+// 2 for an interrupted dispatch.
+func reraiseInterrupt() {
+	if pendingInterrupt != nil {
+		raiseSignalFn(pendingInterrupt)
+	}
+}
+
 // signalIgnored is signal.Ignored, indirected so a test can model a
 // process started with an interrupt signal ignored.
 var signalIgnored = signal.Ignored
 
-// interruptSignals returns the signals that cancel the build: SIGINT
-// and SIGTERM, minus any the process started with ignored. A background
-// job of a non-interactive shell starts with SIGINT ignored, and Notify
-// would un-ignore it, so a Ctrl-C meant for the foreground job would
-// cancel this build.
+// interruptSignals returns the signals that cancel the build: SIGINT,
+// SIGTERM, and on Unix SIGHUP (hangupSignals: a closed terminal or a
+// dropped SSH session), minus any the process started with ignored. A
+// background job of a non-interactive shell starts with SIGINT ignored,
+// and nohup ignores SIGHUP; Notify would un-ignore them, so a Ctrl-C
+// meant for the foreground job would cancel this build.
 func interruptSignals() []os.Signal {
-	out := make([]os.Signal, 0, 2)
-	for _, s := range []os.Signal{os.Interrupt, syscall.SIGTERM} {
+	candidates := append([]os.Signal{os.Interrupt, syscall.SIGTERM}, hangupSignals...)
+	out := make([]os.Signal, 0, len(candidates))
+	for _, s := range candidates {
 		if !signalIgnored(s) {
 			out = append(out, s)
 		}
@@ -95,27 +124,29 @@ func interruptSignals() []os.Signal {
 // first one received on sigs calls cancel (recipes get SIGTERM and the
 // grace period), the second closes force (SIGKILL at once). Later
 // signals are swallowed, because exiting before every recipe group is
-// reaped would orphan it. It returns when done is closed.
+// reaped would orphan it. It returns, when done is closed, the first
+// signal received, or nil.
 func watchInterrupts(
 	sigs <-chan os.Signal, cancel context.CancelFunc, force chan<- struct{}, done <-chan struct{},
-) {
+) os.Signal {
+	var first os.Signal
 	select {
-	case <-sigs:
+	case first = <-sigs:
 		cancel()
 	case <-done:
-		return
+		return nil
 	}
 	select {
 	case <-sigs:
 		close(force)
 	case <-done:
-		return
+		return first
 	}
 	for {
 		select {
 		case <-sigs:
 		case <-done:
-			return
+			return first
 		}
 	}
 }

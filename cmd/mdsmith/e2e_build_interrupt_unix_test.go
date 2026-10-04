@@ -64,20 +64,31 @@ func startBuildWithChild(t *testing.T, prelude string) (*exec.Cmd, *bytes.Buffer
 	return cmd, stderr, childPID
 }
 
+// requireDiedOf asserts that err is the exit of a process that ended by
+// sig, as a shell needs to see to stop its own script.
+func requireDiedOf(t *testing.T, err error, sig syscall.Signal, stderr string) {
+	t.Helper()
+	var ee *exec.ExitError
+	require.True(t, errors.As(err, &ee), "expected death by %v, got %v", sig, err)
+	ws, ok := ee.Sys().(syscall.WaitStatus)
+	require.True(t, ok)
+	require.True(t, ws.Signaled(), "expected death by %v, got %v\n%s", sig, err, stderr)
+	assert.Equal(t, sig, ws.Signal())
+}
+
 // TestE2E_Build_SignalKillsRecipeTree starts `mdsmith fix` on a recipe
 // that spawns a long-lived child, sends the CLI the signal once the
-// child is running, and asserts the CLI exits non-zero, reports an
-// interrupt (not a timeout), and leaves no recipe process behind.
+// child is running, and asserts the CLI reports an interrupt (not a
+// timeout), leaves no recipe process behind, and then ends by the same
+// signal.
 func TestE2E_Build_SignalKillsRecipeTree(t *testing.T) {
-	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM} {
+	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP} {
 		t.Run(sig.String(), func(t *testing.T) {
 			cmd, stderr, childPID := startBuildWithChild(t, "")
 			require.NoError(t, cmd.Process.Signal(sig))
 
 			err := cmd.Wait()
-			ee, ok := err.(*exec.ExitError)
-			require.True(t, ok, "expected non-zero exit, got %v", err)
-			assert.Equal(t, 2, ee.ExitCode(), stderr.String())
+			requireDiedOf(t, err, sig, stderr.String())
 			assert.Contains(t, stderr.String(), "INTERRUPTED")
 			assert.NotContains(t, stderr.String(), "TIMEOUT")
 			assert.Eventually(t, func() bool { return !unixProcessAlive(childPID) },
@@ -131,9 +142,7 @@ func TestE2E_Build_SecondSignalSkipsGrace(t *testing.T) {
 
 	err := cmd.Wait()
 	elapsed := time.Since(start)
-	ee, ok := err.(*exec.ExitError)
-	require.True(t, ok, "expected non-zero exit, got %v", err)
-	assert.Equal(t, 2, ee.ExitCode(), stderr.String())
+	requireDiedOf(t, err, syscall.SIGINT, stderr.String())
 	assert.Less(t, elapsed, 4*time.Second, "second SIGINT must skip the 5 s SIGTERM grace")
 	assert.Contains(t, stderr.String(), "INTERRUPTED")
 	assert.Eventually(t, func() bool { return !unixProcessAlive(childPID) },
