@@ -513,8 +513,9 @@ func (i *Index) OutgoingEdges(file string) []Edge {
 // (`[x][label]`) carry no path token and are excluded (their
 // TargetFile is empty). Unresolved edges — catalog globs and glob
 // build inputs — are skipped too: their target is not yet a concrete
-// file. Wikilinks are never seen: they sit in FileEntry.Wikilinks. The result is freshly allocated and sorted by
-// (SourceFile, SourceLine, SourceCol) for deterministic edits.
+// file. Wikilinks are never seen: they sit in FileEntry.Wikilinks.
+// The result is freshly allocated and sorted by (SourceFile,
+// SourceLine, SourceCol) for deterministic edits.
 func (i *Index) IncomingPathEdges(file string) []Edge {
 	if i == nil {
 		return nil

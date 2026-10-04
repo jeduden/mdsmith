@@ -22,35 +22,6 @@ func TestExtractWikiLinks_NilFileReturnsNil(t *testing.T) {
 	assert.Nil(t, ExtractWikiLinks(nil))
 }
 
-func TestWikilinkStem(t *testing.T) {
-	cases := []struct {
-		name     string
-		target   string
-		wantStem string
-		wantOK   bool
-	}{
-		{"bare page", "Page", "page", true},
-		{"markdown extension", "Notes.md", "notes", true},
-		{"foldered stem uses basename", "folder/API", "api", true},
-		{"mixed case lowercased", "MyDoc", "mydoc", true},
-		{"typed non-markdown returns false", "diagram.png", "", false},
-		{"empty returns false", "", "", false},
-		{"traversal returns false", "../secret", "", false},
-		{"absolute returns false", "/etc/passwd", "", false},
-		{"padded absolute returns false", " /etc/passwd", "", false},
-		{"backslash root-relative returns false", `\notes`, "", false},
-		{"backslash UNC returns false", `\\host\share\notes`, "", false},
-		{"drive letter returns false", `C:\notes`, "", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			stem, ok := WikilinkStem(tc.target)
-			assert.Equal(t, tc.wantOK, ok)
-			assert.Equal(t, tc.wantStem, stem)
-		})
-	}
-}
-
 func TestExtractWikiLinks_EmptySource(t *testing.T) {
 	f := newFile(t, "")
 	assert.Nil(t, ExtractWikiLinks(f))
@@ -938,13 +909,18 @@ func TestWikilinkKey(t *testing.T) {
 		"folder\\x.tar.gz": {"x.tar.gz", false},
 		"folder/x.png/":    {"x.png", false},
 		"v1.3":             {"v1.3", false},
+		"folder/API":       {"api", true},
+		"MyDoc":            {"mydoc", true},
 	} {
 		key, stem, ok := WikilinkKey(target)
 		require.True(t, ok, target)
 		assert.Equal(t, want.key, key, target)
 		assert.Equal(t, want.stem, stem, target)
 	}
-	for _, target := range []string{"", "  ", ".md", "../x.png", "/x.md", "/x.png", `C:\x.png`} {
+	for _, target := range []string{
+		"", "  ", ".md", "../x.png", "../secret", "/x.md", "/x.png", " /etc/passwd",
+		`\notes`, `\\host\share\notes`, `C:\x.png`, `C:\notes`,
+	} {
 		key, stem, ok := WikilinkKey(target)
 		assert.False(t, ok, target)
 		assert.False(t, stem, target)

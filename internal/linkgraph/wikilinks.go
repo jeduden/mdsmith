@@ -554,31 +554,15 @@ func ResolveWikiLink(root fs.FS, _ string, target string) (string, bool) {
 	return NewWikilinkIndex(root).Resolve(target)
 }
 
-// WikilinkStem returns the lowercased basename stem that a bare-page
-// or Markdown-extension wikilink target resolves by, with ok=true. It
-// mirrors WikilinkIndex.Resolve's stem-mode matching (lowercased stem
-// lookup), so a caller keying edges by stem matches the same files the
-// resolver would. A typed non-Markdown target (e.g. `diagram.png`)
-// returns ok=false: those resolve by exact filename, never by stem, and
-// never point at the Markdown files a move relocates. A traversal or
-// absolute target also returns ok=false.
-func WikilinkStem(target string) (string, bool) {
-	key, stem, ok := WikilinkKey(target)
-	if !ok || !stem {
-		return "", false
-	}
-	return key, true
-}
-
 // WikilinkKey reads target once and returns the key it resolves by,
-// with stem reporting the key space: the lowercased basename stem
-// (stem=true, as WikilinkStem returns it) for a bare or Markdown
+// mirroring WikilinkIndex.Resolve, with stem reporting the key space:
+// the lowercased basename stem (stem=true, the FileStemKey that
+// StemPaths files Markdown files under) for a bare or Markdown
 // target, or the lowercased exact base name (stem=false, the
-// FileNameKey that WikilinkIndex.NamePaths files every file under) for
-// a typed one. ok is false for a target the resolver refuses and for a
-// stem-mode target with an empty stem (`[[.md]]`), which neither key
-// space files a link under. A caller that takes either key, such as
-// the index build, reads each target through it once.
+// FileNameKey that NamePaths files every file under) for a typed one.
+// ok is false for a target the resolver refuses (traversal, absolute,
+// drive or UNC paths) and for a stem-mode target with an empty stem
+// (`[[.md]]`), which neither key space files a link under.
 func WikilinkKey(target string) (key string, stem, ok bool) {
 	target, ok = normalizeTarget(target)
 	if !ok {
@@ -675,7 +659,7 @@ func wikilinkSearchKey(target string) (wantName, wantStem string, stemMode bool)
 // normalizeTarget trims target, turns backslashes into slashes, and
 // reports ok=false for a target the resolver never looks up: an empty,
 // absolute, drive-letter, or UNC one, or one that cleans to `.` or
-// climbs out with `..`. Resolve, WikilinkStem, and WikilinkReaches all
+// climbs out with `..`. Resolve, WikilinkKey, and WikilinkReaches all
 // read targets through it, so they agree on which ones resolve.
 func normalizeTarget(target string) (string, bool) {
 	target = strings.TrimSpace(target)

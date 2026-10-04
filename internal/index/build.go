@@ -574,15 +574,14 @@ func collectLinkEdges(filePath string, f *lint.File, fmOffset int) []Edge {
 }
 
 // collectWikilinkEdges emits one edge per Obsidian-style wikilink the
-// resolver accepts: an EdgeWikilink for a `[[stem]]` link that resolves
-// by Markdown basename stem, with TargetLabel the lowercased stem
-// (linkgraph.WikilinkStem), and an EdgeWikilinkName for a typed
-// `[[name.ext]]` link or `![[name.ext]]` embed that resolves by exact
-// file name, with TargetLabel the lowercased base name (as
-// linkgraph.WikilinkKey returns it). Both mirror the resolver's keys. Each edge
-// is Unresolved with an empty TargetFile: resolution needs the whole
-// workspace, so the concrete target is left to the move planner, which
-// matches by key.
+// resolver accepts, keyed as linkgraph.WikilinkKey reads its target:
+// an EdgeWikilink for a `[[stem]]` link that resolves by Markdown
+// basename stem, with TargetLabel the lowercased stem, and an
+// EdgeWikilinkName for a typed `[[name.ext]]` link or `![[name.ext]]`
+// embed that resolves by exact file name, with TargetLabel the
+// lowercased base name. Each edge is Unresolved with an empty
+// TargetFile: resolution needs the whole workspace, so the concrete
+// target is left to the move planner, which matches by key.
 func collectWikilinkEdges(filePath string, f *lint.File, fmOffset int) []Edge {
 	var out []Edge
 	for _, w := range linkgraph.ExtractWikiLinks(f) {

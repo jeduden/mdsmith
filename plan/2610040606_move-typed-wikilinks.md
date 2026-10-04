@@ -78,8 +78,7 @@ the batch case needs a client that sends other files.
 The round-1 code review found one design debt. The stem and
 exact-name split is now spelled as paired APIs:
 
-- `WikilinkStem` and `WikilinkKey`, `StemPaths` and
-  `NamePaths` in
+- `StemPaths` and `NamePaths` in
   [`wikilinks.go`](../internal/linkgraph/wikilinks.go).
 - `EdgeWikilink` and `EdgeWikilinkName` in
   [`index.go`](../internal/index/index.go).
@@ -90,8 +89,9 @@ Round 2 removed two parts of that debt. `WikilinkKeyAt`
 replaced the paired `WikilinkStemAt` and `WikilinkNameAt`.
 Wikilink edges now sit in `FileEntry.Wikilinks`, apart
 from `Outgoing`, so views that list a file's edges need no
-filter. Round 3 removed `WikilinkName`: once the index
-build read `WikilinkKey`, only its own test called it.
+filter. Round 3 removed `WikilinkStem` and
+`WikilinkName`: once the index build read `WikilinkKey`,
+only their own tests called them.
 
 The private `wikilinkKey` in
 [`move.go`](../internal/refactor/move.go) picks one of each
