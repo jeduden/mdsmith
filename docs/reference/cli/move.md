@@ -299,5 +299,6 @@ mdsmith move guide.md reference/guide.md --dry-run
   to a refused move from a moved file, a link in a refused move that leaves its
   folder, and a wikilink whose new name another moved file takes get none. The
   warning counts each that may miss its file, an unedited wikilink a moved file
-  takes, and a link or typed wikilink to a refused move a moved file displaces,
-  not one from a refused move to an unmoved file. MDS027 flags any that break.
+  takes, and a link to a refused move a moved file displaces, not one from a
+  refused move to an unmoved file. MDS027 flags any that break. The hook
+  fires only for Markdown files, which no typed wikilink names.
