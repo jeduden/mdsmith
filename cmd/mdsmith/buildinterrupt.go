@@ -13,13 +13,13 @@ import (
 )
 
 // runBuildPassInterruptible runs the build pass with SIGINT, SIGTERM,
-// and on Unix SIGHUP (interruptSignals) cancelling its context while it
-// dispatches recipes and hooks, so each
-// running recipe's process group is killed before mdsmith exits; recipes
-// run in their own group and would otherwise survive the terminal's
+// and on Unix and plan9 SIGHUP (interruptSignals) cancelling its
+// context while it dispatches recipes and hooks, so each running
+// recipe's process group is killed before mdsmith exits; recipes run
+// in their own group and would otherwise survive the terminal's
 // interrupt. A second signal, at least escalateAfter after the first,
-// escalates: the Unix kill skips the rest of
-// its SIGTERM grace and sends SIGKILL (buildexec.WithForceKill), so
+// escalates: the Unix kill skips the rest of its SIGTERM grace and
+// sends SIGKILL (buildexec.WithForceKill), so
 // mdsmith still reaps every recipe but does not make an impatient user
 // wait. The handler covers only the dispatch of a pass that can start a
 // recipe or hook (dispatchInterruptible): the target scan, the trust
@@ -134,8 +134,9 @@ func reraiseInterrupt() {
 var signalIgnored = signal.Ignored
 
 // interruptSignals returns the signals that cancel the build: SIGINT,
-// SIGTERM, and on Unix SIGHUP (hangupSignals: a closed terminal or a
-// dropped SSH session), minus any the process started with ignored. A
+// SIGTERM, and on Unix and plan9 SIGHUP (hangupSignals: a closed
+// terminal or window, or a dropped SSH session), minus any the process
+// started with ignored. A
 // background job of a non-interactive shell starts with SIGINT ignored,
 // and nohup ignores SIGHUP; Notify would un-ignore them, so a Ctrl-C
 // meant for the foreground job would cancel this build.

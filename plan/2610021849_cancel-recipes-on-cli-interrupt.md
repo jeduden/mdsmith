@@ -41,19 +41,23 @@ done, so only the cancellation is missing.
    the `exec_unix_test.go` helpers live in `internal/build`,
    so `cmd/mdsmith` carries its own pid probe).
 2. Derive the build context in `fix`, the only command
-   that runs the build pass (`check` runs none), from
-   `signal.NotifyContext(ctx, os.Interrupt,
-   syscall.SIGTERM)` (on plan9 `os.Interrupt` maps to the
-   "interrupt" note) and pass it down to the build pass
-   instead of `context.Background()`. Install the handler
+   that runs the build pass (`check` runs none), from a
+   `signal.Notify` watcher (`watchInterrupts`) on
+   `os.Interrupt` and `syscall.SIGTERM` (on plan9 both map
+   to the "interrupt" note) that cancels it, and pass it
+   down to the build pass instead of
+   `context.Background()`. The watcher, not
+   `signal.NotifyContext`, so it can also escalate on a
+   second signal (task 5). Install the handler
    only around the dispatch of recipes and hooks, so the
    target scan, a pass with no target, the lint-fix pass,
    `--no-build`, and the dry-run, check-stale, and explain
    modes keep the default signal action. Skip a signal
    the process started with ignored (a background job's
    SIGINT), since `Notify` would un-ignore it. On Unix
-   also catch `SIGHUP`, so a closed terminal or dropped
-   SSH session reaps the recipe groups.
+   also catch `SIGHUP`, and on plan9 the "hangup" note, so
+   a closed terminal or window, or a dropped SSH session,
+   reaps the recipe groups.
 3. Make sure a cancelled build reports an interrupt error,
    not a timeout, and that after the recipes are reaped
    and the output is written mdsmith re-raises the first

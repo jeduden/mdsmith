@@ -14,17 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInterruptSignals_IncludesHangup(t *testing.T) {
-	// Closing the terminal or dropping an SSH session sends SIGHUP: it
-	// must cancel the build too, or the recipe groups are orphaned.
-	stubSignalIgnored(t)
-	assert.Contains(t, interruptSignals(), syscall.SIGHUP)
-
-	// Under nohup SIGHUP starts ignored and must stay so.
-	stubSignalIgnored(t, syscall.SIGHUP)
-	assert.NotContains(t, interruptSignals(), syscall.SIGHUP)
-}
-
 func TestBrokenPipeSignals_IsSIGPIPE(t *testing.T) {
 	assert.Equal(t, []os.Signal{syscall.SIGPIPE}, brokenPipeSignals)
 }

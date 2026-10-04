@@ -9,10 +9,6 @@ import (
 	"time"
 )
 
-// hangupSignals extends interruptSignals with SIGHUP on Unix: a closed
-// terminal or a dropped SSH session must reap the recipe groups too.
-var hangupSignals = []os.Signal{syscall.SIGHUP}
-
 // brokenPipeSignals is what holdBrokenPipe catches during dispatch.
 var brokenPipeSignals = []os.Signal{syscall.SIGPIPE}
 

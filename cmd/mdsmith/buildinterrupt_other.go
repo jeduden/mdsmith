@@ -4,9 +4,6 @@ package main
 
 import "os"
 
-// hangupSignals is empty off Unix: there is no SIGHUP to catch.
-var hangupSignals []os.Signal
-
 // brokenPipeSignals is empty off Unix: a write to a broken pipe there
 // returns an error instead of ending the process.
 var brokenPipeSignals []os.Signal
