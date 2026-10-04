@@ -117,6 +117,15 @@ const (
 	EdgeWikilinkName
 )
 
+// IsWikilink reports whether k is EdgeWikilink or EdgeWikilinkName: an
+// Unresolved edge with no TargetFile, keyed by stem or exact name, that
+// only the move planner reads. A view that lists a file's edges by
+// target file (deps, call hierarchy) skips these, since the target is
+// not known until the whole workspace is resolved.
+func (k EdgeKind) IsWikilink() bool {
+	return k == EdgeWikilink || k == EdgeWikilinkName
+}
+
 // Edge records one reference from a source position to a target.
 //
 // Empty TargetFile means "same file as Source" (used for anchor and

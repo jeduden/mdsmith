@@ -49,7 +49,9 @@ path then line.
 
 Edge kinds are `anchor-link`, `file-link`, `ref-link`,
 `include`, `catalog`, and `build`. An unresolved
-`<?catalog?>` glob renders its target as `(glob)`.
+`<?catalog?>` glob renders its target as `(glob)`. A wikilink
+such as `[[guide]]` or `![[diagram.png]]` is not listed: it
+names its file by name, not by path.
 
 **json**:
 

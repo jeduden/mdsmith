@@ -145,6 +145,16 @@ func TestIncomingWikilinkNameEdges(t *testing.T) {
 	assert.Nil(t, nilIdx.IncomingWikilinkNameEdges("diagram.png"))
 }
 
+// TestEdgeKind_IsWikilink locks which kinds are wikilink edges: the
+// stem and the exact-name kind, and no other.
+func TestEdgeKind_IsWikilink(t *testing.T) {
+	assert.True(t, EdgeWikilink.IsWikilink())
+	assert.True(t, EdgeWikilinkName.IsWikilink())
+	for _, k := range []EdgeKind{EdgeAnchorLink, EdgeFileLink, EdgeRefLink, EdgeInclude, EdgeCatalog, EdgeBuild} {
+		assert.False(t, k.IsWikilink(), k)
+	}
+}
+
 // TestWikilinkEdges locks the shared lookup: only edges of the asked
 // kind whose label equals the key, as given (callers key it first).
 func TestWikilinkEdges(t *testing.T) {

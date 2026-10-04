@@ -87,6 +87,25 @@ func TestCollectDeps_Outgoing(t *testing.T) {
 	assert.Equal(t, "b.md#sec", recs[0].Target)
 }
 
+// TestCollectDeps_SkipsWikilinks locks that a `[[stem]]` link and a
+// typed `![[name.ext]]` embed, which the index keeps unresolved for the
+// move planner, are not listed: they have no target file to print, so
+// they would read as `unknown (glob)`.
+func TestCollectDeps_SkipsWikilinks(t *testing.T) {
+	idx := index.New("/ws")
+	src := map[string][]byte{
+		"a.md": []byte("# A\n\nSee [[b]], ![[img.png]], and [b](b.md).\n"),
+		"b.md": []byte("# B\n"),
+	}
+	idx.BuildSerial([]string{"a.md", "b.md"}, func(p string) ([]byte, error) {
+		return src[p], nil
+	})
+	recs := collectDeps(idx, "a.md", false)
+	require.Len(t, recs, 1)
+	assert.Equal(t, "file-link", recs[0].Kind)
+	assert.Equal(t, "b.md", recs[0].Target)
+}
+
 func TestCollectDeps_Incoming(t *testing.T) {
 	idx := index.New("/ws")
 	src := map[string][]byte{

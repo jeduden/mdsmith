@@ -78,7 +78,8 @@ func edgeTargetString(e index.Edge, selfFile string) string {
 // collectDeps returns the dependency records for target. When incoming
 // is false it lists edges originating in target (what target depends
 // on); when true it lists edges pointing at target (what depends on
-// target).
+// target). Wikilink edges are left out both ways: BacklinksFor skips
+// them as unresolved, and the outgoing pass skips them too.
 func collectDeps(idx *index.Index, target string, incoming bool) []depRecord {
 	var recs []depRecord
 	if incoming {
@@ -93,6 +94,11 @@ func collectDeps(idx *index.Index, target string, incoming bool) []depRecord {
 		return recs
 	}
 	for _, e := range idx.OutgoingEdges(target) {
+		// A wikilink edge has no target file until the whole workspace
+		// is resolved, so it has nothing to print here.
+		if e.Kind.IsWikilink() {
+			continue
+		}
 		recs = append(recs, depRecord{
 			Source: target,
 			Line:   e.SourceLine,
