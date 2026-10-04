@@ -230,7 +230,7 @@ func rejectRemovedBuildKeys(data []byte) error {
 		}
 		for j := 0; j+1 < len(buildNode.Content); j += 2 {
 			if buildNode.Content[j].Value == "base-url" {
-				return fmt.Errorf(
+				return issueAt(KeyPath{"build", "base-url"},
 					"build.base-url was removed in plan 2606101546; delete it")
 			}
 		}

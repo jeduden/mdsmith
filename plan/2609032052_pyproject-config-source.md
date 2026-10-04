@@ -170,7 +170,7 @@ Phase A — positioned config diagnostics (YAML first):
    interface that maps a key path to a line and column.
    Add the `yaml.v3` node resolver over the parsed
    `.mdsmith.yml` tree.
-2. [ ] Red/green: thread key paths through the validation
+2. [x] Red/green: thread key paths through the validation
    sites in
    [validate.go](../internal/config/validate.go),
    [foreignregion.go](../internal/config/foreignregion.go),

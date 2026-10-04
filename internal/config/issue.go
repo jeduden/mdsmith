@@ -75,8 +75,9 @@ func (i *Issue) Error() string { return i.Message }
 func (i *Issue) Unwrap() error { return i.Err }
 
 // issueWrap attaches path to err, keeping err's message verbatim and
-// err itself as the cause. A nil err yields nil.
-func issueWrap(path KeyPath, err error) *Issue {
+// err itself as the cause. A nil err yields a nil error (not a typed
+// nil *Issue), so callers can wrap a validator's result directly.
+func issueWrap(path KeyPath, err error) error {
 	if err == nil {
 		return nil
 	}

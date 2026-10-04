@@ -110,8 +110,9 @@ func ValidateBuildConfig(cfg *Config) error {
 // validateHook validates a single hook entry. listName is "before" or "after".
 func validateHook(listName string, idx int, hook HookCfg) error {
 	label := fmt.Sprintf("build.hooks.%s[%d]", listName, idx)
+	command := KeyPath{"build", "hooks", listName, idx, "command"}
 	if hook.Command == "" {
-		return fmt.Errorf("%s: command must not be empty", label)
+		return issueAt(command, "%s: command must not be empty", label)
 	}
 	// Validate param values in sorted key order for deterministic errors.
 	paramKeys := make([]string, 0, len(hook.Params))
@@ -123,12 +124,12 @@ func validateHook(listName string, idx int, hook HookCfg) error {
 	for _, k := range paramKeys {
 		allowed[k] = true
 		if err := validateHookParamValue(label, k, hook.Params[k]); err != nil {
-			return err
+			return issueWrap(KeyPath{"build", "hooks", listName, idx, "params", k}, err)
 		}
 	}
 	// Validate command placeholders: hooks may not reference {inputs} or
 	// {outputs} — those are directive-context collective placeholders.
-	return validateHookCommandPlaceholders(label, hook.Command, allowed)
+	return issueWrap(command, validateHookCommandPlaceholders(label, hook.Command, allowed))
 }
 
 // validateHookParamValue enforces the baseline constraints on a hook param value:
@@ -190,15 +191,16 @@ func validateHookCommandPlaceholders(label, command string, allowed map[string]b
 func validateExecConfig(exec ExecCfg) error {
 	for i, name := range exec.EnvPassThrough {
 		if name == "" {
-			return fmt.Errorf("build.exec.env-pass-through[%d]: name must not be empty", i)
+			return issueAt(KeyPath{"build", "exec", "env-pass-through", i},
+				"build.exec.env-pass-through[%d]: name must not be empty", i)
 		}
 		if strings.Contains(name, "=") {
-			return fmt.Errorf(
+			return issueAt(KeyPath{"build", "exec", "env-pass-through", i},
 				"build.exec.env-pass-through[%d]: name %q must not contain %q", i, name, "=",
 			)
 		}
 		if strings.ContainsAny(name, "\x00\n\r") {
-			return fmt.Errorf(
+			return issueAt(KeyPath{"build", "exec", "env-pass-through", i},
 				"build.exec.env-pass-through[%d]: name %q must not contain NUL, newline, or carriage return",
 				i, name,
 			)
@@ -235,17 +237,17 @@ var defaultInputTokenRe = regexp.MustCompile(`^\{([A-Za-z_][A-Za-z0-9_]*)\}$`)
 // must name a declared, non-reserved param; any other entry must be a
 // literal relative path passing the path-shape rules.
 func validateDefaultInputs(recipeName string, entries []string, allowed map[string]bool) error {
-	for _, entry := range entries {
+	for i, entry := range entries {
 		if m := defaultInputTokenRe.FindStringSubmatch(entry); m != nil {
 			param := m[1]
 			if reservedParams[param] || collectivePlaceholders[param] {
-				return fmt.Errorf(
+				return issueAt(KeyPath{"build", "recipes", recipeName, "default-inputs", i},
 					"build.recipes.%s: default-inputs uses reserved token {%s}",
 					recipeName, param,
 				)
 			}
 			if !allowed[param] {
-				return fmt.Errorf(
+				return issueAt(KeyPath{"build", "recipes", recipeName, "default-inputs", i},
 					"build.recipes.%s: default-inputs references undeclared param {%s}",
 					recipeName, param,
 				)
@@ -253,7 +255,7 @@ func validateDefaultInputs(recipeName string, entries []string, allowed map[stri
 			continue
 		}
 		if reason := defaultInputPathShape(entry); reason != "" {
-			return fmt.Errorf(
+			return issueAt(KeyPath{"build", "recipes", recipeName, "default-inputs", i},
 				"build.recipes.%s: default-inputs entry %q %s",
 				recipeName, entry, reason,
 			)
@@ -291,18 +293,18 @@ func defaultInputPathShape(entry string) string {
 }
 
 func validateDeclaredParams(recipeName string, params ParamCfg) error {
-	for _, p := range params.Required {
+	for i, p := range params.Required {
 		if reservedParams[p] {
-			return fmt.Errorf(
+			return issueAt(KeyPath{"build", "recipes", recipeName, "params", "required", i},
 				"build.recipes.%s: params.required contains reserved name %q; "+
 					"reserved names are only available in body-template",
 				recipeName, p,
 			)
 		}
 	}
-	for _, p := range params.Optional {
+	for i, p := range params.Optional {
 		if reservedParams[p] {
-			return fmt.Errorf(
+			return issueAt(KeyPath{"build", "recipes", recipeName, "params", "optional", i},
 				"build.recipes.%s: params.optional contains reserved name %q; "+
 					"reserved names are only available in body-template",
 				recipeName, p,
@@ -329,21 +331,21 @@ func validateCommandPlaceholders(recipeName, command string, allowed map[string]
 				if isStandalone {
 					continue
 				}
-				return fmt.Errorf(
+				return issueAt(KeyPath{"build", "recipes", recipeName, "command"},
 					"build.recipes.%s: command embeds collective placeholder {%s} in token %q; "+
 						"it must stand alone as its own argument",
 					recipeName, param, tok,
 				)
 			}
 			if reservedParams[param] {
-				return fmt.Errorf(
+				return issueAt(KeyPath{"build", "recipes", recipeName, "command"},
 					"build.recipes.%s: command uses reserved placeholder {%s}; "+
 						"reserved placeholders are only available in body-template",
 					recipeName, param,
 				)
 			}
 			if !allowed[param] {
-				return fmt.Errorf(
+				return issueAt(KeyPath{"build", "recipes", recipeName, "command"},
 					"build.recipes.%s: command references undeclared placeholder {%s}; "+
 						"declare it in params.required or params.optional",
 					recipeName, param,

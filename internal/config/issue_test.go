@@ -96,6 +96,27 @@ func issuePos(t *testing.T, src string, err error) (int, int) {
 	return line, col
 }
 
+// positionCase is one config source whose load error must resolve to
+// line:col.
+type positionCase struct {
+	name string
+	src  string
+	line int
+	col  int
+}
+
+func runPositionCases(t *testing.T, cases []positionCase) {
+	t.Helper()
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseBytes([]byte(tt.src))
+			line, col := issuePos(t, tt.src, err)
+			assert.Equal(t, tt.line, line, "err: %v", err)
+			assert.Equal(t, tt.col, col, "err: %v", err)
+		})
+	}
+}
+
 func TestIssueWrapKeepsCause(t *testing.T) {
 	cause := errors.New("boom")
 	iss := issueWrap(KeyPath{"kinds", "a"}, cause)
@@ -104,22 +125,16 @@ func TestIssueWrapKeepsCause(t *testing.T) {
 	assert.Nil(t, issueWrap(KeyPath{"x"}, nil))
 }
 
-func TestKindValidationPositions(t *testing.T) {
-	tests := []struct {
-		name string
-		src  string
-		line int
-		col  int
-	}{
-		{"path-pattern", `kinds:
+var kindValidationPositionsCases = []positionCase{
+	{"path-pattern", `kinds:
   plan:
     path-pattern: "plan/[a"
 `, 3, 5},
-		{"extends undeclared", `kinds:
+	{"extends undeclared", `kinds:
   plan:
     extends: nope
 `, 3, 5},
-		{"schema both inline and file", `kinds:
+	{"schema both inline and file", `kinds:
   plan:
     schema:
       frontmatter:
@@ -128,7 +143,7 @@ func TestKindValidationPositions(t *testing.T) {
       required-structure:
         schema: plan/proto.md
 `, 3, 5},
-		{"schema file and inline-schema", `kinds:
+	{"schema file and inline-schema", `kinds:
   plan:
     rules:
       required-structure:
@@ -137,13 +152,13 @@ func TestKindValidationPositions(t *testing.T) {
           frontmatter:
             id: int
 `, 4, 7},
-		{"kind-assignment undeclared", `kinds:
+	{"kind-assignment undeclared", `kinds:
   plan: {}
 kind-assignment:
   - glob: ["a.md"]
     kinds: [plan, ghost]
 `, 5, 19},
-		{"extends incompatible frontmatter", `kinds:
+	{"extends incompatible frontmatter", `kinds:
   base:
     schema:
       frontmatter:
@@ -154,93 +169,62 @@ kind-assignment:
       frontmatter:
         id: string
 `, 8, 5},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := ParseBytes([]byte(tt.src))
-			line, col := issuePos(t, tt.src, err)
-			assert.Equal(t, tt.line, line, "err: %v", err)
-			assert.Equal(t, tt.col, col, "err: %v", err)
-		})
-	}
 }
 
-func TestForeignRegionValidationPositions(t *testing.T) {
-	tests := []struct {
-		name string
-		src  string
-		line int
-		col  int
-	}{
-		{"top-level empty start", `foreign-regions:
+func TestKindValidationPositions(t *testing.T) { runPositionCases(t, kindValidationPositionsCases) }
+
+var foreignRegionValidationPositionsCases = []positionCase{
+	{"top-level empty start", `foreign-regions:
   - start: "<!-- a -->"
     end: "<!-- /a -->"
   - start: " "
     end: "<!-- /b -->"
 `, 4, 5},
-		{"top-level empty end", `foreign-regions:
+	{"top-level empty end", `foreign-regions:
   - start: "<!-- a -->"
     end: ""
 `, 3, 5},
-		{"override start equals end", `overrides:
+	{"override start equals end", `overrides:
   - glob: ["a.md"]
   - glob: ["b.md"]
     foreign-regions:
       - start: "<!-- x -->"
         end: "<!-- x -->"
 `, 5, 9},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := ParseBytes([]byte(tt.src))
-			line, col := issuePos(t, tt.src, err)
-			assert.Equal(t, tt.line, line, "err: %v", err)
-			assert.Equal(t, tt.col, col, "err: %v", err)
-		})
-	}
 }
 
-func TestDecoderIssuePositions(t *testing.T) {
-	tests := []struct {
-		name string
-		src  string
-		line int
-		col  int
-	}{
-		{"rule scalar not bool", `rules:
+func TestForeignRegionValidationPositions(t *testing.T) {
+	runPositionCases(t, foreignRegionValidationPositionsCases)
+}
+
+var decoderIssuePositionsCases = []positionCase{
+	{"rule scalar not bool", `rules:
   line-length: 42
 `, 2, 16},
-		{"rule sequence", `rules:
+	{"rule sequence", `rules:
   line-length:
     - 1
 `, 3, 5},
-		{"kind rule scalar", `kinds:
+	{"kind rule scalar", `kinds:
   plan:
     rules:
       no-bare-urls: maybe
 `, 4, 21},
-		{"schema sequence", `kinds:
+	{"schema sequence", `kinds:
   plan:
     schema: [a]
 `, 3, 13},
-		{"schema bad name", `kinds:
+	{"schema bad name", `kinds:
   plan:
     schema: "bad name!"
 `, 3, 13},
-		{"schema empty name", `kinds:
+	{"schema empty name", `kinds:
   plan:
     schema: ""
 `, 3, 13},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := ParseBytes([]byte(tt.src))
-			line, col := issuePos(t, tt.src, err)
-			assert.Equal(t, tt.line, line, "err: %v", err)
-			assert.Equal(t, tt.col, col, "err: %v", err)
-		})
-	}
 }
+
+func TestDecoderIssuePositions(t *testing.T) { runPositionCases(t, decoderIssuePositionsCases) }
 
 func TestSidecarDecoderIssueNamesItsFile(t *testing.T) {
 	for _, tc := range []struct{ dir, body string }{
@@ -275,94 +259,137 @@ func TestAttachFileKeepsExisting(t *testing.T) {
 	assert.Same(t, plain, attachFile("x.yml", plain))
 }
 
-func TestWordlistValidationPositions(t *testing.T) {
-	tests := []struct {
-		name string
-		src  string
-		line int
-		col  int
-	}{
-		{"top-level unknown list", `rules:
+var wordlistValidationPositionsCases = []positionCase{
+	{"top-level unknown list", `rules:
   forbidden-text:
     lists:
       - ghost
 `, 4, 9},
-		{"kind lists not strings", `kinds:
+	{"kind lists not strings", `kinds:
   plan:
     rules:
       forbidden-text:
         lists: nope
 `, 5, 9},
-		{"override rule without lists support", `overrides:
+	{"override rule without lists support", `overrides:
   - glob: ["a.md"]
     rules:
       line-length:
         lists: [a]
 `, 5, 9},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := ParseBytes([]byte(tt.src))
-			line, col := issuePos(t, tt.src, err)
-			assert.Equal(t, tt.line, line, "err: %v", err)
-			assert.Equal(t, tt.col, col, "err: %v", err)
-		})
-	}
 }
 
-func TestConventionValidationPositions(t *testing.T) {
-	tests := []struct {
-		name string
-		src  string
-		line int
-		col  int
-	}{
-		{"unknown convention", `rules: {}
+func TestWordlistValidationPositions(t *testing.T) {
+	runPositionCases(t, wordlistValidationPositionsCases)
+}
+
+var conventionValidationPositionsCases = []positionCase{
+	{"unknown convention", `rules: {}
 convention: nope
 `, 2, 1},
-		{"convention not a string", `convention: 3
+	{"convention not a string", `convention: 3
 `, 1, 13},
-		{"convention a mapping", `convention:
+	{"convention a mapping", `convention:
   a: b
 `, 2, 3},
-		{"flavor not a string", `convention: portable
+	{"flavor not a string", `convention: portable
 rules:
   markdown-flavor:
     flavor: 7
 `, 4, 5},
-		{"flavor mismatch", `convention: portable
+	{"flavor mismatch", `convention: portable
 rules:
   markdown-flavor:
     flavor: gfm
 `, 4, 5},
-		{"reserved name", `conventions:
+	{"reserved name", `conventions:
   portable:
     flavor: gfm
 `, 2, 3},
-		{"unknown flavor", `conventions:
+	{"unknown flavor", `conventions:
   mine:
     flavor: nope
 `, 3, 5},
-		{"unknown rule", `conventions:
+	{"unknown rule", `conventions:
   mine:
     flavor: gfm
     rules:
       no-such-rule: true
 `, 5, 7},
-		{"bad rule settings", `conventions:
+	{"bad rule settings", `conventions:
   mine:
     flavor: gfm
     rules:
       line-length:
         max: abc
 `, 5, 7},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := ParseBytes([]byte(tt.src))
-			line, col := issuePos(t, tt.src, err)
-			assert.Equal(t, tt.line, line, "err: %v", err)
-			assert.Equal(t, tt.col, col, "err: %v", err)
-		})
-	}
 }
+
+func TestConventionValidationPositions(t *testing.T) {
+	runPositionCases(t, conventionValidationPositionsCases)
+}
+
+var buildValidationPositionsCases = []positionCase{
+	{"reserved required param", `build:
+  recipes:
+    img:
+      command: gen {x}
+      params:
+        required: [x, alt]
+`, 6, 23},
+	{"reserved optional param", `build:
+  recipes:
+    img:
+      command: gen
+      params:
+        optional:
+          - alt
+`, 7, 13},
+	{"undeclared command placeholder", `build:
+  recipes:
+    img:
+      command: gen {y}
+`, 4, 7},
+	{"default-inputs bad path", `build:
+  recipes:
+    img:
+      command: gen
+      default-inputs:
+        - ok.md
+        - /abs.md
+`, 7, 11},
+	{"default-inputs undeclared token", `build:
+  recipes:
+    img:
+      command: gen
+      default-inputs: ["{p}"]
+`, 5, 24},
+	{"hook empty command", `build:
+  hooks:
+    after:
+      - name: a
+        command: x
+      - name: b
+`, 6, 9},
+	{"hook bad param", `build:
+  hooks:
+    before:
+      - command: x {p}
+        params:
+          p: " pad"
+`, 6, 11},
+	{"hook undeclared placeholder", `build:
+  hooks:
+    before:
+      - command: x {p}
+`, 4, 9},
+	{"exec env name", `build:
+  exec:
+    env-pass-through: [HOME, "A=B"]
+`, 3, 30},
+	{"removed base-url", `build:
+  base-url: https://example.com
+`, 2, 3},
+}
+
+func TestBuildValidationPositions(t *testing.T) { runPositionCases(t, buildValidationPositionsCases) }
