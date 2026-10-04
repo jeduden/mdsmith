@@ -1,7 +1,7 @@
 ---
 id: 2610030438
 title: Batch-aware planning for multi-file willRenameFiles
-status: "🔳"
+status: "✅"
 summary: >-
   When one workspace/willRenameFiles request moves several Markdown
   files that link to each other, plan every link rewrite against the
@@ -105,11 +105,11 @@ then reports it.
 
 ## Acceptance Criteria
 
-- [ ] Moving `a.md` and `b.md` into `x/` in one request leaves
+- [x] Moving `a.md` and `b.md` into `x/` in one request leaves
       `[b](b.md)` unchanged and returns no edit for that range.
-- [ ] Moving `a.md` to `x/a.md` and `b.md` to `y/b.md` in one
+- [x] Moving `a.md` to `x/a.md` and `b.md` to `y/b.md` in one
       request rewrites the link to `../y/b.md`.
-- [ ] No reply holds two edits with overlapping ranges in one
+- [x] No reply holds two edits with overlapping ranges in one
       file.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues

@@ -291,7 +291,7 @@ row: "| {id} | {status} | {model} | [{title}]({filename}) |"
 | 2610030015 | ✅     | sonnet | [Publish release notes on mdsmith.dev](plan/2610030015_website-release-notes.md)                                                                        |
 | 2610030243 | ✅     | sonnet | [Vet the internal/build spawn tests for plan9](plan/2610030243_plan9-vet-unix-windows-build-tests.md)                                                   |
 | 2610030244 | ✅     | sonnet | [Run internal/build under js/wasm once in CI](plan/2610030244_dedupe-build-js-wasm-ci-run.md)                                                           |
-| 2610030438 | 🔳     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
+| 2610030438 | ✅     | opus   | [Batch-aware planning for multi-file willRenameFiles](plan/2610030438_batch-aware-will-rename-files.md)                                                 |
 | 2610030846 | ✅     | sonnet | [Silence wasm session finalizers after the Go program exits](plan/2610030846_wasm-finalizer-after-exit.md)                                              |
 | 2610031253 | ✅     | sonnet | [Free the session when a then getter rejects the create](plan/2610031253_wasm-create-then-getter-leak.md)                                               |
 | 2610031420 | ✅     | sonnet | [Free the func when js.FuncOf's wrapper call throws](plan/2610031420_wasm-funcof-wrapper-throw-leak.md)                                                 |
