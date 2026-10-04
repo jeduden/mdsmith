@@ -1,12 +1,14 @@
 package lsp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -222,4 +224,95 @@ func TestConfigOnlyWatchedEventKeepsFreshWalk(t *testing.T) {
 
 	require.NotNil(t, s.moveWikilinkIndex(root))
 	assert.Equal(t, int32(1), walks.Load(), "a config-only batch proves no Markdown watch")
+}
+
+// TestRegisterWatchersReportsEveryCreateAndDelete locks that the watch
+// covers the wikilink index's whole file set: the index keys every file
+// (images and `.MD` spellings included), so a create or delete of any
+// file must reach InvalidateWikilinks, not only a `*.md` one.
+func TestRegisterWatchersReportsEveryCreateAndDelete(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	s := New(Options{Writer: &buf})
+	s.registerWatchers()
+	out := buf.String()
+	body := out[strings.Index(out, "{"):]
+	var msg struct {
+		Params registrationParams `json:"params"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(body), &msg))
+	require.Len(t, msg.Params.Registrations, 1)
+	var opts struct {
+		Watchers []fileSystemWatcher `json:"watchers"`
+	}
+	raw, err := json.Marshal(msg.Params.Registrations[0].RegisterOptions)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &opts))
+	assert.Contains(t, opts.Watchers, fileSystemWatcher{
+		GlobPattern: "**/*", Kind: watchKindCreate | watchKindDelete,
+	})
+}
+
+// TestMoveWikilinkIndexWalksWhenRootOutsideWorkspace locks that a move
+// at a session root outside the watched workspace folder (mdsmith.config
+// pointing elsewhere) walks fresh: the client reports changes only under
+// the folder it watches, so the cached index there may be stale.
+func TestMoveWikilinkIndexWalksWhenRootOutsideWorkspace(t *testing.T) {
+	t.Parallel()
+	folder := t.TempDir()
+	outside := writeWikilinkTree(t, map[string]string{"guide.md": "# G\n"})
+	s := New(Options{Writer: io.Discard})
+	s.rootDir = folder
+	walks := countWikilinkWalks(s)
+	s.registerWatchers()
+	cfg, _, _ := s.resolveConfig("")
+	s.rebuildSession(cfg, filepath.Join(outside, ".mdsmith.yml"))
+	require.NotNil(t, s.sessionAt(outside))
+
+	require.NotNil(t, s.moveWikilinkIndex(outside))
+	assert.Equal(t, int32(1), walks.Load())
+}
+
+// TestMoveWikilinkIndexReadsCacheUnderWorkspace locks that a session
+// root nested inside the watched folder still reads the cached index.
+func TestMoveWikilinkIndexReadsCacheUnderWorkspace(t *testing.T) {
+	t.Parallel()
+	folder := writeWikilinkTree(t, map[string]string{"docs/guide.md": "# G\n"})
+	nested := filepath.Join(folder, "docs")
+	s := New(Options{Writer: io.Discard})
+	s.rootDir = folder
+	walks := countWikilinkWalks(s)
+	s.registerWatchers()
+	cfg, _, _ := s.resolveConfig("")
+	s.rebuildSession(cfg, filepath.Join(nested, ".mdsmith.yml"))
+
+	require.NotNil(t, s.moveWikilinkIndex(nested))
+	assert.Zero(t, walks.Load())
+}
+
+// TestWatchesRoot locks which move roots lie inside the watched folder.
+func TestWatchesRoot(t *testing.T) {
+	t.Parallel()
+	folder := filepath.Join(t.TempDir(), "ws")
+	cases := map[string]struct {
+		folder, root string
+		want         bool
+	}{
+		"the folder itself":    {folder, folder, true},
+		"nested under it":      {folder, filepath.Join(folder, "docs"), true},
+		"its parent":           {folder, filepath.Dir(folder), false},
+		"a sibling":            {folder, folder + "2", false},
+		"a dotdot-named child": {folder, filepath.Join(folder, "..x"), true},
+		"no workspace folder":  {"", folder, false},
+		"no root":              {folder, "", false},
+		"relative against abs": {folder, "rel", false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := New(Options{Writer: io.Discard})
+			s.rootDir = tc.folder
+			assert.Equal(t, tc.want, s.watchesRoot(tc.root))
+		})
+	}
 }

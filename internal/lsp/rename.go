@@ -3,7 +3,9 @@ package lsp
 import (
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/jeduden/mdsmith/internal/index"
@@ -372,14 +374,31 @@ func (s *Server) moveWorkspace(root string) lspMoveWorkspace {
 // a walk (the session walks only when nothing is cached yet). The
 // session answers only for the root it was built at; a move spelled
 // against another root (a config reload in between) walks that root.
-// Otherwise the cache may be stale, so root is walked fresh.
+// The client reports changes only under the workspace folder it
+// watches, so a root outside that folder (mdsmith.config pointing
+// elsewhere) walks too. Otherwise the cache may be stale, so root is
+// walked fresh.
 func (s *Server) moveWikilinkIndex(root string) *linkgraph.WikilinkIndex {
-	if s.watchingFiles.Load() {
+	if s.watchingFiles.Load() && s.watchesRoot(root) {
 		if sess := s.sessionAt(root); sess != nil {
 			return sess.WikilinkIndex()
 		}
 	}
 	return s.walkWikilinks(root)
+}
+
+// watchesRoot reports whether root is the workspace folder the client
+// watches or lies under it, so every file-set change below root reaches
+// the server. A server with no workspace folder watches nothing.
+func (s *Server) watchesRoot(root string) bool {
+	s.configMu.RLock()
+	folder := s.rootDir
+	s.configMu.RUnlock()
+	if folder == "" || root == "" {
+		return false
+	}
+	rel, err := filepath.Rel(folder, root)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // WikilinkIndex implements refactor.MoveWorkspace: the index `[[stem]]`

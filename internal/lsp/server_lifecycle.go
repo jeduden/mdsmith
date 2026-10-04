@@ -116,6 +116,9 @@ func (s *Server) handleInitialized(ctx context.Context) {
 //     index (kind / ignore globs may shift scope).
 //   - `**/*.md` keeps the symbol index in sync when files change
 //     outside of any open buffer (sibling editor, VCS checkout).
+//   - `**/*`, creates and deletes only, drops the session's wikilink
+//     index on any file-set change: the index keys every file (images,
+//     `.MD` spellings), which the Markdown globs alone do not report.
 //
 // The request is best-effort: clients that don't support dynamic
 // registration silently ignore it. There is no polling fallback;
@@ -130,11 +133,14 @@ func (s *Server) registerWatchers() {
 	// derived from mdpath so the watch scope tracks the single source
 	// of truth alongside discovery and the merge driver.
 	globs := mdpath.RecursiveGlobs()
-	watchers := make([]fileSystemWatcher, 0, len(globs)+1)
+	watchers := make([]fileSystemWatcher, 0, len(globs)+2)
 	watchers = append(watchers, fileSystemWatcher{GlobPattern: "**/.mdsmith.yml"})
 	for _, g := range globs {
 		watchers = append(watchers, fileSystemWatcher{GlobPattern: g})
 	}
+	watchers = append(watchers, fileSystemWatcher{
+		GlobPattern: "**/*", Kind: watchKindCreate | watchKindDelete,
+	})
 	_ = s.t.writeRequest(idJSON, "client/registerCapability",
 		registrationParams{Registrations: []registration{{
 			ID:     "mdsmith-watch",
