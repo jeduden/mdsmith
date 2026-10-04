@@ -78,8 +78,9 @@ func interrupted(opts buildPassOpts) bool {
 }
 
 // refusedByInterrupt reports whether a run's err says an interrupt
-// refused its recipe before it started (runOneTarget, or runRecipe's
-// entry check): such a target is outcomeNotStarted, like one
+// refused its recipe before it started (buildexec.NotStartedError from
+// runOneTarget, or runRecipe's entry check): such a target is
+// outcomeNotStarted, like one
 // dispatchOne refused. A spent deadline that refused it stays a
 // timeout.
 func refusedByInterrupt(err error) bool {
@@ -705,9 +706,8 @@ func runOneTarget(
 	// After an interrupt no further recipe may start: the run is ending.
 	// dispatchOne and the concurrent workers check before hashing; this
 	// covers an interrupt that lands while the ActionID is computed.
-	if interrupted(opts) {
-		err := fmt.Errorf("recipe cancelled %w: %w", buildexec.ErrNotStarted, opts.context().Err())
-		return targetRunResult{Result: buildexec.Result{Err: err}}
+	if err := opts.context().Err(); err != nil {
+		return targetRunResult{Result: buildexec.Result{Err: buildexec.NotStartedError(err)}}
 	}
 	ctx, cancel := context.WithTimeout(opts.context(), timeout)
 	defer cancel()

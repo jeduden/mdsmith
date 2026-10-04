@@ -114,6 +114,19 @@ type runOpts struct {
 // report must not name one. It is wrapped with the context's error.
 var ErrNotStarted = errors.New("before start")
 
+// NotStartedError is the error for a run refused before start because
+// its context was already done; ctxErr is that context's Err. It wraps
+// ErrNotStarted and ctxErr, and says "timed out" for a spent deadline
+// and "cancelled" otherwise. runRecipe returns it, and a caller that
+// refuses a run itself can return the same error.
+func NotStartedError(ctxErr error) error {
+	what := "recipe cancelled"
+	if errors.Is(ctxErr, context.DeadlineExceeded) {
+		what = "recipe timed out"
+	}
+	return fmt.Errorf("%s %w: %w", what, ErrNotStarted, ctxErr)
+}
+
 // ErrForceKilled marks a cancelled run whose group a second interrupt
 // SIGKILLed before the SIGTERM grace ran out (Unix only).
 var ErrForceKilled = errors.New("SIGKILL on a second interrupt")
@@ -179,10 +192,7 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	// exec.Command's Start ignores ctx, so it would fork one only to
 	// kill it at once. No kill path runs, so a cancel is not timedOut.
 	if err := ctx.Err(); err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return -1, true, fmt.Errorf("recipe timed out %w: %w", ErrNotStarted, err)
-		}
-		return -1, false, fmt.Errorf("recipe cancelled %w: %w", ErrNotStarted, err)
+		return -1, errors.Is(err, context.DeadlineExceeded), NotStartedError(err)
 	}
 	// We manage the timeout and kill path ourselves (process group), so the
 	// command itself is not bound to a context-cancel kill — that would

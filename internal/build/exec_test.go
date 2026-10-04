@@ -166,6 +166,18 @@ func TestRunRecipe_ExpiredDeadlineBeforeStartSpawnsNothing(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotStarted, "the report must not claim a kill")
 }
 
+func TestNotStartedError(t *testing.T) {
+	err := NotStartedError(context.Canceled)
+	assert.EqualError(t, err, "recipe cancelled before start: context canceled")
+	assert.ErrorIs(t, err, ErrNotStarted)
+	assert.ErrorIs(t, err, context.Canceled)
+
+	err = NotStartedError(context.DeadlineExceeded)
+	assert.EqualError(t, err, "recipe timed out before start: context deadline exceeded")
+	assert.ErrorIs(t, err, ErrNotStarted)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
 func TestWithForceKill_RoundTrip(t *testing.T) {
 	assert.Nil(t, forceKillFrom(context.Background()))
 	force := make(chan struct{})

@@ -1596,7 +1596,7 @@ func TestDispatchTargets_InterruptSummarizesUnstartedTargets(t *testing.T) {
 
 // errRefusedByInterrupt is the error runRecipe returns when it refuses a run
 // whose context an interrupt already cancelled.
-var errRefusedByInterrupt = fmt.Errorf("recipe cancelled %w: %w", buildexec.ErrNotStarted, context.Canceled)
+var errRefusedByInterrupt = buildexec.NotStartedError(context.Canceled)
 
 // TestDispatchTargets_RecipeRefusedAfterInterruptJoinsSummary covers an
 // interrupt that lands after the dispatch-time check, so runRecipe
