@@ -114,6 +114,17 @@ then reports it.
     planned move. Read each moved file once. Build the
     post-batch wikilink index as an overlay on the keys the
     moves touch.
+14. [x] Count a shadowed file's links to itself alike. In
+    the chain of task 12, `[self](b.md)` inside `b.md` and
+    `[[b]]` both reach the newcomer once the host moves
+    `b.md`, so both are counted. A path link that still
+    names the file from where it lands is not.
+15. [x] Refuse a `[[stem]]` rewrite onto a destination an
+    indexed file spells in another letter case alone, as the
+    lone-move check did before the post-batch index held the
+    destination.
+16. [x] Remove `dropCrossMoveEdits` and `BatchPlan.Own` and
+    `StemEdits`, which only fed it. No input drives it.
 
 ## Acceptance Criteria
 
@@ -125,3 +136,14 @@ then reports it.
       file.
 - [x] All tests pass: `go test ./...`
 - [x] `go tool golangci-lint run` reports no issues
+
+## Follow-ups
+
+`PLAN.md` holds one row per plan and sits at the 300-line
+cap that MDS022 sets. The next plan file will fail the
+check. Two fixes need the maintainer: raise the cap for
+`PLAN.md` in `.mdsmith.yml`, or list only open plans in
+`PLAN.md` and move completed rows to an archive catalog.
+The `pick-plan` skill reads `PLAN.md`, so it must follow
+the split. File this as its own plan once `PLAN.md` has
+room.
