@@ -700,6 +700,28 @@ func TestAllFresh_StaleTarget_ReturnsFalse(t *testing.T) {
 	assert.False(t, allFresh([]buildTarget{bt}, cfg, buildexec.NewCache(), buildPassOpts{}))
 }
 
+func TestAllFresh_InterruptStopsTheScan(t *testing.T) {
+	// --build-skip-hooks-when-fresh hashes every input; after a Ctrl-C
+	// the scan must stop instead of claiming the targets fresh.
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "src.txt"), []byte("content"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "out.txt"), []byte("content"), 0o644))
+	cfg := buildPassCfg("    cp:\n      command: cp {inputs} {outputs}\n")
+	bt := buildTarget{file: filepath.Join(root, "doc.md"), line: 1, target: buildexec.Target{
+		Recipe: "cp", Root: root, Inputs: []string{"src.txt"}, Outputs: []string{"out.txt"},
+	}}
+	cache := buildexec.NewCache()
+	entry, err := buildCacheEntry(stalenessFor(bt, cfg), buildPassOpts{}, false)
+	require.NoError(t, err)
+	require.NotNil(t, entry)
+	cache.Put(*entry)
+	require.True(t, allFresh([]buildTarget{bt}, cfg, cache, buildPassOpts{}), "the target is fresh")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	assert.False(t, allFresh([]buildTarget{bt}, cfg, cache, buildPassOpts{ctx: ctx}))
+}
+
 // --- listHooksForDryRun ---
 
 func TestListHooksForDryRun_Empty_NoOutput(t *testing.T) {

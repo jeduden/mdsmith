@@ -388,11 +388,16 @@ func resolveHooks(hooks []config.HookCfg) []buildexec.HookEntry {
 // allFresh returns true when every target's staleness verdict is Fresh.
 // This is used to decide whether to skip hooks under --build-skip-hooks-when-fresh.
 // --build-force and --build-no-cache always force Stale, so hooks run unconditionally.
+// An interrupt stops the scan before the next target's inputs are
+// hashed and returns false: no verdict claims a target it never checked.
 func allFresh(targets []buildTarget, cfg *config.Config, cache *buildexec.Cache, opts buildPassOpts) bool {
 	if opts.force || opts.noCache {
 		return false
 	}
 	for _, bt := range targets {
+		if interrupted(opts) {
+			return false
+		}
 		stin := stalenessFor(bt, cfg)
 		verdict, err := buildexec.CheckStaleness(stin, cache)
 		if err != nil {
