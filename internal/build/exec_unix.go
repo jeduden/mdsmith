@@ -3,6 +3,7 @@
 package build
 
 import (
+	"errors"
 	"os/exec"
 	"syscall"
 	"time"
@@ -24,17 +25,36 @@ func configureProcessGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
-// pgKiller is the groupKiller on Unix. The process group needs no state
-// beyond the leader's pid, which is the pgid, held by the embedded
-// leaderKill.
-type pgKiller struct{ leaderKill }
+// pgKiller is the groupKiller on Unix. The process group is named by
+// the leader's pid, which is the pgid, held by the embedded leaderKill.
+// groupGone is set by leaderExited when the group was already empty
+// once the leader was reaped: from then on the pgid may name an
+// unrelated group, so kill must not signal it.
+type pgKiller struct {
+	leaderKill
+	groupGone bool
+}
 
-// afterStart holds no state on Unix; the Job Object equivalent is
-// Windows only.
-func afterStart(cmd *exec.Cmd) groupKiller { return pgKiller{leaderKill{cmd}} }
+// afterStart holds no state on Unix beyond the command; the Job Object
+// equivalent is Windows only.
+func afterStart(cmd *exec.Cmd) groupKiller { return &pgKiller{leaderKill: leaderKill{cmd}} }
 
 // close has nothing to release.
-func (pgKiller) close() {}
+func (*pgKiller) close() {}
+
+// leaderExited is called right after runRecipe's Wait reaped a leader
+// that exited on its own. It probes the group once: ESRCH means no
+// member is left (a setsid daemon holding the pipe is not one), and a
+// group cannot regain its pgid but by reuse, so kill stays a no-op.
+// A nil Process is a no-op.
+func (k *pgKiller) leaderExited() {
+	if k.cmd.Process == nil {
+		return
+	}
+	if errors.Is(signalGroup(k.cmd.Process.Pid, 0), syscall.ESRCH) {
+		k.groupGone = true
+	}
+}
 
 // kill terminates the recipe's whole process group. It sends
 // SIGTERM first, waits up to gracePeriod for the group to exit, then
@@ -44,9 +64,9 @@ func (pgKiller) close() {}
 // waiting out the grace period and sends SIGKILL at once; a nil force
 // never fires. It reports whether force cut the grace short while the
 // group was still alive. A nil Process (the command never started) is
-// a no-op.
-func (k pgKiller) kill(force <-chan struct{}) bool {
-	if k.cmd.Process == nil {
+// a no-op, and so is a group leaderExited found empty.
+func (k *pgKiller) kill(force <-chan struct{}) bool {
+	if k.cmd.Process == nil || k.groupGone {
 		return false
 	}
 	pgid := k.cmd.Process.Pid // Setpgid made pgid == leader pid
@@ -107,7 +127,8 @@ func termThenKill(signal func(syscall.Signal) error, force <-chan struct{}) bool
 
 // signalGroup sends sig to the process group pgid. It returns the syscall
 // error (nil on success); callers use a sig of 0 to probe whether the
-// group still exists.
-func signalGroup(pgid int, sig syscall.Signal) error {
+// group still exists. It is a var so a test can see which signals a
+// kill sends.
+var signalGroup = func(pgid int, sig syscall.Signal) error {
 	return syscall.Kill(-pgid, sig)
 }

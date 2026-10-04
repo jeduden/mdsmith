@@ -356,3 +356,21 @@ func TestRecipeKill_CancelWaitsForArm(t *testing.T) {
 	assert.True(t, rk.cancelled)
 	assert.True(t, rk.forced, "forced is what the kill reported")
 }
+
+// noterKiller is a recordKiller that also records leaderExited.
+type noterKiller struct {
+	recordKiller
+	noted bool
+}
+
+func (k *noterKiller) leaderExited() { k.noted = true }
+
+func TestNoteLeaderExited_TellsANoter(t *testing.T) {
+	k := &noterKiller{}
+	noteLeaderExited(k)
+	assert.True(t, k.noted)
+}
+
+func TestNoteLeaderExited_IgnoresOtherKillers(t *testing.T) {
+	assert.NotPanics(t, func() { noteLeaderExited(&recordKiller{}) })
+}

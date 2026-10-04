@@ -277,7 +277,9 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 	}
 	// The leader exited on its own, so os/exec no longer watches ctx. A
 	// child it left behind may still hold a captured pipe, and the
-	// deadline still applies to the drain: at it, kill the group.
+	// deadline still applies to the drain: at it, kill the group, unless
+	// the killer found it already empty when told the leader exited.
+	noteLeaderExited(killer)
 	select {
 	case <-ro.drained:
 		if err == nil {
@@ -299,6 +301,22 @@ func killerFor(cmd *exec.Cmd, sharedGroup bool) groupKiller {
 		return sharedGroupKiller(cmd)
 	}
 	return afterStartFn(cmd)
+}
+
+// leaderExitNoter is a groupKiller that names its group by a number
+// the leader's pid lent it (Unix's pgid). Once the leader is reaped and
+// the group empty, that number may be reused by an unrelated group, so
+// runRecipe tells such a killer, right after Wait reaped a leader that
+// exited on its own, to check the group while the number is still its.
+type leaderExitNoter interface{ leaderExited() }
+
+// noteLeaderExited calls k's leaderExited when k is a leaderExitNoter.
+// Killers that hold a handle (Windows' Job Object, plan9's notepg) or
+// signal through the reaped cmd.Process need no such check.
+func noteLeaderExited(k groupKiller) {
+	if n, ok := k.(leaderExitNoter); ok {
+		n.leaderExited()
+	}
 }
 
 // recipeKill is the timeout kill os/exec runs through Cmd.Cancel.

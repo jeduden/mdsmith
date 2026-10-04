@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -521,4 +522,89 @@ func TestRunRecipe_LateForceKillsLeaderAtOnce(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, timedOut)
 	assert.Less(t, took, 2*time.Second, "a late second interrupt must not wait out reapWait")
+}
+
+func TestRunRecipe_EmptiedGroupIsNotSignalledAtDeadline(t *testing.T) {
+	// The leader backgrounds a setsid daemon, which leaves the recipe's
+	// group but keeps the captured stdout pipe, and then exits. From then
+	// on the group is empty, and its pgid (the leader's reaped pid) may
+	// be reused by an unrelated group before the deadline. The deadline
+	// kill must not signal it.
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("no setsid")
+	}
+	oldSignal, oldReap := signalGroup, reapWait
+	var mu sync.Mutex
+	var sent []syscall.Signal
+	signalGroup = func(pgid int, sig syscall.Signal) error {
+		mu.Lock()
+		sent = append(sent, sig)
+		mu.Unlock()
+		return oldSignal(pgid, sig)
+	}
+	reapWait = 100 * time.Millisecond
+	t.Cleanup(func() { signalGroup, reapWait = oldSignal, oldReap })
+
+	dir := t.TempDir()
+	leaderPID := filepath.Join(dir, "leader.pid")
+	daemonPID := filepath.Join(dir, "daemon.pid")
+	script := writeScript(t, t.TempDir(), "daemon.sh",
+		`echo $$ > "`+leaderPID+`"
+setsid sh -c 'echo $$ > "`+daemonPID+`"; exec sleep 30' &
+while [ ! -s "`+daemonPID+`" ]; do sleep 0.05; done
+echo started; exit 0`)
+	t.Cleanup(func() {
+		if pid := waitForPID(daemonPID); pid > 0 {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
+
+	code, timedOut, err := runRecipe(deadlineWhen(t, leaderGone(leaderPID)), runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+		stdout:  &lockedBuffer{},
+	})
+	require.ErrorContains(t, err, "recipe timed out")
+	assert.True(t, timedOut)
+	assert.Equal(t, 0, code)
+	mu.Lock()
+	defer mu.Unlock()
+	assert.NotContains(t, sent, syscall.SIGTERM, "an emptied group must not be signalled")
+	assert.NotContains(t, sent, syscall.SIGKILL, "an emptied group must not be signalled")
+}
+
+// stubSignalGroup swaps signalGroup for one test with one that returns
+// err and records nothing.
+func stubSignalGroup(t *testing.T, err error) {
+	t.Helper()
+	old := signalGroup
+	signalGroup = func(int, syscall.Signal) error { return err }
+	t.Cleanup(func() { signalGroup = old })
+}
+
+func TestPgKiller_LeaderExitedNilProcessIsNoOp(t *testing.T) {
+	k := &pgKiller{leaderKill: leaderKill{&exec.Cmd{}}}
+	k.leaderExited()
+	assert.False(t, k.groupGone)
+}
+
+func TestPgKiller_LeaderExitedEmptyGroupStopsKill(t *testing.T) {
+	stubSignalGroup(t, syscall.ESRCH)
+	k := &pgKiller{leaderKill: leaderKill{&exec.Cmd{Process: &os.Process{Pid: 42}}}}
+	k.leaderExited()
+	assert.True(t, k.groupGone, "ESRCH: no member is left")
+	called := false
+	signalGroup = func(int, syscall.Signal) error { called = true; return nil }
+	assert.False(t, k.kill(nil))
+	assert.False(t, called, "kill must not signal an emptied group")
+}
+
+func TestPgKiller_LeaderExitedLiveGroupKeepsKill(t *testing.T) {
+	for _, err := range []error{nil, syscall.EPERM} {
+		stubSignalGroup(t, err)
+		k := &pgKiller{leaderKill: leaderKill{&exec.Cmd{Process: &os.Process{Pid: 42}}}}
+		k.leaderExited()
+		assert.False(t, k.groupGone, "a group with members, or one we may not signal, still exists")
+	}
 }
