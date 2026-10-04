@@ -71,8 +71,35 @@ func TestStartSingletonWatchNoopWithoutRoot(t *testing.T) {
 		t.Error("must not claim a workspace when no root was provided")
 		return nil
 	}
-	s.startSingletonWatch("")
+	s.startSingletonWatch("", "scope")
 	time.Sleep(20 * time.Millisecond)
+}
+
+// The empty-scope gate is distinct from the empty-root guard above: here
+// the root, instance id, and registry seams are all present, so only the
+// missing client opt-in keeps the server from claiming and watching.
+func TestStartSingletonWatchNoopWithoutScope(t *testing.T) {
+	t.Parallel()
+	s := New(Options{Reader: nil, Writer: io.Discard, Rules: rule.All()})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	s.runCtx = ctx
+	s.instanceID = "me"
+	s.singletonInterval = time.Millisecond
+	s.singletonClaim = func(string, string) error {
+		t.Error("must not claim a workspace when the client sent no singletonScope")
+		return nil
+	}
+	s.singletonCurrent = func(string) string {
+		t.Error("must not watch the registry when the client sent no singletonScope")
+		return "newer-instance"
+	}
+	var exited atomic.Bool
+	s.onSupersededExit = func() { exited.Store(true) }
+
+	s.startSingletonWatch("/work/space", "")
+	time.Sleep(20 * time.Millisecond)
+	assert.False(t, exited.Load(), "a scope-less server must never be superseded")
 }
 
 func TestStartSingletonWatchNoopWithoutInstanceID(t *testing.T) {
@@ -83,7 +110,7 @@ func TestStartSingletonWatchNoopWithoutInstanceID(t *testing.T) {
 		t.Error("must not claim a workspace when the feature is off")
 		return nil
 	}
-	s.startSingletonWatch("/work/space")
+	s.startSingletonWatch("/work/space", "scope")
 	time.Sleep(20 * time.Millisecond)
 }
 
@@ -100,7 +127,7 @@ func TestStartSingletonWatchStaysWhileOwner(t *testing.T) {
 	var exited atomic.Bool
 	s.onSupersededExit = func() { exited.Store(true) }
 
-	s.startSingletonWatch("/work/space")
+	s.startSingletonWatch("/work/space", "scope")
 	time.Sleep(30 * time.Millisecond)
 	assert.False(t, exited.Load(), "must not step aside while it is still the registered owner")
 }
@@ -123,7 +150,7 @@ func TestStartSingletonWatchSupersedesAndNotifies(t *testing.T) {
 	exited := make(chan struct{})
 	s.onSupersededExit = func() { close(exited) }
 
-	s.startSingletonWatch("/work/space")
+	s.startSingletonWatch("/work/space", "scope")
 
 	select {
 	case <-exited:
@@ -131,7 +158,8 @@ func TestStartSingletonWatchSupersedesAndNotifies(t *testing.T) {
 		t.Fatal("did not step aside when a newer server claimed the workspace")
 	}
 	assert.Equal(t, "me", claimedID, "must claim the workspace under its own instance id")
-	assert.Equal(t, workspaceKey("/work/space", ""), claimedKey, "must claim under the workspace key")
+	assert.Equal(t, workspaceKey("/work/space", "scope"), claimedKey,
+		"must claim under the workspace key for this root and scope")
 	assert.Contains(t, buf.String(), "mdsmith/superseded",
 		"must notify the editor before exiting so its client does not restart us")
 	assert.Contains(t, buf.String(), `"reason":"superseded"`,
@@ -147,7 +175,7 @@ func TestStartSingletonWatchNoopWithoutClaimSeam(t *testing.T) {
 		t.Error("must not start a watcher when the claim seam is nil")
 		return ""
 	}
-	s.startSingletonWatch("/work/space") // must not panic on the nil seam
+	s.startSingletonWatch("/work/space", "scope") // must not panic on the nil seam
 	time.Sleep(20 * time.Millisecond)
 }
 
@@ -166,9 +194,9 @@ func TestStartSingletonWatchClaimsOnlyOnce(t *testing.T) {
 	}
 	s.singletonCurrent = func(string) string { return "me" }
 
-	s.startSingletonWatch("/work/space")
-	s.startSingletonWatch("/work/space") // a stray re-initialize must not re-claim
-	s.startSingletonWatch("/other")      // nor one with a different root
+	s.startSingletonWatch("/work/space", "scope")
+	s.startSingletonWatch("/work/space", "scope") // a stray re-initialize must not re-claim
+	s.startSingletonWatch("/other", "scope")      // nor one with a different root
 	assert.Equal(t, 1, claims, "claim is guarded by the watch Once, so it runs exactly once")
 }
 
@@ -200,7 +228,7 @@ func TestStartSingletonWatchKeepsRunningWhenClaimFails(t *testing.T) {
 	var exited atomic.Bool
 	s.onSupersededExit = func() { exited.Store(true) }
 
-	s.startSingletonWatch("/work/space")
+	s.startSingletonWatch("/work/space", "scope")
 	time.Sleep(30 * time.Millisecond)
 	assert.False(t, exited.Load(), "a failed claim must leave the server running, not reap it")
 }
@@ -225,13 +253,46 @@ func TestHandleInitializeClaimsWorkspaceSingleton(t *testing.T) {
 		JSONRPC: "2.0",
 		ID:      json.RawMessage(`1`),
 		Method:  "initialize",
-		Params:  json.RawMessage(`{"processId":null,"rootUri":"file:///work/space"}`),
+		Params: json.RawMessage(`{"processId":null,"rootUri":"file:///work/space",` +
+			`"initializationOptions":{"mdsmith":{"singletonScope":"ws-uuid"}}}`),
 	}
 	s.handleInitialize(msg)
 
 	assert.Equal(t, "me", claimedID, "initialize must claim the workspace singleton")
-	assert.Equal(t, workspaceKey("/work/space", ""), claimedKey,
-		"initialize must claim under the rootUri's workspace key")
+	assert.Equal(t, workspaceKey("/work/space", "ws-uuid"), claimedKey,
+		"initialize must claim under the rootUri's workspace key for the client's scope")
+}
+
+func TestHandleInitializeWithoutScopeNeverClaims(t *testing.T) {
+	t.Parallel()
+	for _, params := range []string{
+		`{"processId":null,"rootUri":"file:///work/space"}`,
+		`{"processId":null,"rootUri":"file:///work/space","initializationOptions":null}`,
+		`{"processId":null,"rootUri":"file:///work/space","initializationOptions":{"mdsmith":{"singletonScope":""}}}`,
+	} {
+		var buf bytes.Buffer
+		s := New(Options{Reader: nil, Writer: &buf, Rules: rule.All()})
+		ctx, cancel := context.WithCancel(context.Background())
+		s.runCtx = ctx
+		s.instanceID = "me"
+		s.singletonInterval = time.Millisecond
+		s.singletonClaim = func(string, string) error {
+			t.Errorf("must not claim the registry without a singletonScope: %s", params)
+			return nil
+		}
+		s.singletonCurrent = func(string) string { return "newer-instance" }
+		var exited atomic.Bool
+		s.onSupersededExit = func() { exited.Store(true) }
+
+		s.handleInitialize(&requestMessage{
+			JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "initialize",
+			Params: json.RawMessage(params),
+		})
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+		assert.False(t, exited.Load(), "a scope-less server must never be superseded: %s", params)
+		assert.NotContains(t, buf.String(), "mdsmith/superseded")
+	}
 }
 
 func TestNewEnablesWorkspaceSingleton(t *testing.T) {

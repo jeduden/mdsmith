@@ -79,8 +79,9 @@ func runLSPWith(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writ
 		Writer:         stdout,
 		OnConfigReload: installIncludeExtractProjector,
 		// Reap an orphaned server left behind by a leaked editor host:
-		// when a reload spawns a fresh server for the same workspace,
-		// the older one steps aside so exactly one stays live.
+		// when a reload spawns a fresh server for the same workspace and
+		// client-sent singletonScope, the older one steps aside so
+		// exactly one stays live. Clients that send no scope coexist.
 		EnableWorkspaceSingleton: true,
 	})
 	// SIGINT/SIGTERM cancel ctx, so srv.Run returns context.Canceled.

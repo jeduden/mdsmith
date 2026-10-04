@@ -222,7 +222,7 @@ the same workspace is unaffected.
    Add `TestWorkspaceKey…` cases: same root + different scope →
    different key; same root + same scope → same key; empty scope
    → the legacy key. Do not add a second key function.
-3. [ ] Gate the claim and watcher on a non-empty scope in
+3. [x] Gate the claim and watcher on a non-empty scope in
    [`startSingletonWatch`](../internal/lsp/singleton.go), and
    thread the scope from `handleInitialize`
    ([server_lifecycle.go](../internal/lsp/server_lifecycle.go)).

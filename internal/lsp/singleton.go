@@ -72,13 +72,26 @@ func watchSingleton(
 // server's stdin pipe open (so no EOF) and registers as alive (so the
 // watchdog stays quiet), then races the freshly-spawned server.
 //
-// It is a no-op without a workspace root or instanceID (the feature is
-// off, or the client sent no rootUri); New only sets instanceID when it
-// also wires the registry seams, so the two travel together (the nil
-// guard is belt-and-suspenders for a hand-built Server). A failed claim
-// leaves the server running without singleton protection rather than
-// risking it stepping itself aside on a transient registry error.
-func (s *Server) startSingletonWatch(root string) {
+// The singleton is opt-in per client. scope is the client's
+// initializationOptions.mdsmith.singletonScope token; the owner record
+// is keyed on root plus scope, so only servers sharing a scope (the VS
+// Code orphan and its respawn, which read one persisted per-workspace
+// id) contend. An empty scope means the client did not opt in: the
+// server never claims the registry or starts the watcher, so it neither
+// supersedes nor is superseded, and many such servers coexist on one
+// workspace.
+//
+// It is also a no-op without a workspace root or instanceID (the
+// feature is off, or the client sent no rootUri); New only sets
+// instanceID when it also wires the registry seams, so the two travel
+// together (the nil guard is belt-and-suspenders for a hand-built
+// Server). A failed claim leaves the server running without singleton
+// protection rather than risking it stepping itself aside on a
+// transient registry error.
+func (s *Server) startSingletonWatch(root, scope string) {
+	if scope == "" {
+		return
+	}
 	if root == "" || s.instanceID == "" || s.singletonClaim == nil {
 		return
 	}
@@ -87,7 +100,7 @@ func (s *Server) startSingletonWatch(root string) {
 	// means a stray second initialize cannot re-assert this (possibly
 	// already-superseded) server's ownership and invert newest-wins.
 	s.singletonWatchOnce.Do(func() {
-		key := workspaceKey(root, "")
+		key := workspaceKey(root, scope)
 		// Claim the workspace under this instance's id, overwriting any
 		// previous owner. Whichever server initialized most recently —
 		// the window the user just opened or reloaded — wins; an older
