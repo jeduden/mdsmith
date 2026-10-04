@@ -320,7 +320,7 @@ func runFixThroughSession(
 	if !opts.build.noBuild && !opts.dryRun {
 		bopts := opts.build
 		bopts.maxBytes = maxBytes
-		buildCode = runBuildPass(cfg, cfgPath, files, bopts, stderrBuildWriter)
+		buildCode = runBuildPassInterruptible(cfg, cfgPath, files, bopts, stderrBuildWriter)
 	}
 
 	if buildCode != 0 {

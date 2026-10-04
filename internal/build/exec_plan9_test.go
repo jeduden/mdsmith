@@ -152,7 +152,7 @@ func TestKill_Plan9_FallsBackToLeaderKill(t *testing.T) {
 	k := afterStart(cmd)
 	require.Nil(t, groupOf(k))
 
-	k.kill()
+	k.kill(nil)
 	assert.Eventually(t, func() bool { return !procAlive(pid) },
 		6*time.Second, 100*time.Millisecond, "leader should be killed")
 }
@@ -177,7 +177,7 @@ func TestKill_Plan9_ForceKillsNoteCatchingLeaderWithoutGroup(t *testing.T) {
 	})
 	pid := readPID(t, pidFile)
 
-	(&noteKiller{cmd: cmd}).kill() // no group held, as when afterStart captured none
+	(&noteKiller{cmd: cmd}).kill(nil) // no group held, as when afterStart captured none
 	assert.Eventually(t, func() bool { return !procAlive(pid) },
 		6*time.Second, 100*time.Millisecond, "a note-catching leader must still die")
 }

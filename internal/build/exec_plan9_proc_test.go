@@ -127,7 +127,7 @@ func TestAfterStart_Plan9_RefusesOwnNoteGroup(t *testing.T) {
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
 	k := afterStart(cmd)
 	assert.Nil(t, groupOf(k))
-	k.kill()
+	k.kill(nil)
 	assert.Empty(t, readFile(t, self), "mdsmith itself must not be swept")
 	assert.Empty(t, *noted)
 }
@@ -143,7 +143,7 @@ func TestAfterStart_Plan9_KeepsNoteIDWhenNotePgFails(t *testing.T) {
 	k := afterStart(cmd)
 	require.NotNil(t, groupOf(k))
 	defer k.close()
-	k.kill()
+	k.kill(nil)
 	assert.Equal(t, "kill", readFile(t, member))
 }
 
@@ -159,13 +159,13 @@ func TestAfterStart_Plan9_RecordsNoteID(t *testing.T) {
 	k := afterStart(cmd)
 	require.NotNil(t, groupOf(k))
 	defer k.close()
-	k.kill()
+	k.kill(nil)
 	assert.Equal(t, "kill", readFile(t, path))
 	assert.Equal(t, "kill", readFile(t, ctl), "the group member must get a forced ctl kill")
 }
 
 func TestKill_Plan9_NilProcess(t *testing.T) {
-	assert.NotPanics(t, afterStart(&exec.Cmd{}).kill)
+	assert.NotPanics(t, func() { afterStart(&exec.Cmd{}).kill(nil) })
 }
 
 func TestKill_Plan9_WritesKillToHeldFile(t *testing.T) {
@@ -179,7 +179,7 @@ func TestKill_Plan9_WritesKillToHeldFile(t *testing.T) {
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
 	k := afterStart(cmd)
 	require.NotNil(t, groupOf(k))
-	k.kill()
+	k.kill(nil)
 	k.close()
 
 	assert.Equal(t, "kill", readFile(t, path))
@@ -230,7 +230,7 @@ func TestKill_Plan9_ForceKillsLeaderThatLeftGroup(t *testing.T) {
 	defer k.close()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "42", "noteid"), []byte("5"), 0o600))
 
-	k.kill()
+	k.kill(nil)
 	assert.Equal(t, "kill", readFile(t, ctl), "the leader must get a forced ctl kill")
 	assert.Empty(t, *noted)
 }
@@ -250,7 +250,7 @@ func TestKill_Plan9_FailedWriteStillKillsLeader(t *testing.T) {
 	_ = groupOf(k).pg.Close() // make the write fail
 	require.NoError(t, os.WriteFile(filepath.Join(root, "42", "noteid"), []byte("5"), 0o600))
 
-	k.kill()
+	k.kill(nil)
 	assert.Equal(t, "kill", readFile(t, ctl))
 }
 
@@ -266,7 +266,7 @@ func TestForceLeader_Plan9_DoesNotKillLeaderAgain(t *testing.T) {
 
 	k := afterStart(&exec.Cmd{Process: &os.Process{Pid: 42}})
 	defer k.close()
-	k.kill()
+	k.kill(nil)
 	require.Equal(t, "kill", readFile(t, ctl), "kill must end in the leader's ctl kill")
 	require.NoError(t, os.Truncate(ctl, 0))
 	k.forceLeader()
@@ -450,7 +450,7 @@ func TestAfterStart_Plan9_DropsNotePgWhenNoteIDChangedAfterOpen(t *testing.T) {
 	k := afterStart(cmd)
 	require.NotNil(t, groupOf(k))
 	defer k.close()
-	k.kill()
+	k.kill(nil)
 	assert.Empty(t, readFile(t, path), "a notepg bound to another group must not get the kill")
 	assert.Equal(t, "kill", readFile(t, member), "the sweep still reaches the captured group")
 }

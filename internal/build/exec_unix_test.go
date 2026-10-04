@@ -35,7 +35,16 @@ func processAlive(pid int) bool {
 func TestKill_Unix_NilProcess(t *testing.T) {
 	// A command that never started has a nil Process; kill must return
 	// immediately rather than dereference it.
-	assert.NotPanics(t, afterStart(&exec.Cmd{}).kill)
+	assert.NotPanics(t, func() { afterStart(&exec.Cmd{}).kill(nil) })
+}
+
+func TestSharedGroupKiller_Unix_NilProcess(t *testing.T) {
+	// A hook that never started has a nil Process: nothing to signal.
+	assert.False(t, sharedGroupKiller(&exec.Cmd{}).kill(nil))
+}
+
+func TestSharedGroupKiller_Unix_CloseIsNoOp(t *testing.T) {
+	assert.NotPanics(t, sharedGroupKiller(&exec.Cmd{}).close)
 }
 
 func TestKill_Unix_SIGKILLPath(t *testing.T) {
@@ -182,7 +191,7 @@ func TestForceLeader_Unix_KillsLeader(t *testing.T) {
 	afterStart(cmd).forceLeader()
 	// Bound the wait so a forceLeader that kills nothing fails now,
 	// not when sleep exits on its own.
-	reaped, err := waitAtMost(done, 5*time.Second)
+	reaped, err := waitAtMost(done, 5*time.Second, nil)
 	if !reaped {
 		_ = cmd.Process.Kill()
 		<-done
@@ -348,4 +357,132 @@ func TestRunRecipe_LeaderExitedChildHoldsPipeTimesOut(t *testing.T) {
 
 func TestTimeoutKillAction_Unix(t *testing.T) {
 	assert.Equal(t, "sent SIGTERM to process group", TimeoutKillAction)
+}
+
+func TestRunRecipe_ForceKillSkipsGrace(t *testing.T) {
+	// A second interrupt closes the force channel: a recipe that ignores
+	// SIGTERM must get SIGKILL then, not after the whole grace period.
+	old := gracePeriod
+	gracePeriod = 20 * time.Second
+	t.Cleanup(func() { gracePeriod = old })
+
+	// The script records its pid only once the trap is set: a cancel
+	// that beat the trap would end it on SIGTERM, with no escalation.
+	ready := filepath.Join(t.TempDir(), "ready.pid")
+	script := writeScript(t, t.TempDir(), "ignore.sh", `trap '' TERM; echo $$ > "`+ready+`"; sleep 60`)
+	force := make(chan struct{})
+	ctx, cancel := context.WithCancel(WithForceKill(context.Background(), force))
+	defer cancel()
+	go func() {
+		waitForPID(ready)
+		cancel()
+		time.Sleep(300 * time.Millisecond)
+		close(force)
+	}()
+	start := time.Now()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	assert.True(t, timedOut, "the kill path ran")
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Less(t, time.Since(start), 10*time.Second, "force must cut the SIGTERM grace short")
+	assert.ErrorIs(t, err, ErrForceKilled, "the report must name the SIGKILL")
+}
+
+func TestRunRecipe_CancelWithinGraceIsNotForceKilled(t *testing.T) {
+	// A recipe that exits on SIGTERM never reaches the escalation, even
+	// when a second interrupt arrives later.
+	script := writeScript(t, t.TempDir(), "plain.sh", `exec sleep 60`)
+	force := make(chan struct{})
+	ctx, cancel := context.WithCancel(WithForceKill(context.Background(), force))
+	defer cancel()
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+	_, _, err := runRecipe(ctx, runOpts{argv: []string{script}, dir: t.TempDir(), defExec: defaultExecConfig()})
+	close(force)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.NotErrorIs(t, err, ErrForceKilled)
+}
+
+func TestKill_Unix_NilProcessWithForce(t *testing.T) {
+	force := make(chan struct{})
+	close(force)
+	assert.False(t, afterStart(&exec.Cmd{}).kill(force))
+}
+
+func TestRunRecipe_ForceSkipsDrainWaitForSetsidDaemon(t *testing.T) {
+	// A setsid daemon leaves the recipe's group but keeps the captured
+	// stdout pipe. After a second interrupt the group is SIGKILLed;
+	// runRecipe must then give the drain one short poll, not a whole
+	// reapWait, before it abandons the pipe.
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("no setsid")
+	}
+	old := gracePeriod
+	gracePeriod = 20 * time.Second
+	t.Cleanup(func() { gracePeriod = old })
+	require.Equal(t, 5*time.Second, reapWait, "the default reapWait")
+
+	dir := t.TempDir()
+	ready := filepath.Join(dir, "ready.pid")
+	daemonPID := filepath.Join(dir, "daemon.pid")
+	script := writeScript(t, t.TempDir(), "daemon.sh",
+		`setsid sh -c 'echo $$ > "`+daemonPID+`"; exec sleep 30' &
+trap '' TERM; echo $$ > "`+ready+`"; while :; do sleep 0.05; done`)
+	t.Cleanup(func() {
+		if pid := waitForPID(daemonPID); pid > 0 {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
+
+	force := make(chan struct{})
+	ctx, cancel := context.WithCancel(WithForceKill(context.Background(), force))
+	defer cancel()
+	forcedAt := make(chan time.Time, 1)
+	go func() {
+		waitForPID(ready)
+		waitForPID(daemonPID)
+		cancel()
+		time.Sleep(200 * time.Millisecond)
+		forcedAt <- time.Now()
+		close(force)
+	}()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+		stdout:  &lockedBuffer{},
+	})
+	took := time.Since(<-forcedAt)
+	require.ErrorIs(t, err, ErrForceKilled)
+	assert.True(t, timedOut)
+	assert.Less(t, took, time.Second, "a second interrupt must not wait out reapWait")
+}
+
+func TestRunRecipe_ForceShortensLeaderReap(t *testing.T) {
+	// The group kill leaves the leader running (stubGroupKiller's kill
+	// does nothing). With force already closed, the leader reap and the
+	// wait after the leader-only kill each take one short poll.
+	stubGroupKiller(t, func(*exec.Cmd) {})
+	reapWait = 3 * time.Second
+	script := writeScript(t, t.TempDir(), "slow.sh", `exec sleep 30`)
+
+	force := make(chan struct{})
+	close(force)
+	ctx, cancel := context.WithTimeout(WithForceKill(context.Background(), force), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, timedOut, err := runRecipe(ctx, runOpts{
+		argv:    []string{script},
+		dir:     t.TempDir(),
+		defExec: defaultExecConfig(),
+	})
+	require.Error(t, err)
+	assert.True(t, timedOut)
+	assert.Less(t, time.Since(start), 1500*time.Millisecond, "a closed force must not wait out reapWait")
 }

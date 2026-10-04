@@ -68,15 +68,17 @@ func afterStart(cmd *exec.Cmd) groupKiller {
 // kill sends CTRL_BREAK_EVENT to the recipe's process group, then
 // terminates the Job Object so any survivors (including grandchildren)
 // are killed. The job termination is the guaranteed kill path; the
-// CTRL_BREAK is the polite first signal.
-func (k *jobKiller) kill() {
+// CTRL_BREAK is the polite first signal. There is no grace period, so
+// it ignores the WithForceKill channel and reports false.
+func (k *jobKiller) kill(<-chan struct{}) bool {
 	if k.cmd.Process == nil {
-		return
+		return false
 	}
 	sendCtrlBreak(k.cmd.Process.Pid)
 	if k.job != 0 {
 		_ = terminateJob(k.job)
 	}
+	return false
 }
 
 // close closes the job handle; KILL_ON_JOB_CLOSE reaps any survivors.

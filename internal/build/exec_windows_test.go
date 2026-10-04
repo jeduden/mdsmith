@@ -11,7 +11,7 @@ import (
 )
 
 func TestKill_Windows_NilProcess(t *testing.T) {
-	assert.NotPanics(t, afterStart(&exec.Cmd{}).kill)
+	assert.NotPanics(t, func() { afterStart(&exec.Cmd{}).kill(nil) })
 }
 
 func TestForceLeader_Windows_NilProcess(t *testing.T) {

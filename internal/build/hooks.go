@@ -2,10 +2,10 @@ package build
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -45,7 +45,7 @@ func RunHooks(ctx context.Context, hooks []HookEntry, root string, w io.Writer) 
 		if name == "" {
 			name = h.Tokens[0]
 		}
-		_, _ = fmt.Fprintf(w, "hook %s: running\n", name)
+		announceHook(ctx, name, w)
 		if result := runHook(ctx, h.Tokens, root); result != nil {
 			_, _ = fmt.Fprintf(w, "hook %s: FAIL (exit %d): %v\n",
 				name, result.ExitCode, result.Err)
@@ -59,10 +59,16 @@ func RunHooks(ctx context.Context, hooks []HookEntry, root string, w io.Writer) 
 // RunAfterHooks runs the supplied after-hooks in order. Unlike RunHooks,
 // a failure does not stop subsequent hooks — all after-hooks run, and the
 // first non-zero exit code is returned at the end. If all succeed nil is
-// returned.
+// returned. A cancelled ctx (a CLI interrupt) skips every hook not yet
+// started, with no output for them: a hook the interrupt cut short
+// still reports its FAIL. A spent deadline (the hook timeout) is not an
+// interrupt, so each later hook still reports as timed out.
 func RunAfterHooks(ctx context.Context, hooks []HookEntry, root string, w io.Writer) *HookResult {
 	var first *HookResult
 	for _, h := range hooks {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return first
+		}
 		if len(h.Tokens) == 0 {
 			continue
 		}
@@ -70,7 +76,7 @@ func RunAfterHooks(ctx context.Context, hooks []HookEntry, root string, w io.Wri
 		if name == "" {
 			name = h.Tokens[0]
 		}
-		_, _ = fmt.Fprintf(w, "hook %s: running\n", name)
+		announceHook(ctx, name, w)
 		if result := runHook(ctx, h.Tokens, root); result != nil {
 			_, _ = fmt.Fprintf(w, "hook %s: FAIL (exit %d): %v\n",
 				name, result.ExitCode, result.Err)
@@ -84,27 +90,50 @@ func RunAfterHooks(ctx context.Context, hooks []HookEntry, root string, w io.Wri
 	return first
 }
 
-// runHook executes a single hook and returns a HookResult on failure, nil
-// on success.
-func runHook(ctx context.Context, tokens []string, root string) *HookResult {
-	cmd := exec.CommandContext(ctx, tokens[0], tokens[1:]...) //nolint:gosec // argv is explicit; user-declared hook
-	cmd.Dir = root
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		code := 1
-		if ctx.Err() != nil {
-			return &HookResult{ExitCode: code, Err: fmt.Errorf("%w (timed out)", ctx.Err())}
-		}
-		if ee, ok := err.(*exec.ExitError); ok {
-			code = ee.ExitCode()
-			if code < 0 {
-				code = 1
-			}
-		}
-		return &HookResult{ExitCode: code, Err: err}
+// announceHook prints the "running" line for the hook named name,
+// unless ctx is already done: runRecipe then refuses the hook before it
+// starts, and only its FAIL line is printed.
+func announceHook(ctx context.Context, name string, w io.Writer) {
+	if ctx.Err() != nil {
+		return
 	}
-	return nil
+	_, _ = fmt.Fprintf(w, "hook %s: running\n", name)
+}
+
+// runHook executes a single hook and returns a HookResult on failure, nil
+// on success. It runs through runRecipe, so a done context starts no
+// hook and a cancel (CLI interrupt) reports as one. Unlike a recipe it
+// keeps mdsmith's environment, runs in root, and stays in mdsmith's
+// process group (sharedGroup): a cancel or the hook timeout signals the
+// hook process itself (on Unix SIGTERM, the grace period, then
+// SIGKILL, so a TERM trap runs its cleanup), and a child it
+// backgrounded (a dev server) outlives it and gets the terminal's
+// Ctrl-C as before.
+func runHook(ctx context.Context, tokens []string, root string) *HookResult {
+	code, _, err := runRecipe(ctx, runOpts{
+		argv:        tokens,
+		dir:         root,
+		stdout:      os.Stderr,
+		stderr:      os.Stderr,
+		inheritEnv:  true,
+		label:       "hook",
+		sharedGroup: true,
+	})
+	if err == nil {
+		return nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		// A deadline is the hook timeout; a cancel is a CLI interrupt.
+		reason := "timed out"
+		if errors.Is(ctxErr, context.Canceled) {
+			reason = "interrupted"
+		}
+		return &HookResult{ExitCode: 1, Err: fmt.Errorf("%w (%s)", ctxErr, reason)}
+	}
+	if code < 0 {
+		code = 1 // killed by a signal, or never started
+	}
+	return &HookResult{ExitCode: code, Err: err}
 }
 
 // TokenizeHook splits a hook command on whitespace and substitutes {param}

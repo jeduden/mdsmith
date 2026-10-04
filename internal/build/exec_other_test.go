@@ -21,7 +21,7 @@ func TestAfterStart_Other_CloseIsNoOp(t *testing.T) {
 }
 
 func TestKill_Other_NilProcess(t *testing.T) {
-	assert.NotPanics(t, func() { afterStart(&exec.Cmd{}).kill() })
+	assert.NotPanics(t, func() { afterStart(&exec.Cmd{}).kill(nil) })
 }
 
 func TestKill_Other_KillsLeaderAndIgnoresError(t *testing.T) {
@@ -29,7 +29,7 @@ func TestKill_Other_KillsLeaderAndIgnoresError(t *testing.T) {
 	// kill must hand it the recipe's leader and swallow its error.
 	got := stubKillLeader(t)
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	assert.NotPanics(t, afterStart(cmd).kill)
+	assert.NotPanics(t, func() { afterStart(cmd).kill(nil) })
 	assert.Same(t, cmd.Process, *got, "kill must kill the leader")
 }
 

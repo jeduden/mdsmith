@@ -83,6 +83,20 @@ failed.
    `!plan9`: there `(*os.Process).Kill` posts a
    catchable note, so plan9 cannot call it by
    mistake.
+7. Carry plan
+   [2610021849](2610021849_cancel-recipes-on-cli-interrupt.md)'s
+   second-interrupt escalation through the killer.
+   `kill` takes the `WithForceKill` channel and reports
+   whether it cut the Unix grace short, which replaces
+   `killGroupUntil` and the `killGroupFn` hook. A hook
+   (`sharedGroup`) skips `afterStart` and gets a
+   leader-only killer from `sharedGroupKiller`, which
+   replaces `killLeaderUntil`. On Unix it sends SIGTERM,
+   waits out the grace, then sends SIGKILL to the leader.
+   On Windows and `exec_other.go` targets it is the
+   `leaderKiller` in `exec_leader_only.go`. On plan9 it
+   is a `noteKiller` with no group. Delete
+   `exec_force_other.go`.
 
 ## Acceptance Criteria
 

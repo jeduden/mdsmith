@@ -201,8 +201,9 @@ func (k *noteKiller) forceLeader() {}
 // leader (forceKillLeader), which also covers a leader that left the
 // group and one afterStart captured nothing for. A nil Process (the
 // command never started) is a no-op: afterStart held no group for it,
-// and forceKillLeader skips it.
-func (k *noteKiller) kill() {
+// and forceKillLeader skips it. There is no grace period, so it ignores
+// the WithForceKill channel and reports false.
+func (k *noteKiller) kill(<-chan struct{}) bool {
 	if g := k.group; g != nil {
 		if g.pg != nil {
 			_, _ = g.pg.WriteString("kill")
@@ -210,7 +211,14 @@ func (k *noteKiller) kill() {
 		forceKillNoteGroup(g.id)
 	}
 	forceKillLeader(k.cmd)
+	return false
 }
+
+// sharedGroupKiller returns the killer for a hook, which stays in
+// mdsmith's own note group (no RFNOTEG): a noteKiller with no group, so
+// kill force-kills the hook's leader alone through its ctl file, and
+// forceLeader, as for any noteKiller, does not repeat that kill.
+func sharedGroupKiller(cmd *exec.Cmd) groupKiller { return &noteKiller{cmd: cmd} }
 
 // forceKillLeader writes "kill" to the leader's ctl file. Unlike the
 // note (*os.Process).Kill posts, a ctl kill cannot be caught; it takes

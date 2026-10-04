@@ -27,10 +27,12 @@ func (k stubKiller) forceLeader() {
 	}
 }
 
-func (k stubKiller) kill() {
+// kill runs killFn and reports false: a stub never escalates.
+func (k stubKiller) kill(<-chan struct{}) bool {
 	if k.killFn != nil {
 		k.killFn()
 	}
+	return false
 }
 
 func (k stubKiller) close() {
@@ -83,7 +85,7 @@ func TestRunRecipe_ClosesKillerOnTimeout(t *testing.T) {
 	afterStartFn = func(cmd *exec.Cmd) groupKiller {
 		inner := afterStart(cmd)
 		return stubKiller{
-			killFn:  func() { killed.Store(true); inner.kill() },
+			killFn:  func() { killed.Store(true); inner.kill(nil) },
 			forceFn: inner.forceLeader,
 			closeFn: func() { closedAfterKill.Store(killed.Load()); inner.close() },
 		}
