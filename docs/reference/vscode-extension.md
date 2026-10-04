@@ -77,8 +77,18 @@ the old extension host alive next to the new one, each with
 its own server. The newest server wins: it claims the
 workspace, and the older one exits after sending an
 `mdsmith/superseded` notice so the client does not restart
-it. If an older build left an orphan, kill its extension host
-once — not the `mdsmith` process, which the host respawns.
+it.
+
+The claim is scoped to the VS Code workspace by a UUID
+the extension stores in its workspace state. A Claude Code
+plugin or another editor on the same folder sends no scope,
+so its server runs alongside VS Code's and neither stops the
+other. Two VS Code windows on one folder share the stored id,
+so the newest of those still wins. If an older build left an
+orphan, kill its extension host once — not the `mdsmith`
+process, which the host respawns. With `mdsmith.path` set to
+a newer binary than an older extension expects, no scope is
+sent and the orphan is not reaped until the extension updates.
 
 ## See also
 

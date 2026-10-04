@@ -202,13 +202,21 @@ extension updates.
 
 ### Documentation
 
-Two docs change. [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
+Three docs change. [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
 gains a "Multiple instances" section. It states that many servers
 per workspace are supported, and that the singleton is opt-in via
-`singletonScope`. The [VS Code guide](../docs/guides/editors/vscode.md)
-note "Two mdsmith servers running" is updated. It says the scope
-is per VS Code workspace. So a Claude plugin or another editor on
-the same workspace is unaffected.
+`singletonScope`.
+
+The "Two mdsmith servers running" note now lives in the
+[VS Code extension reference](../docs/reference/vscode-extension.md).
+It is updated to say the scope is per VS Code workspace. So a
+Claude plugin or another editor on the same workspace is
+unaffected. The [VS Code guide](../docs/guides/editors/vscode.md)
+gains a short paragraph saying the same.
+
+`lsp.md` was at its 300-line budget. So the new section is kept
+short. Room comes from re-wrapping its narrow prose paragraphs to
+72 columns. No wording changes.
 
 ## Tasks
 
@@ -240,8 +248,10 @@ the same workspace is unaffected.
    (`watchSingleton` / the key): same scope → newest wins, older
    emits `mdsmith/superseded`; different scopes → both stay; no
    scope → never claims. Leave `decideClose` unchanged.
-6. [ ] Update [lsp.md](../docs/reference/cli/lsp.md) and
-   [vscode.md](../docs/guides/editors/vscode.md).
+6. [x] Update [lsp.md](../docs/reference/cli/lsp.md),
+   [vscode.md](../docs/guides/editors/vscode.md), and the
+   troubleshooting note in
+   [vscode-extension.md](../docs/reference/vscode-extension.md).
 7. [ ] On completion, flip the front-matter status and run
    `mdsmith fix PLAN.md`.
 
@@ -267,10 +277,11 @@ the same workspace is unaffected.
 - [x] The VS Code upgrade hand-off still works — old server
       stops, new server starts — verified by a unit test that
       feeds one scope to two server instances.
-- [ ] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
+- [x] [`docs/reference/cli/lsp.md`](../docs/reference/cli/lsp.md)
       documents multi-instance coexistence, and the
-      [VS Code guide](../docs/guides/editors/vscode.md) note
-      reflects the per-workspace scope.
+      [VS Code guide](../docs/guides/editors/vscode.md) and the
+      [extension reference](../docs/reference/vscode-extension.md)
+      note reflect the per-workspace scope.
 - [ ] All tests pass: `go test ./...` and the extension
       `bun:test` suite.
 - [ ] `go tool -modfile=tools/go.mod golangci-lint run` reports no
