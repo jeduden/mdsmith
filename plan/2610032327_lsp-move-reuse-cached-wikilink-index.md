@@ -95,7 +95,7 @@ for the edge index and once for `WikilinkIndex`.
    a move with a `[[stem]]` edge walks once. Collect the
    walked paths in the edge-index walk and build the index
    with `linkgraph.NewWikilinkIndexFromPaths`.
-8. Run `go test ./...` and the linter.
+8. [x] Run `go test ./...` and the linter.
 
 ## Acceptance Criteria
 
@@ -111,5 +111,5 @@ for the edge index and once for `WikilinkIndex`.
 - [x] No LSP move workspace can hold a nil wikilink closure
 - [x] `Session.Move` with a `[[stem]]` edge walks the
       workspace FS once
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
