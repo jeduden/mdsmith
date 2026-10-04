@@ -85,7 +85,7 @@ func Collect(
 	// links still surface.
 	var index *linkgraph.WikilinkIndex
 	if rootDir != "" {
-		index = linkgraph.WikilinkIndexFor(nil, "", lint.OpenRootFS(rootDir))
+		index = linkgraph.WikilinkIndexAtDir(rootDir)
 	}
 
 	var records []Record

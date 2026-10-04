@@ -17,14 +17,13 @@ func TestCategory(t *testing.T) {
 	assert.Equal(t, "code", r.Category())
 }
 
-// --- Fix with leading spaces ---
+// --- replaceFenceChars with leading spaces ---
 
-func TestFix_LeadingSpaces(t *testing.T) {
-	// Indent and info string survive; only the fence runs change.
-	f, err := lint.NewFile("test.md", []byte("  ~~~go\nx\n  ~~~\n"))
-	require.NoError(t, err)
-	r := &Rule{Style: "backtick"}
-	assert.Equal(t, "  ```go\nx\n  ```\n", string(r.Fix(f)))
+func TestReplaceFenceChars_LeadingSpaces(t *testing.T) {
+	// A fence line with leading spaces: "  ~~~go" -> "  ```go"
+	line := []byte("  ~~~go")
+	result := replaceFenceChars(line, '`')
+	assert.Equal(t, []byte("  ```go"), result)
 }
 
 // --- Fix with empty block after paragraph (exercises previousSibling path) ---
@@ -38,13 +37,25 @@ func TestFix_EmptyTildeBlockAfterParagraph(t *testing.T) {
 	assert.Equal(t, "paragraph\n\n```\n```\n", string(result))
 }
 
+// TestFix_EmptyBlockAfterList pins that the empty info-less fence
+// after a list is rewritten on its own lines, not on the first
+// fence-looking line of the file.
+func TestFix_EmptyBlockAfterList(t *testing.T) {
+	src := []byte("~~~js\nx\n~~~\n\n- item\n\n~~~\n~~~\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	r := &Rule{Style: "backtick"}
+	assert.Equal(t, "```js\nx\n```\n\n- item\n\n```\n```\n", string(r.Fix(f)))
+}
+
 // --- Defensive guards: synthetic FCB with no resolvable open fence ---
 //
 // Real goldmark output never produces a FencedCodeBlock without a
 // matching `` ``` `` or `~~~` marker in the source, but Check and Fix
 // keep defensive guards anyway. The tests below append synthetic
-// FencedCodeBlocks without a parser position, so fencepos.OpenRun
-// reads no fence run and the walker reaches the `fenceChar == 0` guard.
+// FencedCodeBlocks to an otherwise-empty document so the walker
+// reaches the guards and exercises both `openStart >= len(src)` and
+// `fenceChar == 0` paths.
 
 func newFileWithSyntheticFCB(t *testing.T, src []byte, fcb *ast.FencedCodeBlock) *lint.File {
 	t.Helper()
@@ -55,9 +66,10 @@ func newFileWithSyntheticFCB(t *testing.T, src []byte, fcb *ast.FencedCodeBlock)
 }
 
 func TestCheck_SyntheticFCB_OpenStartPastSource(t *testing.T) {
-	// Source has no fence and the synthetic FCB has no position, so
-	// OpenLineRange returns the (len(src), len(src)) sentinel and
-	// OpenRun reads no run. Check skips the block silently.
+	// Source has no fence. The synthetic FCB has no position, Info, or
+	// Lines, so OpenLineRange scans from position 0 and returns the
+	// (len(src), len(src)) sentinel. Check must hit the `openStart >= len(src)` guard and
+	// skip the block silently.
 	fcb := ast.NewFencedCodeBlock(nil)
 	f := newFileWithSyntheticFCB(t, []byte(""), fcb)
 	r := &Rule{Style: "backtick"}
@@ -65,8 +77,9 @@ func TestCheck_SyntheticFCB_OpenStartPastSource(t *testing.T) {
 }
 
 func TestCheck_SyntheticFCB_NonFenceFirstChar(t *testing.T) {
-	// A hand-built node has no parser position, so fencepos.OpenRun
-	// reads no fence run. Check must hit the `fenceChar == 0` guard.
+	// Info points at non-fence content, so OpenLineRange returns a
+	// valid range but CharAt(src, openStart) reads a non-fence byte
+	// and returns 0. Check must hit the `fenceChar == 0` guard.
 	src := []byte("hello\n")
 	info := ast.NewText()
 	info.Segment = text.NewSegment(0, 5)

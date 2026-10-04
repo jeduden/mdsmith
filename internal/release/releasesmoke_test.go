@@ -22,7 +22,7 @@ jobs:
           - channel: pip
             container: python:3.12-slim
           - channel: mise
-            container: jdxcode/mise:latest
+            container: jdxcode/mise:debian
           - channel: asdf
             container: ubuntu:latest
           - channel: go

@@ -1,4 +1,4 @@
-//go:build unix || windows
+//go:build unix || windows || plan9
 
 package build
 
@@ -34,6 +34,7 @@ func sentinelEntry(t *testing.T, dir, name, sentinel string) HookEntry {
 
 // skipWithoutUnixTools skips on Windows, where the hooks below cannot
 // run: `echo` is a cmd builtin with no binary, and `touch` is absent.
+// plan9 ships both as binaries, so these tests run there.
 func skipWithoutUnixTools(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -138,6 +139,7 @@ func TestRunAfterHooks_UnnamedHook_UsesFirstToken(t *testing.T) {
 // can only come from exec.ExitError. A start failure, or a dropped
 // ExitCode branch, would report the default code 1 and fail this test.
 func TestRunHook_ExitCodePreserved(t *testing.T) {
+	skipOnPlan9(t)
 	tokens := []string{"cmd", "/c", "exit 42"}
 	if runtime.GOOS != "windows" {
 		tokens = []string{writeScript(t, t.TempDir(), "exit42.sh", `exit 42`)}
@@ -151,9 +153,7 @@ func TestRunHook_ExitCodePreserved(t *testing.T) {
 // a process killed by a signal yields ExitCode() == -1, which runHook normalizes to 1.
 // Only meaningful on Unix (Windows processes don't signal-kill the same way).
 func TestRunHook_SignalKilled_NormalizesExitCode(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("signal kill not available on windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	// `sh -c 'kill -9 $$'` kills the shell with SIGKILL, giving exit code -1.
 	result := runHook(context.Background(), []string{"sh", "-c", "kill -9 $$"}, t.TempDir())
 	require.NotNil(t, result)

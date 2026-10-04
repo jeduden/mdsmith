@@ -202,8 +202,8 @@ func TestHasClosingFence_OpenStartPastSource(t *testing.T) {
 }
 
 func TestHasClosingFence_NonFenceFirstChar(t *testing.T) {
-	// A hand-built node has no parser position, so fencepos.OpenRun
-	// reads no fence run and the block is never flagged.
+	// Info points at a non-fence line so OpenLineRange returns a valid
+	// range but CharAt reads a non-fence byte and returns 0.
 	src := []byte("hello\n")
 	f, err := lint.NewFile("test.md", src)
 	require.NoError(t, err)
@@ -218,9 +218,9 @@ func TestHasClosingFence_NonFenceFirstChar(t *testing.T) {
 func TestHasClosingFence_ClosingLineEmpty(t *testing.T) {
 	// Synthetic fcb whose content's last segment stops at a newline.
 	// CloseLineRange then returns (closeStart, closeStart) — a
-	// zero-width line in the middle of the source. fencepos.CloseRun
-	// finds no fence run on it, so hasClosingFence reports the block
-	// as unclosed.
+	// zero-width line in the middle of the source. hasClosingFence
+	// must hit the `closeStart == closeEnd` guard and report the
+	// block as unclosed.
 	//
 	// Source layout (byte offsets in parens):
 	//   ```\n      (0..3)
@@ -233,7 +233,6 @@ func TestHasClosingFence_ClosingLineEmpty(t *testing.T) {
 	require.NoError(t, err)
 
 	fcb := ast.NewFencedCodeBlock(nil)
-	fcb.SetPos(0) // the opener line, as the parser would record it
 	segs := text.NewSegments()
 	segs.Append(text.NewSegment(4, 10)) // covers "hello\n"
 	fcb.SetLines(segs)
@@ -243,39 +242,53 @@ func TestHasClosingFence_ClosingLineEmpty(t *testing.T) {
 	diags := r.Check(f)
 	// Two diagnostics: one from the real `` ``` `` fcb that goldmark
 	// also parses (and is genuinely unclosed) and one from the
-	// synthetic fcb whose candidate closer line is empty.
+	// synthetic fcb that exercises the `closeStart == closeEnd` guard.
 	require.NotEmpty(t, diags)
 	for _, d := range diags {
 		assert.Equal(t, "unclosed fenced code block", d.Message)
 	}
 }
 
-// TestCheck_ContainerOpener checks fences whose opener sits behind a
-// list or block-quote marker: the fence character is read at the
-// parser's node position, not at the line start, and a closer behind
-// a ">" marker still closes the block.
-func TestCheck_ContainerOpener(t *testing.T) {
-	cases := []struct {
-		src  string
-		want int // diagnostic line, 0 for none
-	}{
-		{"# T\n\n- ```\n  x\n", 3},
-		{"# T\n\n- ```\n  x\n  ```\n", 0},
-		{"# T\n\n1. ~~~\n   x\n", 3},
-		{"# T\n\n> ```\n> x\n", 3},
-		{"# T\n\n> ```\n> x\n> ```\n", 0},
-		{"# T\n\n> - ```\n>   x\n>   ```\n", 0},
-		{"# T\n\n> > ~~~\n> > x\n> > ~~~\n", 0},
+// TestHasClosingFence_ContainerEndIsNoCloser pins that the line after a
+// fence a list item's end cut short counts as a closer only when mdfence
+// reads it as one: "```js" carries an info string, so it opens a new
+// fence rather than closing the item's.
+func TestHasClosingFence_ContainerEndIsNoCloser(t *testing.T) {
+	src := []byte("- a\n\n  ```\n  x\n```js\n")
+	f, err := lint.NewFile("test.md", src)
+	require.NoError(t, err)
+	diags := (&Rule{}).Check(f)
+	lines := make([]int, len(diags))
+	for i, d := range diags {
+		lines[i] = d.Line
 	}
-	for _, tc := range cases {
-		f, err := lint.NewFile("test.md", []byte(tc.src))
-		require.NoError(t, err)
-		diags := (&Rule{}).Check(f)
-		if tc.want == 0 {
-			assert.Empty(t, diags, tc.src)
-			continue
-		}
-		require.Len(t, diags, 1, tc.src)
-		assert.Equal(t, tc.want, diags[0].Line, tc.src)
+	assert.Equal(t, []int{3, 5}, lines)
+}
+
+// TestHasClosingFence_NestedListItem pins that a fence inside a list
+// item whose content column puts the fence run four or more columns in
+// is still judged: the parser opened it relative to the item, so an
+// unclosed one is reported and a closed one is not.
+func TestHasClosingFence_NestedListItem(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+		want []int
+	}{
+		{"nested bullet unclosed", "# T\n\n- a\n  - b\n\n    ```sh\n    make\n", []int{6}},
+		{"nested bullet closed", "# T\n\n- a\n  - b\n\n    ```sh\n    make\n    ```\n", []int{}},
+		{"wide ordered unclosed", "# T\n\n10. a\n\n    ```sh\n    make\n", []int{5}},
+		{"wide ordered closed", "# T\n\n10. a\n\n    ```sh\n    make\n    ```\n", []int{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, err := lint.NewFile("test.md", []byte(tc.src))
+			require.NoError(t, err)
+			diags := (&Rule{}).Check(f)
+			lines := make([]int, 0, len(diags))
+			for _, d := range diags {
+				lines = append(lines, d.Line)
+			}
+			assert.Equal(t, tc.want, lines)
+		})
 	}
 }

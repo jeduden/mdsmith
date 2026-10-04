@@ -18,6 +18,7 @@ import (
 	"github.com/jeduden/mdsmith/internal/bytelimit"
 	"github.com/jeduden/mdsmith/internal/fieldinterp"
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/internal/oscompat"
 	"github.com/jeduden/mdsmith/internal/piparser"
 	"github.com/jeduden/mdsmith/internal/placeholders"
@@ -1426,8 +1427,7 @@ func collectBodySyncPoints(
 	// body (e.g. a `bind:` value) must not become a body-sync point,
 	// since the row is schema syntax, not body-sync template text.
 	inPIBlock := false
-	var fenceChar byte
-	fenceLen := 0
+	var fence mdfence.Tracker
 	start := 0
 	for start <= len(content) {
 		end := len(content)
@@ -1440,33 +1440,20 @@ func collectBodySyncPoints(
 		if len(lineB) == 0 {
 			continue
 		}
-		switch {
-		case inPIBlock:
+		if inPIBlock {
 			// Mirror the block parser: a continuation line closes the
 			// PI only when its trimmed text is exactly `?>` — a `?>`
 			// substring inside a YAML value stays inside the block.
 			inPIBlock = !bytes.Equal(lineB, piClose)
 			continue
-		case fenceLen > 0:
-			// Inside a fenced code block the only state change is a
-			// valid close (CommonMark: the opener's character, a run
-			// at least as long, nothing else on the line). Fence
-			// lines — markers included — fall through as ordinary
-			// body text, as they did before the PI skip existed.
-			if fenceClose(raw, lineB, fenceChar, fenceLen) {
-				fenceChar, fenceLen = 0, 0
-			}
-		default:
-			if c, n := fenceOpenRun(raw, lineB); n > 0 {
-				// A fenced code block owns its lines before the PI
-				// parser runs, so a directive opener shown inside a
-				// fence is code, not a directive.
-				fenceChar, fenceLen = c, n
-				break
-			}
-			if !isPIOpenLine(raw) {
-				break
-			}
+		}
+		// A fenced code block owns its lines before the PI parser runs,
+		// so a directive opener shown inside a fence is code, not a
+		// directive. Fence lines — markers included — fall through as
+		// ordinary body text, as they did before the PI skip existed.
+		// fence.Step advances the fence state, so it must see every
+		// line outside a PI block, exactly once.
+		if !fence.Step(raw) && isPIOpenLine(raw) {
 			// A single-line `<?name ... ?>` opens and closes on the
 			// same line; only a multi-line opener leaves us inside the
 			// block for subsequent lines. The parser closes an opener
@@ -1525,52 +1512,6 @@ var (
 	piClose      = []byte("?>")
 	spaceSep     = []byte{' '}
 )
-
-// fenceOpenRun reports the marker character and run length when a
-// body line opens a fenced code block the way the block parser would:
-// at most three spaces of indentation and a run of at least three
-// backticks or tildes. A backtick run must not be followed by another
-// backtick: CommonMark forbids backticks in a backtick fence's info
-// string, so "```a`b" is paragraph text. n is 0 when the line opens no
-// fence. (include.rewriteSkippingCode applies the same run and
-// info-string rules but accepts any amount of indentation.)
-func fenceOpenRun(raw, lineB []byte) (byte, int) {
-	if len(lineB) == 0 || (lineB[0] != '`' && lineB[0] != '~') {
-		return 0, 0
-	}
-	if astutil.CountLeadingSpaces(raw) > 3 {
-		return 0, 0
-	}
-	n := fenceRun(lineB, lineB[0])
-	if n < 3 {
-		return 0, 0
-	}
-	if lineB[0] == '`' && bytes.IndexByte(lineB[n:], '`') >= 0 {
-		return 0, 0
-	}
-	return lineB[0], n
-}
-
-// fenceClose reports whether a body line closes the open fence per
-// CommonMark: the opener's character, a run at least as long as the
-// opener, nothing but the run on the trimmed line, and at most three
-// spaces of indentation.
-func fenceClose(raw, lineB []byte, ch byte, openLen int) bool {
-	if astutil.CountLeadingSpaces(raw) > 3 {
-		return false
-	}
-	n := fenceRun(lineB, ch)
-	return n >= openLen && n == len(lineB)
-}
-
-// fenceRun returns the length of the run of ch at the start of line.
-func fenceRun(line []byte, ch byte) int {
-	n := 0
-	for n < len(line) && line[n] == ch {
-		n++
-	}
-	return n
-}
 
 // isPIOpenLine reports whether a raw body line opens a processing
 // instruction, mirroring the block parser in pkg/markdown: at most

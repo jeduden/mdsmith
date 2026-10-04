@@ -6,9 +6,27 @@
 package fencepos
 
 import (
+	"bytes"
+
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
 )
+
+// CharAt returns the fence character at the given position, skipping
+// leading spaces. Returns 0 when no fence character (` or ~) follows.
+// It reads the character of a line the parser already opened a fence
+// on and decides no fence-ness itself, so it stays a plain byte read
+// rather than an mdfence call.
+func CharAt(src []byte, pos int) byte {
+	for pos < len(src) && src[pos] == ' ' {
+		pos++
+	}
+	if pos < len(src) && (src[pos] == '`' || src[pos] == '~') {
+		return src[pos]
+	}
+	return 0
+}
 
 // OpenLine returns the 1-based line number of the opening fence.
 func OpenLine(f *lint.File, fcb *ast.FencedCodeBlock) int {
@@ -24,30 +42,57 @@ func CloseLine(f *lint.File, fcb *ast.FencedCodeBlock) int {
 }
 
 // OpenLineRange returns the byte range [start, end) of the opening
-// fence line (without trailing newline). The parser records the
-// opener's offset as the node position, so the line holding it is the
-// opening fence line whatever the block holds and wherever it sits:
-// indented, in a list item, or in a block quote. A node without a
-// position inside src (one built by hand, not parsed) yields the
-// (len(src), len(src)) sentinel, which every caller skips.
+// fence line (without trailing newline).
+//
+// A parsed block carries its opening position (Node.Pos, the offset of
+// the fence run), so the line around it is the opening line in every
+// layout: inside a list item or block quote, and for an empty fence
+// with no info string, which goldmark gives neither an info nor a
+// content segment. The remaining branches serve only blocks built by
+// hand, which have no position.
 func OpenLineRange(src []byte, fcb *ast.FencedCodeBlock) (int, int) {
-	if p := fcb.Pos(); p >= 0 && p < len(src) {
+	if p := fcb.Pos(); p >= 0 && p <= len(src) {
 		return lineAround(src, p)
+	}
+	if fcb.Info != nil {
+		return lineAround(src, fcb.Info.Segment.Start)
+	}
+	if fcb.Lines().Len() > 0 {
+		// The opening fence line ends just before the first content line.
+		pos := fcb.Lines().At(0).Start
+		if pos > 0 && src[pos-1] == '\n' {
+			pos--
+		}
+		return lineAround(src, pos)
+	}
+	// No position, info, or content: the first line mdfence reads as an
+	// opening fence.
+	for pos := 0; pos < len(src); {
+		lineEnd := pos + lineLen(src[pos:])
+		if _, ok := mdfence.Open(src[pos:lineEnd]); ok {
+			return pos, lineEnd
+		}
+		pos = lineEnd + 1
 	}
 	return len(src), len(src)
 }
 
 // lineAround returns the byte range [start, end) of the line holding
-// offset p (without trailing newline).
+// offset p, without its trailing newline.
 func lineAround(src []byte, p int) (int, int) {
-	start, end := p, p
+	start := p
 	for start > 0 && src[start-1] != '\n' {
 		start--
 	}
-	for end < len(src) && src[end] != '\n' {
-		end++
+	return start, p + lineLen(src[p:])
+}
+
+// lineLen returns the length of b's first line, without its newline.
+func lineLen(b []byte) int {
+	if i := bytes.IndexByte(b, '\n'); i >= 0 {
+		return i
 	}
-	return start, end
+	return len(b)
 }
 
 // CloseLineRange returns the byte range [start, end) of the closing

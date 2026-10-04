@@ -212,6 +212,52 @@ func TestSession_Move_BasenameChangeRewritesWikilink(t *testing.T) {
 	assert.Equal(t, "service", plan.Edits["guide.md"][0].NewText)
 }
 
+// TestSession_Move_UnlistedNameBlocksWikilinkRewrite locks that the
+// session's move guard reads the whole workspace FS, not the Markdown
+// files the edge index lists: a root logo.png, which `[[logo.png]]`
+// reaches first, blocks retargeting `[[logo]]` at docs/logo.png.
+func TestSession_Move_UnlistedNameBlocksWikilinkRewrite(t *testing.T) {
+	s := newRefactorSession(t, map[string][]byte{
+		"docs/logo.md": []byte("# Logo\n"),
+		"logo.png":     []byte("png"),
+		"index.md":     []byte("See [[logo]].\n"),
+	})
+	plan, err := s.Move("docs/logo.md", "docs/logo.png")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"])
+}
+
+// fsCountingWorkspace counts FS calls, each of which a MemWorkspace
+// pays for with a copy of every file's bytes.
+type fsCountingWorkspace struct {
+	*MemWorkspace
+	fsCalls int
+}
+
+func (w *fsCountingWorkspace) FS() fs.FS {
+	w.fsCalls++
+	return w.MemWorkspace.FS()
+}
+
+// TestSession_Move_TakesOneFSSnapshot locks that a move whose wikilink
+// pass runs builds the edge index and the wikilink index from one FS
+// snapshot.
+func TestSession_Move_TakesOneFSSnapshot(t *testing.T) {
+	ws := &fsCountingWorkspace{MemWorkspace: NewMemWorkspace(map[string][]byte{
+		"api.md":   []byte("# API\n"),
+		"guide.md": []byte("See [[api]].\n"),
+	})}
+	s, err := NewSession(SessionOptions{Workspace: ws, Config: ConfigYAML("")})
+	require.NoError(t, err)
+	t.Cleanup(s.Dispose)
+
+	ws.fsCalls = 0
+	plan, err := s.Move("api.md", "service.md")
+	require.NoError(t, err)
+	require.Len(t, plan.Edits["guide.md"], 1)
+	assert.Equal(t, 1, ws.fsCalls)
+}
+
 func TestSession_Move_WalkErrorStillPlans(t *testing.T) {
 	s, err := NewSession(SessionOptions{
 		Workspace: failFSWorkspace{NewMemWorkspace(map[string][]byte{"a.md": []byte("# A\n")})},
@@ -344,12 +390,12 @@ func TestSession_IndexRefactorWorkspace(t *testing.T) {
 		"notes.txt": []byte("[b](sub/b.md#b)\n"),
 	})
 	t.Run("indexes only Markdown files", func(t *testing.T) {
-		idx := s.indexRefactorWorkspace("", nil)
+		idx := s.indexRefactorWorkspace(s.ws.FS(), "", nil)
 		assert.ElementsMatch(t, []string{"a.md", "sub/b.md"}, idx.Files())
 		assert.Empty(t, idx.IncomingEdges("sub/b.md", "b"))
 	})
 	t.Run("overlay replaces the saved bytes", func(t *testing.T) {
-		idx := s.indexRefactorWorkspace("./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
+		idx := s.indexRefactorWorkspace(s.ws.FS(), "./a.md", []byte("# A\n\n[b](sub/b.md#b)\n"))
 		edges := idx.IncomingEdges("sub/b.md", "b")
 		require.Len(t, edges, 1)
 		assert.Equal(t, "a.md", edges[0].SourceFile)

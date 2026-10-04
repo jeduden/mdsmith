@@ -142,3 +142,11 @@ func StartsListItem(line []byte) bool {
 	}
 	return isOrderedMarker(line, indent)
 }
+
+// IsThematicBreak reports whether line is a thematic break: up to three
+// spaces of indent, then three or more of one of '-', '*' or '_', with
+// only spaces or tabs between them. A thematic break wins over a list
+// item, so "* * *" is a break although StartsListItem also accepts it.
+func IsThematicBreak(line []byte) bool {
+	return isThematicBreak(line)
+}

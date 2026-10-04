@@ -1,6 +1,7 @@
 package include
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -279,61 +280,216 @@ func TestAdjustHeadingsToLevel(t *testing.T) {
 	}
 }
 
-// --- isResultPrevLineFence ---
+// --- headingScan ---
 
-// TestIsResultPrevLineFence pins both branches: empty result
-// returns false (no prior line); non-empty result inspects the
-// last entry against codeFenceRe with leading whitespace trimmed.
-// The integration path through adjustHeadings drives these via
-// real Markdown, but the function shape was not pinned directly.
-func TestIsResultPrevLineFence(t *testing.T) {
-	assert.False(t, isResultPrevLineFence(nil),
-		"empty slice returns false")
-	assert.False(t, isResultPrevLineFence([]string{}),
-		"zero-length slice returns false")
-	assert.True(t, isResultPrevLineFence([]string{"text", "```"}),
-		"triple-backtick last line is a fence")
-	assert.True(t, isResultPrevLineFence([]string{"  ```go"}),
-		"leading whitespace is trimmed before match")
-	assert.True(t, isResultPrevLineFence([]string{"~~~"}),
-		"triple-tilde is also a fence")
-	assert.False(t, isResultPrevLineFence([]string{"plain text"}),
-		"non-fence content returns false")
+// TestHeadingScan_SetextText pins which previous lines may carry setext
+// heading text. CommonMark reads an underline after a blank line, an
+// ATX heading, a fence line, an HTML line, a thematic break, indented
+// code, or a list item or block quote line as a thematic break (or
+// paragraph text), never as a setext heading. A lone "===" is paragraph
+// text, so an underline after it does make a heading.
+func TestHeadingScan_SetextText(t *testing.T) {
+	tests := []struct {
+		name string
+		prev string
+		want bool
+	}{
+		{"paragraph text", "Title", true},
+		{"inline code span", "```x``` is code", true},
+		{"inline html", "<span>Title</span>", true},
+		{"empty", "", false},
+		{"whitespace only", "  \t", false},
+		{"carriage return only", "\r", false},
+		{"atx heading", "## A", false},
+		{"backtick fence", "```", false},
+		{"indented fence with info", "  ```go", false},
+		{"tilde fence", "~~~", false},
+		{"lone = run is paragraph text", "===", true},
+		{"indented = run is paragraph text", "  ==", true},
+		{"two dashes are paragraph text", "--", true},
+		{"setext h2 underline", "---", false},
+		{"html comment", "<!-- note -->", false},
+		{"processing instruction", "<?toc?>", false},
+		{"block tag", "<div>", false},
+		{"thematic break", "***", false},
+		{"spaced thematic break", "* * *", false},
+		{"bullet item", "- item", false},
+		{"ordered item", "1. item", false},
+		{"ordered item not at 1", "2. item", false},
+		{"block quote", "> quote", false},
+		{"indented code", "    code", false},
+		{"tab-indented code", "\tcode", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var scan headingScan
+			scan.step(tt.prev)
+			level, text := scan.step("---")
+			assert.Equal(t, tt.want, text > 0)
+			assert.Equal(t, tt.want, level == 2)
+		})
+	}
 }
 
-// TestAdjustHeadings_BacktickInfoStringIsNotFence pins the CommonMark
-// rule that a backtick fence's info string may not contain a
-// backtick: "```a`b" is paragraph text, so headings after it must
-// still be shifted rather than skipped as fenced code.
-func TestAdjustHeadings_BacktickInfoStringIsNotFence(t *testing.T) {
-	content := "# Part\n\n```a`b c\n\n## Sub\n"
-	assert.Equal(t, "### Part\n\n```a`b c\n\n#### Sub\n",
-		adjustHeadingsToLevel(content, 3))
-	assert.Equal(t, "## Part\n\n```a`b c\n\n### Sub\n",
-		adjustHeadings(content, 1))
-	assert.Equal(t, "# Part\n\n~~~a`b\n\n## Sub\n",
-		adjustHeadingsByOffset("# Part\n\n~~~a`b\n\n## Sub\n", 0),
-		"a tilde fence may carry a backtick in its info string")
-	assert.Equal(t, "## Part\n\n~~~a`b\n## Sub\n~~~\n",
-		adjustHeadingsByOffset("# Part\n\n~~~a`b\n## Sub\n~~~\n", 1),
-		"a tilde fence with a backtick info string is still a fence")
+// TestHeadingScan_ContainerAndBlockLinesMatchParser checks the scan
+// against the canonical parser for lines that are not document-level
+// paragraph text: an underline after them is no setext heading, while a
+// line that cannot interrupt an open paragraph still continues it.
+func TestHeadingScan_ContainerAndBlockLinesMatchParser(t *testing.T) {
+	for _, src := range []string{
+		"- item\n---\n", "- item\n===\n", "1. item\n---\n", "> quote\n---\n",
+		"***\n---\n", "* * *\n---\n", "\n    code\n---\n", "- item\nlazy\n---\n",
+		"***\nTitle\n---\n", "* * *\nTitle\n---\n", "- a\n\nTitle\n---\n",
+		"para\n2. item\n---\n", "para\n    more\n---\n", "***\n<span>\n---\n",
+		"- item\n===\n---\n", "a\nb\n---\n", "===\n---\n", "Title\n   ---\n",
+		"Title\n    ---\n", "1. a\n-\n<span>\n# H\n",
+	} {
+		want := astHasHeading(src)
+		got := findMinHeadingLevel(strings.Split(src, "\n")) > 0
+		assert.Equal(t, want, got, "%q", src)
+	}
 }
 
-func TestFenceOpenMarker(t *testing.T) {
-	assert.Equal(t, "```", fenceOpenMarker("```go"))
-	assert.Equal(t, "````", fenceOpenMarker("  ````"))
-	assert.Equal(t, "~~~", fenceOpenMarker("\t~~~a`b"), "tilde info may hold a backtick")
-	assert.Equal(t, "", fenceOpenMarker("```a`b"))
-	assert.Equal(t, "", fenceOpenMarker("``x"))
-	assert.Equal(t, "", fenceOpenMarker("text"))
+func TestNextPara(t *testing.T) {
+	tests := []struct {
+		line string
+		prev paraKind
+		want paraKind
+	}{
+		{"text", paraNone, paraRoot},
+		{"text", paraRoot, paraRoot},
+		{"text", paraContainer, paraContainer},
+		{"***", paraRoot, paraNone},
+		{"* * *", paraNone, paraNone},
+		{"- item", paraNone, paraContainer},
+		{"- item", paraRoot, paraContainer},
+		{"2. item", paraNone, paraContainer},
+		{"2. item", paraRoot, paraRoot},
+		{"> quote", paraRoot, paraContainer},
+		{"    code", paraNone, paraNone},
+		{"\tcode", paraNone, paraNone},
+		{"    more", paraRoot, paraRoot},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, nextPara([]byte(tt.line), tt.prev), "%q after %d", tt.line, tt.prev)
+	}
 }
 
-// TestAdjustHeadings_CRLFClosingFence checks that a CRLF closer ends
-// the fence: the "\n" split leaves "```\r", and a heading after the
-// block must still shift.
-func TestAdjustHeadings_CRLFClosingFence(t *testing.T) {
-	content := "# A\r\n\r\n```\r\ncode\r\n```\r\n\r\n## B\r\n"
-	assert.Equal(t, "## A\r\n\r\n```\r\ncode\r\n```\r\n\r\n### B\r\n",
-		adjustHeadingsByOffset(content, 1))
-	assert.True(t, isClosingFence("```\r", "```"))
+func TestSetextText(t *testing.T) {
+	assert.Equal(t, "  Title", setextText([]string{"  Title"}), "one line is kept as it is")
+	assert.Equal(t, "a b c", setextText([]string{" a ", "\tb", "c  "}))
+	assert.Equal(t, "a b\r", setextText([]string{"a\r", "b\r"}), "CRLF ending kept")
+}
+
+func TestApplyShift_MultiLineSetext(t *testing.T) {
+	// A setext heading's text is its whole paragraph; an ATX heading
+	// holds one line, so the lines are joined rather than the first
+	// left behind as a paragraph.
+	got := applyShift([]string{"intro", "First", "second", "---", "", "## B"}, 1)
+	assert.Equal(t, []string{"### intro First second", "", "### B"}, got)
+}
+
+func TestAdjustHeadings_ListItemThenBreakIsNoHeading(t *testing.T) {
+	in := "- item\n---\n\n## A\n"
+	assert.Equal(t, "- item\n---\n\n### A\n", adjustHeadings(in, 2))
+}
+
+// TestPIStart pins the processing-instruction start rules mirrored from
+// the canonical parser.
+func TestPIStart(t *testing.T) {
+	tests := []struct {
+		line           string
+		opened, closed bool
+	}{
+		{"<?toc?>", true, true},
+		{"   <?toc ?>  ", true, true},
+		{"<?catalog", true, false},
+		{"<?catalog\r", true, false},
+		{"    <?toc?>", false, false},
+		{"<? x", false, false},
+		{"<??>", false, false},
+		{"<?", false, false},
+		{"text", false, false},
+	}
+	for _, tt := range tests {
+		opened, closed := piStart(tt.line)
+		assert.Equal(t, tt.opened, opened, "%q opened", tt.line)
+		assert.Equal(t, tt.closed, closed, "%q closed", tt.line)
+	}
+}
+
+func TestSetextLevel(t *testing.T) {
+	tests := []struct {
+		line string
+		want int
+	}{
+		{"===", 1},
+		{"=", 1},
+		{"===  \r", 1},
+		{"---", 2},
+		{"-", 2},
+		{"--- \t", 2},
+		{"   ---", 2},
+		{"   =", 1},
+		{"    ---", 0},
+		{"", 0},
+		{"Title", 0},
+		{"=-=", 0},
+		{"## A", 0},
+		{"- item", 0},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, setextLevel(tt.line), "%q", tt.line)
+	}
+}
+
+func TestApplyShift_ATXThenThematicBreak(t *testing.T) {
+	// "---" after an ATX heading is a thematic break, not a setext
+	// underline: the heading is shifted and the break kept.
+	got := applyShift([]string{"## A", "---", "text"}, 1)
+	assert.Equal(t, []string{"### A", "---", "text"}, got)
+}
+
+func TestApplyShift_EmptyATXHeading(t *testing.T) {
+	assert.Equal(t, []string{"### "}, applyShift([]string{"##"}, 1))
+}
+
+func TestApplyShift_SetextThenThematicBreak(t *testing.T) {
+	got := applyShift([]string{"A", "===", "---"}, 1)
+	assert.Equal(t, []string{"## A", "---"}, got)
+}
+
+func TestFindMinHeadingLevel_ThematicBreakAfterFence(t *testing.T) {
+	// "---" after a closing fence is a thematic break; it must not
+	// count as a level-2 heading and pull the shift off by one.
+	lines := []string{"```", "code", "```", "---", "", "### Real"}
+	assert.Equal(t, 3, findMinHeadingLevel(lines))
+}
+
+func TestFindMinHeadingLevel_ThematicBreakAfterATX(t *testing.T) {
+	assert.Equal(t, 3, findMinHeadingLevel([]string{"### A", "---"}))
+}
+
+func TestAdjustHeadings_CRLFFenceCloses(t *testing.T) {
+	// A CRLF closing fence must close the block so headings after
+	// it are still shifted.
+	in := "```\r\ncode\r\n```\r\n\r\n## Real\r\n"
+	want := "```\r\ncode\r\n```\r\n\r\n### Real\r\n"
+	assert.Equal(t, want, adjustHeadings(in, 2))
+}
+
+func TestApplyShift_BacktickInInfoIsNotAFence(t *testing.T) {
+	// "```x```" is inline code, not a fence opener, so the heading
+	// after it must still be shifted.
+	got := applyShift([]string{"```x``` is code.", "", "## Head"}, 1)
+	assert.Equal(t, []string{"```x``` is code.", "", "### Head"}, got)
+}
+
+// TestAdjustHeadings_SiblingItemFence pins that a fence opened on a
+// sibling ordered item ("2. ```" after "1. a") is code: the comment
+// inside it keeps its level, and the heading after it shifts.
+func TestAdjustHeadings_SiblingItemFence(t *testing.T) {
+	src := "1. a\n2. ```\n   # x\n   ```\n# y\n"
+	assert.Equal(t, "1. a\n2. ```\n   # x\n   ```\n## y\n", adjustHeadingsByOffset(src, 1))
+	assert.True(t, astHasHeading(src))
 }

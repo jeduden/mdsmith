@@ -23,6 +23,20 @@ func TestLC0Pass_PointerFieldsFirst(t *testing.T) {
 	structlayout.AssertPointerFieldsFirst(t, reflect.TypeOf(lc0Pass{}))
 }
 
+// TestLC0Pass_InFence pins that the open-fence state is derived from the
+// recorded fence: set by tryOpenFence, cleared by a closing fence.
+func TestLC0Pass_InFence(t *testing.T) {
+	lines := [][]byte{[]byte("```go"), []byte("x"), []byte("```")}
+	p := &lc0Pass{lines: lines, out: &LineClassifier{classes: make([]LineClass, len(lines))}}
+	assert.False(t, p.inFence(), "zero pass is outside a fence")
+	require.True(t, p.tryOpenFence(1, lines[0]))
+	assert.True(t, p.inFence(), "after the opener")
+	p.handleFenceBody(2, lines[1])
+	assert.True(t, p.inFence(), "after a content line")
+	p.handleFenceBody(3, lines[2])
+	assert.False(t, p.inFence(), "after the closer")
+}
+
 // equivCases are markdown snippets whose flat-classifier code-block line
 // set must equal the AST-derived set. They cover the block shapes the
 // corpus gate cannot guarantee are present: indented code, blockquote- and
@@ -47,10 +61,6 @@ var equivCases = map[string]string{
 	"unclosed fence content":  "# h\n\n```\ncode\n",
 	"empty closed fence":      "```\n```\n",
 	"empty closed fence info": "```go\n```\n",
-	"empty fence after fence": "```go\nx\n```\n```\n```\n",
-	"bq empty fence":          "> ```\n> ```\n",
-	"list empty fence":        "- ```\n  ```\n",
-	"empty fence mid doc":     "# h\n\ntext\n\n~~~\n~~~\n\nafter\n",
 	"multiple fences":         "```\nfirst\n```\n\n```\nsecond\n```\n",
 	"fence blank inside":      "```\ncode\n\n\nmore\n```\n",
 	"tab indented code":       "\thello\nworld\n",
@@ -94,6 +104,28 @@ var equivCases = map[string]string{
 	"type7 img then fence":        "<img src=\"x.png\">\n```go\nx := 1\n```\n",
 	"type7 br then fence":         "<br>\n```\ncode\n```\n",
 	"type7 cannot interrupt para": "a paragraph\n<img src=\"x\">\n```\ncode\n```\n",
+	// goldmark's info string is trimmed of ASCII space/tab/CR/LF only, so
+	// a vertical tab, form feed, or NBSP after the run is a non-empty
+	// info string and an otherwise empty fence still has a position.
+	"fence vt info empty":   "```\v\n```\n",
+	"fence ff info empty":   "```\f\n```\n",
+	"fence nbsp info empty": "```\u00a0\n```\n",
+	// goldmark reads an info string only when two or more bytes follow
+	// the run on a line with no newline, so a one-byte info on the
+	// source's final line is dropped and the empty fence has no position.
+	"fence one-byte info at eof":     "```x",
+	"fence vt info at eof":           "```\v",
+	"fence space info at eof":        "``` x",
+	"fence two-byte info at eof":     "```xy",
+	"fence one-byte info newline":    "```x\n",
+	"fence tilde backtick at eof":    "~~~`",
+	"fence one-byte info after para": "para\n\n```x",
+	"quoted fence one-byte at eof":   "> ```x",
+	// goldmark counts a final line's trailing "\r" among the bytes after
+	// the run, so a one-byte info before it is kept.
+	"fence one-byte info cr at eof":        "```x\r",
+	"quoted fence one-byte info cr at eof": "> ```x\r",
+	"fence info-less cr at eof":            "```\r",
 }
 
 func sortedKeys(m map[int]struct{}) []int {

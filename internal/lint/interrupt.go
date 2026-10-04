@@ -3,6 +3,8 @@ package lint
 import (
 	"bytes"
 	"regexp"
+
+	"github.com/jeduden/mdsmith/internal/mdfence"
 )
 
 // InterruptsParagraph reports whether line, placed directly after a line
@@ -49,7 +51,7 @@ func StartsInterruptingBlock(line []byte) bool {
 	if isThematicBreak(line) || isATXHeadingLine(line) {
 		return true
 	}
-	if _, ok := openingFence(line); ok {
+	if _, ok := mdfence.Open(line); ok {
 		return true
 	}
 	if openHTMLBlock(line, true) != htmlNone || forkSpacedCloseTag(line) {

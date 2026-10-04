@@ -1,4 +1,4 @@
-//go:build unix || windows
+//go:build unix || windows || plan9
 
 package build
 
@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,9 +16,7 @@ import (
 )
 
 func TestBuild_SingleOutputCp(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("cp is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "cp")
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "src.txt"), []byte("hello"), 0o644))
 
@@ -40,9 +37,7 @@ func TestBuild_SingleOutputCp(t *testing.T) {
 }
 
 func TestBuild_MultiOutputTee(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("tee/sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	bindir := t.TempDir()
 	// Script writes "payload" to every argument (each staged output).
@@ -67,9 +62,7 @@ func TestBuild_MultiOutputTee(t *testing.T) {
 }
 
 func TestBuild_ParamSubstitutionNoShell(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 
 	// A param value containing shell metacharacters must be passed as a
@@ -95,9 +88,7 @@ func TestBuild_ParamSubstitutionNoShell(t *testing.T) {
 }
 
 func TestBuild_InputGlobResolves(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("cat is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "src"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "src/a.txt"), []byte("A"), 0o644))
@@ -123,9 +114,7 @@ func TestBuild_InputGlobResolves(t *testing.T) {
 }
 
 func TestBuild_RecipeDoesNotProduceOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	bindir := t.TempDir()
 	// Recipe exits 0 but never writes the staged output file.
@@ -143,9 +132,7 @@ func TestBuild_RecipeDoesNotProduceOutput(t *testing.T) {
 }
 
 func TestBuild_VerifyNoUndeclaredWritesSnapshotError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	// Fail only the SECOND snapshot call (the after-snapshot inside
 	// verifyNoUndeclaredWrites); the first (before-snapshot) succeeds so the
 	// recipe runs and we reach the after-snapshot error branch.
@@ -175,9 +162,7 @@ func TestBuild_VerifyNoUndeclaredWritesSnapshotError(t *testing.T) {
 }
 
 func TestBuild_UndeclaredWriteDetected(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	// The output parent is root itself (output is just "dst.txt"). The recipe
 	// copies src to the staged output ($1) and also writes an undeclared
@@ -203,9 +188,7 @@ func TestBuild_UndeclaredWriteDetected(t *testing.T) {
 }
 
 func TestBuild_LstatErrorRefusesOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "cp")
 	old := lstatFn
 	lstatFn = func(string) (os.FileInfo, error) { return nil, os.ErrPermission }
 	t.Cleanup(func() { lstatFn = old })
@@ -226,9 +209,7 @@ func TestBuild_LstatErrorRefusesOutput(t *testing.T) {
 }
 
 func TestBuild_FailingRecipeLeavesNoPartialOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 
 	// Recipe writes the first output then exits non-zero. No final output
@@ -249,9 +230,7 @@ func TestBuild_FailingRecipeLeavesNoPartialOutput(t *testing.T) {
 }
 
 func TestBuild_FailingRecipePreservesExistingOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sh is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "out.txt"), []byte("original"), 0o644))
 
@@ -272,9 +251,7 @@ func TestBuild_FailingRecipePreservesExistingOutput(t *testing.T) {
 }
 
 func TestBuild_Timeout(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("sleep is not available on Windows")
-	}
+	skipWithoutPOSIXTools(t, "sh")
 	root := t.TempDir()
 	bindir := t.TempDir()
 	script := writeScript(t, bindir, "slow.sh", `sleep 5`)

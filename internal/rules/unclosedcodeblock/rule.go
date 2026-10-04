@@ -1,7 +1,10 @@
 package unclosedcodeblock
 
 import (
+	"bytes"
+
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/internal/rule"
 	"github.com/jeduden/mdsmith/internal/rules/fencepos"
 	"github.com/jeduden/mdsmith/pkg/goldmark/ast"
@@ -90,17 +93,44 @@ var (
 )
 
 // hasClosingFence checks whether a fenced code block has a proper closing
-// fence line after its content. A block whose opening fence run cannot
-// be read (a hand-built node) counts as closed, so it is never flagged.
-// The closer is read through the block's containers (fencepos.CloseRun),
-// so a fence behind a list or block-quote marker is judged like a
-// top-level one, and a line that ends its container never closes it.
+// fence line after its content.
 func hasClosingFence(f *lint.File, fcb *ast.FencedCodeBlock) bool {
-	if _, n, _ := fencepos.OpenRun(f.Source, fcb); n == 0 {
+	openStart, openEnd := fencepos.OpenLineRange(f.Source, fcb)
+	if openStart >= len(f.Source) {
 		return true
 	}
-	_, _, closed := fencepos.CloseRun(f.Source, fcb)
-	return closed
+
+	// The parser already placed the fence, so its line is read past its
+	// indentation: a fence nested in a list item sits at the item's
+	// content column, four or more columns in, and is still judged. A
+	// fence behind a list marker or quote prefix is no opener here, and
+	// is not judged.
+	open, ok := mdfence.Open(trimIndent(f.Source[openStart:openEnd]))
+	if !ok {
+		return true
+	}
+
+	closeStart, closeEnd := fencepos.CloseLineRange(f.Source, fcb, openEnd)
+
+	// No closing line exists (at or past EOF).
+	if closeStart >= len(f.Source) {
+		return false
+	}
+
+	// Require a non-empty closing line; the fence characters are validated below.
+	if closeStart == closeEnd {
+		return false
+	}
+	// The line after the content closes the block only when mdfence
+	// reads it as the opener's closer; a container's end can also cut a
+	// fence short, leaving a non-closer there. Like the opener, it is
+	// read past its indentation, which sits at the container's column.
+	return mdfence.Close(trimIndent(f.Source[closeStart:closeEnd]), open)
+}
+
+// trimIndent drops line's leading spaces and tabs.
+func trimIndent(line []byte) []byte {
+	return bytes.TrimLeft(line, " \t")
 }
 
 // enteringKinds is the static node-kind interest CheckNode declares

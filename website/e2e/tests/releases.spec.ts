@@ -24,6 +24,22 @@ test.describe("release notes", () => {
     ).toBeVisible();
   });
 
+  test("top-nav version badge opens that version's release notes", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const badge = page.locator(".topnav-version");
+    const version = (await badge.textContent())?.trim() ?? "";
+    expect(version).toMatch(/^v\d/);
+    await expect(badge).toHaveAttribute("href", `/releases/#${version}`);
+    await badge.click();
+    // Compare path and fragment as strings: a RegExp built from the
+    // version would need full escaping of every metacharacter.
+    await expect(page).toHaveURL(
+      (url) => url.pathname === "/releases/" && url.hash === `#${version}`,
+    );
+  });
+
   test("footer keeps a direct link to GitHub Releases", async ({ page }) => {
     await page.goto("/");
     await expect(

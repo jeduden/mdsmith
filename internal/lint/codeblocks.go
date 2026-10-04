@@ -141,6 +141,10 @@ func collectCodeBlockLinesInto(n ast.Node, f *File, lines map[int]struct{}) {
 // addFencedCodeBlockLines marks the opening fence line, all content lines,
 // and the closing fence line.
 func addFencedCodeBlockLines(f *File, fcb *ast.FencedCodeBlock, set map[int]struct{}) {
+	// Determine the opening fence line by looking at the node's info or
+	// the first content line. The opening fence is always the line before
+	// the first content line (or, when there are no content lines, we find
+	// it via the Info segment).
 	openLine := FindFencedOpenLine(f, fcb)
 	if openLine > 0 {
 		set[openLine] = struct{}{}
@@ -173,19 +177,31 @@ func addFencedCodeBlockLines(f *File, fcb *ast.FencedCodeBlock, set map[int]stru
 }
 
 // FindFencedOpenLine returns the 1-based line number of the opening
-// fence. The parser records the opener's offset as the node position,
-// so the line holding it is the opening fence line for every parsed
-// block — with or without an info string or content, at top level or
-// inside a list item or block quote (fencepos.OpenLineRange reads the
-// same position). Returns 0 only for a node without a position inside
-// the source (one built by hand, not parsed). Callers must NOT clamp 0
-// to 1 for section-range filtering or diagnostic anchoring: clamping
-// would mis-locate the block at the top of the document. See
-// internal/schema.topLevelBlocks for the sibling-derived fallback.
+// fence. Returns 0 when the block has neither an info string nor any
+// content lines — the truly-empty fenced shape that goldmark exposes
+// no source position for. Callers must NOT clamp 0 to 1 for section-
+// range filtering or diagnostic anchoring: clamping would mis-locate
+// the block at the top of the document and silently move any
+// diagnostic to a line that has nothing to do with the source. The
+// preferred fallback is sibling-derived inference — see
+// internal/schema.topLevelBlocks for an implementation that walks
+// adjacent blocks to recover a sensible position.
 func FindFencedOpenLine(f *File, fcb *ast.FencedCodeBlock) int {
-	if p := fcb.Pos(); p >= 0 && p < len(f.Source) {
-		return f.LineOfOffset(p)
+	// If the code block has an info string, walk backwards from it to find
+	// the start of the line.
+	if fcb.Info != nil {
+		return f.LineOfOffset(fcb.Info.Segment.Start)
 	}
+	// If there are content lines, the opening fence is on the previous line.
+	if fcb.Lines().Len() > 0 {
+		firstContentLine := f.LineOfOffset(fcb.Lines().At(0).Start)
+		if firstContentLine > 1 {
+			return firstContentLine - 1
+		}
+		return 1
+	}
+	// Empty fenced code block with no info: scan from the node's text position.
+	// Fall back to using previous sibling or document start.
 	return 0
 }
 

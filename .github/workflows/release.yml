@@ -742,9 +742,10 @@ jobs:
 
   smoke-test:
     # Wait until every channel is on the new version before checking
-    # — the npm and PyPI registries can take ~60s to surface a fresh
-    # publish, so the channel-specific install commands re-run if the
-    # registry briefly returns the previous version.
+    # — the npm and PyPI registries can take from ~60s to a few
+    # minutes to surface a fresh publish, so the channel-specific
+    # install commands re-run if the registry briefly returns the
+    # previous version.
     needs: [npm, pypi, release]
     strategy:
       fail-fast: false
@@ -757,18 +758,29 @@ jobs:
             # no bash before `apk add` runs.
             container: node:lts
             install: |
-              # npm registry propagation can lag the publish by ~60s,
-              # so retry with backoff until the just-published version
-              # is resolvable. Mirrors the pip retry loop below.
+              # npm registry propagation can lag the publish by a few
+              # minutes, so retry with backoff until the just-published
+              # version is resolvable. `npm install` alone is not
+              # enough: the platform binary is an optionalDependency,
+              # and npm silently skips an optional dep it cannot
+              # resolve yet, so the root installs "successfully" with
+              # no binary (v0.56.0: @mdsmith/cli was readable ~2 min
+              # before @mdsmith/linux-x64). Only count an attempt as
+              # done once the installed shim actually runs.
+              # `--prefer-online` makes npm revalidate its cached
+              # package metadata on every attempt, so a retry cannot be
+              # answered from a stale copy fetched by an earlier one.
               ok=0
-              for attempt in 1 2 3 4 5; do
-                if npm install -g --force "@mdsmith/cli@${VERSION#v}"; then
+              for attempt in 1 2 3 4 5 6 7 8 9 10; do
+                if npm install -g --force --prefer-online \
+                  "@mdsmith/cli@${VERSION#v}" &&
+                  mdsmith version; then
                   ok=1; break
                 fi
-                sleep 15
+                sleep 30
               done
               if [ "$ok" -ne 1 ]; then
-                echo "npm install never succeeded after 5 attempts" >&2
+                echo "npm install never yielded a runnable mdsmith after 10 attempts" >&2
                 exit 1
               fi
             run: mdsmith version
@@ -791,7 +803,11 @@ jobs:
               fi
             run: mdsmith version
           - channel: mise
-            container: jdxcode/mise:latest
+            # The `debian` tag: since 2026.10.1 `jdxcode/mise:latest`
+            # is a minimal image with no `tail`, so the Actions runner
+            # cannot start it as a job container (it runs
+            # `tail -f /dev/null` as the entrypoint).
+            container: jdxcode/mise:debian
             # `github:jeduden/mdsmith@VER` resolves the binary directly
             # off the GitHub release the same `release` job above
             # just published. The shorter `mdsmith@VER` form depends
@@ -827,7 +843,7 @@ jobs:
             # entry starts passing with no workflow change, and
             # `mise-registry` is NOT in RequiredSmokeChannels so the
             # gate never demands it green.
-            container: jdxcode/mise:latest
+            container: jdxcode/mise:debian
             install: |
               ok=0
               for attempt in 1 2 3 4 5; do

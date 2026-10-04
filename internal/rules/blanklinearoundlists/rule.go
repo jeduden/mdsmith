@@ -43,7 +43,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // the same top-level lists goldmark would, with the same first and last
 // source lines, so the blank-line verdict around each is byte-identical.
 func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
-	lists, _ := listscan.Parse(f.Lines)
+	lists := listscan.ParseLists(f.Lines)
 	codeLines := lint.CollectCodeBlockLines(f)
 	var diags []lint.Diagnostic
 	for _, l := range lists {

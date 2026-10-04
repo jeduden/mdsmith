@@ -4,13 +4,6 @@ summary: Move a Markdown file and rewrite every reference to it — incoming lin
 ---
 # `mdsmith move`
 
-> **Unreleased.** `move` landed after v0.55.1, so the npm, PyPI,
-> and GitHub release binaries at that version answer
-> `unknown command "move"`. It ships with the next release; until
-> then, build from `main` with
-> `go install github.com/jeduden/mdsmith/cmd/mdsmith@main`.
-> Delete this note when a release includes the command.
-
 Relocate a Markdown file and rewrite every reference in one
 step, so no link breaks in either direction. `move` and
 [`rename`](rename.md) are two verbs over one refactor engine:
@@ -118,21 +111,48 @@ cross-directory move, check them by hand.
   `\` just before the `#` or `?` that ends the path, as in
   `a.md\#x`, only escapes that byte, so such a link is repointed
   and keeps its `\`.
-- **Ambiguous wikilinks.** When another Markdown file shares the
-  old or the new basename stem, no `[[stem]]` is rewritten,
-  because the rewrite could point it at the wrong file. For a new
-  name with another extension, such as `guide.mdx`, a listed file
-  that already has that name blocks the rewrite. Only files the
-  `files:` patterns match are checked, so a same-named image or
-  other unlisted file does not block it. Check such a move with
-  `--dry-run`.
+- **Ambiguous wikilinks.** A `[[stem]]` reads the basename
+  alone, folder prefix or not. When several Markdown files share
+  the stem, it reaches the shallowest one, then the first by
+  path, with capitals before lowercase letters, so `Docs/a.md`
+  comes before `archive/a.md`.
+  If that file is not the one you move, no `[[stem]]` is
+  rewritten, because each one still reaches that other file. If
+  it is, every `[[stem]]` follows the move, except one whose
+  folder prefix names the folder of another file with the stem,
+  such as `[[ref/guide]]` for `ref/guide.md`. That link already
+  names its file, and it reaches that file once yours is gone.
+  The new name gets the same check: when a file that already has
+  the new stem comes before the destination, no `[[stem]]` is
+  rewritten, because the new name would reach that file. When the
+  destination comes first, the move also takes over that file's
+  links. For a new name with another extension, such as
+  `guide.mdx`, the check reads files with that exact name, since
+  `[[guide.mdx]]` reads it by name. The check reads the files a
+  wikilink resolves against: every file under the workspace root
+  except `.git` and `node_modules`, whatever the `files:`
+  patterns or `.gitignore` say. So a gitignored
+  `archive/guide.md` blocks the rewrite for a move of
+  `docs/guide.md`, and an unlisted `logo.png` blocks it for a
+  move to `docs/logo.png`. A `node_modules/pkg/README.md` does
+  not block a move of `docs/api/v1/readme.md`, though it is
+  shallower. When another file has the stem, a source path typed
+  in other letter case than on disk, such as `Docs/guide.md` for
+  `docs/guide.md`, also blocks the rewrite: the check cannot tell
+  it is the same file. A move that keeps the stem rewrites
+  nothing, but it can still change which file the stem reaches.
+  Moving the file a `[[guide]]` reaches below another `guide.md`
+  hands its links to that file. Check such a move with `--dry-run`.
 - **Wikilinks to a name they cannot reach.** A move to a name
   with no extension, such as `COPYING`, leaves every `[[stem]]`
   as written, because a bare `[[name]]` finds only Markdown
   files. So does a new name that a wikilink cannot spell: an
   empty stem such as `.md`, a `#`, `|`, `[`, or `]` as in `C#.md`,
   a backtick, a line break, or a name that ends with a space.
-  Those links break. A name that starts with a space, or reads as
+  So does a move into `.git` or `node_modules`, which a wikilink
+  never searches. Those links break. A move out of one of them
+  also leaves `[[stem]]` as written, since no wikilink reached
+  the file there. A name that starts with a space, or reads as
   a drive letter such as `C:x.md`, is written as `[[./C:x]]`.
 - **Footnote text that is a lone link.** mdsmith reads
   `[^1]: [z](a.md)` as a footnote definition and leaves its text
@@ -273,12 +293,12 @@ mdsmith move guide.md reference/guide.md --dry-run
   link-reference label inside a file.
 - [`mdsmith deps`](deps.md) — the dependency edges a move walks
   to find incoming references.
-- [`mdsmith lsp`](lsp.md) — the editor surface; an explorer
-  rename fires `workspace/willRenameFiles`, which runs the same
-  move engine. A rename of several files at once plans
-  each move alone. The server drops a link rewrite between
-  two moved files when both moves rewrite it, or when it is
-  a path rewrite in a moved file whose folder changes. A
-  `[[stem]]` rewrite does not depend on the folder, so it is
-  kept. It logs a warning with the count. MDS027 reports the
-  link if it no longer resolves after the move.
+- [`mdsmith lsp`](lsp.md) — the editor surface; an explorer rename fires
+  `workspace/willRenameFiles`, which runs the same move engine. A rename of
+  several files is planned as one batch: a link between two moved files gets
+  one rewrite, from the holder's new folder to the target's new path. A link
+  to a refused move from a moved file, a link in a refused move that leaves
+  its folder, and a `[[stem]]` whose new stem another moved file takes get
+  none. The warning counts each that may miss its file, an unedited `[[stem]]`
+  a moved file takes, and a link to a refused move a moved file displaces,
+  not one from a refused move to an unmoved file. MDS027 flags any that break.

@@ -1,11 +1,11 @@
 package slidevstructure
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -523,43 +523,59 @@ func TestCheckSlide(t *testing.T) {
 	assert.Contains(t, diags[0].Message, "unknown Slidev layout")
 }
 
-// TestCodeFenceOpenRun_BacktickInfoString pins the CommonMark rule that a
-// backtick fence's info string may not contain a backtick, so
-// "```a`b" is paragraph text and opens no fenced code block.
-func TestCodeFenceOpenRun_BacktickInfoString(t *testing.T) {
-	ch, n := codeFenceOpenRun([]byte("```go"))
-	assert.Equal(t, byte('`'), ch)
-	assert.Equal(t, 3, n)
-	ch, n = codeFenceOpenRun([]byte("  ~~~~a`b"))
-	assert.Equal(t, byte('~'), ch, "tilde info may hold a backtick")
-	assert.Equal(t, 4, n)
-	_, n = codeFenceOpenRun([]byte("```a`b"))
-	assert.Equal(t, 0, n)
-	_, n = codeFenceOpenRun([]byte(" ````x`"))
-	assert.Equal(t, 0, n)
-	_, n = codeFenceOpenRun([]byte("``x"))
-	assert.Equal(t, 0, n)
+func TestStepCodeFence(t *testing.T) {
+	steps := func(lines ...string) []bool {
+		var tr mdfence.Tracker
+		got := make([]bool, len(lines))
+		for i, ln := range lines {
+			got[i] = stepCodeFence(&tr, []byte(ln))
+		}
+		return got
+	}
+	assert.Equal(t, []bool{true, true, true, false},
+		steps("```ts", "---", "```", "---"), "backtick fence opens and closes")
+	assert.Equal(t, []bool{true, true, false},
+		steps("~~~ `x`", "~~~", "x"), "tilde info may hold a backtick")
+	assert.Equal(t, []bool{false, false},
+		steps("```ts``` is the language", "---"),
+		"a backtick in a backtick fence's info string makes it inline code")
+	assert.Equal(t, []bool{true, true, true, true, true, false},
+		steps("````md", "```js", "---", "```", "````", "---"),
+		"a shorter inner fence is content, not a closer")
+	assert.Equal(t, []bool{true, true, true, true, false},
+		steps("```", "~~~", "```js", "```\r", "x"),
+		"a different character or an info string does not close; CR does")
+	assert.Equal(t, []bool{false, false}, steps("``", "x"), "two backticks")
+	assert.Equal(t, []bool{true, true, true}, steps("```", "```\u00a0", "---"),
+		"NBSP after the run is not whitespace: the line does not close")
+	assert.Equal(t, []bool{true, true, true, true, true, false},
+		steps("   ```", "x", "\t```", "---", "```", "---"),
+		"up to three columns open; a tab-indented line is no closer")
+	assert.Equal(t, []bool{false, false}, steps("    ```", "---"),
+		"four columns is indented code, not a fence")
+	assert.Equal(t, []bool{false, false}, steps("\t```", "---"),
+		"a tab reaches column four: indented code, not a fence")
 }
 
-// TestCodeFence_ClosesOnlyOnMatchingFence pins that a fenced block
-// closes only on a run of its own character at least as long as the
-// opener with nothing after it. A fence-looking line of the other
-// character, a shorter run, or a run with an info string is content,
-// so a `---` after it is still literal code, not a slide separator.
-func TestCodeFence_ClosesOnlyOnMatchingFence(t *testing.T) {
+// TestHasSlidevMarkers_IndentedFenceIsNoFence pins that a fence-like
+// line indented four or more columns opens no fence, so a later `---`
+// or slot marker still counts — after a blank line (indented code) and
+// right after paragraph text (continuation text).
+func TestHasSlidevMarkers_IndentedFenceIsNoFence(t *testing.T) {
 	for _, src := range []string{
-		"~~~md\n```\n---\n```\n~~~\n",
-		"````md\n```\n---\n````\n",
-		"```\n```js\n---\n```\n",
-		"```md\n~~~\n::left::\n```\n",
+		"# A\n\n    ```\n\n---\n",
+		"Para\n    ```\n---\n",
+		"Para\n\t```\n::right::\n",
 	} {
-		lines := bytes.Split([]byte(src), []byte("\n"))
-		assert.False(t, hasSlidevMarkers(lines), src)
+		assert.True(t, hasSlidevMarkers(splitLines(src)), "%q", src)
 	}
+}
 
-	// The tilde block shows a nested backtick fence around a `---`;
-	// only the real separator after it splits the deck.
-	src := "# A\n\n~~~md\n```\n---\n```\n~~~\n\n---\n\n# B\n"
-	slides := parseSlides(bytes.Split([]byte(src), []byte("\n")))
-	assert.Len(t, slides, 2)
+func TestParseSlides_NestedFenceKeepsSeparatorLiteral(t *testing.T) {
+	// A four-backtick fence showing a three-backtick example keeps the
+	// inner `---` literal: it is neither a marker nor a slide boundary.
+	src := "# A\n\n````md\n```js\n---\n```\n````\n\nProse.\n"
+	lines := splitLines(src)
+	assert.False(t, hasSlidevMarkers(lines))
+	assert.Len(t, parseSlides(lines), 1)
 }

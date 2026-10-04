@@ -2,10 +2,12 @@ package listscan
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/rules/astutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // split converts a string to the lines slice Parse expects (bytes.Split on "\n").
@@ -51,32 +53,6 @@ func TestOrderedInfo(t *testing.T) {
 	// No whitespace after delimiter.
 	_, ok = orderedInfo([]byte("1.x"), 0)
 	assert.False(t, ok, "no space after delimiter must fail")
-}
-
-// TestOpeningFenceRel covers short-fence and backtick-in-info branches.
-func TestOpeningFenceRel(t *testing.T) {
-	// Only 2 backticks — too short (need 3+).
-	_, ok := openingFenceRel([]byte("``text"), 0, 0)
-	assert.False(t, ok, "2-backtick fence must fail")
-	// Backtick in info string invalidates a backtick fence.
-	_, ok = openingFenceRel([]byte("```go`"), 0, 0)
-	assert.False(t, ok, "backtick in info string must fail")
-	// Tilde fence with 3 tildes is valid (exercises the tilde path).
-	fi, ok := openingFenceRel([]byte("~~~"), 0, 0)
-	assert.True(t, ok, "3-tilde fence must succeed")
-	assert.Equal(t, byte('~'), fi.char)
-	// indent >= len(line) returns false.
-	_, ok = openingFenceRel([]byte("  "), 2, 0)
-	assert.False(t, ok, "indent at EOL must fail")
-}
-
-// TestClosingFence covers the over-indented branch.
-func TestClosingFence(t *testing.T) {
-	fi := fenceInfo{char: '`', length: 3, baseCol: 0}
-	// 4 spaces past baseCol is too far — not a closing fence.
-	assert.False(t, closingFence([]byte("    ```"), fi))
-	// Exact match closes.
-	assert.True(t, closingFence([]byte("```"), fi))
 }
 
 // TestParse_LazyParaContinuation checks that a bare continuation line at
@@ -126,4 +102,48 @@ func TestParser_IsSetextUnderline(t *testing.T) {
 	assert.True(t, item.isSetextUnderline([]byte("  --"), 2))
 	assert.False(t, item.isSetextUnderline([]byte("--"), 0), "a lazy line is no underline")
 	assert.False(t, item.isSetextUnderline([]byte("      --"), 6))
+}
+
+// ParseLists must return the same lists as Parse without building the
+// flat item slice (docs/development/high-performance-go.md, "Skip work
+// you don't need").
+func TestParseLists_MatchesParseLists(t *testing.T) {
+	src := "- a\n  - b\n  - c\n- d\n  - e\n1. x\n2. y\n"
+	lines := bytes.Split([]byte(src), []byte("\n"))
+	want, _ := Parse(lines)
+	got := ParseLists(lines)
+	require.Equal(t, want, got)
+}
+
+// A flat item slice over nested lists must stay in document order.
+func TestParse_FlatItemsInDocumentOrder(t *testing.T) {
+	var sb strings.Builder
+	for i := 0; i < 50; i++ {
+		sb.WriteString("- a\n  - b\n")
+	}
+	_, items := Parse(bytes.Split([]byte(sb.String()), []byte("\n")))
+	require.Len(t, items, 100)
+	for i := 1; i < len(items); i++ {
+		require.Less(t, items[i-1].Line, items[i].Line)
+	}
+}
+
+func BenchmarkParse_NestedList(b *testing.B) {
+	var sb strings.Builder
+	for i := 0; i < 1000; i++ {
+		sb.WriteString("- a\n  - b\n")
+	}
+	lines := bytes.Split([]byte(sb.String()), []byte("\n"))
+	b.ReportAllocs()
+	for b.Loop() {
+		Parse(lines)
+	}
+}
+
+// ParseLists must not build the flat item slice that Parse builds.
+func TestParseLists_SkipsFlatSlice(t *testing.T) {
+	lines := split(strings.Repeat("- a\n  - b\n", 20))
+	parseAllocs := testing.AllocsPerRun(20, func() { Parse(lines) })
+	listsAllocs := testing.AllocsPerRun(20, func() { ParseLists(lines) })
+	assert.Less(t, listsAllocs, parseAllocs)
 }

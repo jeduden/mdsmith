@@ -1,6 +1,10 @@
 package lint
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/jeduden/mdsmith/internal/mdfence"
+)
 
 // LineClass is the flat Layer-0 classification of one source line. It is
 // the per-line product of ClassifyLines — a node-tree-free alternative to
@@ -146,10 +150,8 @@ type lc0Pass struct {
 	// blanks into the block but drops trailing ones.
 	pendingBlanks []int
 
-	inFence       bool
-	fenceChar     byte
-	fenceLen      int
-	fenceOpenLine int // 1-based
+	fence         mdfence.Fence // the open fence; the zero Fence when none is open (see inFence)
+	fenceOpenLine int           // 1-based
 
 	inHTML   bool     // inside an HTML block
 	htmlKind htmlKind // how the open HTML block ends
@@ -172,7 +174,7 @@ func (p *lc0Pass) run() {
 	for i := start; i < len(p.lines); i++ {
 		p.classifyLine(i)
 	}
-	if p.inFence {
+	if p.inFence() {
 		p.finishFence(0) // unclosed fence: runs to EOF
 	}
 }
@@ -218,11 +220,11 @@ func (p *lc0Pass) classifyLine(i int) {
 	// block at the boundary (no lazy continuation for code/HTML blocks), so
 	// the classifier closes it too, then reclassifies this line at the
 	// reduced container depth.
-	if (p.inFence || p.inHTML) && matched < p.openBlockDepth {
+	if (p.inFence() || p.inHTML) && matched < p.openBlockDepth {
 		p.closeBlockAtBoundary(ln)
 	}
 
-	if p.inFence {
+	if p.inFence() {
 		p.handleFenceBody(ln, rest)
 		return
 	}
@@ -256,9 +258,9 @@ func (p *lc0Pass) markBlank(i, ln int) {
 // ended just before ln (the goldmark phantom-close behaviour finishFence
 // already implements); an HTML block simply ends (its lines are never code).
 func (p *lc0Pass) closeBlockAtBoundary(ln int) {
-	if p.inFence {
+	if p.inFence() {
 		p.finishFence(ln)
-		p.inFence = false
+		p.fence = mdfence.Fence{}
 		return
 	}
 	p.endHTMLBlock()
@@ -277,10 +279,10 @@ func trimTrailingCR(b []byte) []byte {
 // close fence ends the block, anything else is an in-code content line.
 func (p *lc0Pass) handleFenceBody(ln int, rest []byte) {
 	p.out.classes[ln-1] = LineInCode
-	if isFenceClose(rest, p.fenceChar, p.fenceLen) {
+	if mdfence.Close(rest, p.fence) {
 		p.out.classes[ln-1] = LineFenceClose
 		p.finishFence(ln)
-		p.inFence = false
+		p.fence = mdfence.Fence{}
 	}
 }
 
@@ -382,7 +384,7 @@ func (p *lc0Pass) handleContent(i, ln int, line []byte, off int, rest []byte) {
 		p.prevParagraph = false
 		p.endIndentRun()
 	case indent <= 3 && p.tryOpenFence(ln, rest):
-		// tryOpenFence set inFence and recorded the open line.
+		// tryOpenFence recorded the open fence and its line.
 		p.prevParagraph = false
 		p.endIndentRun()
 	case indent <= 3 && p.tryStartHTML(i, rest):
@@ -512,16 +514,28 @@ func (c lc0Container) consume(line []byte, pos int) (int, bool) {
 	return j, true
 }
 
+// inFence reports whether a fenced code block is open: tryOpenFence set
+// p.fence and no close or container boundary has reset it yet.
+func (p *lc0Pass) inFence() bool { return p.fence.Char != 0 }
+
 // tryOpenFence opens a fenced code block when rest is an opening fence.
 // It records the open line so finishFence can mark the block as a unit.
+// rest ends where line ln ends, so on the source's final line with no
+// newline it reads the info string as goldmark does (mdfence.OpenFinal).
+// classifyLine trimmed a trailing "\r" off rest, but goldmark counts that
+// "\r" among the bytes after the run, so a final line ending in "\r"
+// keeps its one-byte info string and is not passed as final.
 func (p *lc0Pass) tryOpenFence(ln int, rest []byte) bool {
-	ch, n, ok := detectFenceOpen(rest)
+	final := ln == FinalLineNoEOL(p.lines)
+	if final {
+		raw := p.lines[ln-1] // non-empty: FinalLineNoEOL returned ln
+		final = raw[len(raw)-1] != '\r'
+	}
+	fence, ok := mdfence.OpenFinal(rest, final)
 	if !ok {
 		return false
 	}
-	p.inFence = true
-	p.fenceChar = ch
-	p.fenceLen = n
+	p.fence = fence
 	p.fenceOpenLine = ln
 	p.openBlockDepth = len(p.stack)
 	p.out.classes[ln-1] = LineFenceOpen
@@ -529,9 +543,9 @@ func (p *lc0Pass) tryOpenFence(ln int, rest []byte) bool {
 }
 
 // finishFence marks the just-closed (or EOF-terminated) fenced block's
-// line set, mirroring lint.addFencedCodeBlockLines byte-for-byte: the
-// opening fence, every content line, and the closing fence (an empty
-// fence included — the parser records every opener's position). closeLine is the 1-based close-fence line, or 0
+// line set, mirroring lint.addFencedCodeBlockLines byte-for-byte —
+// including goldmark's quirk that an empty fence with no info string
+// contributes no lines. closeLine is the 1-based close-fence line, or 0
 // when the fence runs to EOF unclosed.
 func (p *lc0Pass) finishFence(closeLine int) {
 	o := p.fenceOpenLine
@@ -542,10 +556,14 @@ func (p *lc0Pass) finishFence(closeLine int) {
 	case len(p.lines) > 0 && len(p.lines[len(p.lines)-1]) == 0:
 		// Unclosed fence: the trailing empty element bytes.Split yields
 		// for the file's final newline is not a line in goldmark's model,
-		// so it is not a content line.
+		// so it is not a content line. Excluding it reproduces goldmark's
+		// empty-unclosed-fence quirk (no info, no content -> no lines).
 		contentTo = len(p.lines) - 1
 	}
 	hasContent := contentTo >= o+1
+	if !hasContent && !p.fence.HasInfo {
+		return // goldmark exposes no source position for this empty fence
+	}
 	p.markCode(o)
 	for k := o + 1; k <= contentTo; k++ {
 		p.markCode(k)

@@ -391,6 +391,9 @@ func coreSnippets() map[string]string {
 		"nested-then-fence-outer":     "- a\n  - b\n\n  ```\n  c\n  ```\n",
 		"para-blank-para-nested":      "- a\n\n  more\n\n  - sub\n",
 		"tilde-fence-in-item":         "- a\n\n  ~~~\n  x\n  ~~~\n\n- b\n",
+		// A tab reaches column four, two past the item's content column,
+		// so the tab-indented line closes the item's fence.
+		"tab-closer-in-item": "- a\n\n  ```\n  x\n\t```\n\n- b\n",
 	}
 }
 

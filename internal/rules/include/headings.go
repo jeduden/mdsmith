@@ -1,29 +1,8 @@
 package include
 
 import (
-	"regexp"
 	"strings"
 )
-
-// atxRe matches an ATX heading line: one or more '#' followed by a space or end of line.
-var atxRe = regexp.MustCompile(`^(#{1,6})([ \t].*)?$`)
-
-// setextH1Re matches a setext h1 underline: one or more '=' characters.
-var setextH1Re = regexp.MustCompile(`^=+\s*$`)
-
-// setextH2Re matches a setext h2 underline: one or more '-' characters.
-var setextH2Re = regexp.MustCompile(`^-+\s*$`)
-
-// fenceOpenMarker returns the fence marker run when line opens a
-// fenced code block, or "" when it does not. Unlike the CommonMark
-// spec (which limits indent to 3 spaces), all leading whitespace is
-// stripped so that fenced blocks inside list items are also detected
-// and skipped. The opener rule is countFenceRun's, shared with
-// rewriteSkippingCode: "```a`b" is paragraph text, not a fence.
-func fenceOpenMarker(line string) string {
-	trimmed := strings.TrimLeft(line, " \t")
-	return trimmed[:countFenceRun(trimmed)]
-}
 
 // adjustHeadings shifts all heading levels in content so that the minimum
 // heading level becomes parentLevel+1. If parentLevel is 0 or the computed
@@ -87,28 +66,14 @@ func adjustHeadingsToLevel(content string, target int) string {
 }
 
 // findMinHeadingLevel scans lines and returns the minimum heading level found,
-// ignoring lines inside fenced code blocks. Returns 0 if no headings are found.
+// ignoring lines inside fenced code blocks, HTML blocks, and processing
+// instructions. Returns 0 if no headings are found.
 func findMinHeadingLevel(lines []string) int {
 	minLevel := 0
-	inFence := false
-	fenceMarker := ""
+	var scan headingScan
 
-	for i, line := range lines {
-		if inFence {
-			if isClosingFence(line, fenceMarker) {
-				inFence = false
-				fenceMarker = ""
-			}
-			continue
-		}
-
-		if m := fenceOpenMarker(line); m != "" {
-			inFence = true
-			fenceMarker = m
-			continue
-		}
-
-		level := headingLevel(lines, i, line)
+	for _, line := range lines {
+		level, _ := scan.step(line)
 		if level > 0 && (minLevel == 0 || level < minLevel) {
 			minLevel = level
 		}
@@ -117,111 +82,123 @@ func findMinHeadingLevel(lines []string) int {
 	return minLevel
 }
 
-// headingLevel returns the heading level of line at index i, or 0 if not a heading.
-func headingLevel(lines []string, i int, line string) int {
-	if m := atxRe.FindStringSubmatch(line); m != nil {
-		return len(m[1])
+// setextLevel returns 1 when line is a setext h1 underline (`=` run),
+// 2 when it is a setext h2 underline (`-` run), and 0 otherwise: up to
+// three spaces, a run of one character, then only whitespace. It reads
+// the bytes directly and bails on the first non-matching byte, since it
+// runs on every line outside a fence.
+func setextLevel(line string) int {
+	i := leadingSpaces(line)
+	if i > 3 || i >= len(line) {
+		return 0
 	}
-	if i > 0 && lines[i-1] != "" {
-		if setextH1Re.MatchString(line) {
-			return 1
-		}
-		if setextH2Re.MatchString(line) {
-			return 2
+	c := line[i]
+	if c != '=' && c != '-' {
+		return 0
+	}
+	for i < len(line) && line[i] == c {
+		i++
+	}
+	for ; i < len(line); i++ {
+		switch line[i] {
+		case ' ', '\t', '\n', '\f', '\r':
+		default:
+			return 0
 		}
 	}
-	return 0
+	if c == '=' {
+		return 1
+	}
+	return 2
+}
+
+// atxHeading reports an ATX heading line as goldmark reads one: up to
+// three spaces of indentation, one to six '#', then whitespace or the
+// line end. It returns the heading level (0 when line is no ATX
+// heading) and the indentation's byte count.
+func atxHeading(line string) (level, indent int) {
+	indent = leadingSpaces(line)
+	if indent > 3 {
+		return 0, 0
+	}
+	n := indent
+	for n < len(line) && line[n] == '#' {
+		n++
+	}
+	level = n - indent
+	if level == 0 || level > 6 {
+		return 0, 0
+	}
+	if n < len(line) {
+		switch line[n] {
+		case ' ', '\t', '\n', '\r':
+		default:
+			return 0, 0
+		}
+	}
+	return level, indent
+}
+
+// leadingSpaces returns the number of leading space bytes of line.
+func leadingSpaces(line string) int {
+	n := 0
+	for n < len(line) && line[n] == ' ' {
+		n++
+	}
+	return n
 }
 
 // applyShift applies the heading level shift to all headings, converting
-// setext headings to ATX when shifted. Lines inside code fences are skipped.
+// setext headings to ATX when shifted. Lines inside code fences, HTML
+// blocks, and processing instructions are kept as they are.
 func applyShift(lines []string, shift int) []string {
 	result := make([]string, 0, len(lines))
-	inFence := false
-	fenceMarker := ""
+	var scan headingScan
 
 	for i, line := range lines {
-		if inFence {
-			if isClosingFence(line, fenceMarker) {
-				inFence = false
-				fenceMarker = ""
-			}
+		level, text := scan.step(line)
+		switch {
+		case level == 0:
 			result = append(result, line)
-			continue
-		}
-
-		if m := fenceOpenMarker(line); m != "" {
-			inFence = true
-			fenceMarker = m
-			result = append(result, line)
-			continue
-		}
-
-		// Check setext heading (must check before appending the line,
-		// because we may need to replace the previous line and skip this one).
-		if i > 0 && !isResultPrevLineFence(result) {
-			prevOriginal := lines[i-1]
-			if prevOriginal != "" {
-				if setextH1Re.MatchString(line) {
-					newLevel := clampLevel(1 + shift)
-					// Replace previous line (the heading text) with ATX heading.
-					result[len(result)-1] = strings.Repeat("#", newLevel) + " " + prevOriginal
-					// Skip the underline.
-					continue
-				}
-				if setextH2Re.MatchString(line) {
-					newLevel := clampLevel(2 + shift)
-					result[len(result)-1] = strings.Repeat("#", newLevel) + " " + prevOriginal
-					continue
-				}
-			}
-		}
-
-		// Check ATX heading.
-		if m := atxRe.FindStringSubmatch(line); m != nil {
-			oldLevel := len(m[1])
-			newLevel := clampLevel(oldLevel + shift)
-			rest := m[2]
+		case text > 0:
+			// The scan reports a setext underline only after a paragraph,
+			// whose text lines the previous iterations appended unchanged:
+			// replace them with one ATX heading and drop the underline.
+			heading := strings.Repeat("#", clampLevel(level+shift)) + " " + setextText(lines[i-text:i])
+			result = append(result[:len(result)-text], heading)
+		default:
+			// The scan reported an ATX heading of level '#'s after indent
+			// spaces; keep the indentation and the text after the run.
+			indent := leadingSpaces(line)
+			rest := line[indent+level:]
 			if rest == "" {
 				rest = " "
 			}
-			result = append(result, strings.Repeat("#", newLevel)+rest)
-			continue
+			result = append(result, line[:indent]+strings.Repeat("#", clampLevel(level+shift))+rest)
 		}
-
-		result = append(result, line)
 	}
 
 	return result
 }
 
-// isClosingFence checks if a line closes a code fence opened with the given marker.
-// Leading whitespace is stripped (any amount) to handle fences inside list items.
-// Trailing whitespace, including the "\r" a CRLF file leaves after the
-// "\n" split, is stripped too.
-func isClosingFence(line, marker string) bool {
-	trimmed := strings.TrimLeft(line, " \t")
-	trimmed = strings.TrimRight(trimmed, " \t\r")
-	if len(trimmed) < len(marker) {
-		return false
+// setextText returns the text of a setext heading whose paragraph
+// lines are text, as one ATX heading line. A single line is kept as it
+// is. Several lines, which an ATX heading cannot hold, are trimmed of
+// surrounding spaces and tabs and joined by a space, as a renderer joins
+// a heading's soft line breaks; a CRLF ending on the last line is kept.
+func setextText(text []string) string {
+	if len(text) == 1 {
+		return text[0]
 	}
-	ch := marker[0]
-	for _, c := range []byte(trimmed) {
-		if c != ch {
-			return false
-		}
+	parts := make([]string, len(text))
+	for i, l := range text {
+		parts[i] = strings.Trim(l, " \t\r")
 	}
-	return true
-}
-
-// isResultPrevLineFence checks if the last line appended to result was a code
-// fence opening. This prevents treating lines after a fence marker as setext.
-// This is a conservative check; it won't catch all edge cases.
-func isResultPrevLineFence(result []string) bool {
-	if len(result) == 0 {
-		return false
+	joined := strings.Join(parts, " ")
+	if strings.HasSuffix(text[len(text)-1], "\r") {
+		joined += "\r"
 	}
-	return fenceOpenMarker(result[len(result)-1]) != ""
+	return joined
 }
 
 // clampLevel ensures a heading level is between 1 and 6.

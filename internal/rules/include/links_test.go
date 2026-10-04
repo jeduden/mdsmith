@@ -1,7 +1,6 @@
 package include
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -230,28 +229,18 @@ func TestAdjustLinks_Skip(t *testing.T) {
 	}
 }
 
-// TestCountFenceRun pins the opener rule rewriteSkippingCode mirrors:
-// a run of at least three backticks or tildes, where a backtick run
-// may not be followed by another backtick on the line (CommonMark
-// forbids backticks in a backtick fence's info string).
-func TestCountFenceRun(t *testing.T) {
-	assert.Equal(t, 3, countFenceRun("```go\n"))
-	assert.Equal(t, 4, countFenceRun("~~~~a`b\n"), "tilde info may hold a backtick")
-	assert.Zero(t, countFenceRun("``x\n"))
-	assert.Zero(t, countFenceRun("```a`b\n"))
-	assert.Zero(t, countFenceRun("text"))
+func TestAdjustLinks_BacktickInInfoIsNotAFence(t *testing.T) {
+	// A backtick run whose info string holds a backtick is not a fence
+	// opener (CommonMark), so links after it must still be rewritten.
+	in := "```x``` is code.\n[a](b.md)\n"
+	got := adjustLinks(in, "sub/inc.md", "main.md")
+	assert.Equal(t, "```x``` is code.\n[a](sub/b.md)\n", got)
 }
 
-// TestRewriteSkippingCode_BacktickInfoStringIsNotFence checks that a
-// "```a`b" line does not open a fence, so later lines are rewritten.
-func TestRewriteSkippingCode_BacktickInfoStringIsNotFence(t *testing.T) {
-	got := rewriteSkippingCode("```a`b\nx\n", strings.ToUpper)
-	assert.Equal(t, "```A`B\nX\n", got)
-}
-
-// TestRewriteSkippingCode_CRLFClosingFence checks that a CRLF closer
-// ends the fence, so lines after the block are rewritten.
-func TestRewriteSkippingCode_CRLFClosingFence(t *testing.T) {
-	got := rewriteSkippingCode("```\r\ncode\r\n```\r\nx\r\n", strings.ToUpper)
-	assert.Equal(t, "```\r\ncode\r\n```\r\nX\r\n", got)
+func TestAdjustLinks_CRLFFenceCloses(t *testing.T) {
+	// A CRLF closing fence must close the block so links after it
+	// are still rewritten.
+	in := "```\r\ncode\r\n```\r\n[a](b.md)\r\n"
+	got := adjustLinks(in, "sub/inc.md", "main.md")
+	assert.Equal(t, "```\r\ncode\r\n```\r\n[a](sub/b.md)\r\n", got)
 }

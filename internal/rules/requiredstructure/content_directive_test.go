@@ -159,6 +159,28 @@ func TestParseSchema_FenceCloseRejectsTrailingContent(t *testing.T) {
 		"a ``` with trailing text must not close the fence; the directive line is fence content")
 }
 
+// TestParseSchema_FenceCloseRejectsNonASCIISpace locks down that only
+// CommonMark whitespace may follow a closing run: an NBSP after the
+// run is content, so the line does not close the fence and the
+// directive line below it is still fence content.
+func TestParseSchema_FenceCloseRejectsNonASCIISpace(t *testing.T) {
+	schemaSrc := "# {id}\n\n## Tagline\n\n```\n```\u00a0\n<?content bind: tag-{inner} ?>\n```\n"
+	tmpl, err := parseSchema([]byte(schemaSrc), "", 0)
+	require.NoError(t, err)
+	assertHasInBodySyncPoint(t, tmpl, "inner",
+		"a ``` followed by an NBSP must not close the fence; the directive line is fence content")
+}
+
+// TestParseSchema_NBSPIndentedMarkerDoesNotOpenFence locks down that
+// only spaces count as fence indentation: a marker after an NBSP is
+// paragraph text, so the directive that follows is a real PI.
+func TestParseSchema_NBSPIndentedMarkerDoesNotOpenFence(t *testing.T) {
+	schemaSrc := "# {id}\n\n## Tagline\n\n\u00a0```\n\n<?content bind: tag-{inner} ?>\n"
+	tmpl, err := parseSchema([]byte(schemaSrc), "", 0)
+	require.NoError(t, err)
+	assertNoInBodySyncPoints(t, tmpl)
+}
+
 // TestParseSchema_IndentedFenceMarkerDoesNotOpenFence locks down the
 // indent half of the open rule: a 4-space-indented marker is indented
 // code to the parser, so it must not flip the scanner into fence
@@ -168,6 +190,22 @@ func TestParseSchema_IndentedFenceMarkerDoesNotOpenFence(t *testing.T) {
 	tmpl, err := parseSchema([]byte(schemaSrc), "", 0)
 	require.NoError(t, err)
 	assertNoInBodySyncPoints(t, tmpl)
+}
+
+// TestParseSchema_TabIndentedFenceMarkers locks down that a tab before
+// a marker reaches column four: a tab-indented marker neither opens
+// nor closes a fence.
+func TestParseSchema_TabIndentedFenceMarkers(t *testing.T) {
+	open := "# {id}\n\n## Tagline\n\n\t```\n\n<?content bind: tag-{inner} ?>\n"
+	tmpl, err := parseSchema([]byte(open), "", 0)
+	require.NoError(t, err)
+	assertNoInBodySyncPoints(t, tmpl)
+
+	closing := "# {id}\n\n## Tagline\n\n```\n  \t```\n<?content bind: tag-{inner} ?>\n```\n"
+	tmpl, err = parseSchema([]byte(closing), "", 0)
+	require.NoError(t, err)
+	assertHasInBodySyncPoint(t, tmpl, "inner",
+		"a tab-indented ``` must not close the fence; the directive line is fence content")
 }
 
 // TestParseSchema_IndentedDirectiveExampleStaysBodyText is the
@@ -180,45 +218,6 @@ func TestParseSchema_IndentedDirectiveExampleStaysBodyText(t *testing.T) {
 	require.NoError(t, err)
 	assertHasInBodySyncPoint(t, tmpl, "id",
 		"an indented directive example is body text; its {id} must be collected")
-}
-
-// TestFenceOpenRun pins the open rule the scanner mirrors: a run of
-// at least three identical markers with at most three spaces of
-// indentation.
-func TestFenceOpenRun(t *testing.T) {
-	c, n := fenceOpenRun([]byte("```go"), []byte("```go"))
-	assert.Equal(t, byte('`'), c)
-	assert.Equal(t, 3, n)
-	c, n = fenceOpenRun([]byte("~~~~"), []byte("~~~~"))
-	assert.Equal(t, byte('~'), c)
-	assert.Equal(t, 4, n)
-	_, n = fenceOpenRun([]byte("``x``"), []byte("``x``"))
-	assert.Zero(t, n, "a two-marker run is not a fence")
-	_, n = fenceOpenRun([]byte("    ```"), []byte("```"))
-	assert.Zero(t, n, "4-space indent is indented code")
-	_, n = fenceOpenRun([]byte("text"), []byte("text"))
-	assert.Zero(t, n)
-	_, n = fenceOpenRun([]byte("```a`b"), []byte("```a`b"))
-	assert.Zero(t, n, "a backtick info string may not contain a backtick")
-	c, n = fenceOpenRun([]byte("~~~a`b"), []byte("~~~a`b"))
-	assert.Equal(t, byte('~'), c, "a tilde info string may contain a backtick")
-	assert.Equal(t, 3, n)
-}
-
-// TestFenceClose pins the close rule: same character, a run at least
-// as long as the opener, nothing else on the line, indent at most 3.
-func TestFenceClose(t *testing.T) {
-	assert.True(t, fenceClose([]byte("```"), []byte("```"), '`', 3))
-	assert.True(t, fenceClose([]byte("`````"), []byte("`````"), '`', 3),
-		"a longer close run is valid")
-	assert.False(t, fenceClose([]byte("```"), []byte("```"), '`', 4),
-		"shorter than the opener")
-	assert.False(t, fenceClose([]byte("~~~"), []byte("~~~"), '`', 3),
-		"wrong marker character")
-	assert.False(t, fenceClose([]byte("``` x"), []byte("``` x"), '`', 3),
-		"trailing content")
-	assert.False(t, fenceClose([]byte("    ```"), []byte("```"), '`', 3),
-		"4-space indent")
 }
 
 // TestHeadingIndexForLine covers both outcomes: the index of the

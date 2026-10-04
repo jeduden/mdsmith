@@ -56,7 +56,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // ordered-ness, and multi-block classification, so each item's
 // marker-space verdict is byte-identical.
 func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
-	lists, _ := listscan.Parse(f.Lines)
+	lists := listscan.ParseLists(f.Lines)
 	var diags []lint.Diagnostic
 	for _, l := range lists {
 		for _, it := range l.Items {

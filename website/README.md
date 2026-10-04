@@ -144,13 +144,20 @@ release-channel docs, gated against drift in CI:
 `/releases/` lists the notes of every published stable
 release, newest open. Below them come the release
 candidates for versions above the highest stable
-version, each collapsed. Older candidates are left out:
-each candidate's notes repeat every change since the
-last stable release, and that release already lists
-them. Versions are compared, not dates, so a later
-backport of an older line hides no candidate.
+version, each collapsed. Older candidates are left out,
+since the stable release that followed them lists their
+changes. Versions are compared, not dates, so a later
+backport of an older line hides no candidate. Each
+candidate shows only its own changes: the page drops
+the entries its next-older candidate already lists, and
+points its compare link there. Candidates published
+before `release-notes` started each candidate at the
+previous one carry cumulative notes, which this turns
+into deltas.
 Each entry links to its GitHub release for the
-downloads.
+downloads. The top-nav version badge links to
+`/releases/#v<version>`, the entry of the version the
+site is stamped with, and the page opens that card.
 
 - **Page** — `content/releases.md` holds the title,
   summary, and intro. Hugo picks

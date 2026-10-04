@@ -1,7 +1,7 @@
 ---
 id: 2610021917
 title: Replace the per-platform kill maps with a per-recipe group killer
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   `internal/build` passes each recipe's kill state from
@@ -75,18 +75,59 @@ failed.
    `forceLeader()` method that is the leader kill on
    Unix and Windows and a no-op on plan9, where `kill`
    already ends in it. Delete `forceKillLeaderFn` and
-   the shared `exec_leader_kill.go`.
+   the shared `exec_leader_kill.go`. The Unix,
+   Windows, and `exec_other.go` killers embed one
+   `leaderKill` type from `exec_leader.go`, whose
+   `forceLeader` is the single leader-kill body behind
+   the `killLeader` test hook. That file is tagged
+   `!plan9`: there `(*os.Process).Kill` posts a
+   catchable note, so plan9 cannot call it by
+   mistake.
+7. Carry plan
+   [2610021849](2610021849_cancel-recipes-on-cli-interrupt.md)'s
+   second-interrupt escalation through the killer.
+   `kill` takes the `WithForceKill` channel and reports
+   whether it cut the Unix grace short, which replaces
+   `killGroupUntil` and the `killGroupFn` hook. A hook
+   (`sharedGroup`) skips `afterStart` and gets a
+   leader-only killer from `sharedGroupKiller`, which
+   replaces `killLeaderUntil`. On Unix it sends SIGTERM,
+   waits out the grace, then sends SIGKILL to the leader.
+   On Windows and `exec_other.go` targets it is the
+   `leaderKiller` in `exec_leader_only.go`. On plan9 it
+   is a `noteKiller` with no group. Delete
+   `exec_force_other.go`.
 
 ## Acceptance Criteria
 
-- [ ] No global map keyed by `*exec.Cmd` remains in
+- [x] No global map keyed by `*exec.Cmd` remains in
       `internal/build`.
-- [ ] No `forceKillLeaderFn` hook remains, and the
+- [x] No `forceKillLeaderFn` hook remains, and the
       plan9 killer does not kill the leader twice.
-- [ ] The Unix kill-path tests and the plan9 fake-`/proc`
+- [x] The Unix kill-path tests and the plan9 fake-`/proc`
       tests pass unchanged in what they assert.
-- [ ] `GOOS=plan9 go vet ./...`, `GOOS=windows go vet
+- [x] `GOOS=plan9 go vet ./...`, `GOOS=windows go vet
       ./...`, and `GOOS=js GOARCH=wasm go build ./...`
       pass.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+
+## Follow-ups
+
+Round 3 of the code review found two kill races that were
+already on main and need new syscall work, so they are out
+of scope here. They sit in this file, not in plans of their
+own, because `PLAN.md` is at its 300-line limit. Move each
+into a plan once `PLAN.md` has room.
+
+- Windows: `afterStart` in
+  [exec_windows.go](../internal/build/exec_windows.go)
+  assigns the Job Object after `cmd.Start` returns. A child
+  the recipe spawns in that gap is outside the job, so
+  `terminateJob` and `KILL_ON_JOB_CLOSE` miss it. Fixing it
+  needs a suspended start or a job-list process attribute.
+- Unix: when the leader has been reaped, `pgKiller.kill`
+  still signals `-pgid`. If every member has left, the id
+  can be reused as another group's pgid. Fixing it needs
+  `waitid` with `WNOWAIT` so the leader stays unreaped
+  until the group kill.

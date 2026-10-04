@@ -319,4 +319,149 @@ describe.skipIf(skip)("createRuntime", () => {
 
     rtB.dispose();
   });
+
+  test("a createSession that yields no session rejects with a clear error", async () => {
+    // A patched globalThis.Promise can make the engine's createSession
+    // return undefined (Go cannot throw to its caller). createRuntime
+    // must say so up front instead of wrapping undefined and failing on
+    // the first check() far from the cause.
+    const warm = await makeRuntime({}); // ensure the engine is loaded
+    warm.dispose();
+    const factory = (globalThis as unknown as {
+      mdsmith: { createSession: unknown };
+    }).mdsmith;
+    const original = factory.createSession;
+    factory.createSession = () => undefined;
+    let failure: Error | undefined;
+    try {
+      await makeRuntime({});
+    } catch (err) {
+      failure = err as Error;
+    } finally {
+      factory.createSession = original;
+    }
+    expect(failure?.message).toContain("createSession returned no session");
+    expect(failure?.message).toContain("Reflect.construct");
+  });
+
+  test("a createSession that yields an object without check disposes it", async () => {
+    // createRuntime rejects such an object, so nothing else holds it to
+    // dispose; it must release the engine session itself.
+    const warm = await makeRuntime({});
+    warm.dispose();
+    const factory = (globalThis as unknown as {
+      mdsmith: { createSession: unknown };
+    }).mdsmith;
+    const original = factory.createSession;
+    let disposed = 0;
+    factory.createSession = async () => ({ dispose: () => { disposed++; } });
+    let failure: Error | undefined;
+    try {
+      await makeRuntime({});
+    } catch (err) {
+      failure = err as Error;
+    } finally {
+      factory.createSession = original;
+    }
+    expect(failure?.message).toContain("createSession returned no session");
+    expect(disposed).toBe(1);
+  });
+
+  test("a throwing Object.prototype.then getter does not reject createRuntime", async () => {
+    // createRuntime is async, so its own resolve reads `then` on the
+    // SessionRuntime it returns. A page-defined throwing getter there
+    // would reject the call and strand the session the engine created.
+    // The runtime carries its own `then: undefined`, so the lookup ends
+    // before Object.prototype.
+    const warm = await makeRuntime({}); // ensure the engine is loaded
+    warm.dispose();
+    Object.defineProperty(Object.prototype, "then", {
+      configurable: true,
+      get() {
+        throw new Error("then getter");
+      },
+    });
+    let rt: MdsmithRuntime | undefined;
+    let failure: unknown;
+    try {
+      rt = await makeRuntime({});
+    } catch (err) {
+      failure = err;
+    } finally {
+      delete (Object.prototype as { then?: unknown }).then;
+    }
+    expect(failure).toBeUndefined();
+    expect(Object.hasOwn(rt as object, "then")).toBe(true);
+    expect(Object.keys(rt as object)).not.toContain("then");
+    rt?.dispose();
+  });
+
+  test("an Object.defineProperty replaced after load never sees the runtime", async () => {
+    // The runtime hides its `then` through the defineProperty captured
+    // when the module loads, as the engine does. A replacement another
+    // script installs later neither receives the runtime, which holds
+    // the engine session, nor makes createRuntime reject and leave that
+    // session undisposed.
+    const warm = await makeRuntime({}); // ensure the engine is loaded
+    warm.dispose();
+    const original = Object.defineProperty;
+    const seen: unknown[] = [];
+    Object.defineProperty = ((target: unknown) => {
+      seen.push(target);
+      throw new Error("defineProperty");
+    }) as typeof Object.defineProperty;
+    let rt: MdsmithRuntime | undefined;
+    let failure: unknown;
+    try {
+      rt = await makeRuntime({});
+    } catch (err) {
+      failure = err;
+    } finally {
+      Object.defineProperty = original;
+    }
+    expect(failure).toBeUndefined();
+    expect(seen).toEqual([]);
+    expect(Object.hasOwn(rt as object, "then")).toBe(true);
+    rt?.dispose();
+  });
+
+  test("an async method whose Promise the engine cannot build rejects", async () => {
+    // A throwing globalThis.Promise makes the engine's check() return
+    // undefined. The facade must still hand back a Promise that rejects
+    // with a clear error, so `await rt.check(...)` never yields
+    // undefined where the type promises a diagnostic array.
+    const rt = await makeRuntime({});
+    const native = globalThis.Promise;
+    let result: Promise<Diagnostic[]> | undefined;
+    (globalThis as { Promise: unknown }).Promise = function () {
+      throw new TypeError("patched Promise");
+    };
+    try {
+      result = rt.check("a.md", "# A\n");
+    } finally {
+      globalThis.Promise = native;
+    }
+    expect(result).toBeInstanceOf(native);
+    await expect(result).rejects.toThrow("check returned no result");
+    rt.dispose();
+  });
+
+  test("an async method whose Reflect.construct throws names the cause", async () => {
+    // wasm_exec.js builds every Promise through Reflect.construct, so a
+    // throwing one makes the engine's check() return undefined too. The
+    // error names it alongside globalThis.Promise.
+    const rt = await makeRuntime({});
+    const native = Reflect.construct;
+    let result: Promise<Diagnostic[]> | undefined;
+    Reflect.construct = () => {
+      throw new TypeError("patched construct");
+    };
+    try {
+      result = rt.check("a.md", "# A\n");
+    } finally {
+      Reflect.construct = native;
+    }
+    await expect(result).rejects.toThrow("Reflect.construct patched?");
+    rt.dispose();
+  });
 });

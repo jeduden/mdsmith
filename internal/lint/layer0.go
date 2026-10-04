@@ -1,6 +1,10 @@
 package lint
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/jeduden/mdsmith/internal/mdfence"
+)
 
 // BlockKind classifies a Layer 0 block span by its leading construct.
 type BlockKind uint8
@@ -132,19 +136,55 @@ func Layer0(f *File) *Layer0Scan {
 	return f.layer0
 }
 
+// FinalLineNoEOL returns FinalLineNoEOL(f.Lines): the 1-based number of
+// f's last line when the source ends without a newline, else 0.
+func (f *File) FinalLineNoEOL() int { return FinalLineNoEOL(f.Lines) }
+
 // scanLayer0 runs the single forward pass over lines. It pre-sizes both
 // line-set maps to the line count so the common case (most lines in code
 // or PI blocks for a code-heavy file) does not re-grow the map, keeping
 // the scan inside the rule allocation budget.
 func scanLayer0(lines [][]byte) *Layer0Scan {
-	return scanLayer0Depth(lines, 0)
+	return scanLayer0Depth(lines, 0, FinalLineNoEOL(lines))
+}
+
+// FinalLineNoEOL returns the 1-based number of the last of lines when
+// the source ends without a newline (bytes.Split then leaves a non-empty
+// last element), or 0 when it ends with one. goldmark drops a one-byte
+// fence info string on that line (mdfence.OpenFinal), so every scanner
+// that reads fence info asks this one helper.
+func FinalLineNoEOL(lines [][]byte) int {
+	if n := len(lines); n > 0 && len(lines[n-1]) > 0 {
+		return n
+	}
+	return 0
+}
+
+// quoteBodyFinal maps final, the parent scan's 1-based final line with
+// no newline (0 for none), into a block quote's stripped body: it returns
+// the 1-based body line taken from that parent line, or 0. The final
+// line is the source's last line, and body maps parent lines in
+// increasing order, so only the last real body line can come from it;
+// phantom closing-fence slots (nil lines) after it are skipped, however
+// many there are.
+func quoteBodyFinal(body [][]byte, parentLine []int, final int) int {
+	k := len(body) - 1
+	for k >= 0 && body[k] == nil {
+		k--
+	}
+	if k >= 0 && parentLine[k]+1 == final {
+		return k + 1
+	}
+	return 0
 }
 
 // scanLayer0Depth is scanLayer0's depth-tracking core. depth is the
 // number of tryBlockquote recursions already taken to reach lines;
 // tryBlockquote refuses to recurse past maxBlockquoteDepth so a
-// pathologically nested `>` line cannot exhaust the stack.
-func scanLayer0Depth(lines [][]byte, depth int) *Layer0Scan {
+// pathologically nested `>` line cannot exhaust the stack. final is the
+// 1-based number of the line that is the source's last line with no
+// trailing newline, or 0 when lines holds no such line.
+func scanLayer0Depth(lines [][]byte, depth, final int) *Layer0Scan {
 	n := len(lines)
 	l0 := &Layer0Scan{
 		Classes:        make([]lineClass, n),
@@ -156,7 +196,7 @@ func scanLayer0Depth(lines [][]byte, depth int) *Layer0Scan {
 		// dense alternating block/blank layout in one allocation.
 		BlockSpans: make([]BlockSpan, 0, n/2+1),
 	}
-	sc := scanner{lines: lines, l0: l0, depth: depth}
+	sc := scanner{lines: lines, l0: l0, depth: depth, final: final}
 	sc.run()
 	return l0
 }
@@ -177,6 +217,10 @@ type scanner struct {
 	// depth is the number of tryBlockquote recursions taken to reach this
 	// scan. See maxBlockquoteDepth.
 	depth int
+	// final is the 1-based number of the line that is the source's last
+	// line with no trailing newline, or 0 when lines holds none. goldmark
+	// drops a one-byte info string on that line (mdfence.OpenFinal).
+	final int
 }
 
 // run drives the forward pass: a block loop that dispatches on each line's
@@ -266,8 +310,8 @@ func (s *scanner) tryBlockquote() bool {
 	// is still open. A fenced code block inside a quote must keep its `>`
 	// marker on every line — it does not accept lazy continuation — so a
 	// non-marker line while a fence is open ends the quote rather than
-	// extending the code.
-	var openFence *fenceInfo
+	// extending the code. Its zero value (Char == 0) means no fence is open.
+	var openFence mdfence.Fence
 	for s.i < len(s.lines) {
 		if s.trailingEmptyLine(s.i) {
 			break
@@ -279,7 +323,7 @@ func (s *scanner) tryBlockquote() bool {
 		var stripped []byte
 		if paragraphLeadKind(cur) == BlockQuote {
 			stripped = stripQuoteMarker(cur)
-		} else if openFence == nil && isLazyContinuation(cur) {
+		} else if openFence.Char == 0 && isLazyContinuation(cur) {
 			// A non-marker plain-text line lazily continues the quote's open
 			// paragraph; it carries no `>` to strip and maps through
 			// verbatim. Suppressed while a fence is open (see openFence).
@@ -295,8 +339,8 @@ func (s *scanner) tryBlockquote() bool {
 		// Compute the fence-open once and feed both the codeCapable guard
 		// (does the body need a recursive scan?) and the open-fence tracking
 		// (can the next non-marker line lazily continue, or does the fence
-		// forbid it?), so openingFence runs once per body line, not twice.
-		fi, opensFence := openingFence(stripped)
+		// forbid it?), so mdfence.Open runs once per body line, not twice.
+		fi, opensFence := mdfence.Open(stripped)
 		if !codeCapable && (opensFence || lineHasNonFenceCode(stripped)) {
 			codeCapable = true
 		}
@@ -308,7 +352,7 @@ func (s *scanner) tryBlockquote() bool {
 	// bytes.Split appends at document level. Append that slot to the body
 	// (mapped to the parent line after the last quote line) so the inner
 	// scan records the phantom close at the same parent line the AST does.
-	if openFence != nil && len(parentLine) > 0 {
+	if openFence.Char != 0 && len(parentLine) > 0 {
 		body = append(body, nil)
 		parentLine = append(parentLine, parentLine[len(parentLine)-1]+1)
 	}
@@ -321,7 +365,7 @@ func (s *scanner) tryBlockquote() bool {
 	// nested deeper is silently not marked as code rather than growing the
 	// stack further (see maxBlockquoteDepth).
 	if codeCapable && s.depth < maxBlockquoteDepth {
-		inner := scanLayer0Depth(body, s.depth+1)
+		inner := scanLayer0Depth(body, s.depth+1, quoteBodyFinal(body, parentLine, s.final))
 		for ln := range inner.CodeBlockLines {
 			// A phantom closing-fence line from a deeper recursion level can
 			// fall one past this level's body (ln-1 == len(parentLine)); the

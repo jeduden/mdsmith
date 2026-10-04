@@ -21,6 +21,7 @@ import (
 	"sort"
 
 	"github.com/jeduden/mdsmith/internal/lint"
+	"github.com/jeduden/mdsmith/internal/mdfence"
 	"github.com/jeduden/mdsmith/internal/rule"
 	rulesettings "github.com/jeduden/mdsmith/internal/rules/settings"
 )
@@ -170,9 +171,9 @@ func parseFrontMatterBytes(b []byte) map[string]string {
 // block is a `---` fence or a `::name::` slot separator. Pure byte
 // scans, no allocation.
 func hasSlidevMarkers(lines [][]byte) bool {
-	var code codeFence
+	var fence mdfence.Tracker
 	for _, ln := range lines {
-		if code.skip(ln) {
+		if stepCodeFence(&fence, ln) {
 			continue
 		}
 		if isFence(ln) {
@@ -185,57 +186,21 @@ func hasSlidevMarkers(lines [][]byte) bool {
 	return false
 }
 
-// codeFence tracks the fenced code block open while the scanners walk
-// a deck's lines. A `---` or `::slot::` inside such a block is literal
-// content — a slide showing YAML or a diff — not a separator, so the
-// scanners skip it. ch and n are the open block's fence character and
-// run length; n is 0 when no block is open.
-type codeFence struct {
-	n  int
-	ch byte
-}
-
-// skip reports whether line is a fence line or code inside an open
-// block, advancing the state. A block opens on codeFenceOpenRun's
-// opener and closes only on a run of its own character at least as
-// long as the opener with nothing but whitespace after it, so a
-// shorter run, the other fence character, or a run with an info
-// string inside the block is content.
-func (c *codeFence) skip(line []byte) bool {
-	t := bytes.TrimLeft(line, " ")
-	if c.n > 0 {
-		r := 0
-		for r < len(t) && t[r] == c.ch {
-			r++
-		}
-		if r >= c.n && len(bytes.TrimSpace(t[r:])) == 0 {
-			c.n = 0
-		}
-		return true
-	}
-	c.ch, c.n = codeFenceOpenRun(line)
-	return c.n > 0
-}
-
-// codeFenceOpenRun returns the fence character and run length when
-// line (after leading spaces) opens a fenced code block — a run of
-// three or more backticks or tildes — or n 0 when it does not. A
-// backtick run followed by another backtick ("```a`b") is paragraph
-// text, not a fence: CommonMark forbids backticks in a backtick
-// fence's info string.
-func codeFenceOpenRun(line []byte) (ch byte, n int) {
-	t := bytes.TrimLeft(line, " ")
-	if len(t) == 0 || (t[0] != '`' && t[0] != '~') {
-		return 0, 0
-	}
-	ch = t[0]
-	for n < len(t) && t[n] == ch {
-		n++
-	}
-	if n < 3 || (ch == '`' && bytes.IndexByte(t[n:], '`') >= 0) {
-		return 0, 0
-	}
-	return ch, n
+// stepCodeFence advances t past line and reports whether line belongs
+// to a fenced code block (``` or ~~~, three or more): its opener, a
+// content line, or its closer. A `---` or `::slot::` on such a line is
+// literal content — a slide showing YAML or a diff — not a separator,
+// so the scanners skip it.
+//
+// The fence rules are mdfence's (CommonMark): a closer is the opener's
+// character, a run at least as long, and nothing after it, so a
+// shorter or different inner fence (```js inside ````md) is content,
+// and ```ts``` (inline code) opens nothing. Indentation follows
+// mdfence's one policy: up to three columns, a tab reaching column
+// four, so an indented-code line that looks like a fence opens nothing
+// and cannot hide later `---` or `::slot::` markers.
+func stepCodeFence(t *mdfence.Tracker, line []byte) bool {
+	return t.Step(line)
 }
 
 // slide is one logical slide with its frontmatter and slot markers.
@@ -275,9 +240,9 @@ func parseSlides(lines [][]byte) []slide {
 		cur.startLine = min(i+1, len(lines)+1)
 		i = min(i, len(lines))
 	}
-	var code codeFence
+	var fence mdfence.Tracker
 	for i < len(lines) {
-		if code.skip(lines[i]) {
+		if stepCodeFence(&fence, lines[i]) {
 			i++
 			continue
 		}

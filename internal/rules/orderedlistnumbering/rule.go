@@ -73,7 +73,7 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 // item marker lines in order, so each item's numbering verdict is
 // byte-identical.
 func (r *Rule) checkLayer0(f *lint.File) []lint.Diagnostic {
-	lists, _ := listscan.Parse(f.Lines)
+	lists := listscan.ParseLists(f.Lines)
 	var diags []lint.Diagnostic
 	for _, l := range lists {
 		if !l.Ordered {

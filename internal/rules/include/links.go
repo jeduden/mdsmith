@@ -4,6 +4,8 @@ import (
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/jeduden/mdsmith/pkg/goldmark/util"
 )
 
 // linkRe matches Markdown links [text](target) and images ![alt](target).
@@ -58,75 +60,34 @@ func adjustLinks(content string, includedFilePath string, includingFilePath stri
 // rewriteSkippingCode applies rewriteFn to non-code portions of content,
 // leaving fenced code block lines unchanged. Link rewriting is applied on
 // full lines so that backticks inside link text (e.g. [`name`](target))
-// do not prevent matching.
+// do not prevent matching. Fences are read as the heading scan reads
+// them (fenceScan), and the paragraph a list marker line must interrupt
+// is tracked as the heading scan tracks it (nextPara), approximated by
+// reading every non-blank line outside a fence, headings and HTML
+// included, as paragraph text.
 func rewriteSkippingCode(content string, rewriteFn func(string) string) string {
-	var b strings.Builder
-	inFence := false
-	var fenceChar byte
-	var fenceLen int
+	var sb strings.Builder
+	var fence fenceScan
+	para := paraNone
 
 	lines := strings.SplitAfter(content, "\n")
 	for _, line := range lines {
-		trimmed := strings.TrimLeft(line, " \t")
-
-		if inFence {
-			b.WriteString(line)
-			stripped := strings.TrimRight(trimmed, " \t\r\n")
-			if len(stripped) >= fenceLen && allSameChar(stripped, fenceChar) {
-				inFence = false
-			}
+		b := util.StringToReadOnlyBytes(strings.TrimSuffix(line, "\n"))
+		if fence.step(b, para == paraRoot) {
+			para = paraNone
+			sb.WriteString(line)
 			continue
 		}
-
-		// Detect opening fence: capture exact run length.
-		if run := countFenceRun(trimmed); run > 0 {
-			inFence = true
-			fenceChar = trimmed[0]
-			fenceLen = run
-			b.WriteString(line)
-			continue
+		if strings.TrimSpace(line) == "" {
+			para = paraNone
+		} else {
+			para = nextPara(b, para)
 		}
 
-		b.WriteString(rewriteFn(line))
+		sb.WriteString(rewriteFn(line))
 	}
 
-	return b.String()
-}
-
-// countFenceRun returns the length of a backtick or tilde run at the
-// start of trimmed (after whitespace was already stripped). Returns 0
-// if no fence is detected (run < 3, or a backtick run followed by
-// another backtick, which CommonMark forbids in a backtick fence's
-// info string).
-func countFenceRun(trimmed string) int {
-	if len(trimmed) < 3 {
-		return 0
-	}
-	ch := trimmed[0]
-	if ch != '`' && ch != '~' {
-		return 0
-	}
-	n := 0
-	for n < len(trimmed) && trimmed[n] == ch {
-		n++
-	}
-	if n < 3 {
-		return 0
-	}
-	if ch == '`' && strings.IndexByte(trimmed[n:], '`') >= 0 {
-		return 0
-	}
-	return n
-}
-
-// allSameChar checks if s consists entirely of character ch.
-func allSameChar(s string, ch byte) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] != ch {
-			return false
-		}
-	}
-	return true
+	return sb.String()
 }
 
 // shouldSkip returns true for targets that must not be rewritten.

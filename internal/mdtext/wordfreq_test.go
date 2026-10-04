@@ -90,29 +90,41 @@ func TestWordFrequency_LastWordBelowMinLength(t *testing.T) {
 	assert.Empty(t, freq)
 }
 
-// TestWordFrequencyInto verifies that WordFrequencyInto adds to the
-// counts already in a caller-owned map, that a caller-side clear starts
-// a fresh scope unit, and that the clear/accumulate reuse cycle on
-// lowercase prose allocates nothing — the contract it exists for.
 func TestWordFrequencyInto(t *testing.T) {
 	freq := make(map[string]int)
 
-	// Two calls with no clear between them: counts add up, they are
-	// not reset or overwritten.
-	mdtext.WordFrequencyInto(freq, "hello world hello", 4)
-	assert.Equal(t, map[string]int{"hello": 2, "world": 1}, freq)
-	mdtext.WordFrequencyInto(freq, "world peace", 4)
-	assert.Equal(t, map[string]int{"hello": 2, "world": 2, "peace": 1}, freq)
+	// First scope unit: accumulates across two calls.
+	mdtext.WordFrequencyInto(freq, "Alpha beta alpha", 4)
+	mdtext.WordFrequencyInto(freq, "ALPHA gamma bee", 4)
+	assert.Equal(t, map[string]int{"alpha": 3, "beta": 1, "gamma": 1}, freq)
 
-	// A clear starts a new scope unit: earlier words do not leak in.
+	// The caller clears the map between units; the map is reused.
 	clear(freq)
-	mdtext.WordFrequencyInto(freq, "testing testing data", 4)
-	assert.Equal(t, map[string]int{"testing": 2, "data": 1}, freq)
+	mdtext.WordFrequencyInto(freq, "delta delta", 4)
+	assert.Equal(t, map[string]int{"delta": 2}, freq)
 
-	// Steady-state reuse of the warmed map is zero-alloc.
+	// Third cycle with minLength 0 keeps short words.
+	clear(freq)
+	mdtext.WordFrequencyInto(freq, "a b a", 0)
+	assert.Equal(t, map[string]int{"a": 2, "b": 1}, freq)
+
+	// minLength counts runes, not bytes: "über" is 4 runes (5
+	// bytes) and is excluded at minLength 5; non-ASCII case-folds.
+	clear(freq)
+	mdtext.WordFrequencyInto(freq, "über ÜBER Grüße grüße", 5)
+	assert.Equal(t, map[string]int{"grüße": 2}, freq)
+}
+
+func TestWordFrequencyInto_ReuseDoesNotAllocate(t *testing.T) {
+	// The function exists to accumulate into a caller-owned map that
+	// is cleared and reused across scope units without allocating.
+	// Lowercase input keeps strings.ToLower allocation-free.
+	const text = "alpha beta alpha gamma"
+	freq := make(map[string]int)
+	mdtext.WordFrequencyInto(freq, text, 4)
 	allocs := testing.AllocsPerRun(100, func() {
 		clear(freq)
-		mdtext.WordFrequencyInto(freq, "testing testing data", 4)
+		mdtext.WordFrequencyInto(freq, text, 4)
 	})
 	assert.Zero(t, allocs)
 }

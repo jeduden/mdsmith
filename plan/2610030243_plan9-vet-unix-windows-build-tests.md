@@ -1,7 +1,7 @@
 ---
 id: 2610030243
 title: Vet the internal/build spawn tests for plan9
-status: "🔲"
+status: "✅"
 model: sonnet
 summary: >-
   Plan 2610021028 moved about 35 process-spawning
@@ -36,11 +36,21 @@ errors only then.
 
 ## Tasks
 
-1. Pick one approach and record it here. Option A:
-   change the tag to `!js && !wasip1` and skip each
+1. Pick one approach and record it here. **Chosen:
+   Option A.** Option B cannot work with a tag override:
+   `go vet -tags unix` under `GOOS=plan9` also pulls in
+   the stdlib's unix runtime files and fails to compile
+   `runtime`. Option A needs no new CI step because the
+   existing `GOOS=plan9 go vet ./...` step now covers
+   the files. Option A:
+   change the tag to `unix || windows || plan9` and skip each
    `sh`-dependent test at run time on plan9. Option B:
    keep the tag and add a CI step that type-checks the
    files for plan9 with a build-constraint override.
+   The new tag is the exact complement of
+   `exec_other.go`'s `!unix && !windows && !plan9`, not
+   `!js && !wasip1`: a future port then compiles the
+   stub tests and not these, which would fail there.
 2. Write a failing check first: a plan9-only compile
    error placed in a `_proc_test.go` file must fail
    CI.
@@ -48,13 +58,111 @@ errors only then.
    file in [internal/build](../internal/build): the
    `_proc_test.go` files and `recipe_output_pipe_test.go`.
    Leave `exec_plan9_proc_test.go`, which is tagged
-   `plan9`, as it is.
+   `plan9`, as it is. Skip each `sh` or recipe test
+   through `skipWithoutPOSIXTools`. The `echo`/`touch`
+   hook tests and the `recipeOutput` pipe tests need no
+   `sh`, so they run on plan9 unskipped. The two
+   release-tooling spawn files,
+   `internal/release/jswasmtests_proc_test.go` and
+   `cmd/mdsmith-release/testjswasm_proc_test.go`, take
+   the same tag. They run only the go toolchain and
+   `os.Pipe`, which plan9 has, so they need no skip.
+   The "Test Fixtures" section of
+   [docs/development/index.md](../docs/development/index.md)
+   names the new tag and the two plan9 skip helpers.
+4. Guard the tag in CI:
+   [proctags_test.go](../internal/build/proctags_test.go)
+   fails when a test file in `internal/build`,
+   `internal/release`, or `cmd/mdsmith-release` builds
+   on unix and windows but not on js or plan9. It matches
+   tags with `go/build`, so release tags and file-name
+   suffixes count. A spawn file that also builds on
+   wasip1 or on a future port fails too. It also fails
+   when a test, fuzz target, or benchmark in a file
+   that builds on plan9 but not on js reaches `sh`
+   before a top-level plan9 skip. Reaching `sh` means
+   a string whose first word, after any `#!` or `env`,
+   is `sh` or ends in `/sh`, such as an `sh` argv, an
+   `sh -c` recipe, or `writeScript`'s `#!/bin/sh`. A
+   function, method, or package-level const or var
+   that builds on plan9 counts the same, whether
+   called, passed, or read by name, in any
+   declaration order. Methods that share a name reach
+   `sh` if any of them does. A skip is a `Skip` call,
+   a helper that skips first, or an `if` or `switch`
+   on `runtime.GOOS` that calls `Skip` for `"plan9"`,
+   alone or under `||`, so the guard
+   needs no package-specific helper names. A `cp`
+   recipe is not an `sh` use: the guard leaves it to
+   `skipWithoutPOSIXTools`, which the test still
+   needs for Windows. Untagged files build on js, so
+   the js/wasm gate covers them instead.
+   See Follow-ups for taking the guard module-wide.
 
 ## Acceptance Criteria
 
-- [ ] A plan9 compile error in a `_proc_test.go` file
+- [x] A plan9 compile error in a `_proc_test.go` file
       fails a CI step.
-- [ ] Native and js/wasm runs of `internal/build` still
+- [x] Retagging a spawn test file `unix || windows`, or
+      dropping an `sh` test's plan9 skip, fails
+      `TestProcTestFilesCoverPlan9`.
+- [x] Native and js/wasm runs of `internal/build` still
       pass.
-- [ ] All tests pass: `go test ./...`
-- [ ] `go tool golangci-lint run` reports no issues
+- [x] `docs/development/index.md` and its three
+      included copies name `unix || windows || plan9`
+      and the plan9 skip helpers.
+- [x] `mdsmith check .` passes.
+- [x] All tests pass: `go test ./...`
+- [x] `go tool golangci-lint run` reports no issues
+
+## Follow-ups
+
+`PLAN.md` is at the 300-line cap that MDS022 sets, so a
+new plan file would add a catalog row and fail the check.
+Raising the cap means editing `.mdsmith.yml`, which needs
+the maintainer's consent. These items live here until
+that happens, then move into their own plan (model
+sonnet, depends on this plan).
+
+**Take the guard module-wide.** The guard test sits in
+`internal/build`. It reaches `../release` and
+`../../cmd/mdsmith-release` by relative path. So the build
+package's tests depend on how two other packages are laid
+out. These spawn-style test files go unchecked:
+
+- `cmd/mdsmith/e2e_main_test.go` and
+  `cmd/mdsmith/fileop_exec_test.go`
+- `internal/refactor/fileop_exec_test.go`
+- `internal/rules/externallink/probe_net_test.go`
+- `internal/rules/recipesafety/register_test.go`
+
+The tag rule is the complement of `exec_other.go`'s stubs.
+That fits only `internal/build`. Each other package needs
+a contract of its own. Two more gaps remain:
+
+- About 28 untagged tests in `internal/release` and
+  `cmd/mdsmith-release` write fake `#!/bin/sh` tools. They
+  have no plan9 skip. No js/wasm gate runs those packages.
+- The two `cp` recipe tests skip on plan9 through
+  `skipWithoutPOSIXTools`. Recipes run argv with no shell,
+  and plan9 has `cp`. CI has no plan9 runner to show
+  whether these tests could run there.
+
+Follow-up tasks:
+
+1. Move the checker and its unit tests to a module-level
+   test, such as one under `internal/integration`. Drop the
+   relative paths.
+2. Write the plan9 tag contract for each package above.
+3. Add a plan9 skip, or `//go:build !plan9`, to the
+   untagged release-tooling tests that run `sh`. Extend
+   the sh check to cover them.
+4. Find out whether a plan9 runner, such as a 9front VM in
+   CI, is practical. If so, split `skipWithoutPOSIXTools` so
+   the `cp` tests run there.
+5. Tighten three known limits of the guard. Mutually
+   recursive helpers can get a verdict that depends on
+   check order. Example functions with an `// Output:`
+   comment are not checked. The test-name check repeats
+   `isTestName` from `internal/release/jswasmtests.go`,
+   which is unexported.

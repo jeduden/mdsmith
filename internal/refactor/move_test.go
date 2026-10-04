@@ -62,10 +62,9 @@ func TestMove_WikilinkStemRewrittenWhenBasenameChanges(t *testing.T) {
 	assert.Equal(t, "See [[service]] and [[service#usage]] and [[service|the API]].\n", got)
 }
 
-// MoveWithStemEdits returns Move's plan unchanged plus exactly the
-// `[[stem]]` rewrites among its edits, keyed the same way, leaving out
-// its path rewrites.
-func TestMoveWithStemEdits(t *testing.T) {
+// MoveAll plans a moved file's `[[stem]]` and path rewrites alike, and
+// its edits match Move's plan.
+func TestMoveAll_StemEdits(t *testing.T) {
 	ws := newMemWorkspace(map[string]string{
 		"api.md":   "# API\n",
 		"guide.md": "See [[api]] and [the API](api.md).\n",
@@ -73,21 +72,17 @@ func TestMoveWithStemEdits(t *testing.T) {
 	want, err := Move(ws, "api.md", "./service.md")
 	require.NoError(t, err)
 
-	plan, stems, err := MoveWithStemEdits(ws, "./api.md", "service.md")
-	require.NoError(t, err)
-	assert.Equal(t, want, plan)
-	require.Len(t, plan.Edits["guide.md"], 2, "one stem and one path rewrite")
-	require.Len(t, stems["guide.md"], 1)
-	assert.Equal(t, "service", stems["guide.md"][0].NewText)
-	assert.Contains(t, plan.Edits["guide.md"], stems["guide.md"][0])
+	bp := MoveAll(ws, []MovePair{{"./api.md", "service.md"}})
+	require.NoError(t, bp.Moves[0].Err)
+	assert.Equal(t, want.Edits, bp.Edits)
+	assert.Equal(t, []string{"service.md", "service"}, texts(bp.Edits, "guide.md"))
 
-	_, kept, err := MoveWithStemEdits(ws, "api.md", "docs/api.md")
-	require.NoError(t, err)
-	assert.Empty(t, kept, "a kept stem needs no rewrite")
+	kept := MoveAll(ws, []MovePair{{"api.md", "docs/api.md"}})
+	assert.Equal(t, []string{"docs/api.md"}, texts(kept.Edits, "guide.md"), "a kept stem needs no rewrite")
 
-	_, none, err := MoveWithStemEdits(ws, "api.md", "guide.md")
-	assert.ErrorAs(t, err, &DestinationExistsError{})
-	assert.Nil(t, none)
+	refused := MoveAll(ws, []MovePair{{"api.md", "guide.md"}})
+	assert.ErrorAs(t, refused.Moves[0].Err, &DestinationExistsError{})
+	assert.Empty(t, refused.Edits)
 }
 
 func TestMove_WikilinksUntouchedWhenBasenameKept(t *testing.T) {
@@ -103,11 +98,11 @@ func TestMove_WikilinksUntouchedWhenBasenameKept(t *testing.T) {
 	require.NotNil(t, plan.FileOp)
 }
 
-// TestMove_WikilinkAmbiguousStemLeftUntouched locks that a move whose
-// basename stem is shared by another workspace file does not rewrite
-// any wikilink: the index keys wikilink edges by stem alone and cannot
-// tell which same-stem file `[[ref/Guide]]` points at, so rewriting it
-// would break a reference to the sibling file that is not moving.
+// TestMove_WikilinkAmbiguousStemLeftUntouched locks that a move of a
+// file that shares its basename stem with a sibling the resolver picks
+// first rewrites no wikilink: the resolver reads the basename alone, so
+// `[[ref/Guide]]` and `[[docs/Guide]]` both reach docs/Guide.md, and
+// retargeting them would steal links from that sibling.
 func TestMove_WikilinkAmbiguousStemLeftUntouched(t *testing.T) {
 	src := "See [[ref/Guide]] and [[docs/Guide]].\n"
 	ws := newMemWorkspace(map[string]string{
@@ -115,10 +110,54 @@ func TestMove_WikilinkAmbiguousStemLeftUntouched(t *testing.T) {
 		"ref/Guide.md":  "# Guide\n",
 		"index.md":      src,
 	})
-	plan, err := Move(ws, "docs/Guide.md", "docs/Manual.md")
+	plan, err := Move(ws, "ref/Guide.md", "ref/Manual.md")
 	require.NoError(t, err)
 	assert.Empty(t, plan.Edits["index.md"],
-		"ambiguous stem: no wikilink is rewritten")
+		"a sibling wins the stem: no wikilink is rewritten")
+}
+
+// TestMove_WikilinkSharedStemRewrittenWhenSourceWins locks that a move
+// of the same-stem file the resolver picks first rewrites every
+// `[[stem]]` that reaches it: left alone, each would silently reach the
+// sibling once the file is gone. A link whose folder prefix names a
+// sibling's folder, not the moved file's, is left as written: it
+// already says which file it means, and it reaches that one once the
+// moved file is gone. The prefix matches whole trailing folders,
+// ignoring case and reading `\` as `/`.
+func TestMove_WikilinkSharedStemRewrittenWhenSourceWins(t *testing.T) {
+	src := "See [[Guide]], [[ref/Guide]], [[REF\\Guide]], [[a/ref/Guide]],\n" +
+		"[[docs/Guide]], [[f/Guide]], and [[./Guide]].\n"
+	ws := newMemWorkspace(map[string]string{
+		"docs/Guide.md": "# Guide\n",
+		"ref/Guide.md":  "# Guide\n",
+		"index.md":      src,
+	})
+	plan, err := Move(ws, "docs/Guide.md", "docs/Manual.md")
+	require.NoError(t, err)
+	assert.Equal(t,
+		"See [[Manual]], [[ref/Guide]], [[REF\\Guide]], [[a/ref/Manual]],\n"+
+			"[[docs/Manual]], [[f/Manual]], and [[./Manual]].\n",
+		applyEditsToSource(t, src, plan.Edits["index.md"]))
+}
+
+// TestMove_WikilinkRewrittenWhenDestinationWinsNewStem locks that a
+// file already holding the new stem blocks the rewrite only when it
+// sorts before dst: a shallower dst is the file `[[manual]]` reaches
+// once it exists, so `[[guide]]` follows the move.
+func TestMove_WikilinkRewrittenWhenDestinationWinsNewStem(t *testing.T) {
+	src := "See [[guide]].\n"
+	files := map[string]string{
+		"docs/guide.md":   "# Guide\n",
+		"z/x/y/manual.md": "# Other\n",
+		"index.md":        src,
+	}
+	plan, err := Move(newMemWorkspace(files), "docs/guide.md", "a/manual.md")
+	require.NoError(t, err)
+	assert.Equal(t, "See [[manual]].\n", applyEditsToSource(t, src, plan.Edits["index.md"]))
+
+	plan, err = Move(newMemWorkspace(files), "docs/guide.md", "z/x/y/w/manual.md")
+	require.NoError(t, err)
+	assert.Empty(t, plan.Edits["index.md"], "the shallower holder keeps [[manual]]")
 }
 
 // TestMove_DestinationWithSpaceIsPercentEncoded locks that relocating a
@@ -392,12 +431,13 @@ func TestMove_SafetyErrors(t *testing.T) {
 // TestMove_WikilinkRewrittenWithExtensionlessSibling locks that an
 // extensionless file such as LICENSE is not a wikilink stem target: the
 // wikilink index maps only Markdown files to stems, so it must not count
-// as a same-stem sibling of docs/license.md.
+// as a same-stem sibling of docs/license.md. The root LICENSE is
+// shallower, so it would win `[[license]]` if it held the stem.
 func TestMove_WikilinkRewrittenWithExtensionlessSibling(t *testing.T) {
 	src := "See [[license]].\n"
 	ws := newMemWorkspace(map[string]string{
 		"docs/license.md": "# License\n",
-		"notes/LICENSE":   "MIT\n",
+		"LICENSE":         "MIT\n",
 		"index.md":        src,
 	})
 	plan, err := Move(ws, "docs/license.md", "docs/terms.md")
