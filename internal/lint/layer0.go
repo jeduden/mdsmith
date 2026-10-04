@@ -110,6 +110,16 @@ var piOpenMarker = []byte("<?")
 
 var piCloseMarker = []byte("?>")
 
+// nonBlankRun returns the number of consecutive non-blank lines starting
+// at lines[from].
+func nonBlankRun(lines [][]byte, from int) int {
+	n := 0
+	for from+n < len(lines) && !isBlankLine(lines[from+n]) {
+		n++
+	}
+	return n
+}
+
 // maxBlockquoteDepth caps tryBlockquote's recursion into nested quote
 // bodies. Every level of `>` nesting recurses once (see tryBlockquote),
 // with no cap a single line of enough nested markers could exhaust the
@@ -302,9 +312,13 @@ func (s *scanner) tryBlockquote() bool {
 	// (a fence or a >=4-column indent); the overwhelmingly common
 	// prose-only block quote sets it false and skips the recursive scan and
 	// its allocations entirely.
-	remaining := len(s.lines) - s.i
-	body := make([][]byte, 0, remaining)
-	parentLine := make([]int, 0, remaining)
+	// Size the buffers by the non-blank run at the cursor — an upper bound
+	// on the quote, since the loop below stops at the first blank line —
+	// not by the lines left in the document: a quote near the top of a long
+	// file would otherwise reserve the whole remainder for a few lines.
+	hint := nonBlankRun(s.lines, s.i)
+	body := make([][]byte, 0, hint)
+	parentLine := make([]int, 0, hint)
 	codeCapable := false
 	// openFence tracks whether a fenced code block opened by a marker line
 	// is still open. A fenced code block inside a quote must keep its `>`
