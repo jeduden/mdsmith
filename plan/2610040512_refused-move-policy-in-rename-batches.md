@@ -125,6 +125,14 @@ the link stops resolving, where MDS027 flags it.
    member whose old path another member takes is counted
    too (`TestMoveAll_RefusedHolderLeftInPlace`): left in
    place, the file's link reaches the newcomer.
+   A link from any file to the existing file a refused move
+   lands on is counted too, by path or by wikilink
+   (`TestMoveAll_OverwrittenDestinationReferrers`): if the
+   host overwrites it, the link reaches the moved file. An
+   earlier draft left this case uncounted, which broke the
+   second acceptance criterion. A planned member's link to
+   that file is still re-spelled. `Move` now validates its
+   one pair first, so a refused lone move reads no file.
 
 ## Acceptance Criteria
 

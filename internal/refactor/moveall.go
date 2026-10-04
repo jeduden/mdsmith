@@ -55,7 +55,8 @@ type BatchMove struct {
 // `[[stem]]` or a typed `[[name.ext]]`) whose new key another member's
 // destination wins, a wikilink left as written that another member's
 // destination takes (see stolen), and every path link and wikilink to
-// a shadowed path (see countShadowed).
+// a shadowed path (see countShadowed) or to a file a refused member
+// lands on (moveBatch.overwritten), from any file but that one.
 type BatchPlan struct {
 	Plan
 	Moves    []BatchMove
@@ -90,11 +91,22 @@ type BatchPlan struct {
 // be there after the batch (see countMisread); one that stops
 // resolving is left to MDS027. When a planned member lands on its
 // path, every path link and wikilink to it counts too (see
-// countShadowed): it then reaches the newcomer.
+// countShadowed): it then reaches the newcomer. When it lands on a
+// file outside the batch, every path link and wikilink to that file
+// counts as well: no client says whether the host overwrites it, and
+// if it does, the link reaches the moved file. A planned member's link
+// to that file is still re-spelled from its new folder.
 //
-// Move is MoveAll with one pair.
+// Move is MoveAll with one pair, except that a refused pair plans
+// nothing.
 func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
 	moves, b := validateBatch(ws, pairs)
+	return planBatch(ws, moves, b)
+}
+
+// planBatch plans the edits for moves, the verdicts validateBatch gave
+// with the batch state b, and counts the links it leaves withheld.
+func planBatch(ws MoveWorkspace, moves []BatchMove, b *moveBatch) BatchPlan {
 	bp := BatchPlan{Plan: Plan{Edits: map[string][]Edit{}}, Moves: moves}
 	p := lint.NewParser()
 	r := &destResolver{ws: ws, batch: b}
@@ -113,6 +125,9 @@ func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
 			countShadowed(ws, r, m.Dst)
 		}
 	}
+	for p := range b.overwritten {
+		countShadowed(ws, r, p)
+	}
 	stableSortEdits(bp.Edits)
 	bp.Withheld = b.withheld
 	return bp
@@ -120,8 +135,9 @@ func MoveAll(ws MoveWorkspace, pairs []MovePair) BatchPlan {
 
 // countShadowed counts, in the batch, every wikilink to vacated: a
 // member whose move was refused, whose path a planned member takes
-// (moveBatch.shadowed). The host still moves vacated, so each link to
-// it then reaches the newcomer; it still resolves, so no rule flags
+// (moveBatch.shadowed), or a file a refused member lands on
+// (moveBatch.overwritten). The host still moves vacated, or may
+// replace it, so each link to it then reaches the newcomer; it still resolves, so no rule flags
 // it, and the batch plans no edit for it. A wikilink is counted when
 // its key reaches vacated today: a `[[stem]]` link for a Markdown
 // file, a typed `[[name.ext]]` link for any other (see wikilinkKey). A
@@ -166,13 +182,17 @@ func validateBatch(ws MoveWorkspace, pairs []MovePair) ([]BatchMove, *moveBatch)
 			continue
 		}
 		_, vacated := b.members[m.Dst]
+		exists := !vacated && resolves(ws, m.Dst)
 		switch {
 		case landing[foldPath(m.Dst)] > 1:
 			m.Err = ErrDuplicateDestination
-		case !vacated && resolves(ws, m.Dst):
+		case exists:
 			m.Err = DestinationExistsError{Dst: m.Dst}
 		default:
 			b.members[m.Src] = batchMember{dst: m.Dst, planned: true}
+		}
+		if m.Err != nil && exists {
+			b.overwritten[m.Dst] = true
 		}
 	}
 	for _, m := range moves {
@@ -241,10 +261,13 @@ type moveBatch struct {
 	sources  map[string][]byte // each member's text, as admit read it
 	dsts     map[string]bool   // every member's dst, as admit records it
 	shadowed map[string]bool   // see countShadowed
-	withheld int
-	post     *linkgraph.WikilinkIndex // postIndex, built on first use
-	keys     map[wikilinkKey]int      // keyHolders, built by buildKeys
-	srcKeys  map[wikilinkKey][]string // keySources, built by buildKeys
+	// overwritten holds each file outside the batch that a refused
+	// member lands on: the host may replace it with that member.
+	overwritten map[string]bool
+	withheld    int
+	post        *linkgraph.WikilinkIndex // postIndex, built on first use
+	keys        map[wikilinkKey]int      // keyHolders, built by buildKeys
+	srcKeys     map[wikilinkKey][]string // keySources, built by buildKeys
 }
 
 // keyHolders returns how many members hold the wikilink key k (a stem
@@ -287,7 +310,7 @@ func (b *moveBatch) buildKeys() {
 func newMoveBatch() *moveBatch {
 	return &moveBatch{
 		members: map[string]batchMember{}, sources: map[string][]byte{}, dsts: map[string]bool{},
-		shadowed: map[string]bool{},
+		shadowed: map[string]bool{}, overwritten: map[string]bool{},
 	}
 }
 
@@ -300,16 +323,24 @@ type batchMember struct {
 }
 
 // scanBases returns, each once, the base name of every planned
-// member's source and of every shadowed path: the names a link the
-// referrer scan reads spells out.
+// member's source, of every shadowed path, and of every overwritten
+// path: the names a link the referrer scan reads spells out.
 func (b *moveBatch) scanBases() [][]byte {
 	seen := map[string]bool{}
 	var bases [][]byte
-	for src, m := range b.members {
-		if base := path.Base(src); (m.planned || b.shadowed[src]) && !seen[base] {
+	add := func(p string) {
+		if base := path.Base(p); !seen[base] {
 			seen[base] = true
 			bases = append(bases, []byte(base))
 		}
+	}
+	for src, m := range b.members {
+		if m.planned || b.shadowed[src] {
+			add(src)
+		}
+	}
+	for p := range b.overwritten {
+		add(p)
 	}
 	return bases
 }

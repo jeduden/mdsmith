@@ -299,6 +299,6 @@ mdsmith move guide.md reference/guide.md --dry-run
   editor may overwrite it, and the request does not say. So a link to or from
   that refused move gets no edit unless it reads the same either way, and a
   wikilink whose new name another moved file takes gets none. The warning counts
-  each such link, and each unedited wikilink a moved file takes, that may reach
-  a different file; MDS027 flags any other that stops resolving. The hook fires
-  only for Markdown files, which no typed wikilink names.
+  each such link, each link to the file that rename would replace, and each
+  unedited wikilink a moved file takes, that may reach a different file; MDS027
+  flags any other that stops resolving. The hook fires only for Markdown.

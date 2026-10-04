@@ -1217,3 +1217,55 @@ func TestDestResolver_Blocked(t *testing.T) {
 	assert.True(t, r.blocked(holderIndex(), name, stemKey("a"), "photo.png"), "a name key's holders are unknown")
 	assert.Equal(t, 1, b.withheld, "an unknown holder is left as written, not counted")
 }
+
+// TestMoveAll_OverwrittenDestinationReferrers covers a link to the
+// existing file a refused move lands on. If the host overwrites it,
+// the link reaches the moved file instead, so it is counted from any
+// file, by path or by wikilink. The overwritten file's link to itself
+// is not: that file is gone or still itself.
+func TestMoveAll_OverwrittenDestinationReferrers(t *testing.T) {
+	for name, tc := range map[string]struct {
+		files    map[string]string
+		pairs    []MovePair
+		withheld int
+		edits    map[string][]string
+	}{
+		"a file the batch leaves": {map[string]string{
+			"docs/b.md": "# B\n", "x/b.md": "# Old\n", "r.md": "# R\n\n[o](x/b.md)\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}}, 1, nil},
+		"a planned member": {map[string]string{
+			"docs/b.md": "# B\n", "x/b.md": "# Old\n", "a.md": "# A\n\n[o](x/b.md)\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}, {"a.md", "y/a.md"}}, 1, map[string][]string{"a.md": {"../x/b.md"}}},
+		"a refused member in its folder": {map[string]string{
+			"docs/b.md": "# B\n", "x/b.md": "# Old\n", "docs/c.md": "# C\n\n[o](../x/b.md)\n", "docs/d.md": "# D\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}, {"docs/c.md", "docs/d.md"}}, 1, nil},
+		"the refused file itself": {map[string]string{
+			"docs/b.md": "# B\n\n[o](../x/b.md)\n", "x/b.md": "# Old\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}}, 1, nil},
+		"a wikilink": {map[string]string{
+			"docs/q/b.md": "# B\n", "x/b.md": "# Old\n", "r.md": "# R\n\n[[b]]\n",
+		}, []MovePair{{"docs/q/b.md", "x/b.md"}}, 1, nil},
+		"its own self-link": {map[string]string{
+			"docs/b.md": "# B\n", "x/b.md": "# Old\n\n[me](b.md)\n",
+		}, []MovePair{{"docs/b.md", "x/b.md"}}, 0, nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bp := MoveAll(newMemWorkspace(tc.files), tc.pairs)
+			require.Equal(t, DestinationExistsError{Dst: "x/b.md"}, bp.Moves[0].Err)
+			assert.Equal(t, tc.withheld, bp.Withheld)
+			for key, want := range tc.edits {
+				assert.Equal(t, want, texts(bp.Edits, key), key)
+			}
+		})
+	}
+}
+
+// TestMoveAll_DuplicateOntoExisting covers two refused moves onto one
+// existing file: either may replace it, so a link to it is counted.
+func TestMoveAll_DuplicateOntoExisting(t *testing.T) {
+	bp := MoveAll(newMemWorkspace(map[string]string{
+		"a/b.md": "# A\n", "c/b.md": "# C\n", "x/b.md": "# Old\n", "r.md": "# R\n\n[o](x/b.md)\n",
+	}), []MovePair{{"a/b.md", "x/b.md"}, {"c/b.md", "x/b.md"}})
+	require.Equal(t, ErrDuplicateDestination, bp.Moves[0].Err)
+	assert.Equal(t, 1, bp.Withheld)
+}

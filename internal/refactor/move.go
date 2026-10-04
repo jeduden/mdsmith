@@ -102,11 +102,14 @@ func (e SourceNotFoundError) Error() string {
 // Move is MoveAll with one pair; MoveAll plans several moves that run
 // together.
 func Move(ws MoveWorkspace, src, dst string) (Plan, error) {
-	bp := MoveAll(ws, []MovePair{{Src: src, Dst: dst}})
-	m := bp.Moves[0]
+	moves, b := validateBatch(ws, []MovePair{{Src: src, Dst: dst}})
+	m := moves[0]
 	if m.Err != nil {
+		// A refused lone move plans nothing, so no file is listed or
+		// read for its links.
 		return Plan{}, m.Err
 	}
+	bp := planBatch(ws, moves, b)
 	return Plan{Edits: bp.Edits, FileOp: &FileOp{From: m.Src, To: m.Dst}}, nil
 }
 
@@ -203,8 +206,9 @@ func (r *destResolver) countRefusedHolders(p parser.Parser) {
 // referrerEdit is appendReferrerEdits for one destination d in the
 // workspace file rel, whose batch entry is holder when moved. It
 // returns the edit that repoints d at a planned member's new path, and
-// counts d instead when it names a shadowed path (see countShadowed),
-// when holder's refused move takes d out of the folder it is spelled
+// counts d instead when it names a shadowed path (see countShadowed)
+// or a file a refused member may replace (moveBatch.overwritten), when
+// holder's refused move takes d out of the folder it is spelled
 // from, or when that move makes d name another file (see
 // countMisread). A link in such a holder to a planned member is also
 // counted when another member lands on that member's old path: left
@@ -222,6 +226,15 @@ func (r *destResolver) referrerEdit(d inlineDest, rel string, holder batchMember
 			r.batch.withheld++
 		} else {
 			r.countStale(holder.dst, ref.path, holder.dst)
+		}
+		return Edit{}, false
+	}
+	if r.batch.overwritten[ref.target] {
+		// A refused member may replace the file, so a link to it may
+		// then reach that member. The file's link to itself is not
+		// counted: once replaced, the file holding it is gone.
+		if ref.target != rel {
+			r.batch.withheld++
 		}
 		return Edit{}, false
 	}
@@ -358,6 +371,10 @@ func outboundEdit(r *destResolver, d inlineDest, src, dst string) (Edit, bool) {
 	// it is counted even then.
 	if m, moved := r.member(tgt); tgt == src {
 		tgt = dst
+	} else if r.batch.overwritten[tgt] {
+		// Spelled from dst it still names the file, but a refused
+		// member may replace it, so the link is counted too.
+		r.batch.withheld++
 	} else if moved {
 		if !m.planned {
 			r.batch.withheld++
