@@ -4,7 +4,6 @@ package build
 
 import (
 	"os/exec"
-	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -26,67 +25,63 @@ const TimeoutKillAction = "sent CTRL_BREAK to process group and terminated its j
 // locally so the file does not depend on x/sys/windows.
 const windowsCreateNewProcessGroup = 0x00000200
 
+// jobKiller is the groupKiller on Windows. job is the Job Object
+// afterStart assigned the recipe to, or 0 when it could not set one up;
+// then kill sends CTRL_BREAK alone.
+type jobKiller struct {
+	cmd *exec.Cmd
+	job syscall.Handle
+}
+
 // afterStart assigns the started process to a freshly created Job Object
-// configured to kill the whole tree when the handle closes. It returns a
-// cleanup closure that closes the job handle (and so kills any survivors)
-// when the recipe completes. On any failure setting up the job it returns
-// a no-op cleanup: the CREATE_NEW_PROCESS_GROUP flag still allows the
-// CTRL_BREAK kill path.
-func afterStart(cmd *exec.Cmd) func() {
+// configured to kill the whole tree when the handle closes. The killer
+// it returns holds the handle; close closes it (and so kills any
+// survivors) when the recipe completes. On any failure setting up the
+// job the killer holds no job: the CREATE_NEW_PROCESS_GROUP flag still
+// allows the CTRL_BREAK kill path.
+func afterStart(cmd *exec.Cmd) groupKiller {
+	k := &jobKiller{cmd: cmd}
 	if cmd.Process == nil {
-		return nil
+		return k
 	}
 	job, err := createKillOnCloseJob()
 	if err != nil {
-		return nil
+		return k
 	}
 	ph, err := openProcessForJob(cmd.Process.Pid)
 	if err != nil {
 		_ = closeHandle(job)
-		return nil
+		return k
 	}
 	if err := assignProcessToJob(job, ph); err != nil {
 		_ = closeHandle(ph)
 		_ = closeHandle(job)
-		return nil
+		return k
 	}
 	_ = closeHandle(ph)
-	jobHandlesMu.Lock()
-	jobHandles[cmd] = job
-	jobHandlesMu.Unlock()
-	return func() {
-		_ = closeHandle(job) // KILL_ON_JOB_CLOSE reaps any survivors
-		jobHandlesMu.Lock()
-		delete(jobHandles, cmd)
-		jobHandlesMu.Unlock()
-	}
+	k.job = job
+	return k
 }
 
-// jobHandles maps a running command to its Job Object handle so
-// killGroup can terminate the whole job synchronously on timeout.
-// jobHandlesMu guards it: Build is an exported method with no
-// single-threaded contract, so afterStart, killGroup, and the cleanup
-// closure may run from different goroutines if a caller dispatches
-// recipes concurrently.
-var (
-	jobHandlesMu sync.Mutex
-	jobHandles   = map[*exec.Cmd]syscall.Handle{}
-)
-
-// killGroup sends CTRL_BREAK_EVENT to the recipe's process group, then
+// kill sends CTRL_BREAK_EVENT to the recipe's process group, then
 // terminates the Job Object so any survivors (including grandchildren)
 // are killed. The job termination is the guaranteed kill path; the
 // CTRL_BREAK is the polite first signal.
-func killGroup(cmd *exec.Cmd) {
-	if cmd.Process == nil {
+func (k *jobKiller) kill() {
+	if k.cmd.Process == nil {
 		return
 	}
-	sendCtrlBreak(cmd.Process.Pid)
-	jobHandlesMu.Lock()
-	job, ok := jobHandles[cmd]
-	jobHandlesMu.Unlock()
-	if ok {
-		_ = terminateJob(job)
+	sendCtrlBreak(k.cmd.Process.Pid)
+	if k.job != 0 {
+		_ = terminateJob(k.job)
+	}
+}
+
+// close closes the job handle; KILL_ON_JOB_CLOSE reaps any survivors.
+func (k *jobKiller) close() {
+	if k.job != 0 {
+		_ = closeHandle(k.job)
+		k.job = 0
 	}
 }
 

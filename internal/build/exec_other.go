@@ -18,14 +18,20 @@ func configureProcessGroup(*exec.Cmd) {}
 // recipe gets on this platform.
 const TimeoutKillAction = "killed recipe process"
 
-// afterStart is a no-op on these targets. It returns nil so runRecipe
-// installs no cleanup defer.
-func afterStart(*exec.Cmd) func() { return nil }
+// leaderKiller is the groupKiller on these targets: there is no group
+// to kill, so kill ends only the recipe's leader.
+type leaderKiller struct{ cmd *exec.Cmd }
 
-// killGroup terminates only the recipe's leader process: there is no
-// group kill on these targets. A nil Process (the command never
-// started) is a no-op.
-func killGroup(cmd *exec.Cmd) { forceKillLeader(cmd) }
+// afterStart holds no state on these targets; it returns a killer for
+// the leader alone.
+func afterStart(cmd *exec.Cmd) groupKiller { return leaderKiller{cmd} }
+
+// kill terminates only the recipe's leader process. A nil Process (the
+// command never started) is a no-op.
+func (k leaderKiller) kill() { forceKillLeader(k.cmd) }
+
+// close has nothing to release.
+func (leaderKiller) close() {}
 
 // forceKillLeader kills the recipe's leader process with killLeader.
 // runRecipe also uses it when the group kill left the leader running.

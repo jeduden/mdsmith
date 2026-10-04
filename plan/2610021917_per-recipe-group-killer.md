@@ -1,7 +1,7 @@
 ---
 id: 2610021917
 title: Replace the per-platform kill maps with a per-recipe group killer
-status: "🔲"
+status: "🔳"
 model: sonnet
 summary: >-
   `internal/build` passes each recipe's kill state from
@@ -52,7 +52,7 @@ failed.
 
 ## Tasks
 
-1. Define, in `exec.go`, a `groupKiller` interface with
+1. , in `exec.go`, a `groupKiller` interface with
    `kill()` and `close()` methods. Change `afterStart`
    to return it. A no-op or leader-only killer stands
    in where a platform has no group state.

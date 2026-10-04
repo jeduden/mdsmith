@@ -35,7 +35,7 @@ func processAlive(pid int) bool {
 func TestKillGroup_NilProcess(t *testing.T) {
 	// A command that never started has a nil Process; killGroup must return
 	// immediately rather than dereference it.
-	killGroup(&exec.Cmd{})
+	afterStart(&exec.Cmd{}).kill()
 }
 
 func TestKillGroup_SIGKILLPath(t *testing.T) {
@@ -104,22 +104,23 @@ func TestRunRecipe_TimeoutKillsProcessGroup(t *testing.T) {
 	}, 6*time.Second, 100*time.Millisecond, "spawned child should not be orphaned")
 }
 
-// stubKillGroup swaps killGroupFn and shortens reapWait for one test.
+// stubKillGroup swaps afterStartFn for one that returns a killer whose
+// kill runs fn, and shortens reapWait for one test.
 // The stub leaves survivors on purpose, so cleanup SIGKILLs the
 // recipe's whole process group (Setpgid made pgid == leader pid):
 // an orphan would otherwise keep the test binary's stderr open and
 // stall `go test` until it exits.
 func stubKillGroup(t *testing.T, fn func(*exec.Cmd)) {
 	t.Helper()
-	oldKill, oldReap := killGroupFn, reapWait
+	oldStart, oldReap := afterStartFn, reapWait
 	pgid := 0
-	killGroupFn = func(cmd *exec.Cmd) {
+	afterStartFn = func(cmd *exec.Cmd) groupKiller {
 		pgid = cmd.Process.Pid
-		fn(cmd)
+		return stubKiller{killFn: func() { fn(cmd) }}
 	}
 	reapWait = 100 * time.Millisecond
 	t.Cleanup(func() {
-		killGroupFn, reapWait = oldKill, oldReap
+		afterStartFn, reapWait = oldStart, oldReap
 		if pgid > 0 {
 			_ = signalGroup(pgid, syscall.SIGKILL)
 		}

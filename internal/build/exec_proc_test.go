@@ -17,13 +17,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRunRecipe_NonNilJobCleanup(t *testing.T) {
+// stubKiller is a groupKiller whose kill and close run the given funcs;
+// a nil func does nothing.
+type stubKiller struct{ killFn, closeFn func() }
+
+func (k stubKiller) kill() {
+	if k.killFn != nil {
+		k.killFn()
+	}
+}
+
+func (k stubKiller) close() {
+	if k.closeFn != nil {
+		k.closeFn()
+	}
+}
+
+func TestRunRecipe_ClosesKillerOnReturn(t *testing.T) {
 	skipWithoutPOSIXTools(t, "sh")
-	// On Unix afterStart returns nil; inject a non-nil cleanup so runRecipe
-	// installs and runs the deferred-cleanup branch.
+	// runRecipe owns the killer afterStart returns and must close it
+	// on return.
 	var ran atomic.Bool
 	old := afterStartFn
-	afterStartFn = func(*exec.Cmd) func() { return func() { ran.Store(true) } }
+	afterStartFn = func(*exec.Cmd) groupKiller {
+		return stubKiller{closeFn: func() { ran.Store(true) }}
+	}
 	t.Cleanup(func() { afterStartFn = old })
 
 	stage := t.TempDir()
@@ -37,7 +55,7 @@ func TestRunRecipe_NonNilJobCleanup(t *testing.T) {
 		defExec: defaultExecConfig(),
 	})
 	require.NoError(t, err)
-	assert.True(t, ran.Load(), "deferred job cleanup must run")
+	assert.True(t, ran.Load(), "the killer must be closed on return")
 }
 
 func TestRunRecipe_HermeticEnvVisibleToProcess(t *testing.T) {

@@ -135,8 +135,8 @@ func TestConfigureProcessGroup_Plan9_SetsRFNOTEG(t *testing.T) {
 	assert.NotZero(t, cmd.SysProcAttr.Rfork&syscall.RFNOTEG)
 }
 
-func TestKillGroup_Plan9_FallsBackToLeaderKill(t *testing.T) {
-	// When afterStart could not open the notepg file, killGroup must
+func TestKill_Plan9_FallsBackToLeaderKill(t *testing.T) {
+	// When afterStart could not open the notepg file, kill must
 	// still kill the leader. exec leaves no rc parent behind to leak.
 	stubProcRoot(t) // empty, so the notepg open fails
 
@@ -149,17 +149,18 @@ func TestKillGroup_Plan9_FallsBackToLeaderKill(t *testing.T) {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 	})
-	require.Nil(t, afterStart(cmd))
+	k := afterStart(cmd)
+	require.Nil(t, groupOf(k))
 
-	killGroup(cmd)
+	k.kill()
 	assert.Eventually(t, func() bool { return !procAlive(pid) },
 		6*time.Second, 100*time.Millisecond, "leader should be killed")
 }
 
-func TestKillGroup_Plan9_ForceKillsNoteCatchingLeaderWithoutGroup(t *testing.T) {
-	// With no note group held (afterStart failed), killGroup kills only
+func TestKill_Plan9_ForceKillsNoteCatchingLeaderWithoutGroup(t *testing.T) {
+	// With no note group held (afterStart failed), kill kills only
 	// the leader. Process.Kill posts a "kill" note, which a leader with
-	// fn sigkill catches, so killGroup must use the leader's ctl file.
+	// fn sigkill catches, so kill must use the leader's ctl file.
 	pidFile := filepath.Join(t.TempDir(), "leader.pid")
 	script := writeRC(t, t.TempDir(), "stubborn.rc",
 		"fn sigkill {}\necho $pid > "+rcQuote(pidFile)+"\nwhile(){ sleep 120 }")
@@ -176,7 +177,7 @@ func TestKillGroup_Plan9_ForceKillsNoteCatchingLeaderWithoutGroup(t *testing.T) 
 	})
 	pid := readPID(t, pidFile)
 
-	killGroup(cmd)
+	(&noteKiller{cmd: cmd}).kill() // no group held, as when afterStart captured none
 	assert.Eventually(t, func() bool { return !procAlive(pid) },
 		6*time.Second, 100*time.Millisecond, "a note-catching leader must still die")
 }

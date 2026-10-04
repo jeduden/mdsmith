@@ -167,10 +167,8 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 		return -1, false, fmt.Errorf("starting recipe: %w", err)
 	}
 
-	jobCleanup := afterStartFn(cmd)
-	if jobCleanup != nil {
-		defer jobCleanup()
-	}
+	killer := afterStartFn(cmd)
+	defer killer.close()
 
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
@@ -190,11 +188,11 @@ func runRecipe(ctx context.Context, o runOpts) (int, bool, error) {
 			}
 			return exitResult(err)
 		case <-ctx.Done():
-			killGroupFn(cmd)
+			killer.kill()
 			return timeoutResult(ctx, ro, err)
 		}
 	case <-ctx.Done():
-		killGroupFn(cmd)
+		killer.kill()
 		reaped, waitErr := waitAtMost(done, reapWait)
 		if !reaped {
 			// The group kill left the leader running (Windows when the
@@ -244,13 +242,23 @@ func exitCodeOf(err error) int {
 	return -1
 }
 
-// afterStartFn indirects afterStart so a test can install a non-nil job
-// cleanup and exercise the deferred-cleanup branch on Unix.
-var afterStartFn = afterStart
+// groupKiller is one recipe's kill state, owned by runRecipe. afterStart
+// builds it once the recipe has started; a platform with no group state
+// to hold returns a killer that kills only the leader.
+type groupKiller interface {
+	// kill ends the recipe's whole group (or only its leader where the
+	// platform has no group). A killer for a command that never started
+	// does nothing.
+	kill()
+	// close releases what afterStart captured. runRecipe calls it once,
+	// on return.
+	close()
+}
 
-// killGroupFn indirects killGroup so a test can model a group kill that
-// leaves the recipe running.
-var killGroupFn = killGroup
+// afterStartFn indirects afterStart so a test can install a stub
+// killer: one that records a call, or models a group kill that leaves
+// the recipe running.
+var afterStartFn = afterStart
 
 // forceKillLeaderFn indirects forceKillLeader so a test can check that
 // runRecipe's leader-only fallback uses it.

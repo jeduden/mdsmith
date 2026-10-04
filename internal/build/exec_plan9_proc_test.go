@@ -87,24 +87,19 @@ func readFile(t *testing.T, p string) string {
 	return string(b)
 }
 
-// held reports whether afterStart recorded a note group for cmd.
-func held(cmd *exec.Cmd) bool {
-	notePgsMu.Lock()
-	defer notePgsMu.Unlock()
-	_, ok := notePgs[cmd]
-	return ok
-}
+// groupOf returns the note group k captured, or nil when it captured
+// none.
+func groupOf(k groupKiller) *noteGroup { return k.(*noteKiller).group }
 
 func TestAfterStart_Plan9_NilProcess(t *testing.T) {
-	assert.Nil(t, afterStart(&exec.Cmd{}))
+	assert.Nil(t, groupOf(afterStart(&exec.Cmd{})))
 }
 
 func TestAfterStart_Plan9_NoProcEntryReturnsNil(t *testing.T) {
 	// A leader that exited before afterStart ran has no /proc entry.
 	stubProcRoot(t) // empty, so <root>/42 has neither noteid nor notepg
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	assert.Nil(t, afterStart(cmd))
-	assert.False(t, held(cmd))
+	assert.Nil(t, groupOf(afterStart(cmd)))
 }
 
 func TestAfterStart_Plan9_UnreadableNoteIDReturnsNil(t *testing.T) {
@@ -112,8 +107,7 @@ func TestAfterStart_Plan9_UnreadableNoteIDReturnsNil(t *testing.T) {
 	// mdsmith's own group's, so it must not keep it.
 	fakeNotePg(t, stubProcRoot(t), "42")
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	assert.Nil(t, afterStart(cmd))
-	assert.False(t, held(cmd))
+	assert.Nil(t, groupOf(afterStart(cmd)))
 }
 
 func TestAfterStart_Plan9_RefusesOwnNoteGroup(t *testing.T) {
@@ -131,9 +125,9 @@ func TestAfterStart_Plan9_RefusesOwnNoteGroup(t *testing.T) {
 	noted := stubNoteKill(t)
 
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	assert.Nil(t, afterStart(cmd))
-	assert.False(t, held(cmd))
-	killGroup(cmd)
+	k := afterStart(cmd)
+	assert.Nil(t, groupOf(k))
+	k.kill()
 	assert.Empty(t, readFile(t, self), "mdsmith itself must not be swept")
 	assert.Empty(t, *noted)
 }
@@ -146,15 +140,15 @@ func TestAfterStart_Plan9_KeepsNoteIDWhenNotePgFails(t *testing.T) {
 	stubNoteKill(t)
 
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	cleanup := afterStart(cmd)
-	require.NotNil(t, cleanup)
-	defer cleanup()
-	killGroup(cmd)
+	k := afterStart(cmd)
+	require.NotNil(t, groupOf(k))
+	defer k.close()
+	k.kill()
 	assert.Equal(t, "kill", readFile(t, member))
 }
 
 func TestAfterStart_Plan9_RecordsNoteID(t *testing.T) {
-	// killGroup's forced sweep needs the noteid afterStart read while
+	// kill's forced sweep needs the noteid afterStart read while
 	// the leader was alive.
 	root := stubProcRoot(t)
 	ctl := fakeProc(t, root, "42", "9")
@@ -162,20 +156,20 @@ func TestAfterStart_Plan9_RecordsNoteID(t *testing.T) {
 	stubNoteKill(t) // pid 42 is fake: no note may reach a real process
 
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	cleanup := afterStart(cmd)
-	require.NotNil(t, cleanup)
-	defer cleanup()
-	killGroup(cmd)
+	k := afterStart(cmd)
+	require.NotNil(t, groupOf(k))
+	defer k.close()
+	k.kill()
 	assert.Equal(t, "kill", readFile(t, path))
 	assert.Equal(t, "kill", readFile(t, ctl), "the group member must get a forced ctl kill")
 }
 
-func TestKillGroup_Plan9_NilProcess(t *testing.T) {
-	assert.NotPanics(t, func() { killGroup(&exec.Cmd{}) })
+func TestKill_Plan9_NilProcess(t *testing.T) {
+	assert.NotPanics(t, afterStart(&exec.Cmd{}).kill)
 }
 
-func TestKillGroup_Plan9_WritesKillToHeldFile(t *testing.T) {
-	// killGroup must write to the file afterStart opened, not reopen
+func TestKill_Plan9_WritesKillToHeldFile(t *testing.T) {
+	// kill must write to the file afterStart opened, not reopen
 	// /proc/<pid>/notepg, which is gone once the leader has exited.
 	root := stubProcRoot(t)
 	fakeProc(t, root, "42", "9")
@@ -183,18 +177,17 @@ func TestKillGroup_Plan9_WritesKillToHeldFile(t *testing.T) {
 	stubNoteKill(t)
 
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	cleanup := afterStart(cmd)
-	require.NotNil(t, cleanup)
-	killGroup(cmd)
-	cleanup()
+	k := afterStart(cmd)
+	require.NotNil(t, groupOf(k))
+	k.kill()
+	k.close()
 
 	assert.Equal(t, "kill", readFile(t, path))
-	assert.False(t, held(cmd), "cleanup must forget the file")
 }
 
-func TestKillGroup_Plan9_ForceKillsLeaderThatLeftGroup(t *testing.T) {
+func TestKill_Plan9_ForceKillsLeaderThatLeftGroup(t *testing.T) {
 	// The notepg write succeeds, but the leader moved to another note
-	// group, so neither the note nor the sweep reaches it. killGroup
+	// group, so neither the note nor the sweep reaches it. kill
 	// must still write a forced kill to the leader's ctl file.
 	root := stubProcRoot(t)
 	ctl := fakeProc(t, root, "42", "9")
@@ -202,17 +195,17 @@ func TestKillGroup_Plan9_ForceKillsLeaderThatLeftGroup(t *testing.T) {
 	noted := stubNoteKill(t)
 
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	cleanup := afterStart(cmd)
-	require.NotNil(t, cleanup)
-	defer cleanup()
+	k := afterStart(cmd)
+	require.NotNil(t, groupOf(k))
+	defer k.close()
 	require.NoError(t, os.WriteFile(filepath.Join(root, "42", "noteid"), []byte("5"), 0o600))
 
-	killGroup(cmd)
+	k.kill()
 	assert.Equal(t, "kill", readFile(t, ctl), "the leader must get a forced ctl kill")
 	assert.Empty(t, *noted)
 }
 
-func TestKillGroup_Plan9_FailedWriteStillKillsLeader(t *testing.T) {
+func TestKill_Plan9_FailedWriteStillKillsLeader(t *testing.T) {
 	// The held notepg write fails and the sweep finds no member, so the
 	// leader's forced kill is all that is left.
 	root := stubProcRoot(t)
@@ -221,15 +214,13 @@ func TestKillGroup_Plan9_FailedWriteStillKillsLeader(t *testing.T) {
 	stubNoteKill(t)
 
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	cleanup := afterStart(cmd)
-	require.NotNil(t, cleanup)
-	defer cleanup()
-	notePgsMu.Lock()
-	_ = notePgs[cmd].pg.Close() // make the write fail
-	notePgsMu.Unlock()
+	k := afterStart(cmd)
+	require.NotNil(t, groupOf(k))
+	defer k.close()
+	_ = groupOf(k).pg.Close() // make the write fail
 	require.NoError(t, os.WriteFile(filepath.Join(root, "42", "noteid"), []byte("5"), 0o600))
 
-	killGroup(cmd)
+	k.kill()
 	assert.Equal(t, "kill", readFile(t, ctl))
 }
 
@@ -406,10 +397,10 @@ func TestAfterStart_Plan9_DropsNotePgWhenNoteIDChangedAfterOpen(t *testing.T) {
 	})
 
 	cmd := &exec.Cmd{Process: &os.Process{Pid: 42}}
-	cleanup := afterStart(cmd)
-	require.NotNil(t, cleanup)
-	defer cleanup()
-	killGroup(cmd)
+	k := afterStart(cmd)
+	require.NotNil(t, groupOf(k))
+	defer k.close()
+	k.kill()
 	assert.Empty(t, readFile(t, path), "a notepg bound to another group must not get the kill")
 	assert.Equal(t, "kill", readFile(t, member), "the sweep still reaches the captured group")
 }

@@ -24,19 +24,27 @@ func configureProcessGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
-// afterStart is a no-op on Unix; the Job Object equivalent is Windows
-// only. It returns nil so runRecipe installs no cleanup defer.
-func afterStart(*exec.Cmd) func() { return nil }
+// pgKiller is the groupKiller on Unix. The process group needs no state
+// beyond the leader's pid, which is the pgid.
+type pgKiller struct{ cmd *exec.Cmd }
 
-// killGroup terminates the recipe's whole process group. It sends
+// afterStart holds no state on Unix; the Job Object equivalent is
+// Windows only.
+func afterStart(cmd *exec.Cmd) groupKiller { return pgKiller{cmd} }
+
+// close has nothing to release.
+func (pgKiller) close() {}
+
+// kill terminates the recipe's whole process group. It sends
 // SIGTERM first, waits up to gracePeriod for the group to exit, then
 // sends SIGKILL. Signaling the negative pgid reaches every process in
-// the group, so a recipe's background children are killed too.
-func killGroup(cmd *exec.Cmd) {
-	if cmd.Process == nil {
+// the group, so a recipe's background children are killed too. A nil
+// Process (the command never started) is a no-op.
+func (k pgKiller) kill() {
+	if k.cmd.Process == nil {
 		return
 	}
-	pgid := cmd.Process.Pid // Setpgid made pgid == leader pid
+	pgid := k.cmd.Process.Pid // Setpgid made pgid == leader pid
 	_ = signalGroup(pgid, syscall.SIGTERM)
 
 	// Wait for the group to drain, polling with signal 0 (existence probe).

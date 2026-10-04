@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 )
 
@@ -60,39 +59,40 @@ type noteGroup struct {
 	id string
 }
 
-// notePgs maps a running command to the note group afterStart captured
-// for it. The kernel binds an open notepg to the note group, not to the
+// noteKiller is the groupKiller on plan9. group is what afterStart
+// captured, or nil when it captured nothing; then kill ends only the
+// leader. The kernel binds an open notepg to the note group, not to the
 // process, so a write still reaches the group after the leader exited
 // and its /proc entry is gone, and never reaches a group that later
-// reuses the pid. Note ids are not reused either. notePgsMu guards it,
-// as jobHandlesMu does on Windows.
-var (
-	notePgsMu sync.Mutex
-	notePgs   = map[*exec.Cmd]noteGroup{}
-)
+// reuses the pid. Note ids are not reused either.
+type noteKiller struct {
+	cmd   *exec.Cmd
+	group *noteGroup
+}
 
 // afterStart reads the recipe's noteid and opens its notepg file while
-// the leader is still alive, and keeps both for killGroup. It reads the
+// the leader is still alive, and keeps both for kill. It reads the
 // noteid first: a leader that exits before the open still leaves the
-// id, which is enough for the forced sweep. It keeps nothing, and
-// returns nil, when the id cannot be read (the leader already exited)
-// or is mdsmith's own: a recipe that joined its parent's note group
-// would otherwise turn the timeout on mdsmith and the user's shell.
+// id, which is enough for the forced sweep. It keeps no group when the
+// id cannot be read (the leader already exited) or is mdsmith's own: a
+// recipe that joined its parent's note group would otherwise turn the
+// timeout on mdsmith and the user's shell.
 // The notepg file is kept only if the leader's noteid is still the
 // same once it is open, so the file is bound to the recipe's group.
-// The cleanup it returns forgets the group and closes the file. A
-// leader that exited before afterStart ran leaves nothing to kill its
-// group by; killGroup then kills only the leader.
-func afterStart(cmd *exec.Cmd) func() {
+// The killer's close closes the file. A leader that exited before
+// afterStart ran leaves nothing to kill its group by; kill then kills
+// only the leader.
+func afterStart(cmd *exec.Cmd) groupKiller {
+	k := &noteKiller{cmd: cmd}
 	if cmd.Process == nil {
-		return nil
+		return k
 	}
 	dir := procDir(cmd.Process.Pid)
 	id := readNoteID(dir)
 	if id == "" || id == readNoteID(procDir(os.Getpid())) {
-		return nil
+		return k
 	}
-	g := noteGroup{id: id}
+	g := &noteGroup{id: id}
 	if f, err := openProcFile(filepath.Join(dir, "notepg"), os.O_WRONLY, 0); err == nil {
 		if readNoteID(dir) == id {
 			g.pg = f
@@ -100,16 +100,14 @@ func afterStart(cmd *exec.Cmd) func() {
 			_ = f.Close()
 		}
 	}
-	notePgsMu.Lock()
-	notePgs[cmd] = g
-	notePgsMu.Unlock()
-	return func() {
-		notePgsMu.Lock()
-		delete(notePgs, cmd)
-		notePgsMu.Unlock()
-		if g.pg != nil {
-			_ = g.pg.Close()
-		}
+	k.group = g
+	return k
+}
+
+// close closes the notepg file, if afterStart kept one.
+func (k *noteKiller) close() {
+	if k.group != nil && k.group.pg != nil {
+		_ = k.group.pg.Close()
 	}
 }
 
@@ -186,7 +184,7 @@ func killIfInGroup(dir, id string) bool {
 	return err == nil
 }
 
-// killGroup kills the recipe's whole note group, so a recipe's
+// kill kills the recipe's whole note group, so a recipe's
 // children that stayed in the group die with it. There is no grace
 // period. When afterStart captured the group, it first writes "kill"
 // to the held notepg file, which reaches every member at once but is a
@@ -197,17 +195,14 @@ func killIfInGroup(dir, id string) bool {
 // group and one afterStart captured nothing for. A nil Process (the
 // command never started) is a no-op: afterStart held no group for it,
 // and forceKillLeader skips it.
-func killGroup(cmd *exec.Cmd) {
-	notePgsMu.Lock()
-	g, held := notePgs[cmd]
-	notePgsMu.Unlock()
-	if held {
+func (k *noteKiller) kill() {
+	if g := k.group; g != nil {
 		if g.pg != nil {
 			_, _ = g.pg.WriteString("kill")
 		}
 		forceKillNoteGroup(g.id)
 	}
-	forceKillLeader(cmd)
+	forceKillLeader(k.cmd)
 }
 
 // forceKillLeader writes "kill" to the leader's ctl file. Unlike the
