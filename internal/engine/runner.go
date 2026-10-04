@@ -494,8 +494,9 @@ func (r *Runner) lintFile(path string, intraFileCap int, cache *runcache.Cache, 
 		*bufp = (*bufp)[:0]
 		sourceBufPool.Put(bufp)
 	}()
-	closeRoots := r.configureFile(f, path, cache)
-	defer closeRoots()
+	// configureFile runs now; only the root close it returns is
+	// deferred, so the file's roots stay open for the whole check.
+	defer r.configureFile(f, path, cache)()
 
 	// Generated-section ranges come from a PI walk over the AST. A
 	// parse-skipped File (AST nil) is, by gate construction, free of
