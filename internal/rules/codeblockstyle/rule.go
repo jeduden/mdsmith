@@ -12,6 +12,7 @@
 package codeblockstyle
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -169,7 +170,18 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	// walks the AST top-to-bottom), so the rewrite needs only a single
 	// pass over f.Lines with an advancing range pointer — O(lines +
 	// blocks) instead of O(lines × blocks).
-	out := make([]string, 0, len(f.Lines)+2*len(ranges))
+	var out bytes.Buffer
+	out.Grow(len(f.Source) + 16*len(ranges))
+	first := true
+	// emit writes one output line, newline-separated like the
+	// strings.Join this replaced, with no per-line string copy.
+	emit := func(line []byte) {
+		if !first {
+			out.WriteByte('\n')
+		}
+		first = false
+		out.Write(line)
+	}
 	ri := 0
 	for i, raw := range f.Lines {
 		lineNum := i + 1
@@ -180,18 +192,23 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			lineNum >= ranges[ri].firstLine &&
 			lineNum <= ranges[ri].lastLine
 		if !inRange {
-			out = append(out, string(raw))
+			emit(raw)
 			continue
 		}
 		if lineNum == ranges[ri].firstLine {
-			out = append(out, ranges[ri].fence+"text")
+			if !first {
+				out.WriteByte('\n')
+			}
+			first = false
+			out.WriteString(ranges[ri].fence)
+			out.WriteString("text")
 		}
-		out = append(out, stripIndent(raw))
+		emit(stripIndent(raw))
 		if lineNum == ranges[ri].lastLine {
-			out = append(out, ranges[ri].fence)
+			emit([]byte(ranges[ri].fence))
 		}
 	}
-	return []byte(strings.Join(out, "\n"))
+	return out.Bytes()
 }
 
 // fenceFor returns a backtick fence at least three long and strictly
@@ -313,18 +330,18 @@ func (r *Rule) effectiveStyle(blocks []blockInfo) string {
 
 // stripIndent removes up to four leading spaces (or one leading tab)
 // from a single source line. Blank lines pass through unchanged.
-func stripIndent(line []byte) string {
+func stripIndent(line []byte) []byte {
 	if len(line) == 0 {
-		return ""
+		return nil
 	}
 	if line[0] == '\t' {
-		return string(line[1:])
+		return line[1:]
 	}
 	n := 0
 	for n < 4 && n < len(line) && line[n] == ' ' {
 		n++
 	}
-	return string(line[n:])
+	return line[n:]
 }
 
 // ApplySettings implements rule.Configurable.
