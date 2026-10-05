@@ -143,11 +143,6 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		return f.Source
 	}
 
-	type indentedRange struct {
-		firstLine int    // 1-based, inclusive
-		lastLine  int    // 1-based, inclusive (last content line)
-		fence     string // backtick fence sized to clear any in-content run
-	}
 	var ranges []indentedRange
 	for _, b := range blocks {
 		if b.style != "indented" {
@@ -170,20 +165,38 @@ func (r *Rule) Fix(f *lint.File) []byte {
 	// walks the AST top-to-bottom), so the rewrite needs only a single
 	// pass over f.Lines with an advancing range pointer — O(lines +
 	// blocks) instead of O(lines × blocks).
-	var out bytes.Buffer
-	out.Grow(len(f.Source) + 16*len(ranges))
-	first := true
-	// emit writes one output line, newline-separated like the
-	// strings.Join this replaced, with no per-line string copy.
-	emit := func(line []byte) {
-		if !first {
-			out.WriteByte('\n')
-		}
-		first = false
-		out.Write(line)
+	return rewriteIndented(f.Lines, ranges, len(f.Source))
+}
+
+// indentedRange is one top-level indented code block to rewrite.
+type indentedRange struct {
+	firstLine int    // 1-based, inclusive
+	lastLine  int    // 1-based, inclusive (last content line)
+	fence     string // backtick fence sized to clear any in-content run
+}
+
+// lineWriter joins lines with "\n" like the strings.Join it replaced,
+// with no per-line string copy.
+type lineWriter struct {
+	buf   bytes.Buffer
+	begun bool
+}
+
+// next starts a new output line, writing the separator after the first.
+func (w *lineWriter) next() {
+	if w.begun {
+		w.buf.WriteByte('\n')
 	}
+	w.begun = true
+}
+
+// rewriteIndented converts each range's indented block to a fenced one in
+// a single pass over lines, advancing a range pointer.
+func rewriteIndented(lines [][]byte, ranges []indentedRange, srcLen int) []byte {
+	var w lineWriter
+	w.buf.Grow(srcLen + 16*len(ranges))
 	ri := 0
-	for i, raw := range f.Lines {
+	for i, raw := range lines {
 		lineNum := i + 1
 		for ri < len(ranges) && ranges[ri].lastLine < lineNum {
 			ri++
@@ -191,24 +204,24 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		inRange := ri < len(ranges) &&
 			lineNum >= ranges[ri].firstLine &&
 			lineNum <= ranges[ri].lastLine
+		w.next()
 		if !inRange {
-			emit(raw)
+			w.buf.Write(raw)
 			continue
 		}
-		if lineNum == ranges[ri].firstLine {
-			if !first {
-				out.WriteByte('\n')
-			}
-			first = false
-			out.WriteString(ranges[ri].fence)
-			out.WriteString("text")
+		rg := ranges[ri]
+		if lineNum == rg.firstLine {
+			w.buf.WriteString(rg.fence)
+			w.buf.WriteString("text")
+			w.next()
 		}
-		emit(stripIndent(raw))
-		if lineNum == ranges[ri].lastLine {
-			emit([]byte(ranges[ri].fence))
+		w.buf.Write(stripIndent(raw))
+		if lineNum == rg.lastLine {
+			w.next()
+			w.buf.WriteString(rg.fence)
 		}
 	}
-	return out.Bytes()
+	return w.buf.Bytes()
 }
 
 // fenceFor returns a backtick fence at least three long and strictly
