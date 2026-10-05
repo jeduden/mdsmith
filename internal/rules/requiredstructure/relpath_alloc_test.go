@@ -1,11 +1,13 @@
 package requiredstructure
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/jeduden/mdsmith/internal/lint"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestWorkspaceRelPathSkipsWorkingDirectory guards the "memoize
@@ -35,6 +37,18 @@ func TestWorkspaceRelPathUnrelatableRelativePair(t *testing.T) {
 	f := &lint.File{RootDir: "..", Path: "a.md"}
 	assert.Equal(t, filepath.ToSlash(filepath.Join(filepath.Base(root), "a.md")),
 		workspaceRelPath(f))
+}
+
+// TestWorkspaceRelPathReentersRootByName covers a relative path that
+// leaves the root and comes back in by name: it is inside the workspace,
+// which only the working directory can show.
+func TestWorkspaceRelPathReentersRootByName(t *testing.T) {
+	root := t.TempDir()
+	proj := filepath.Join(root, "proj")
+	require.NoError(t, os.Mkdir(proj, 0o755))
+	t.Chdir(proj)
+	f := &lint.File{RootDir: ".", Path: filepath.Join("..", "proj", "docs", "a.md")}
+	assert.Equal(t, "docs/a.md", workspaceRelPath(f))
 }
 
 // TestWorkspaceRelPathMixedAbsoluteAndRelative covers an absolute root

@@ -112,20 +112,21 @@ func (s *ids) Generate(value []byte, kind ast.NodeKind) []byte {
 		if l != 1 {
 			continue
 		}
-		if util.IsAlphaNumeric(v) {
+		keep := v
+		switch {
+		case util.IsAlphaNumeric(v):
 			if 'A' <= v && v <= 'Z' {
-				v += 'a' - 'A'
+				keep = v + 'a' - 'A'
 			}
-			if result == nil {
-				result = make([]byte, 0, len(value))
-			}
-			result = append(result, v)
-		} else if util.IsSpace(v) || v == '-' || v == '_' {
-			if result == nil {
-				result = make([]byte, 0, len(value))
-			}
-			result = append(result, '-')
+		case util.IsSpace(v) || v == '-' || v == '_':
+			keep = '-'
+		default:
+			continue
 		}
+		if result == nil {
+			result = make([]byte, 0, len(value))
+		}
+		result = append(result, keep)
 	}
 	if len(result) == 0 {
 		if kind == ast.KindHeading {

@@ -24,6 +24,6 @@ func TestFixIndentedToFencedAllocBudget(t *testing.T) {
 	require.Contains(t, string(out), "```text\nindented()\nmore()\n```")
 
 	allocs := testing.AllocsPerRun(20, func() { _ = r.Fix(f) })
-	assert.LessOrEqual(t, allocs, 20.0,
+	assert.LessOrEqual(t, allocs, 6.0,
 		"Fix allocated per source line")
 }

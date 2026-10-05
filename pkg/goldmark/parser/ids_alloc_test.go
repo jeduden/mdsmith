@@ -20,8 +20,9 @@ func TestIDsGenerateAllocBudget(t *testing.T) {
 		s := &ids{values: map[string]struct{}{}}
 		_ = s.Generate(heading, ast.KindHeading)
 	})
-	// One slug buffer; the unsized form took four (8, 16, 32, 64 bytes).
-	assert.LessOrEqual(t, got, 1.0, "Generate regrew its result buffer")
+	// One slug buffer plus the map insert; the unsized form took four
+	// (8, 16, 32, 64 bytes) before the insert.
+	assert.LessOrEqual(t, got, 2.0, "Generate regrew its result buffer")
 }
 
 // TestIDsGenerateNonASCIIHeadingAllocBudget pins that a heading with no
@@ -36,6 +37,16 @@ func TestIDsGenerateNonASCIIHeadingAllocBudget(t *testing.T) {
 		s := &ids{values: map[string]struct{}{}}
 		_ = s.Generate(heading, ast.KindHeading)
 	})
-	// "heading" fallback buffer; the map insert is counted in the ASCII test.
-	assert.LessOrEqual(t, got, 1.0)
+	// The "heading" fallback buffer plus the map insert; no discarded
+	// pre-sized buffer.
+	assert.LessOrEqual(t, got, 2.0)
+}
+
+// TestIDsGenerateLeadingPunctuation covers slugs whose first kept byte
+// is a space, hyphen or underscore rather than an ASCII letter.
+func TestIDsGenerateLeadingPunctuation(t *testing.T) {
+	s := &ids{values: map[string]struct{}{}}
+	assert.Equal(t, "-private", string(s.Generate([]byte("_private"), ast.KindHeading)))
+	assert.Equal(t, "---flags", string(s.Generate([]byte("-- flags"), ast.KindHeading)))
+	assert.Equal(t, "-guide", string(s.Generate([]byte("日本語 guide"), ast.KindHeading)))
 }

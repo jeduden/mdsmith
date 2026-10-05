@@ -194,7 +194,12 @@ func (w *lineWriter) next() {
 // a single pass over lines, advancing a range pointer.
 func rewriteIndented(lines [][]byte, ranges []indentedRange, srcLen int) []byte {
 	var w lineWriter
-	w.buf.Grow(srcLen + 16*len(ranges))
+	// Each range adds an opening "<fence>text" and a closing fence line.
+	extra := 0
+	for _, rg := range ranges {
+		extra += 2*len(rg.fence) + len("text") + 2
+	}
+	w.buf.Grow(srcLen + extra)
 	ri := 0
 	for i, raw := range lines {
 		lineNum := i + 1
