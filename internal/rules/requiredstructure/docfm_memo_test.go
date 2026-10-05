@@ -62,6 +62,17 @@ func TestCachedDocFrontMatterRaw_ToleratesUnexpectedMemoValue(t *testing.T) {
 	assert.Empty(t, diags)
 }
 
+// cachedDocFrontMatterRaw filters out files without front matter
+// before it reaches the memo, but readDocFrontMatterRaw keeps its own
+// guard: a direct call on such a file returns nothing instead of
+// decoding an empty YAML document.
+func TestReadDocFrontMatterRaw_NoFrontMatter(t *testing.T) {
+	f := newTestFile(t, "doc.md", "# X\n")
+	raw, diags := readDocFrontMatterRaw(f)
+	assert.Nil(t, raw)
+	assert.Nil(t, diags)
+}
+
 // buildDocFrontMatter is the memo builder: it boxes one decode, map
 // and parse diagnostics together, as a *docFrontMatter.
 func TestBuildDocFrontMatter(t *testing.T) {
