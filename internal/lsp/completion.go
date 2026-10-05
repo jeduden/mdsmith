@@ -177,13 +177,12 @@ func (s *Server) directivePathItems(rel, prefix string, idx *index.Index) []comp
 	files := idx.Files()
 	// An empty prefix keeps every file, so size for all of them; a typed
 	// prefix keeps few, and reserving the whole workspace per keystroke
-	// would cost more than the regrowth it saves. The slice stays nil
-	// until the first match, so "no result" remains nil.
-	hint := 0
-	if prefixLower == "" {
-		hint = len(files)
-	}
+	// would cost more than the regrowth it saves. With no files the slice
+	// stays nil, so "no result" remains nil.
 	var items []completionItem
+	if prefixLower == "" && len(files) > 0 {
+		items = make([]completionItem, 0, len(files))
+	}
 	for _, f := range files {
 		relF := relFromDir(dir, f)
 		if !hasPrefixFold(relF, prefixLower) {
@@ -192,9 +191,6 @@ func (s *Server) directivePathItems(rel, prefix string, idx *index.Index) []comp
 		label := relF
 		if exclude {
 			label = "!" + relF
-		}
-		if items == nil && hint > 0 {
-			items = make([]completionItem, 0, hint)
 		}
 		items = append(items, completionItem{
 			Label: label,

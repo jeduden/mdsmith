@@ -2681,38 +2681,22 @@ func workspaceRelPath(f *lint.File) string {
 	if f.RootDir == "" {
 		return filepath.ToSlash(f.Path)
 	}
-	absRoot, absPath := absPair(f.RootDir, f.Path)
+	// Two paths that are both relative (or both absolute) already share
+	// a base, so Rel needs no Abs: filepath.Abs asks the OS for the
+	// working directory on every relative path, and this runs per file.
+	// Mixed or unrelatable pairs (a root of "..") take the Abs route.
+	if filepath.IsAbs(f.RootDir) == filepath.IsAbs(f.Path) {
+		if rel, err := filepath.Rel(f.RootDir, f.Path); err == nil {
+			return filepath.ToSlash(rel)
+		}
+	}
+	absRoot, _ := filepath.Abs(f.RootDir)
+	absPath, _ := filepath.Abs(f.Path)
 	rel, err := filepath.Rel(absRoot, absPath)
 	if err != nil {
 		return filepath.ToSlash(f.Path)
 	}
 	return filepath.ToSlash(rel)
-}
-
-// absPair is filepath.Abs over two paths that share one working-directory
-// lookup: filepath.Abs asks the OS for the working directory on every
-// relative path, and this runs per file. If the working directory cannot
-// be read, relative paths stay cleaned and relative to each other, which
-// still gives filepath.Rel a consistent pair.
-func absPair(a, b string) (string, string) {
-	if filepath.IsAbs(a) && filepath.IsAbs(b) {
-		return filepath.Clean(a), filepath.Clean(b)
-	}
-	wd, _ := os.Getwd()
-	return absIn(wd, a), absIn(wd, b)
-}
-
-func absIn(wd, p string) string {
-	switch {
-	case filepath.IsAbs(p):
-		return filepath.Clean(p)
-	case filepath.VolumeName(p) != "" || (p != "" && os.IsPathSeparator(p[0])):
-		// Windows volume-relative ("C:foo") and rooted ("\\foo") paths
-		// need the per-drive resolution only filepath.Abs does.
-		abs, _ := filepath.Abs(p)
-		return abs
-	}
-	return filepath.Join(wd, p)
 }
 
 // checkFilenamePattern checks that the document basename matches the

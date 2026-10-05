@@ -179,7 +179,7 @@ func TestFixGateMatchesRegexRewrite(t *testing.T) {
 		"", "prose", "  indented prose", "> one", ">  two", ">   three",
 		">\ttab", ">  \t", ">>  x", "> >  x", ">  >  x",
 		"  >  x", ">", ">  ", "text >  not a marker", "> text >  later",
-		">\t  x", "> \t x",
+		">\t  x", "> \t x", ">  x\r", ">  \r",
 	} {
 		f, err := lint.NewFile("t.md", []byte(line+"\n"))
 		require.NoError(t, err)

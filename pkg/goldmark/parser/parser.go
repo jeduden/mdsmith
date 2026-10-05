@@ -101,7 +101,10 @@ func newIDs() IDs {
 func (s *ids) Generate(value []byte, kind ast.NodeKind) []byte {
 	value = util.TrimLeftSpace(value)
 	value = util.TrimRightSpace(value)
-	result := make([]byte, 0, len(value))
+	// Sized lazily on the first kept byte: the slug is never longer than
+	// the input, but a heading with no ASCII letters keeps nothing and
+	// would otherwise allocate a buffer only to discard it.
+	var result []byte
 	for i := 0; i < len(value); {
 		v := value[i]
 		l := util.UTF8Len(v)
@@ -113,8 +116,14 @@ func (s *ids) Generate(value []byte, kind ast.NodeKind) []byte {
 			if 'A' <= v && v <= 'Z' {
 				v += 'a' - 'A'
 			}
+			if result == nil {
+				result = make([]byte, 0, len(value))
+			}
 			result = append(result, v)
 		} else if util.IsSpace(v) || v == '-' || v == '_' {
+			if result == nil {
+				result = make([]byte, 0, len(value))
+			}
 			result = append(result, '-')
 		}
 	}
