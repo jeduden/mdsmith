@@ -2670,16 +2670,27 @@ func pathPatternDiag(
 // workspaceRelPath returns the file path relative to the workspace
 // root when RootDir is set, falling back to the file's own Path. The
 // returned path is slash-normalized so glob patterns written with
-// forward slashes match on every platform. Both RootDir and Path are
-// resolved through filepath.Abs first so the relative computation
-// works when the CLI was invoked with a relative `--config` path
-// (e.g. `--config sub/.mdsmith.yml` makes RootDir relative). The
-// `_ :=` discards mirror isSchemaFile's pattern above: filepath.Abs
-// only fails when os.Getwd fails, which the engine would already
-// have surfaced during file discovery.
+// forward slashes match on every platform. A relative `--config` path
+// (e.g. `--config sub/.mdsmith.yml`) makes RootDir relative. When both
+// paths are relative or both absolute, and neither climbs out with a
+// leading "..", a lexical filepath.Rel is exact. Otherwise both are
+// resolved through filepath.Abs first, so a path that leaves the root
+// and re-enters it by name still relates correctly. The `_ :=`
+// discards mirror isSchemaFile's pattern above: filepath.Abs only
+// fails when os.Getwd fails, which the engine would already have
+// surfaced during file discovery.
 func workspaceRelPath(f *lint.File) string {
 	if f.RootDir == "" {
 		return filepath.ToSlash(f.Path)
+	}
+	// filepath.Abs asks the OS for the working directory on every
+	// relative path, and this runs per file; a lexical Rel avoids it
+	// whenever it is provably exact.
+	if filepath.IsAbs(f.RootDir) == filepath.IsAbs(f.Path) &&
+		!climbsOut(f.RootDir) && !climbsOut(f.Path) {
+		if rel, err := filepath.Rel(f.RootDir, f.Path); err == nil {
+			return filepath.ToSlash(rel)
+		}
 	}
 	absRoot, _ := filepath.Abs(f.RootDir)
 	absPath, _ := filepath.Abs(f.Path)
@@ -2688,6 +2699,13 @@ func workspaceRelPath(f *lint.File) string {
 		return filepath.ToSlash(f.Path)
 	}
 	return filepath.ToSlash(rel)
+}
+
+// climbsOut reports whether the cleaned relative path p starts with a
+// ".." element, so its meaning depends on the working directory.
+func climbsOut(p string) bool {
+	p = filepath.Clean(p)
+	return p == ".." || strings.HasPrefix(p, ".."+string(filepath.Separator))
 }
 
 // checkFilenamePattern checks that the document basename matches the

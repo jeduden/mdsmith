@@ -332,13 +332,13 @@ func TestFix_NoIndentedBlocks_ReturnsSourceUnchanged(t *testing.T) {
 }
 
 func TestStripIndent_EmptyLine(t *testing.T) {
-	assert.Equal(t, "", stripIndent(nil))
-	assert.Equal(t, "", stripIndent([]byte("")))
+	assert.Empty(t, stripIndent(nil))
+	assert.Empty(t, stripIndent([]byte("")))
 }
 
 func TestStripIndent_PartialIndent(t *testing.T) {
 	// Less than 4 spaces — strip what's there.
-	assert.Equal(t, "code", stripIndent([]byte("  code")))
+	assert.Equal(t, "code", string(stripIndent([]byte("  code"))))
 }
 
 // --- isTopLevel helper ---

@@ -64,11 +64,8 @@ func (r *Rule) Check(f *lint.File) []lint.Diagnostic {
 		// Candidate gate before the per-line set lookup: only lines whose
 		// first non-blank byte is '>' carry a blockquote marker prefix.
 		// Ordinary prose lines skip the map probe and the prefix scan.
-		j := 0
-		for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
-			j++
-		}
-		if j >= len(line) || line[j] != '>' {
+		j, ok := firstMarkerIndex(line)
+		if !ok {
 			continue
 		}
 		sawBlockquote = true
@@ -144,6 +141,20 @@ func (r *Rule) allBlankBetween(f *lint.File, lo, hi int) bool {
 		}
 	}
 	return true
+}
+
+// firstMarkerIndex returns the index of the line's first '>' when it is
+// the first non-blank byte, i.e. the line can carry a blockquote marker
+// chain. Check and Fix share it as their candidate gate.
+func firstMarkerIndex(line []byte) (int, bool) {
+	j := 0
+	for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
+		j++
+	}
+	if j >= len(line) || line[j] != '>' {
+		return 0, false
+	}
+	return j, true
 }
 
 // multiSpaceAfterMarker reports the 0-based index of the first '>' in
@@ -238,16 +249,24 @@ func (r *Rule) Fix(f *lint.File) []byte {
 		if i > 0 {
 			buf.WriteByte('\n')
 		}
-		lineNum := i + 1
-		if _, ok := codeLines[lineNum]; ok {
+		// Same candidate gate as Check, ahead of the code-line map probe
+		// so prose lines skip both: a line whose first non-blank byte is
+		// not '>' has no marker, and a marker chain with no two-space
+		// defect needs no rewrite.
+		j, ok := firstMarkerIndex(line)
+		if !ok {
+			buf.Write(line)
+			continue
+		}
+		if _, found := multiSpaceAfterMarker(line, j); !found {
+			buf.Write(line)
+			continue
+		}
+		if _, ok := codeLines[i+1]; ok {
 			buf.Write(line)
 			continue
 		}
 		prefix := reBlockquotePrefix.Find(line)
-		if !reMultiSpace.Match(prefix) {
-			buf.Write(line)
-			continue
-		}
 		fixedPrefix := reMultiSpace.ReplaceAllLiteral(prefix, bqFixedSpace)
 		content := line[len(prefix):]
 		if len(content) == 0 {

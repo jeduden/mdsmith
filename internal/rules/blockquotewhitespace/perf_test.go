@@ -1,6 +1,7 @@
 package blockquotewhitespace
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -154,4 +155,52 @@ func TestCheckBlankBetween_GateSkipsWalkWithoutMarkerLine(t *testing.T) {
 
 	assert.Empty(t, (&Rule{}).Check(f),
 		"MD028 walk ran on a file with no '>' marker line: the sawBlockquote gate is gone")
+}
+
+// fixRegexOracle is the regex-only Fix prefix rewrite the byte gate in
+// Fix replaced; the equivalence test pins the gate to it.
+func fixRegexOracle(line []byte) []byte {
+	prefix := reBlockquotePrefix.Find(line)
+	if !reMultiSpace.Match(prefix) {
+		return line
+	}
+	fixed := reMultiSpace.ReplaceAllLiteral(prefix, bqFixedSpace)
+	content := line[len(prefix):]
+	if len(content) == 0 {
+		return bytes.TrimRight(fixed, " \t")
+	}
+	return append(append([]byte{}, fixed...), content...)
+}
+
+// TestFixGateMatchesRegexRewrite checks Fix's byte gate rewrites every
+// line shape exactly as the regex-only path did.
+func TestFixGateMatchesRegexRewrite(t *testing.T) {
+	for _, line := range []string{
+		"", "prose", "  indented prose", "> one", ">  two", ">   three",
+		">\ttab", ">  \t", ">>  x", "> >  x", ">  >  x",
+		"  >  x", ">", ">  ", "text >  not a marker", "> text >  later",
+		">\t  x", "> \t x", ">  x\r", ">  \r",
+	} {
+		f, err := lint.NewFile("t.md", []byte(line+"\n"))
+		require.NoError(t, err)
+		want := string(fixRegexOracle([]byte(line)))
+		got := strings.TrimSuffix(string((&Rule{}).Fix(f)), "\n")
+		assert.Equal(t, want, got, "line %q", line)
+	}
+}
+
+// BenchmarkFix_ProseHeavy is Fix on a mostly-prose file: the byte gate
+// should keep ordinary lines off the regex path.
+func BenchmarkFix_ProseHeavy(b *testing.B) {
+	src := []byte(strings.Repeat("plain prose line with some words in it\n", 2000) +
+		">  quoted\n")
+	f, err := lint.NewFile("t.md", src)
+	if err != nil {
+		b.Fatal(err)
+	}
+	r := &Rule{}
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = r.Fix(f)
+	}
 }
