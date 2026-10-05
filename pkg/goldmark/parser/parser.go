@@ -101,7 +101,7 @@ func newIDs() IDs {
 func (s *ids) Generate(value []byte, kind ast.NodeKind) []byte {
 	value = util.TrimLeftSpace(value)
 	value = util.TrimRightSpace(value)
-	result := []byte{}
+	result := make([]byte, 0, len(value))
 	for i := 0; i < len(value); {
 		v := value[i]
 		l := util.UTF8Len(v)
