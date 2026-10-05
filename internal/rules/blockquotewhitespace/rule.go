@@ -243,11 +243,22 @@ func (r *Rule) Fix(f *lint.File) []byte {
 			buf.Write(line)
 			continue
 		}
-		prefix := reBlockquotePrefix.Find(line)
-		if !reMultiSpace.Match(prefix) {
+		// Same candidate gate as Check: a line whose first non-blank
+		// byte is not '>' has no marker, and a marker chain with no
+		// two-space defect needs no rewrite. Both skip the regex passes.
+		j := 0
+		for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
+			j++
+		}
+		if j >= len(line) || line[j] != '>' {
 			buf.Write(line)
 			continue
 		}
+		if _, found := multiSpaceAfterMarker(line, j); !found {
+			buf.Write(line)
+			continue
+		}
+		prefix := reBlockquotePrefix.Find(line)
 		fixedPrefix := reMultiSpace.ReplaceAllLiteral(prefix, bqFixedSpace)
 		content := line[len(prefix):]
 		if len(content) == 0 {
