@@ -11,7 +11,8 @@
                in the front-matter summary lands as HTML rather than
                literal backticks. display=inline avoids nesting a
                block <p> inside this wrapping <p>. Mirrors
-               feature-grid.html's summary render. */ -}}
+               the homepage feature rows' summary render
+               (feature-groups.html). */ -}}
         {{ if .Params.summary }}<p class="lead">{{ .RenderString (dict "display" "inline") .Params.summary }}</p>{{ end }}
         {{ partial "link-rules.html" . }}
 

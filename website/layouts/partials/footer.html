@@ -3,7 +3,7 @@
     <div class="footer-grid">
       <div class="footer-col">
         <a class="topnav-brand" href="{{ "/" | relURL }}" aria-label="mdsmith home">
-          <img src="{{ "img/logo-lockup.svg" | relURL }}" width="117" height="26" alt="mdsmith">
+          <img src="{{ cond .IsHome "img/logo-lockup-inverse.svg" "img/logo-lockup.svg" | relURL }}" width="117" height="26" alt="mdsmith">
         </a>
         <p class="footer-tagline">{{ .Site.Params.description }}</p>
       </div>

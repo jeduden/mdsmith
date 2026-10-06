@@ -42,10 +42,17 @@
   <script>document.documentElement.classList.add("js")</script>
   <link rel="stylesheet" href="{{ "css/colors_and_type.css" | relURL }}">
   <link rel="stylesheet" href="{{ "css/app.css" | relURL }}">
+  {{- /* The home page carries its own dark "forge" theme and the
+         animated terminal; both load only there, so docs pages keep
+         the light theme and skip the script. */}}
+  {{- if .IsHome }}
+  <link rel="stylesheet" href="{{ "css/home.css" | relURL }}">
+  <script src="{{ "js/forge-stack.js" | relURL }}" defer></script>
+  {{- end }}
   <script src="{{ "js/lucide.min.js" | relURL }}" defer></script>
   <script src="{{ "js/search.js" | relURL }}" defer></script>
 </head>
-<body>
+<body{{ if .IsHome }} class="page-home"{{ end }}>
   <div class="app">
     {{ partial "topnav.html" . }}
     <main>
@@ -69,7 +76,7 @@
       // link instead; with JS off the current (broken-icon)
       // behavior is unchanged. Images can fail before listeners
       // attach, so completed-but-empty images are swept too.
-      document.querySelectorAll(".hero-badges img").forEach(img => {
+      document.querySelectorAll(".fx-badges img").forEach(img => {
         const hide = () => {
           const a = img.closest("a");
           if (a) a.hidden = true;

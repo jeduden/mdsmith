@@ -1,39 +1,37 @@
+{{- /*
+  Homepage hero: the headline, lead, calls to action, the
+  markdownlint migration line, and the live project badges, with
+  the forge card stack beside them.
+
+  Copy comes from the `hero:` front matter in content/_index.md,
+  which `mdsmith-release sync-messaging` keeps in step with
+  docs/brand/messaging.md. The eyebrow stays in that front matter
+  because baseof.html uses it for the home page <title>; the page
+  itself no longer prints it.
+*/ -}}
 {{ with site.Home.Params.hero }}
-<section class="hero">
-  <div class="container hero-inner">
-    <div class="hero-grid">
-      <div>
-        <div class="hero-eyebrow">
-          <span class="dot"></span>
-          {{ .eyebrow }}
-        </div>
-        <h1>{{ .headline_pre }}<em>{{ .headline_em }}</em>{{ .headline_post }}</h1>
-        <div class="hero-lead">{{ .lead | markdownify }}</div>
-        <div class="hero-cta">
-          <a class="btn btn-primary btn-lg" href="{{ "/guides/install/" | relURL }}">
-            <i data-lucide="download" width="16" height="16" aria-hidden="true"></i>
-            Install mdsmith
-          </a>
-          <a class="btn btn-secondary btn-lg" href="{{ "/guides/" | relURL }}">
-            <i data-lucide="book-open" width="16" height="16" aria-hidden="true"></i>
-            Read the docs
-          </a>
-          <a class="btn btn-ghost btn-lg btn-mono" href="https://github.com/{{ $.Site.Params.githubRepo }}" rel="noopener">
-            {{ partial "github-mark.html" (dict "size" 16) }}
-            {{ $.Site.Params.githubRepo }}
-          </a>
+<section class="fx-hero" aria-labelledby="fx-headline">
+  <div class="fx-wrap">
+    <h1 id="fx-headline" class="fx-headline">{{ .headline_pre }}<em>{{ .headline_em }}</em>{{ .headline_post }}</h1>
+    <div class="fx-hero-grid">
+      <div class="fx-hero-copy">
+        <div class="fx-lead">{{ .lead | markdownify }}</div>
+        <div class="fx-cta">
+          <a class="fx-btn fx-btn--primary" href="{{ "/guides/install/" | relURL }}">Install mdsmith</a>
+          <a class="fx-btn fx-btn--ghost" href="{{ "/guides/" | relURL }}">Read the docs</a>
+          <a class="fx-repo" href="https://github.com/{{ $.Site.Params.githubRepo }}" rel="noopener">{{ $.Site.Params.githubRepo }}</a>
         </div>
         {{- /* markdownlint users are the highest-intent audience;
                lead with the one-command config conversion and a
                direct path to the migration guide instead of
                leaving it buried in the docs tree. */ -}}
-        <p class="hero-switch">
+        <p class="fx-switch">
           Coming from markdownlint?
           <code>mdsmith init --from-markdownlint</code> converts your config —
           <a href="{{ "/guides/migrate-from-markdownlint/" | relURL }}">follow the migration guide</a>.
         </p>
         {{- $repo := $.Site.Params.githubRepo -}}
-        <div class="hero-badges" aria-label="Live project health">
+        <div class="fx-badges" aria-label="Live project health">
           <a href="https://github.com/{{ $repo }}/actions/workflows/ci.yml?query=branch%3Amain" rel="noopener">
             <img src="https://github.com/{{ $repo }}/actions/workflows/ci.yml/badge.svg?branch=main"
                  alt="CI build status on main" height="20" loading="lazy">
@@ -48,25 +46,7 @@
           </a>
         </div>
       </div>
-      <div>
-        <figure class="hero-demo">
-          <div class="hero-demo-bar">
-            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-            <span class="hero-demo-title">mdsmith — check &amp; fix</span>
-          </div>
-          {{- /* The GIF is recorded from demo.tape and published
-                 to the orphan `assets` branch by demo.yml on push
-                 to main. The pages-deploy workflow pulls it into
-                 website/static/img/ at build time (mdsmith-release
-                 pull-site-assets), so it ships as a first-party
-                 site asset instead of a runtime
-                 raw.githubusercontent hotlink. */ -}}
-          <img class="hero-demo-img"
-               src="{{ "img/demo.gif" | relURL }}"
-               width="960" height="540" loading="lazy"
-               alt="Terminal recording: mdsmith check flags issues, then mdsmith fix auto-resolves them.">
-        </figure>
-      </div>
+      {{ partial "forge-stack.html" $ }}
     </div>
   </div>
 </section>

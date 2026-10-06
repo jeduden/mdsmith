@@ -1,0 +1,33 @@
+{{- /*
+  Highlights one line of Markdown source for the homepage card
+  stack (forge-stack.html). The context is the raw line string.
+
+  - `# ` … `###### ` headings: the marker in the accent, the text
+    bright.
+  - `**[` bold link lines (the feature entries in
+    docs/features/index.md): bright.
+  - Directive lines (`<?name`, `?>`, `key:` parameters, and
+    `  - "…"` list values inside a directive): amber.
+  - Anything else: dim body text, with `code spans` in amber.
+
+  Output is inline spans with no surrounding whitespace, so the
+  caller controls line breaks inside the white-space: pre body.
+*/ -}}
+{{- $l := . -}}
+{{- $heading := findRE `^#{1,6} ` $l -}}
+{{- if $heading -}}
+  {{- $mark := index $heading 0 -}}
+  <span class="md-mark">{{ $mark }}</span><span class="md-head">{{ strings.TrimPrefix $mark $l }}</span>
+{{- else if hasPrefix $l "**[" -}}
+  <span class="md-head">{{ $l }}</span>
+{{- else if findRE `^(<\?|\?>|[a-z-]+:|\s+- ")` $l -}}
+  <span class="md-dir">{{ $l }}</span>
+{{- else -}}
+  {{- range $i, $part := split $l "`" -}}
+    {{- if modBool $i 2 -}}
+      {{- $part -}}
+    {{- else -}}
+      <span class="md-dir">`{{ $part }}`</span>
+    {{- end -}}
+  {{- end -}}
+{{- end -}}

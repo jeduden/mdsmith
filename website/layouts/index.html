@@ -1,50 +1,22 @@
 {{ define "main" }}
-  {{ partial "hero.html" . }}
-  {{- /* Positioning band. The content/_index.md body is a
-         one-sentence scope statement (what mdsmith checks and
-         fixes) — the design system's own tagline copy; the
-         `positioning.surfaces` front matter lists the product
-         surfaces, each linking to its docs page. Per the design
-         system, the surfaces render as plain text links under a
-         mono "Runs in" label (capsules are status-only, never
-         navigation), and the one-engine argument stays in the
-         "Why mdsmith" lead and its pillar rather than in a
-         band-level label. The fuller prose is the intro of
-         docs/features/index.md (which the README includes and
-         /features/ renders); keep the statement and surface
-         list aligned with it when either changes. */ -}}
-  <section class="positioning">
-    <div class="container">
-      {{ with .Content }}
-      <div class="positioning-statement">{{ . }}</div>
-      {{ end }}
-      {{ with .Params.positioning }}
-      <div class="positioning-engine">
-        <span class="positioning-label">Runs in</span>
-        <div class="positioning-surfaces">
-          {{ range .surfaces }}
-          <a class="positioning-surface" href="{{ .url | relURL }}">{{ .title }}</a>
-          {{ end }}
+  {{- /* The forge homepage. Everything below sits inside .fx so
+         home.css (loaded only on the home page, see baseof.html)
+         scopes its dark theme to this page; docs pages keep the
+         light theme from app.css. Order: hero with the animated
+         card stack, "Why mdsmith" and the feature groups, then the
+         install picker. */ -}}
+  <div class="fx">
+    {{ partial "hero.html" . }}
+    {{ partial "feature-groups.html" . }}
+    <section class="fx-section fx-install" aria-labelledby="fx-install-title">
+      <div class="fx-wrap">
+        <div class="fx-eyebrow"><span><span class="fx-mark" aria-hidden="true">■</span> Install</span></div>
+        <div class="fx-install-head">
+          <h2 id="fx-install-title" class="fx-h2">Copy one line for your platform.</h2>
+          <p class="fx-install-lead">Filter by your platform, then copy the one line you need — each command installs the latest release. The <a href="{{ "/guides/install/" | relURL }}">install guide</a> adds editor setup, verification, and version-pinned forms for CI.</p>
         </div>
+        {{ partial "install-picker.html" . }}
       </div>
-      {{ end }}
-    </div>
-  </section>
-  {{ partial "logos-strip.html" . }}
-  <section class="section">
-    <div class="container">
-      <div class="section-eyebrow">Why mdsmith</div>
-      <h2 class="section-title">Checks the <em>whole</em> tree.</h2>
-      <p class="section-lead">Where other linters stop at per-file style, mdsmith checks the whole tree: it grades readability, ties files together with links, includes, and schemas, keeps generated sections in sync, and gates the result in CI — all from one engine that runs the same in your editor, your agent, and your pipeline.</p>
-      {{ partial "feature-grid.html" . }}
-    </div>
-  </section>
-  <section class="section">
-    <div class="container">
-      <div class="section-eyebrow">Install</div>
-      <h2 class="section-title">Copy one line for your platform.</h2>
-      <p class="section-lead">Filter by your platform, then copy the one line you need — each command installs the latest release. The <a href="{{ "/guides/install/" | relURL }}">install guide</a> adds editor setup, verification, and version-pinned forms for CI.</p>
-      {{ partial "install-picker.html" . }}
-    </div>
-  </section>
+    </section>
+  </div>
 {{ end }}
