@@ -26,13 +26,13 @@ span, and `sync-messaging --check` fails if the span is missing
 or doubled.
 
 The Lead stays category + promise, with no rule-area or feature
-enumeration: the homepage renders the concrete scope (style,
-readability, structure, cross-file integrity, auto-fix) in the
-positioning statement directly below the hero, so any
-enumeration in the Lead reads twice on one screen. The fuller
+enumeration: the homepage spells out the concrete scope
+(readability, links, includes, schemas, generated sections, CI)
+in the "Why mdsmith" lead directly below the hero, so any
+enumeration in the Lead reads twice on one page. The fuller
 enumeration lives in the Tagline, whose surfaces (package
-registries, meta description, footer) never sit next to the
-statement.
+registries, meta description, footer) never sit next to that
+lead.
 
 ## Headline
 

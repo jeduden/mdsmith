@@ -1,7 +1,8 @@
 <header class="topnav">
   <div class="topnav-inner">
     <a class="topnav-brand" href="{{ "/" | relURL }}" aria-label="mdsmith home">
-      <img src="{{ "img/logo-lockup.svg" | relURL }}" width="117" height="26" alt="mdsmith">
+      {{- /* The home page is dark, so it takes the inverse lockup. */}}
+      <img src="{{ cond .IsHome "img/logo-lockup-inverse.svg" "img/logo-lockup.svg" | relURL }}" width="117" height="26" alt="mdsmith">
     </a>
     {{- /* Active-state prefixes pass through relURL so they
            respect --baseURL. Direct comparisons against literal

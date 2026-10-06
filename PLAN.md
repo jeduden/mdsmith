@@ -271,7 +271,7 @@ header: "| ID | Status | Model | Title |\n|-----|--------|-------|-------|\n"}
 | 2610020045 | ✅     | sonnet | [Move the WASM bridge test-runner shell into mdsmith-release](plan/2610020045_wasm-js-test-runner-subcommand.md)                                        |
 | 2610020046 | ✅     | sonnet | [Harden WASM bridge workspace input and version lookup](plan/2610020046_wasm-bridge-input-hardening.md)                                                 |
 | 2610020233 | ✅     | haiku  | [Drop the unused rules? and link? keys from the feature kind schema](plan/2610020233_drop-unused-feature-rules-key.md)                                  |
-| 2610020305 | 🔲     | sonnet | [Homepage Tier 3 declutter: pillar numbers, tints, badges, eyebrows](plan/2610020305_homepage-tier3-declutter.md)                                       |
+| 2610020305 | ⛔     | sonnet | [Homepage Tier 3 declutter: pillar numbers, tints, badges, eyebrows](plan/2610020305_homepage-tier3-declutter.md)                                       |
 | 2610020725 | ✅     | sonnet | [Make internal/build compile under GOOS=js GOARCH=wasm](plan/2610020725_build-exec-js-wasm-stub.md)                                                     |
 | 2610020946 | 🔳     | sonnet | [Kill a timed-out recipe's whole note group on plan9](plan/2610020946_plan9-recipe-note-group-kill.md)                                                  |
 | 2610021026 | 🔲     | opus   | [Replace runRecipe's hand-rolled pipe reaping with Cmd.WaitDelay](plan/2610021026_recipe-exec-waitdelay.md)                                             |

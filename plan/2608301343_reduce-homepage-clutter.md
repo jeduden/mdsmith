@@ -77,13 +77,14 @@ meaning and drops the puzzle.
 ### Tier 2 — opaque codes on a marketing page
 
 - Rule-ID chips (13 of them: MDS034, MDS022, MDS023 …) sit on the
-  homepage feature cards, emitted by the
-  [feature grid](../website/layouts/partials/feature-grid.html)
-  (`.card-rules` / `.rule-chip`). A first-time visitor cannot
-  decode "MDS034". Recommended: drop the chip row from the
-  homepage cards. The codes stay cited on each feature's own
-  page and defined on the Rules index. This contradicts the
-  current [design-system](../docs/development/design-system.md)
+  homepage feature cards, emitted by the feature grid
+  (`website/layouts/partials/feature-grid.html`, since removed
+  by the homepage redesign) as `.card-rules` / `.rule-chip`.
+  A first-time visitor cannot decode "MDS034". Recommended:
+  drop the chip row from the homepage cards. The codes stay
+  cited on each feature's own page and defined on the Rules
+  index. This contradicts the current
+  [design-system](../docs/development/design-system.md)
   card rule ("use a rule-ID chip instead" of an accent stripe),
   so update that line too.
 
@@ -138,8 +139,9 @@ meaning and drops the puzzle.
    change "forges the whole tree" to "checks the whole tree" in
    the lead.
 3. Tier 2: remove the `.card-rules` chip block from the
-   [feature grid](../website/layouts/partials/feature-grid.html)
-   and its CSS, and update the matching card rule in
+   feature grid (`website/layouts/partials/feature-grid.html`,
+   since removed by the homepage redesign) and its CSS, and
+   update the matching card rule in
    [`design-system.md`](../docs/development/design-system.md).
    Reword the `build-artifacts` and `markdown-conventions`
    summaries that name `MDS040` / `MDS034`, drop the `rules:`

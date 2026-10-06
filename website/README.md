@@ -16,15 +16,16 @@ the website cannot drift out of sync with the binary.
 | `content/_index.md`            | Homepage front matter and copy.                                              |
 | `content/docs/`                | **Synced** from `../docs/` by `mdsmith-release build-website` (gitignored).  |
 | `layouts/_default/baseof.html` | Page shell — `<head>`, top nav, footer.                                      |
-| `layouts/index.html`           | Homepage template (hero · positioning band · feature grid · install picker). |
+| `layouts/index.html`           | Homepage template (hero + card stack · feature groups · install picker).     |
 | `layouts/_default/single.html` | Docs page template (sidebar + prose).                                        |
 | `layouts/_default/list.html`   | Section index template.                                                      |
 | `layouts/releases/page.html`   | Release-notes page template (`/releases/`).                                  |
-| `layouts/partials/`            | `topnav`, `footer`, `hero`, `feature-grid`, etc.                             |
+| `layouts/partials/`            | `topnav`, `footer`, `hero`, `forge-stack`, `feature-groups`, etc.            |
 | `layouts/shortcodes/`          | `callout`, `diag`, `pill`, `chip`, `install-cmd`.                            |
 | `layouts/_default/_markup/`    | Goldmark render hooks (headings, code blocks).                               |
-| `static/css/`                  | `colors_and_type.css` (tokens) + `app.css` (component styles).               |
-| `static/fonts/`                | Self-hosted WOFF2: 0xProto (mono) + IBM Plex Sans/Serif.                     |
+| `static/css/`                  | `colors_and_type.css` (tokens), `app.css` (components), `home.css` (home).   |
+| `static/fonts/`                | Self-hosted WOFF2: 0xProto (mono), IBM Plex Sans/Serif, Doto (home display). |
+| `static/js/forge-stack.js`     | Homepage terminal replay (loaded on the home page only).                     |
 | `static/img/`                  | Logo SVGs.                                                                   |
 
 ## Develop
@@ -119,24 +120,21 @@ generated data file, `website/data/channels.yaml`. The
 release-channel docs, gated against drift in CI:
 
 - **Hero** — front matter (`hero:`) on the homepage
-  itself, `content/_index.md`, read by `hero.html`.
-- **Positioning band** — the `content/_index.md` body (the
-  one-sentence scope statement) plus its
-  `positioning.surfaces` front matter (the linked "Runs in"
-  row), rendered by `layouts/index.html` directly above the
-  "Available on" strip.
+  itself, `content/_index.md`, read by `hero.html`. The
+  eyebrow names the page in `<title>` only; the hero does
+  not print it.
+- **Card stack** — `forge-stack.html`, beside the hero
+  copy. The `docs/features/index.md` card reads the head
+  of that page's source (`.RawContent`); the `CLAUDE.md`
+  card quotes its `<?catalog?>` block; the terminal is a
+  captured `mdsmith check` → `fix` → `check` run that
+  `static/js/forge-stack.js` replays. Recapture the
+  transcript when the CLI output format changes.
 - **Install picker** — `install-picker.html` reads
   `hugo.Data.channels` (the generated
   `website/data/channels.yaml`). It renders every channel
   with platform-tag filter chips.
-- **"Available on" strip** — the release-channel docs
-  `../docs/development/release-channels/*.md`. Each
-  carries a canonical `channelurl:` and an ordering
-  `weight:`; `logos-strip.html` ranges the synced
-  section, filtered to the push channels
-  (`mechanism: push`). (`channelurl`, not `url`: Hugo
-  treats a front-matter `url` as a page-URL override.)
-- **Feature cards** — the shared Markdown described
+- **Feature groups** — the shared Markdown described
   below.
 
 ## Release notes page
@@ -199,10 +197,14 @@ Feature copy lives once, as Markdown, in
 - One page per feature (`auto-fix.md`, `performance.md`,
   `quality.md`, …) carries a short `summary:` plus an
   `icon:`, `weight:`, `group:`, and a fuller body.
-  `feature-grid.html` builds the homepage cards
-  from these pages; each card links to the full page,
-  which has room for the longer write-up the README
-  cannot fit.
+  `feature-groups.html` builds one homepage block per
+  `group:` (in weight order) with one row per page;
+  each row links to the full page, which has room for
+  the longer write-up the README cannot fit. Behind each
+  block sits that group's `## <group>` section of
+  `index.md`, read from `.RawContent`; a group whose
+  `group:` value has no heading of the same text there
+  renders without that layer.
 
 Requirement: every feature (or feature category) has a
 page here, including non-CLI capabilities such as
@@ -253,10 +255,12 @@ See:
 - `static/css/colors_and_type.css` — tokens, base typography
 - `static/css/app.css` — component styles (class-based, no
   React or Tailwind required)
+- `static/css/home.css` — the dark homepage theme, scoped to
+  `.page-home` (see "Homepage theme" in the design system)
 - `static/img/logo-*.svg` — hammer mark + `md`/`smith` wordmark
   (lockup and inverse variants)
 
-The CSS classes (`.topnav`, `.hero`, `.feature-grid`,
+The CSS classes (`.topnav`, `.fx-*` on the homepage,
 `.install`, `.term`, `.diag`, `.docs-grid`, `.chip`, `.pill`,
 `.pg`, `.tbl`, `.footer`, …) drive the partials and shortcodes
 in `layouts/`. To restyle, edit the CSS; markup stays put.

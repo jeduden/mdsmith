@@ -1,0 +1,523 @@
+/* =============================================================
+   mdsmith.dev — home page "forge" theme
+   Loaded only on the home page (layouts/_default/baseof.html), on
+   top of colors_and_type.css and app.css. Every rule is scoped to
+   .page-home (the body class on the home page) or to the .fx-*
+   blocks that only the home page renders, so docs pages keep the
+   light theme.
+
+   The page is dark steel with the logo's forge orange as the one
+   accent. Each section sits on a dimmed copy of the Markdown it was
+   written from (.fx-src); that text cools from forge orange in the
+   hero to steel blue at the last feature group, and a thin heat
+   line in the left margin runs the same range.
+   ============================================================= */
+
+/* Doto is a dot-matrix display face (SIL OFL 1.1), self-hosted as a
+   latin-subset variable woff2 like the other site fonts. It sets
+   the headline and section titles only. */
+@font-face {
+  font-family: "Doto";
+  src: url("../fonts/doto.woff2") format("woff2");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+.page-home {
+  --fx-bg:      #121413;
+  --fx-bg-deep: #0D0F0E;
+  --fx-card:    #181B1A;
+  --fx-ink:     #E6E9E4;
+  --fx-dim:     #9DA69F;
+  --fx-faint:   #6C776F;
+  --fx-rule:    #56625A;
+  /* Logo orange: fills and large type. The lighter forge-400 is
+     the small-text accent (6.7:1 on --fx-bg). */
+  --fx-fill:    #D9651D;
+  --fx-accent:  #E58233;
+  --fx-cool:    #8FB2DC;
+  --fx-display: "Doto", var(--font-mono);
+
+  /* Re-point the shared semantic tokens so the nav, footer, and
+     install picker from app.css follow the dark ground. */
+  --bg:            var(--fx-bg);
+  --fg:            var(--fx-ink);
+  --fg-muted:      var(--fx-dim);
+  --fg-subtle:     var(--fx-dim);
+  --border:        var(--fx-rule);
+  --border-subtle: #2C3330;
+  --link:          var(--fx-ink);
+  --link-hover:    var(--fx-accent);
+  --link-visited:  var(--fx-ink);
+  --code-bg:       rgba(230, 233, 228, 0.10);
+  --code-fg:       var(--fx-ink);
+  --code-border:   transparent;
+
+  background: var(--fx-bg);
+  color: var(--fx-ink);
+}
+/* The root paints the scrollbar track and any overscroll area, so
+   it takes the dark ground too (the custom properties above live on
+   body, out of reach of html). */
+html:has(> body.page-home) {
+  background: #121413;
+  color-scheme: dark;
+}
+.page-home ::selection { background: var(--fx-fill); color: var(--fx-bg); }
+.page-home :focus-visible { outline: 2px solid var(--fx-accent); outline-offset: 2px; }
+
+/* ---------- Top nav ---------- */
+
+.page-home .topnav {
+  background: rgba(18, 20, 19, 0.92);
+  border-bottom: 1px dotted var(--fx-rule);
+}
+.page-home .topnav.is-scrolled {
+  border-bottom-color: var(--fx-rule);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+.page-home .topnav-inner { max-width: 1200px; padding: 0 clamp(16px, 4vw, 48px); }
+.page-home .topnav-link {
+  font-family: var(--font-mono);
+  color: var(--fx-ink);
+  padding: 6px 6px;
+}
+/* Bracketed links, like a terminal menu. The "/ ''" alt text keeps
+   the brackets out of the accessible name. */
+.page-home .topnav-link::before { content: "["; content: "[" / ""; color: var(--fx-faint); }
+.page-home .topnav-link::after  { content: "]"; content: "]" / ""; color: var(--fx-faint); }
+.page-home .topnav-link:hover { background: transparent; color: var(--fx-accent); }
+.page-home .topnav-kbd {
+  background: transparent;
+  border-color: var(--fx-rule);
+  color: var(--fx-ink);
+  border-radius: 0;
+}
+.page-home .topnav-kbd:hover { background: rgba(230, 233, 228, 0.06); border-color: var(--fx-ink); }
+.page-home .search-trigger-text { font-family: var(--font-mono); }
+.page-home .topnav-gh {
+  background: transparent;
+  border: 1px solid var(--fx-rule);
+  border-radius: 0;
+  color: var(--fx-ink);
+}
+.page-home .topnav-gh:hover { background: transparent; border-color: var(--fx-accent); color: var(--fx-accent); }
+
+/* ---------- Page frame ---------- */
+
+.fx {
+  position: relative;
+  overflow-x: clip;
+  font-family: var(--font-mono);
+  color: var(--fx-ink);
+}
+/* The heat line: forge orange at the top cooling to steel blue at
+   the bottom, just left of the content column. */
+.fx::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(max(0px, (100% - 1200px) / 2) + clamp(16px, 4vw, 48px) - 24px);
+  width: 2px;
+  background: linear-gradient(180deg, #FFD08A 0%, #FF8A3D 16%, #D2391F 34%, #5C6773 66%, var(--fx-cool) 100%);
+  pointer-events: none;
+}
+.fx-wrap {
+  position: relative;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-inline: clamp(16px, 4vw, 48px);
+  box-sizing: border-box;
+}
+.fx p { font-family: inherit; color: inherit; }
+.fx a:not([class]) { color: var(--fx-ink); text-decoration: underline; text-underline-offset: 3px; }
+.fx a:not([class]):hover { color: var(--fx-accent); }
+.fx code {
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 700;
+  background: rgba(230, 233, 228, 0.10);
+  color: inherit;
+  border: 0;
+  border-radius: 0;
+  padding: 0 0.25em;
+}
+
+/* ---------- Hero ---------- */
+
+.fx-hero { position: relative; }
+.fx-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 680px 520px at 74% 72%, rgba(255, 100, 40, 0.16), rgba(255, 100, 40, 0) 72%);
+  pointer-events: none;
+}
+.fx-hero .fx-wrap { padding-block: 56px; }
+.fx-headline {
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  font-family: var(--fx-display);
+  font-weight: 900;
+  font-size: clamp(46px, 7.4vw, 108px);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--fx-ink);
+}
+.fx-headline em { font-style: normal; color: var(--fx-fill); }
+.fx-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr));
+  gap: 24px 40px;
+  margin-top: 40px;
+  align-items: start;
+}
+.fx-hero-copy {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.fx-lead p {
+  margin: 0;
+  max-width: 34em;
+  font-size: clamp(17px, 1.5vw, 19px);
+  line-height: 1.6;
+}
+.fx-cta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.fx-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 50px;
+  padding: 0 20px;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 15px;
+  text-decoration: none;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.fx-btn:hover { text-decoration: none; }
+.fx-btn:active { transform: translateY(1px); }
+.fx-btn--primary { background: var(--fx-fill); color: var(--fx-bg); }
+.fx-btn--primary:hover { background: var(--fx-accent); color: var(--fx-bg); }
+.fx-btn--ghost { border: 2px solid var(--fx-ink); color: var(--fx-ink); background: var(--fx-bg); }
+.fx-btn--ghost:hover { border-color: var(--fx-accent); color: var(--fx-accent); }
+.fx-repo {
+  display: inline-flex;
+  align-items: center;
+  min-height: 50px;
+  padding: 0 8px;
+  font-size: 15px;
+  color: var(--fx-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.fx-repo:hover { color: var(--fx-accent); }
+.fx-switch { margin: 0; max-width: 38em; font-size: 14.5px; line-height: 1.65; }
+/* min-height reserves the badge row so late or failed external
+   images do not shift the layout. */
+.fx-badges { display: flex; flex-wrap: wrap; gap: 8px; min-height: 20px; }
+.fx-badges img { display: block; height: 20px; }
+
+/* ---------- Card stack ---------- */
+
+.fx-stack {
+  position: relative;
+  height: 660px;
+  perspective: 1700px;
+}
+/* Wide screens: lift the stack beside the headline's short second
+   line so the copy and the cards share the first screen. The
+   headline sits above it (z-index 2). */
+@media (min-width: 960px) {
+  .fx-stack { margin-top: -190px; }
+}
+.fx-stack-3d {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  width: 520px;
+  height: 300px;
+  margin-left: -250px;
+  transform-style: preserve-3d;
+  transform: rotateX(12deg) rotateY(-24deg);
+}
+/* Every layer shares one size and one header strip, and each card
+   steps the same distance up and back, so the edges line up. */
+.fx-card,
+.fx-term {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  font-family: var(--font-mono);
+}
+.fx-card { background: var(--fx-card); color: rgba(230, 233, 228, 0.72); }
+.fx-card--1 {
+  transform: translate3d(0, -136px, -76px);
+  border: 1px solid rgba(210, 57, 31, 0.7);
+  box-shadow: 0 0 14px rgba(210, 57, 31, 0.25);
+  --fx-card-label: #E0705A;
+}
+.fx-card--2 {
+  transform: translate3d(0, -272px, -152px);
+  border: 1px solid rgba(255, 138, 61, 0.7);
+  box-shadow: 0 0 24px rgba(255, 100, 40, 0.3);
+  --fx-card-label: #FF9A5A;
+}
+.fx-card--3 {
+  transform: translate3d(0, -408px, -228px);
+  border: 1px solid rgba(255, 177, 90, 0.85);
+  box-shadow: 0 0 34px rgba(255, 120, 40, 0.45);
+  --fx-card-label: #FFB15A;
+}
+.fx-card-head,
+.fx-term-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px;
+  font-size: 10.5px;
+  line-height: 16px;
+  letter-spacing: 0.06em;
+}
+.fx-card-head { color: var(--fx-card-label); border-bottom: 1px dotted var(--fx-card-label); }
+.fx-card-body,
+.fx-term-body {
+  padding: 10px 16px;
+  font-size: 11px;
+  line-height: 19px;
+  white-space: pre;
+}
+.fx-card-body > div,
+.fx-term-body > div { min-height: 19px; }
+.md-mark { color: var(--fx-accent); font-weight: 700; }
+.md-head { color: #F2F3F0; font-weight: 700; }
+.md-dir  { color: #FFB15A; }
+.md-err  { color: var(--fx-accent); font-weight: 700; }
+.md-ok   { color: var(--fx-cool); font-weight: 700; }
+/* intro.md before and after `mdsmith fix`: the stack carries
+   .is-fixed once the fix lands (always, without the animation). */
+.fx-stack:not(.is-fixed) .fx-fixed { display: none; }
+.fx-stack.is-fixed .fx-raw { display: none; }
+.fx-stack:not(.is-fixed) .fx-url { text-decoration: underline wavy var(--fx-accent); text-underline-offset: 3px; }
+
+.fx-term {
+  transform: translateZ(1px);
+  background: var(--fx-bg-deep);
+  color: var(--fx-ink);
+  border: 1px solid rgba(230, 233, 228, 0.3);
+  box-shadow: 0 36px 70px -24px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+.fx-term-head {
+  color: var(--fx-dim);
+  text-transform: uppercase;
+  border-bottom: 1px dotted var(--fx-rule);
+}
+.fx-term-toggle {
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--fx-rule);
+  background: transparent;
+  color: var(--fx-dim);
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.fx-term-toggle:hover { color: var(--fx-ink); border-color: var(--fx-ink); }
+.fx-term-toggle[aria-pressed="true"] { color: var(--fx-bg); background: var(--fx-accent); border-color: var(--fx-accent); }
+.fx-line[hidden] { display: none; }
+.fx-prompt,
+.fx-rule { color: var(--fx-accent); font-weight: 700; }
+.fx-comment { color: #7E8A82; }
+.fx-dim { color: #8C968F; }
+.fx-ok { color: var(--fx-cool); }
+.fx-squiggle { color: var(--fx-ink); text-decoration: underline wavy var(--fx-accent); text-underline-offset: 3px; }
+.fx-cursor { background: var(--fx-accent); }
+
+/* Narrow screens: shrink the stack so the 520px cards fit. */
+@media (max-width: 600px) {
+  .fx-stack { height: 470px; }
+  .fx-stack-3d {
+    transform-origin: 50% 100%;
+    transform: scale(0.66) rotateX(12deg) rotateY(-24deg);
+  }
+}
+
+/* ---------- Sections ---------- */
+
+.fx-section {
+  position: relative;
+  overflow: hidden;
+  border-top: 1px dotted var(--fx-rule);
+}
+.fx-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.fx-eyebrow::after { content: ""; flex: 1; border-top: 2px dashed var(--fx-ink); }
+.fx-mark { color: var(--fx-accent); }
+.fx-h2 {
+  margin: 26px 0 0;
+  font-family: var(--fx-display);
+  font-weight: 900;
+  font-size: clamp(38px, 5.4vw, 76px);
+  line-height: 1.02;
+  letter-spacing: 0;
+  color: var(--fx-ink);
+}
+.fx-h2 em { font-style: normal; color: var(--fx-fill); }
+
+/* The source layer: the section's own Markdown, dimmed and slightly
+   blurred so it reads as texture and never competes with the copy
+   above it. Hidden on phones, where it would sit under the text. */
+.fx-src {
+  position: absolute;
+  top: 28px;
+  right: 0;
+  bottom: 0;
+  width: min(46%, 600px);
+  padding: 0 clamp(16px, 3vw, 40px) 0 20px;
+  box-sizing: border-box;
+  border-left: 1px dotted rgba(230, 233, 228, 0.2);
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  color: transparent;
+  background: linear-gradient(180deg, var(--heat-a), var(--heat-b));
+  -webkit-background-clip: text;
+  background-clip: text;
+  opacity: 0.2;
+  filter: blur(1px);
+}
+.fx-src-file {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--heat-a);
+}
+@media (max-width: 760px) {
+  .fx-src { display: none; }
+}
+
+/* Heat per section: forge orange behind "Why mdsmith", cooling to
+   steel blue at the last feature group. */
+.fx-why    { --heat-a: #FFB15A; --heat-b: #FF8A3D; }
+.fx-heat-1 { --heat-a: #FF9A4A; --heat-b: #C2341F; }
+.fx-heat-2 { --heat-a: #C2341F; --heat-b: #8E2A1E; }
+.fx-heat-3 { --heat-a: #A0403A; --heat-b: #5C6773; }
+.fx-heat-4 { --heat-a: #5C6773; --heat-b: #6E8CA8; }
+.fx-heat-5 { --heat-a: #6E8CA8; --heat-b: var(--fx-cool); }
+
+/* ---------- Why mdsmith and the feature groups ---------- */
+
+.fx-why .fx-wrap { padding-block: 64px 48px; }
+.fx-why-lead { margin: 26px 0 0; max-width: 52em; font-size: 16.5px; line-height: 1.72; }
+
+.fx-pillar .fx-wrap { padding-block: 40px 48px; }
+.fx-pillar-head {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--fx-ink);
+}
+.fx-pillar-num {
+  font-family: var(--fx-display);
+  font-weight: 900;
+  font-size: 44px;
+  line-height: 1;
+  color: var(--fx-fill);
+}
+.fx-pillar-name {
+  margin: 0;
+  font-family: var(--fx-display);
+  font-weight: 800;
+  font-size: clamp(24px, 2.6vw, 34px);
+  line-height: 1.05;
+  letter-spacing: 0;
+  color: var(--fx-ink);
+}
+a.fx-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 28px;
+  padding: 16px 0;
+  border-bottom: 1px dotted var(--fx-rule);
+  color: var(--fx-ink);
+  text-decoration: none;
+}
+a.fx-row:hover { background: rgba(229, 130, 51, 0.06); text-decoration: none; }
+a.fx-row:hover .fx-row-more { text-decoration: underline; }
+.fx-row-id { flex: 0 0 56px; font-size: 13px; color: var(--fx-dim); }
+.fx-row-title { flex: 1 1 220px; max-width: 300px; font-weight: 700; font-size: 16px; line-height: 1.4; }
+.fx-row-desc { flex: 999 1 360px; font-size: 14px; line-height: 1.72; }
+.fx-row-more { flex: 0 0 auto; font-size: 13px; color: var(--fx-accent); }
+
+/* ---------- Install ---------- */
+
+.fx-install .fx-wrap { padding-block: 64px 96px; }
+.fx-install-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px 56px;
+  margin-top: 26px;
+}
+.fx-install-head .fx-h2 { flex: 1 1 520px; margin: 0; font-size: clamp(32px, 4.4vw, 60px); }
+.fx-install-lead { flex: 1 1 380px; margin: 0; font-size: 15px; line-height: 1.7; }
+.fx-install .install-picker { margin-top: 32px; }
+.page-home .install-filter {
+  border-color: var(--fx-rule);
+  border-radius: 0;
+  color: var(--fx-ink);
+}
+.page-home .install-filter:hover { border-color: var(--fx-accent); color: var(--fx-ink); }
+.page-home .install-filter.is-active { background: var(--fx-fill); border-color: var(--fx-fill); color: var(--fx-bg); }
+.page-home .install-list {
+  background: transparent;
+  border: 0;
+  border-top: 2px solid var(--fx-ink);
+  border-radius: 0;
+}
+.page-home .install-row { padding: 12px 0; border-bottom: 1px dotted var(--fx-rule); }
+.page-home .install-row:hover { background: rgba(229, 130, 51, 0.06); }
+.page-home .install-label { color: var(--fx-accent); }
+.page-home a.install-label:hover { color: var(--fx-ink); }
+.page-home .install-cmd { color: var(--fx-ink); }
+.page-home .install-cmd .prompt { color: var(--fx-accent); }
+.page-home .install-cmd .cmd { color: var(--fx-ink); }
+.page-home .install-copy { border-color: var(--fx-rule); border-radius: 0; color: var(--fx-ink); }
+.page-home .install-copy:hover { border-color: var(--fx-accent); color: var(--fx-accent); }
+.page-home .install-note { color: var(--fx-dim); }
+
+/* ---------- Footer ---------- */
+
+.page-home .footer {
+  background: var(--fx-bg-deep);
+  border-top: 1px dotted var(--fx-rule);
+}
+.page-home .footer-grid { border-bottom: 1px dotted var(--fx-rule); }
+.page-home .footer-col h4 { color: var(--fx-dim); }
+.page-home .footer-col a { color: var(--fx-ink); }
+.page-home .footer-col a:hover { color: var(--fx-accent); }
+.page-home .footer-tagline,
+.page-home .footer-meta { color: var(--fx-dim); }

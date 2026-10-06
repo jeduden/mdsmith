@@ -72,15 +72,26 @@ func walkNode(n parse.Node, visit func(parse.Node)) {
 			walkNode(c, visit)
 		}
 	case *parse.IfNode:
-		walkNode(x.List, visit)
-		walkNode(x.ElseList, visit)
+		walkList(x.List, visit)
+		walkList(x.ElseList, visit)
 	case *parse.RangeNode:
-		walkNode(x.List, visit)
-		walkNode(x.ElseList, visit)
+		walkList(x.List, visit)
+		walkList(x.ElseList, visit)
 	case *parse.WithNode:
-		walkNode(x.List, visit)
-		walkNode(x.ElseList, visit)
+		walkList(x.List, visit)
+		walkList(x.ElseList, visit)
 	}
+}
+
+// walkList walks a branch list. An `{{ if }}` with no `{{ else }}`
+// leaves ElseList as a nil *parse.ListNode; passed straight to
+// walkNode it becomes a non-nil parse.Node interface and visit would
+// dereference it, so skip it here.
+func walkList(l *parse.ListNode, visit func(parse.Node)) {
+	if l == nil {
+		return
+	}
+	walkNode(l, visit)
 }
 
 func pipeReferencesField(pipe *parse.PipeNode, field string) bool {

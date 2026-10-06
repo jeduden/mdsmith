@@ -1,0 +1,84 @@
+{{- /*
+  Homepage card stack: three Markdown source cards behind a
+  terminal that replays a real `mdsmith check` -> `fix` -> `check`
+  run on intro.md.
+
+  The terminal transcript is the current CLI output for this
+  intro.md, trimmed to the diagnostic header and the offending
+  source line of each finding. It is rendered in full here, so
+  with JavaScript off or prefers-reduced-motion set the visitor
+  reads the finished run and the stack carries `is-fixed`, which
+  shows intro.md after the fix. static/js/forge-stack.js animates
+  this same markup: `data-type` lines type their `.fx-cmd`,
+  `data-wait` sets how many ticks an output line waits, and the
+  `data-fix` line flips `is-fixed`.
+
+  Cards, back to front:
+  - CLAUDE.md: the `<?catalog?>` block that indexes docs/.
+  - docs/features/index.md: the head of the real page source,
+    read through .RawContent so the card follows the doc.
+  - intro.md: the demo file, raw (trailing spaces, bare URL)
+    until the fix lands, then fixed.
+*/ -}}
+{{- $features := site.GetPage "/features" -}}
+{{- $why := slice -}}
+{{- with $features -}}
+  {{- $why = slice (printf "# %s" .Title) "" -}}
+  {{- $why = $why | append (first 12 (split (strings.TrimSpace .RawContent) "\n")) -}}
+{{- end -}}
+{{- $claude := slice
+  "## Docs"
+  ""
+  "<?catalog"
+  "glob:"
+  `  - "docs/**/*.md"`
+  `  - "!docs/research/**"`
+  "sort: path"
+  `row: "- [{summary}]({filename})"`
+  "?>"
+-}}
+<div class="fx-stack is-fixed" data-forge-stack>
+  <div class="fx-stack-3d">
+    <div class="fx-card fx-card--3" aria-hidden="true">
+      <div class="fx-card-head">CLAUDE.md</div>
+      <div class="fx-card-body">
+        {{- range $claude }}<div>{{ partial "fx-md-line.html" . }}</div>{{ end -}}
+      </div>
+    </div>
+    <div class="fx-card fx-card--2" aria-hidden="true">
+      <div class="fx-card-head">docs/features/index.md</div>
+      <div class="fx-card-body">
+        {{- range $why }}<div>{{ partial "fx-md-line.html" . }}</div>{{ end -}}
+      </div>
+    </div>
+    <div class="fx-card fx-card--1" aria-hidden="true">
+      <div class="fx-card-head">intro.md</div>
+      <div class="fx-card-body">
+        <div><span class="md-mark"># </span><span class="md-head">Quickstart</span></div>
+        <div></div>
+        <div>Lint your Markdown, then auto-fix it in one fast command.<span class="fx-raw md-err">···</span></div>
+        <div>Read the setup guide at <span class="fx-fixed md-ok">&lt;</span><span class="fx-url">https://github.com/jeduden/mdsmith</span><span class="fx-fixed md-ok">&gt;</span> today.</div>
+      </div>
+    </div>
+    <div class="fx-term">
+      <div class="fx-term-head">
+        <span>mdsmith — check &amp; fix</span>
+        <button type="button" class="fx-term-toggle" data-forge-toggle aria-pressed="false" aria-label="Pause the terminal animation" hidden>pause</button>
+      </div>
+      <div class="fx-term-body" role="img" aria-label="Terminal: mdsmith check intro.md reports MDS006 trailing whitespace and MDS012 bare URL; mdsmith fix intro.md repairs both; a second check reports failures=0.">
+        <div class="fx-line" data-type data-gap="6"><span class="fx-prompt">❯ </span><span class="fx-cmd fx-comment"># Lint a file</span></div>
+        <div class="fx-line" data-type data-gap="3"><span class="fx-prompt">❯ </span><span class="fx-cmd">mdsmith check intro.md</span></div>
+        <div class="fx-line" data-wait="7">intro.md:3:58 <b class="fx-rule">MDS006</b> trailing whitespace</div>
+        <div class="fx-line fx-dim" data-wait="1">3 | Lint your Markdown, then auto-fix it in one fast command.<span class="md-err">···</span></div>
+        <div class="fx-line" data-wait="2">intro.md:4:25 <b class="fx-rule">MDS012</b> bare URL — wrap in angle brackets or add link text</div>
+        <div class="fx-line fx-dim" data-wait="1">4 | Read the setup guide at <span class="fx-squiggle">https://github.com/jeduden/mdsmith</span> today.</div>
+        <div class="fx-line fx-dim" data-wait="2">stats: checked=1 fixed=0 failures=2 unfixed=2</div>
+        <div class="fx-line" data-type data-gap="14"><span class="fx-prompt">❯ </span><span class="fx-cmd fx-comment"># Auto-fix</span></div>
+        <div class="fx-line" data-type data-gap="3"><span class="fx-prompt">❯ </span><span class="fx-cmd">mdsmith fix intro.md</span></div>
+        <div class="fx-line fx-dim" data-wait="9" data-fix>stats: checked=1 fixed=1 failures=2 unfixed=0</div>
+        <div class="fx-line" data-type data-gap="10"><span class="fx-prompt">❯ </span><span class="fx-cmd">mdsmith check intro.md</span></div>
+        <div class="fx-line" data-wait="7">stats: checked=1 fixed=0 <b class="fx-ok">failures=0</b> unfixed=0</div>
+      </div>
+    </div>
+  </div>
+</div>
