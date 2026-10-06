@@ -25,9 +25,10 @@ them.
 ## Background
 
 Plan 2608301343 removed the `.card-rules` chip row from the
-[feature grid](../website/layouts/partials/feature-grid.html),
-which was the only reader of `Params.rules`. It then dropped the
-`rules:` lines from the five feature pages under `docs/features/`.
+feature grid (`website/layouts/partials/feature-grid.html`, since
+removed by the homepage redesign), which was the only reader of
+`Params.rules`. It then dropped the `rules:` lines from the five
+feature pages under `docs/features/`.
 The same plan's round-3 review found that `link:` was dead too:
 the card href is `$page.RelPermalink`, and nothing else reads
 `Params.link`. It dropped the `link:` lines from the 18 feature

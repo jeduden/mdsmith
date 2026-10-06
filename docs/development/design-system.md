@@ -16,6 +16,12 @@ styles live in `website/static/css/app.css`. Fonts and
 logos sit under `website/static/`. To restyle a surface,
 edit the CSS; the markup stays put.
 
+The homepage is the one exception to the paper canvas. It
+uses a dark forge theme, which lives in
+`website/static/css/home.css` and is described under
+[Homepage theme](#homepage-theme). Every other page keeps
+the light system below.
+
 The system comes from the "mdsmith Design System" Claude
 Design project. The files in this repository are the
 production truth. Product copy is out of scope on this
@@ -35,8 +41,8 @@ fails on drift.
   output. Rule IDs stay out of homepage headings and
   card copy, where a first-time visitor cannot decode
   them; they back claims on feature, guide, and
-  reference pages. The homepage artifact mocks may still
-  show them as part of captured diagnostic output.
+  reference pages. The homepage terminal replay still
+  shows them as part of captured diagnostic output.
 - Status emoji (✅ 🔲 🔳) are data and stay as Unicode.
   Decorative section emoji become Lucide icons on the
   website.
@@ -64,7 +70,9 @@ viewport.
   moment per page, in the hero only.
 - **0xProto Nerd Font** is the official brand mono: code,
   diagnostics, terminal mocks, eyebrow labels, rule IDs.
-- All three are self-hosted woff2 files under
+- **Doto**, a dot-matrix face (SIL OFL 1.1), sets the
+  homepage headline and section titles and nothing else.
+- All of them are self-hosted woff2 files under
   `website/static/fonts/`; no runtime font CDN.
 - Modular scale, ratio 1.20:
   12 / 13 / 15 / 17 / 20 / 24 / 30 / 38 / 48 / 60 / 76.
@@ -87,13 +95,12 @@ viewport.
 - Shadows are rare: `--shadow-xs` scrolled nav,
   `--shadow-sm` resting cards, `--shadow-md` hover and
   dropdowns, `--shadow-lg` modals. No glow and no colored
-  shadows.
+  shadows outside the homepage card stack.
 - `--shadow-float` (and `-sm` for inline doc screenshots)
   is the one big-shadow moment, reserved for terminal mocks
-  and product screenshots. The hero demo and the feature
-  artifact frames apply the token directly; new showcases
-  put `.shot` on the window inside a `.shot-stage` cell.
-  Never on buttons, cards, or menus.
+  and product screenshots. Showcases put `.shot` on the
+  window inside a `.shot-stage` cell. Never on buttons,
+  cards, or menus.
 
 ## Components
 
@@ -113,7 +120,9 @@ viewport.
 - Disabled: 50% opacity with the hue kept.
 - Animation is restrained: hover transitions at 150ms or
   less, state changes at 220ms or less, no bounces and no
-  parallax.
+  parallax. The homepage terminal replay is the one looping
+  animation; it has a pause control and does not run under
+  `prefers-reduced-motion`.
 
 ## Iconography and brand marks
 
@@ -134,14 +143,52 @@ viewport.
   hero or example wants an illustration, render a mock
   diagnostic block instead.
 
+## Homepage theme
+
+The homepage shows the tool at work. It sits on a dark
+steel ground with the logo's forge orange as the only
+accent. The Markdown that mdsmith checks shows through
+behind the copy.
+
+- Scope: `baseof.html` loads `home.css` and gives `<body>`
+  the `page-home` class on the home page only. Every rule
+  in that file is scoped to `.page-home` or to the `.fx-*`
+  blocks only the homepage renders.
+- Shared chrome: `home.css` re-points the semantic tokens
+  (`--bg`, `--fg`, `--link`, `--code-bg`, …). The nav,
+  footer, and install picker then follow the dark ground.
+  The nav and footer switch to `logo-lockup-inverse.svg`.
+- Color: `--fx-*` tokens. `--fx-fill` (#D9651D, the logo
+  orange) fills buttons and large type; `--fx-accent`
+  (#E58233) is the small-text accent at 6.7:1 on
+  `--fx-bg` (#121413).
+- Heat ramp: each section's accent cools from forge orange
+  behind the hero to steel blue at the last feature group,
+  and a 2px heat line in the left margin runs the same
+  range. It is the one gradient allowed past the warm
+  `--grad-*` set, and it ends in steel blue, never purple.
+- Card stack: three Markdown source cards step up and back
+  behind a terminal, all one size so their edges align.
+  Each card wears a thin border and a glow in its heat
+  color. The terminal replays a real `mdsmith check`,
+  `fix`, `check` run. The full transcript is in the HTML,
+  so a reader with JavaScript off or reduced motion sees
+  the finished run.
+- Source layer: each section sits on its own
+  `docs/features/index.md` section, read at build time.
+  The layer is `aria-hidden`, at 20% opacity with a 1px
+  blur so it reads as texture, never as text competing
+  with the copy. It is hidden below 760px.
+
 ## Banned motifs
 
-- Gradients outside the warm `--grad-*` set; bluish-purple
-  stays a hard veto.
+- Gradients outside the warm `--grad-*` set and the
+  homepage heat ramp; bluish-purple stays a hard veto.
 - Photography and hand-drawn illustration.
 - Frosted-glass blur outside the top nav and the command
   palette scrim.
-- Glow shadows and colored shadows.
+- Glow shadows and colored shadows, except the homepage
+  card stack's heat-colored edges.
 - Cards with a colored left border as the only accent.
 - Blobby corner radii of 24px or larger.
 - Serif italic anywhere outside the hero's one display
