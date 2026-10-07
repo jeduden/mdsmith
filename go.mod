@@ -9,7 +9,7 @@ module github.com/jeduden/mdsmith
 go 1.25.11
 
 require (
-	github.com/bmatcuk/doublestar/v4 v4.10.0
+	github.com/bmatcuk/doublestar/v4 v4.10.2
 	github.com/clipperhouse/uax29/v2 v2.2.0
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/neurosnap/sentences v1.1.2
