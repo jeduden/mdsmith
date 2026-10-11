@@ -40,7 +40,7 @@ None.
 - `internal/rules/requiredstructure/rule.go` reached 2773
   lines with 104 functions. Fixed directly: split move-only
   into `settings.go`, `schemaparse.go`, and `headingmatch.go`;
-  `rule.go` is now 1125 lines.
+  `rule.go` is now 1117 lines.
 - `internal/rules/catalog/rule.go` (1821 lines): same
   move-only split by responsibility (settings, directive
   parsing, row rendering, fix). No plan filed: `PLAN.md` sits
