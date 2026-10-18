@@ -112,7 +112,13 @@ func isClose(line []byte) bool {
 // git conflict markers. Only checks for unambiguous markers
 // (<<<<<<< and >>>>>>>) to avoid setext heading false positives.
 func HasMarkers(content []byte) bool {
-	for _, line := range bytes.Split(content, []byte("\n")) {
+	for len(content) > 0 {
+		line := content
+		if i := bytes.IndexByte(content, '\n'); i >= 0 {
+			line, content = content[:i], content[i+1:]
+		} else {
+			content = nil
+		}
 		trimmed := bytes.TrimSpace(line)
 		if isOpen(trimmed) || isClose(trimmed) {
 			return true

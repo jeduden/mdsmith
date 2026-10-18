@@ -157,3 +157,21 @@ func TestMatchesAnyEnd_NoMatch(t *testing.T) {
 	assert.False(t, matchesAnyEnd([]byte("regular line"), names))
 	assert.False(t, matchesAnyEnd([]byte("<?catalog glob: \"*\" ?>"), names))
 }
+
+func TestHasMarkers_LastLineWithoutNewline(t *testing.T) {
+	assert.True(t, HasMarkers([]byte("text\n>>>>>>> theirs")))
+	assert.False(t, HasMarkers([]byte("text\nmore")))
+}
+
+func TestStripSectionConflicts_OpenBeforeSectionStart_Kept(t *testing.T) {
+	// A conflict that opens before the directive start marker is not
+	// inside a regenerable section when it opens, so its markers stay
+	// and HasMarkers reports them for the user to resolve.
+	input := "<<<<<<< ours\n<?catalog\nglob: \"*.md\"\n?>\nours\n" +
+		"=======\ntheirs\n>>>>>>> theirs\n<?/catalog?>\n"
+
+	result := StripSectionConflicts([]byte(input), []string{"catalog"})
+
+	assert.Contains(t, string(result), "<<<<<<<")
+	assert.True(t, HasMarkers(result))
+}
