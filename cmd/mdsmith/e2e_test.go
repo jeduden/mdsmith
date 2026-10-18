@@ -2425,7 +2425,7 @@ func TestE2E_MergeDriver_RealMerge_ProseConflict_AbortRestores(t *testing.T) {
 // diff3 conflict-marker handling through real git. With
 // merge.conflictstyle=diff3 the driver's internal `git merge-file`
 // emits ||||||| base sections inside the conflicted generated
-// block; stripSectionConflicts must strip those too, and the
+// block; mergeconflict.StripSectionConflicts must strip those too, and the
 // regeneration replaces any leftover base lines.
 func TestE2E_MergeDriver_RealMerge_Diff3SectionConflict_Resolved(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
