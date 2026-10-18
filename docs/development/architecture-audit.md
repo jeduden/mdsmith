@@ -6,7 +6,7 @@ summary: >-
   solid-architecture skill (audit mode)
   appends here; blockers are also filed as
   plans.
-audit-from: f2d15e5ae963ef5ecff3962eb679e59de277c80b
+audit-from: 28af6a912eaa37361e3a6419363d43400498b9d7
 ---
 # Architecture audit log
 

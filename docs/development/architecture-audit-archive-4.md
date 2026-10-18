@@ -2,9 +2,9 @@
 title: Architecture audit log archive (4)
 summary: >-
   Second overflow shard for architecture-audit-archive-2.md
-  (2026-09-27, holding the 2026-06-26 through 2026-07-05
-  entries), which hit the project's file-length budget a
-  second time. Every finding here is resolved; the linked
+  (2026-10-18, holding the 2026-06-26 through 2026-07-05
+  entries and the 2026-08-23 and 2026-08-30 entries), which
+  hit the project's file-length budget a second time. Every finding here is resolved; the linked
   plans are the detailed record.
 ---
 # Architecture audit log archive (4)

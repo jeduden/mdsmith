@@ -175,3 +175,11 @@ func TestStripSectionConflicts_OpenBeforeSectionStart_Kept(t *testing.T) {
 	assert.Contains(t, string(result), "<<<<<<<")
 	assert.True(t, HasMarkers(result))
 }
+
+func TestStripSectionConflicts_NoMarkers_ReturnedUnchanged(t *testing.T) {
+	input := []byte("# Doc\n\n<?catalog\nglob: \"*.md\"\n?>\nrow\n<?/catalog?>\n")
+
+	result := StripSectionConflicts(input, []string{"catalog"})
+
+	assert.Equal(t, input, result)
+}

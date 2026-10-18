@@ -22,6 +22,11 @@ import (
 // <<<<<<< and >>>>>>> to avoid false positives with Markdown
 // setext heading underlines.
 func StripSectionConflicts(content []byte, names []string) []byte {
+	// Only an opening marker starts a strip, so content without one is
+	// returned as is, skipping the split and rejoin.
+	if !bytes.Contains(content, []byte("<<<<<<<")) {
+		return content
+	}
 	lines := bytes.Split(content, []byte("\n"))
 	var out [][]byte
 	inSection := false
