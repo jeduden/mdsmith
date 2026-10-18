@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +13,7 @@ import (
 	fixpkg "github.com/jeduden/mdsmith/internal/fix"
 	"github.com/jeduden/mdsmith/internal/gitattributes"
 	"github.com/jeduden/mdsmith/internal/githooks"
+	"github.com/jeduden/mdsmith/internal/mergeconflict"
 	"github.com/jeduden/mdsmith/internal/rule"
 )
 
@@ -195,7 +195,7 @@ func mergeAndClean(base, ours, theirs string, maxBytes int64) ([]byte, int) {
 		fmt.Fprintf(os.Stderr, "mdsmith: reading merge result: %v\n", err)
 		return nil, 2
 	}
-	cleaned := stripSectionConflicts(content)
+	cleaned := mergeconflict.StripSectionConflicts(content, regenDirectiveNames())
 	// Re-check immediately before writing to narrow the TOCTOU window.
 	if err := guardFn(ours); err != nil {
 		fmt.Fprintf(os.Stderr, "mdsmith: %v\n", err)
@@ -263,7 +263,7 @@ func runMergeDriverRun(args []string) int {
 	}
 
 	// Step 4: check for remaining conflict markers.
-	if hasConflictMarkers(fixed) {
+	if mergeconflict.HasMarkers(fixed) {
 		fmt.Fprintf(os.Stderr,
 			"mdsmith: unresolved conflict markers remain in %s\n",
 			pathname)
@@ -359,118 +359,6 @@ func regenDirectiveNames() []string {
 		}
 	}
 	return names
-}
-
-// stripSectionConflicts removes git conflict markers from lines
-// that fall inside regenerable sections. Section names are
-// discovered dynamically from registered gensection.Directive rules.
-// Conflict markers outside these sections are left unchanged.
-//
-// Both standard (<<<<<<<, =======, >>>>>>>) and diff3
-// (<<<<<<<, |||||||, =======, >>>>>>>) conflict styles are supported.
-//
-// The ======= separator is only stripped when it appears between
-// <<<<<<< and >>>>>>> to avoid false positives with Markdown
-// setext heading underlines.
-func stripSectionConflicts(content []byte) []byte {
-	names := regenDirectiveNames()
-	lines := bytes.Split(content, []byte("\n"))
-	var out [][]byte
-	inSection := false
-	inConflict := false
-
-	for _, line := range lines {
-		trimmed := bytes.TrimSpace(line)
-
-		if matchesAnyStart(trimmed, names) {
-			inSection = true
-		}
-
-		if inSection {
-			if isConflictOpen(trimmed) {
-				inConflict = true
-				continue
-			}
-			if inConflict && isConflictClose(trimmed) {
-				inConflict = false
-				continue
-			}
-			if inConflict && isConflictBase(trimmed) {
-				continue
-			}
-			if inConflict && isConflictSeparator(trimmed) {
-				continue
-			}
-		}
-
-		out = append(out, line)
-
-		if matchesAnyEnd(trimmed, names) {
-			inSection = false
-			inConflict = false
-		}
-	}
-
-	return bytes.Join(out, []byte("\n"))
-}
-
-func matchesAnyStart(line []byte, names []string) bool {
-	for _, name := range names {
-		if gensection.IsRawStartMarker(line, name) {
-			return true
-		}
-	}
-	return false
-}
-
-func matchesAnyEnd(line []byte, names []string) bool {
-	for _, name := range names {
-		if gensection.IsRawEndMarker(line, name) {
-			return true
-		}
-	}
-	return false
-}
-
-// isConflictOpen returns true if the line opens a git conflict
-// block (starts with <<<<<<<).
-func isConflictOpen(line []byte) bool {
-	return bytes.HasPrefix(line, []byte("<<<<<<<"))
-}
-
-// isConflictBase returns true if the line opens the base
-// (ancestor) section in a diff3-style conflict block (starts
-// with |||||||). This marker only appears when git is
-// configured with merge.conflictstyle = diff3 or zdiff3.
-func isConflictBase(line []byte) bool {
-	return bytes.HasPrefix(line, []byte("|||||||"))
-}
-
-// isConflictSeparator returns true if the line is a git conflict
-// separator (starts with =======). This is context-dependent:
-// the same pattern is valid as a Markdown setext heading
-// underline, so callers must check conflict state.
-func isConflictSeparator(line []byte) bool {
-	return bytes.HasPrefix(line, []byte("======="))
-}
-
-// isConflictClose returns true if the line closes a git conflict
-// block (starts with >>>>>>>).
-func isConflictClose(line []byte) bool {
-	return bytes.HasPrefix(line, []byte(">>>>>>>"))
-}
-
-// hasConflictMarkers returns true if the content contains any
-// git conflict markers. Only checks for unambiguous markers
-// (<<<<<<< and >>>>>>>) to avoid setext heading false positives.
-func hasConflictMarkers(content []byte) bool {
-	for _, line := range bytes.Split(content, []byte("\n")) {
-		trimmed := bytes.TrimSpace(line)
-		if isConflictOpen(trimmed) || isConflictClose(trimmed) {
-			return true
-		}
-	}
-	return false
 }
 
 // resolveManagedGlobs returns the merge-driver glob set for an
